@@ -2,6 +2,8 @@
 
 These references came from the user's project pitch. They are inputs for future research, not selected dependencies or verified architecture claims. The complete supplied notes are kept in the research task's Original Request in Linear.
 
+The first [source-backed comparison](research/external-implementations.md) is available. Keep the supplied claims below separate from its verified findings.
+
 ## First sources to study
 
 | Reference | Source | What to investigate |

@@ -18,10 +18,10 @@ The ownership of shared infrastructure, including processes, terminals, browser 
 
 ## Current state
 
-This repository contains project context and research references only. There is no extension code, package, or installation command yet. No backend, public API, dependency, or migration route has been selected.
+This repository contains project context, research references, and source-backed research findings. There is no extension code, package, or installation command yet. No backend, public API, dependency, or migration route has been selected.
 
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
-- [Future research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
+- [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
 - [Research references](docs/research-references.md)
 
-The research task will examine the IDE's existing boundaries, compare the supplied references, and propose a bounded first migration and a way to verify coexistence. Research and implementation have not started.
+Research has started with [external implementations](docs/research/external-implementations.md). The IDE inventory, first migration proposal, and coexistence check are still ahead. Implementation has not started.
