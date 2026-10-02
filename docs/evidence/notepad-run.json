@@ -1,0 +1,139 @@
+{
+  "model": {
+    "provider": "openai-codex",
+    "id": "gpt-6.1-sol"
+  },
+  "target": {
+    "pid": 39124,
+    "window_id": 61017014
+  },
+  "observations": [
+    {
+      "toolCallId": "call_kzpUu2LJEDyfsAP6Gu4vJ750|fc_04a252e75cc4c2b9016abfbdde69c087d29919a4f84d13b119",
+      "title": "Untitled - Notepad",
+      "snapshot": "s00000001",
+      "truncated": false,
+      "values": [
+        {
+          "role": "TitleBar",
+          "label": "Untitled - Notepad",
+          "value": "Untitled - Notepad"
+        }
+      ]
+    },
+    {
+      "toolCallId": "call_XDPtb6mAB917t8ZasQAQX1PL|fc_04a252e75cc4c2b9016abfbde9151487d286303976a0745589",
+      "title": "*Pi computer use PoC 123 - Notepad",
+      "snapshot": "s00000002",
+      "truncated": false,
+      "values": [
+        {
+          "role": "Document",
+          "label": "Text editor",
+          "value": "Pi computer use PoC 123"
+        },
+        {
+          "role": "TitleBar",
+          "label": "*Pi computer use PoC 123 - Notepad",
+          "value": "*Pi computer use PoC 123 - Notepad"
+        }
+      ]
+    },
+    {
+      "toolCallId": "call_Ez3UKasOZrrxKbCrHVW2UKsz|fc_04a252e75cc4c2b9016abfbdf421b487d28792826d21c92552",
+      "title": "*Pi computer use PoC 456 - Notepad",
+      "snapshot": "s00000003",
+      "truncated": false,
+      "values": []
+    },
+    {
+      "toolCallId": "call_q4ODWBHSv8wLdOUaHCH4np8p|fc_04a252e75cc4c2b9016abfbdf92a0887d2a847d1d0d94ac8ef",
+      "title": "*Pi computer use PoC 456 - Notepad",
+      "snapshot": "s00000004",
+      "truncated": false,
+      "values": [
+        {
+          "role": "Document",
+          "label": "Text editor",
+          "value": "Pi computer use PoC 456"
+        }
+      ]
+    }
+  ],
+  "actionInputs": [
+    {
+      "type": "toolCall",
+      "id": "call_2Wl37HmmWtsuS1NwPV8uhx0H|fc_04a252e75cc4c2b9016abfbde330c087d28574d0d54b325e36",
+      "name": "computer_act",
+      "arguments": {
+        "target": {
+          "pid": 39124,
+          "window_id": 61017014
+        },
+        "observation_id": "b89f0e0c-b065-4125-ad75-23d1a5043fe6",
+        "action": "type_text",
+        "delivery_mode": "background",
+        "element_token": "s00000001:0",
+        "text": "Pi computer use PoC 123"
+      }
+    },
+    {
+      "type": "toolCall",
+      "id": "call_zxnLMOfrFfzSewVyXOFYjMrR|fc_04a252e75cc4c2b9016abfbdeea13887d29bf932103d898b2a",
+      "name": "computer_act",
+      "arguments": {
+        "target": {
+          "pid": 39124,
+          "window_id": 61017014
+        },
+        "observation_id": "b12f64ac-dfbc-4b91-aee2-6c1bf638e69f",
+        "action": "set_value",
+        "delivery_mode": "background",
+        "element_token": "s00000002:0",
+        "text": "Pi computer use PoC 456"
+      }
+    }
+  ],
+  "actionResults": [
+    {
+      "toolCallId": "call_2Wl37HmmWtsuS1NwPV8uhx0H|fc_04a252e75cc4c2b9016abfbde330c087d28574d0d54b325e36",
+      "isError": false,
+      "status": "delivered",
+      "target": {
+        "pid": 39124,
+        "window_id": 61017014
+      },
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "confirmed",
+        "evidence": [
+          {
+            "detail": "confirmed",
+            "kind": "value_readback"
+          }
+        ],
+        "route": "accessibility",
+        "summary": "✅ Wrote 23 char(s) on pid 39124 via UIA ValuePattern (element_index=[0]; verify: confirmed)."
+      }
+    },
+    {
+      "toolCallId": "call_zxnLMOfrFfzSewVyXOFYjMrR|fc_04a252e75cc4c2b9016abfbdeea13887d29bf932103d898b2a",
+      "isError": false,
+      "status": "delivered",
+      "target": {
+        "pid": 39124,
+        "window_id": 61017014
+      },
+      "state": {
+        "delivery": {
+          "mode": "unknown"
+        },
+        "effect": "unverifiable",
+        "route": "accessibility",
+        "summary": "✅ Set AXValue on [0] (UIA ValuePattern)."
+      }
+    }
+  ]
+}

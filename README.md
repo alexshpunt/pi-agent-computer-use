@@ -1,6 +1,6 @@
 # Pi Agent Computer Use
 
-A planned extension for [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide) that adds computer use to Pi agents through the IDE's shared, intent-based tool primitives.
+A standalone computer-use proof of concept for Pi. The final goal is an extension for [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide), using the IDE's shared, intent-based tool primitives.
 
 ## Why a separate extension
 
@@ -12,16 +12,16 @@ The exact implementation is still open. These are project intentions, not capabi
 
 ## Migration boundary
 
-Start from what already exists in Pi Agent IDE and move it gradually. Do not change the working IDE during preparation. Any future extraction experiment must use an isolated IDE branch/worktree and check the two extensions together in a separate environment before changes reach the normal installation.
+First prove computer use through independent tools, without an IDE dependency. Integration and gradual extraction come later. Do not change the working IDE for the PoC. Any future extraction experiment must use an isolated IDE branch/worktree and check the two extensions together in a separate environment before changes reach the normal installation.
 
 The ownership of shared infrastructure, including processes, terminals, browser reads, and images, still needs investigation. It is not decided simply because a resource appears in this pitch.
 
 ## Current state
 
-This repository contains project context, research references, and source-backed research findings. There is no extension code, package, or installation command yet. No backend, public API, dependency, or migration route has been selected.
+The standalone PoC uses Cua Driver 0.32.0 to reach the Windows desktop from Pi in WSL. Its four experimental tools cover authorized-window discovery, observation, grounded actions, and runtime cleanup. This is not the final provider API or a selected migration route. See [setup and verification](docs/standalone-poc.md).
 
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
 - [Research references](docs/research-references.md)
 
-Research has started with [external implementations](docs/research/external-implementations.md). The IDE inventory, first migration proposal, and coexistence check are still ahead. Implementation has not started.
+[External source research](docs/research/external-implementations.md) is available. The current task is [the standalone Windows PoC](https://linear.app/alexshpunt/issue/LPT-356/prove-standalone-windows-computer-use-from-pi-in-wsl). IDE inventory, migration, and coexistence work are deferred until this independent path has live evidence.

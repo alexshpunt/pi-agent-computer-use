@@ -1,0 +1,29 @@
+{
+  "name": "pi-agent-computer-use",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone Windows computer-use proof of concept for Pi running in WSL.",
+  "type": "module",
+  "pi": { "extensions": ["./src/index.ts"] },
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "test:integration": "pi-test run -- vitest run --config vitest.integration.config.ts",
+    "typecheck": "tsc --noEmit",
+    "probe:driver": "node scripts/probe-driver.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.31.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.99.1",
+    "@types/node": "24.0.4",
+    "pi-coding-agent-test": "0.1.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
