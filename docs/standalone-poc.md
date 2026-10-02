@@ -108,4 +108,4 @@ The real-Pi MCP fixture substitutes Windows lifetime identity only; real registr
 
 For a read-only native schema probe, set `CUA_DRIVER_PATH` and working inherited `WSL_INTEROP`, then run `npm run probe:driver`. It writes `.tmp/driver-tools.json` without capturing UI or sending input.
 
-[Original PoC result](standalone-poc-results.md) describes the earlier four-tool single-window revision. Current live outcomes and limitations belong in the YOLO result report, not in that historical evidence.
+[Original PoC result](standalone-poc-results.md) describes the earlier four-tool single-window revision. See [the YOLO result report](yolo-windows-results.md) for current live outcomes and limitations.
