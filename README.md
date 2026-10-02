@@ -18,7 +18,7 @@ The ownership of shared infrastructure, including processes, terminals, browser 
 
 ## Current state
 
-The standalone PoC uses Cua Driver 0.32.0 to reach the Windows desktop from Pi in WSL. Its four experimental tools cover authorized-window discovery, observation, grounded actions, and runtime cleanup. This is not the final provider API or a selected migration route. See [setup and verification](docs/standalone-poc.md).
+The standalone PoC uses Cua Driver 0.32.0 to reach the Windows desktop from Pi in WSL. Its four experimental tools cover authorized-window discovery, observation, grounded actions, and runtime cleanup. A live isolated Pi run edited and verified an owned Notepad document without IDE. See [the result and limits](docs/standalone-poc-results.md) and [setup](docs/standalone-poc.md). This is not the final provider API or a selected migration route.
 
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
