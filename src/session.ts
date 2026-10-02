@@ -3,6 +3,8 @@ import { setTimeout as delay } from "node:timers/promises";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
+/** Safe limits UI access to individually opened session windows; neither mode is an OS sandbox. */
+export type ComputerMode = "safe" | "yolo";
 /** Model-visible native text or screenshot. */
 export type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 /** Native MCP result; structured state is separate from images. */
@@ -34,7 +36,7 @@ export interface ComputerResult {
   content: Content[];
   details: {
     status: "listed" | "observed" | "delivered" | "refused" | "unknown" | "closed";
-    mode: "yolo";
+    mode: ComputerMode;
     target?: WindowTarget;
     window_ref?: string;
     observation_id?: string;
@@ -44,16 +46,16 @@ export interface ComputerResult {
   isError?: boolean;
 }
 interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; observation?: Observation }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 
-/** YOLO multi-window session. Native work is queued; identities and observations are not persisted across reloads. */
+/** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
 export class ComputerSession {
   private tail: Promise<unknown> = Promise.resolve();
   private readonly entries = new Map<string, WindowEntry>();
 
-  constructor(private readonly driver: Driver) {}
+  constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo") {}
 
   private queue(work: () => Promise<ComputerResult>): Promise<ComputerResult> {
     const result = this.tail.then(work, work);
@@ -63,11 +65,20 @@ export class ComputerSession {
 
   private result(status: ComputerResult["details"]["status"], message: string,
     state?: Record<string, unknown>, extra: Partial<ComputerResult["details"]> = {}, images: Content[] = []): ComputerResult {
-    const details = { status, mode: "yolo" as const, ...extra, ...(state ? { state } : {}) };
+    const details = { ...extra, status, mode: this.getMode(), ...(state ? { state } : {}) };
     const json = JSON.stringify(details, null, 2);
     const visible = json.length > 24_000 ? json.slice(0, 24_000) + "\n[Text truncated; narrow the observation.]" : json;
     return { content: [{ type: "text", text: `${message}\n${visible}` }, ...images], details,
       ...(["refused", "unknown"].includes(status) ? { isError: true } : {}) };
+  }
+
+  private allowed(entry: WindowEntry): boolean {
+    return this.getMode() === "yolo" || entry.owned;
+  }
+
+  private denied(ref: string): ComputerResult {
+    return this.result("refused", "Safe mode allows only windows opened by this session. Only the user can change mode with /computer-mode.",
+      undefined, { window_ref: ref });
   }
 
   private addressed(entry: WindowEntry): Partial<ComputerResult["details"]> {
@@ -105,15 +116,15 @@ export class ComputerSession {
     for (const entry of this.entries.values()) {
       if (entry.target.pid === target.pid && entry.target.window_id === target.window_id && entry.identity === identity) return entry;
     }
-    const entry = { ref: "w-" + randomUUID(), target: { pid: target.pid, window_id: target.window_id }, identity };
+    const entry: WindowEntry = { ref: "w-" + randomUUID(), target: { pid: target.pid, window_id: target.window_id }, identity, owned: false };
     this.entries.set(entry.ref, entry);
     return entry;
   }
 
   private async current(ref: string, signal?: AbortSignal): Promise<WindowEntry | undefined> {
     const entry = this.entries.get(ref);
-    if (!entry) return undefined;
-    if (await this.driver.identity(entry.target, false, signal) === entry.identity) return entry;
+    if (!entry || !this.allowed(entry)) return undefined;
+    if (await this.driver.identity(entry.target, false, signal) === entry.identity) return this.allowed(entry) ? entry : undefined;
     this.entries.delete(ref);
     return undefined;
   }
@@ -124,18 +135,25 @@ export class ComputerSession {
     return state.windows as Record<string, unknown>[];
   }
 
-  /** Discover all normal-permission desktop windows, optionally narrowed by app name/title. No UI contents are read. */
+  /** Discover permitted window metadata. Safe never adopts outside-session windows or grants their same-PID siblings. */
   windows(signal?: AbortSignal, query?: string): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before discovery.");
       try {
         const windows = [];
-        for (const native of await this.list(signal)) {
+        const owned = [...this.entries.values()].filter(entry => entry.owned);
+        const nativeWindows = this.getMode() === "safe" && !owned.length ? [] : await this.list(signal);
+        for (const native of nativeWindows) {
           if (query && !`${native.app_name} ${native.title}`.toLowerCase().includes(query.toLowerCase())) continue;
-          const entry = await this.register(native as unknown as WindowTarget, signal);
-          windows.push({ ...native, ...(entry ? { window_ref: entry.ref } : { unavailable: "Cannot establish window lifetime identity." }) });
+          const known = owned.find(entry => entry.target.pid === native.pid && entry.target.window_id === native.window_id);
+          const entry = this.getMode() === "safe"
+            ? known && await this.current(known.ref, signal)
+            : await this.register(native as unknown as WindowTarget, signal);
+          if (this.getMode() === "safe" && (!entry || !entry.owned)) continue;
+          windows.push({ ...native, ...(entry ? { window_ref: entry.ref, owned: entry.owned } : { unavailable: "Cannot establish window lifetime identity." }) });
         }
-        return this.result("listed", "YOLO window discovery. Use window_ref, not PID/HWND.", { windows });
+        return this.result("listed", "Permitted window discovery. Safe lists session-opened windows only. Use window_ref, not PID/HWND.",
+          { windows: this.getMode() === "safe" ? windows.filter(window => "owned" in window && window.owned) : windows });
       } catch (error) { return this.failed(error, false); }
     });
   }
@@ -170,11 +188,7 @@ export class ComputerSession {
           : "Installed app not found. Use computer_apps to find its exact name or app_id.");
         const selected = paths[0];
         const before = new Set<string>();
-        for (const native of await this.list(signal)) {
-          const entry = await this.register(native as unknown as WindowTarget, signal);
-          if (entry) before.add(entry.identity);
-          else before.add(`unbound:${native.pid}:${native.window_id}`);
-        }
+        for (const native of await this.list(signal)) before.add(`${native.pid}:${native.window_id}`);
         const aumid = selected.launch_path!.match(/^shell:appsFolder\\(.+!.+)$/i)?.[1];
         if (signal?.aborted) return this.result("refused", "Cancelled before launch dispatch.");
         dispatched = true;
@@ -192,8 +206,10 @@ export class ComputerSession {
               return item.pid === native.pid && item.window_id === native.window_id;
             });
             if (native.pid !== pid && appName(String(native.app_name ?? "")) !== appName(selected.name) && !reported) continue;
+            // Treat baseline addresses as existing even if a handle is recycled during launch: fail closed.
+            if (before.has(`${native.pid}:${native.window_id}`)) continue;
             const entry = await this.register(native as unknown as WindowTarget, signal);
-            if (entry && !before.has(entry.identity) && !before.has(`unbound:${native.pid}:${native.window_id}`)) candidates.push(entry);
+            if (entry) candidates.push(entry);
           }
           if (candidates.length) break;
           if (attempt < 19) await delay(250, undefined, { signal });
@@ -202,6 +218,7 @@ export class ComputerSession {
           ? "Launch produced multiple possible new windows. Discover them before choosing; ownership is not established."
           : "Launch did not establish a genuinely new window. It may have reused an existing window or opened a tab. Discover before deciding; do not relaunch blindly.");
         const entry = candidates[0];
+        entry.owned = true;
         const observed = await this.capture(entry, signal);
         return this.result(observed.details.status, observed.details.status === "observed"
           ? "New application window opened. First observation is ready for one action."
@@ -212,18 +229,24 @@ export class ComputerSession {
   }
 
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string): Promise<ComputerResult> {
+    if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined;
-    if (!await this.current(entry.ref, signal)) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
+    const current = await this.current(entry.ref, signal);
+    if (!this.allowed(entry)) return this.denied(entry.ref);
+    if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
     const native = await this.driver.call("get_window_state", {
       ...entry.target, max_elements: 200, max_depth: 15, timeout_ms: 5000,
       max_image_dimension: 1280, ...(query ? { query } : {}),
     }, signal);
+    if (!this.allowed(entry)) return this.denied(entry.ref);
     if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry));
     const state = native.structuredContent;
     if (!state || !Array.isArray(state.elements)) throw new Error("Driver returned no structured UI elements.");
     const images = native.content.filter(block => block.type === "image");
     if (!images.length) throw new Error("Driver returned no grounding screenshot.");
+    if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!await this.current(entry.ref, signal)) return this.result("refused", "Window changed during observation. Discover again.");
+    if (!this.allowed(entry)) return this.denied(entry.ref);
     const id = randomUUID();
     entry.observation = { id, width: typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
@@ -239,7 +262,10 @@ export class ComputerSession {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
       try {
+        const known = this.entries.get(ref);
+        if (known && !this.allowed(known)) return this.denied(ref);
         const entry = await this.current(ref, signal);
+        if (known && !this.allowed(known)) return this.denied(ref);
         return entry ? await this.capture(entry, signal, query) : this.result("refused", "Unknown or closed window_ref. Discover again.");
       } catch (error) { return this.failed(error, false); }
     });
@@ -250,6 +276,7 @@ export class ComputerSession {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before action dispatch.");
       const entry = this.entries.get(action.window_ref);
+      if (entry && !this.allowed(entry)) return this.denied(entry.ref);
       const observed = entry?.observation;
       if (!entry || !observed || action.observation_id !== observed.id)
         return this.result("refused", "Stale or missing observation_id/window_ref. Observe again.");
@@ -270,7 +297,9 @@ export class ComputerSession {
         return this.result("refused", "Unsupported key.");
       let dispatched = false;
       try {
-        if (!await this.current(entry.ref, signal)) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
+        const current = await this.current(entry.ref, signal);
+        if (!this.allowed(entry)) return this.denied(entry.ref);
+        if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
         const nativeName = action.action === "select_all" ? "hotkey" : action.action === "key" ? "press_key" : action.action;
         const args: Record<string, unknown> = {
           delivery_mode: action.delivery_mode ?? "background",
@@ -284,9 +313,13 @@ export class ComputerSession {
           ...(action.action === "key" ? { key: action.key } : {}),
         };
         if (signal?.aborted) return this.result("refused", "Cancelled before action dispatch.");
+        if (!this.allowed(entry)) return this.denied(entry.ref);
         entry.observation = undefined;
         dispatched = true;
         const native = await this.driver.call(nativeName, args, signal);
+        if (!this.allowed(entry)) return this.result("unknown",
+          "Input was dispatched before Safe was selected. Its outcome is withheld; Safe cannot undo in-flight input. Do not replay blindly.",
+          undefined, { window_ref: entry.ref });
         const state = native.structuredContent ?? {};
         const refused = state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
           "conflicting_element_target", "background_unavailable"].includes(String(state.code));
