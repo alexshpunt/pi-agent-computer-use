@@ -27,3 +27,5 @@ YOLO is the default desktop-wide UI mode. The user can select session-owned Safe
 - [Research references](docs/research-references.md)
 
 [External source research](docs/research/external-implementations.md) is available. Automatic YOLO opening is tracked in [LPT-363](https://linear.app/alexshpunt/issue/LPT-363). [Safe access](https://linear.app/alexshpunt/issue/LPT-365) follows YOLO; [sandbox research](https://linear.app/alexshpunt/issue/LPT-364) is separate. IDE inventory, extraction, and coexistence work remain deferred.
+
+[Sandbox boundary research](docs/research/sandbox-boundaries.md) compares Windows Sandbox, a Windows VM and a private Linux desktop in WSL. It proposes a separately approved guest-control experiment; no guest isolation or connectivity has been tested.
