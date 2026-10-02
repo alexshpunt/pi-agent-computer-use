@@ -20,7 +20,7 @@ The ownership of shared infrastructure, including processes, terminals, browser 
 
 The standalone extension uses Cua Driver 0.32.0 to reach the Windows desktop from Pi in WSL. Six experimental tools find apps, open a new window with its first observation, discover existing windows, read UI state and screenshots, act, and release the runtime. Opening needs no per-window config, PID/HWND lookup, or reload. Live checks opened separate Notepad windows and Calculator, and edited an authorized disposable window from another session. See [the YOLO results and limits](docs/yolo-windows-results.md) and [setup](docs/standalone-poc.md).
 
-This is YOLO desktop access with normal user permissions, not OS isolation. Safe access is a separate follow-up. The final IDE provider API and migration route are still open. The [earlier single-window PoC report](docs/standalone-poc-results.md) is historical.
+YOLO is the default desktop-wide UI mode. The user can select session-owned Safe access with `/computer-mode safe` and return with `/computer-mode yolo`, without reload or target config. Live Notepad checks verified old-reference denial and separate ownership for windows sharing one PID. See [the Safe results and limits](docs/safe-windows-results.md). Neither mode is OS isolation. The final IDE provider API and migration route are still open. The [earlier single-window PoC report](docs/standalone-poc-results.md) is historical.
 
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
