@@ -18,10 +18,12 @@ The ownership of shared infrastructure, including processes, terminals, browser 
 
 ## Current state
 
-The standalone PoC uses Cua Driver 0.32.0 to reach the Windows desktop from Pi in WSL. Its four experimental tools cover authorized-window discovery, observation, grounded actions, and runtime cleanup. A live isolated Pi run edited and verified an owned Notepad document without IDE. See [the result and limits](docs/standalone-poc-results.md) and [setup](docs/standalone-poc.md). This is not the final provider API or a selected migration route.
+The standalone extension uses Cua Driver 0.32.0 to reach the Windows desktop from Pi in WSL. Six experimental tools find apps, open a new window with its first observation, discover existing windows, read UI state and screenshots, act, and release the runtime. Opening needs no per-window config, PID/HWND lookup, or reload. Live checks opened separate Notepad windows and Calculator, and edited an authorized disposable window from another session. See [the YOLO results and limits](docs/yolo-windows-results.md) and [setup](docs/standalone-poc.md).
+
+This is YOLO desktop access with normal user permissions, not OS isolation. Safe access is a separate follow-up. The final IDE provider API and migration route are still open. The [earlier single-window PoC report](docs/standalone-poc-results.md) is historical.
 
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
 - [Research references](docs/research-references.md)
 
-[External source research](docs/research/external-implementations.md) is available. The current task is [the standalone Windows PoC](https://linear.app/alexshpunt/issue/LPT-356/prove-standalone-windows-computer-use-from-pi-in-wsl). IDE inventory, migration, and coexistence work are deferred until this independent path has live evidence.
+[External source research](docs/research/external-implementations.md) is available. Automatic YOLO opening is tracked in [LPT-363](https://linear.app/alexshpunt/issue/LPT-363). [Safe access](https://linear.app/alexshpunt/issue/LPT-365) follows YOLO; [sandbox research](https://linear.app/alexshpunt/issue/LPT-364) is separate. IDE inventory, extraction, and coexistence work remain deferred.

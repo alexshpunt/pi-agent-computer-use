@@ -4,13 +4,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { Content, Driver, DriverResult, WindowTarget } from "./session.ts";
 
-/** Trusted operator configuration, not agent-supplied executable arguments. */
-export interface ComputerConfig {
-  command: string;
-  args?: string[];
-  interop?: string;
-  target: WindowTarget;
-}
+import type { ComputerConfig } from "./config.ts";
+import { WindowIdentity } from "./window-identity.ts";
 
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
@@ -18,7 +13,16 @@ export class McpDriver implements Driver {
   private transport?: StdioClientTransport;
   private stderr = "";
 
-  constructor(private readonly config: ComputerConfig) {}
+  private readonly windowIdentity: WindowIdentity;
+
+  constructor(private readonly config: ComputerConfig) {
+    this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
+  }
+
+  /** Bind or validate a native window lifetime. Normal permissions still apply. */
+  identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined> {
+    return this.windowIdentity.identify(target, create, signal);
+  }
 
   private async connect(signal?: AbortSignal): Promise<Client> {
     if (signal?.aborted) throw new Error("Cancelled before Driver startup.");
@@ -78,6 +82,9 @@ export class McpDriver implements Driver {
     this.client = undefined;
     this.transport = undefined;
     try { await client?.close(); }
-    finally { await transport?.close(); }
+    finally {
+      try { await transport?.close(); }
+      finally { await this.windowIdentity.close(); }
+    }
   }
 }

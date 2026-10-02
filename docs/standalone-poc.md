@@ -1,98 +1,99 @@
-# Standalone Windows PoC
+# Standalone Windows computer use
 
-This is an experiment, not the final Pi Agent IDE provider API. Pi runs in WSL and talks to a native Windows Cua Driver process over stdio MCP. There is no IDE dependency, SSH server, daemon service, or automatic startup.
+Pi runs in WSL and talks to Windows Cua Driver over owned stdio MCP. There is no Pi Agent IDE dependency, SSH server, permanent service, or autostart. The tools are experimental, not the final IDE provider API.
+
+**This version is YOLO.** It can reach new and already open desktop windows within normal user permissions. Loading it grants desktop-wide UI capability, not an OS sandbox. Safe mode is a [separate later task](https://linear.app/alexshpunt/issue/LPT-365); [sandbox research](https://linear.app/alexshpunt/issue/LPT-364) is separate too. Use only the apps and documents authorized by the actual task.
 
 ## Tools
 
-- `computer_windows`: list metadata for the operator-configured window.
-- `computer_observe`: obtain its accessibility elements and screenshot together.
-- `computer_act`: perform one grounded click, text write, select-all, or supported navigation key.
-- `computer_close`: release the owned Driver process. It does not close or save application documents.
+| Tool | Result |
+| --- | --- |
+| `computer_apps` | Installed app names and `app_id`, optionally filtered by name. Does not launch. |
+| `computer_open` | A genuinely new window's `window_ref`, first accessibility observation, and PNG in one call. |
+| `computer_windows` | New and already open window metadata with session `window_ref`; optional app/title filter. |
+| `computer_observe` | Fresh accessibility elements and scoped PNG for a reference. |
+| `computer_act` | One grounded text/value/click/select-all/navigation action. |
+| `computer_close` | Release owned Driver and lifetime peer; invalidate references. Does not close apps or save files. |
 
-Every action names the exact PID/window and the latest `observation_id`. A new read retires the previous observation; a dispatched attempt consumes it even if it fails. Element tokens must come from that observation. Coordinates must come from its screenshot. Read again after each attempt.
+For example, ask `computer_open` for `{"app":"Notepad"}`. It resolves the installed app, launches once, finds the new window, and returns the first observation. The agent does not need a configured PID/HWND, a shell launch, or a reload. Use an exact installed name or the `app_id` from `computer_apps` for other apps. The optional `Windows` name prefix and `.exe` suffix are ignored for matching. No model-supplied command line is accepted.
 
-Background is the first attempt. Foreground is an explicit escalation for the authorized test window, not an automatic retry. A returned input event does not prove the application changed. Check fresh UI state and pixels. If dispatch is interrupted, the result is unknown: the window may have changed.
+Opening means a **new window**, not an existing window or new tab. Apps differ: some are single-instance or create several startup windows. If the result is `unknown`, discover what actually appeared before deciding. Never blindly relaunch. A new window is not necessarily an empty document: applications can restore prior state. Read tree and pixels before editing.
 
-This target check is an extension guard, not an OS sandbox. Extensions and trusted configuration have the user's normal permissions. The underlying Driver supports more tools than this PoC exposes.
+Actions use `window_ref`, the latest `observation_id`, and an observed `element_token` or coordinates inside that screenshot. Observing one window replaces only its earlier observation. Dispatch consumes it, including failed attempts. Read again after each action.
 
-## Set up the Driver
+Background is the default. Foreground is explicit and only follows an observed background refusal/no-op. `delivered` does not prove the requested task is complete. Check fresh UI value and PNG. `unknown` may include a partial change; never replay without checking.
 
-The current pin is **Cua Driver 0.32.0**, source release `cua-driver-rs-v0.32.0` at `66ca6c0833a7e04dd611c473100ba36bbf1f11be`. GitHub marks the release as prerelease. Do not assume a later binary has the same contracts.
+For disposable single-tab Notepad cleanup, clear only your text, verify blank/unmodified state, then use the observed **Close Tab** control. Its background UIA Invoke worked in qualification. Titlebar Close is different: background synthetic clicks were no-ops. Clear/close only task-owned or explicitly authorized documents. `computer_close` does not do this for you.
 
-For Windows x86_64, use the official [binary archive](https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.32.0/cua-driver-rs-0.32.0-windows-x86_64-binary.zip). Its published SHA-256 is:
+## Install the Driver once
+
+The pin is **Cua Driver 0.32.0**, source release `cua-driver-rs-v0.32.0` at `66ca6c0833a7e04dd611c473100ba36bbf1f11be`. GitHub marks it prerelease. Later binaries need fresh qualification.
+
+For Windows x86_64 use the official [binary archive](https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.32.0/cua-driver-rs-0.32.0-windows-x86_64-binary.zip). Published SHA-256:
 
 ```text
 16aa3666f4ab4faba2fa6261ecb9349d2e9a0c97eca2a0b0960db5a311c2b1e1
 ```
 
-Check the archive hash before extracting. Extract its complete contents into a **new user-local directory**, for example `%LOCALAPPDATA%\Programs\PiComputerUsePoC\cua-driver-0.32.0`. Do not overwrite another install. Keep the UIA helper, native library, and other supplied files with the main executable.
+Check the hash before extraction. Extract the **whole archive** into a new user-local directory, for example `%LOCALAPPDATA%\Programs\PiComputerUsePoC\cua-driver-0.32.0`. Do not overwrite another install. Keep supplied native libraries and UIA helper beside the executable.
 
-Before running the executables, check their Authenticode signatures in Windows PowerShell:
+Check signatures before running executables:
 
 ```powershell
 Get-ChildItem "$env:LOCALAPPDATA\Programs\PiComputerUsePoC\cua-driver-0.32.0\*.exe" |
   ForEach-Object { Get-AuthenticodeSignature $_.FullName }
 ```
 
-Expect `Valid` and publisher `Cua AI, Inc.`. This PoC does not need admin, User PATH changes, scheduled tasks, firewall rules, or SSH configuration. The official installer currently defaults autostart on despite a conflicting comment; do not use an unqualified installer one-liner.
+Expect `Valid`, publisher `Cua AI, Inc.`. No admin, PATH changes, scheduled tasks, firewall rules, or SSH setup are needed. Do not use an unqualified installer one-liner: the inspected installer enabled autostart by default.
 
-## Configure one authorized document
+## No per-window setup
 
-1. Open a **new empty Notepad window with one blank document** yourself. Do not use your own files or a window with other tabs. Modern Notepad can restore earlier tabs, so the empty starting state matters.
-2. In WSL, identify its process and main-window handle using Windows PowerShell. This lists only Notepad metadata, not document contents:
+The extension finds the above install automatically under Windows user profiles mounted at `/mnt/c/Users` (or `%LOCALAPPDATA%` in native Windows). If zero or several installs match, set `CUA_DRIVER_PATH` to the intended executable. It does not install or update the Driver automatically.
 
-```bash
-powershell.exe -NoProfile -NonInteractive -Command \
-  'Get-Process notepad | Select-Object Id,SessionId,MainWindowHandle,MainWindowTitle | ConvertTo-Json' </dev/null
-```
-
-3. Create the ignored local file `.pi/computer-use.json`. Replace these placeholders with your exact executable, PID, and window handle:
+No `.pi/computer-use.json` is required. For an unusual environment, an ignored local file can override the trusted executable or transport:
 
 ```json
 {
-  "command": "/mnt/c/Users/YOU/AppData/Local/Programs/PiComputerUsePoC/cua-driver-0.32.0/cua-driver.exe",
-  "target": { "pid": 12345, "window_id": 123456 }
+  "command": "/mnt/c/Users/YOU/AppData/Local/Programs/PiComputerUsePoC/cua-driver-0.32.0/cua-driver.exe"
 }
 ```
 
-The file is **trusted operator configuration**. Optional `args` replace the default `["mcp", "--direct", "--embedded"]` for an explicitly reviewed transport. They are not model-callable shell arguments. Changing the configured window requires reloading Pi; `computer_close` invalidates observations but does not reread configuration.
+Optional `args` replace `['mcp', '--direct', '--embedded']`; optional `interop` selects a live WSL interop socket. These are trusted user settings, not agent-callable executable arguments. The old `target` field is rejected rather than silently changing its permission boundary. Remove old single-window PoC configuration before using YOLO. Environment overrides are read when the session is first used; ordinary opening and window selection never need a reload.
 
-### WSL interop problems
+### WSL interop
 
-The Windows process must land in the interactive desktop session, not service Session 0. Our first launch reported Session 1.
+Windows processes must run in the interactive desktop session, not service Session 0. A long-lived Linux process may inherit a stale `WSL_INTEROP`. If Windows commands hang, check that its socket exists **and** a simple `cmd.exe /d /c ver` succeeds. A live WSL terminal launched from Windows can provide a current endpoint. Keep its owning session alive; do not persist this machine's ephemeral socket as a default. A Linux Driver does not control the Windows host desktop.
 
-An old long-lived Linux process may inherit a stale `WSL_INTEROP`. If Windows commands hang, first check whether its socket exists and whether a simple `cmd.exe /d /c ver` works. A live WSL terminal launched from Windows can provide a current endpoint. You can set the optional `interop` field to that socket path in local configuration; keep the owning terminal session alive. Do not copy our machine's endpoint as a default or install a Linux Driver to control Windows.
+One-shot PowerShell commands need closed stdin (`</dev/null`). Owned MCP and the window-identity peer intentionally keep stdin open for their protocol and exit on EOF. The wrapper forwards telemetry-off and update-check-off settings through `WSLENV`; it does not edit saved Driver preferences.
 
-One-shot PowerShell commands must close stdin (`</dev/null` above). Leaving terminal stdin open caused hangs in the tested setup. MCP is different: its stdin intentionally carries the protocol until cleanup sends EOF.
+## Window lifetime and limits
 
-The wrapper forwards telemetry-off and update-check-off environment variables to Windows through `WSLENV`. It does not change the user's saved Driver preferences.
+A session-owned PowerShell peer attaches a private marker to each accessible window. Windows destroys that property with the window; a recycled HWND cannot inherit the old reference. Before observation or input, the extension checks PID and marker. On EOF the peer removes its surviving markers. It does not capture UI, send input, launch apps, or elevate permissions.
 
-## Run standalone
+An inaccessible/elevated window can appear in discovery metadata without a usable reference. The extension does not bypass Windows permissions. References are not recovered across Pi reloads; discover again.
 
-In the checkout:
+The marker check and Driver dispatch are separate native operations, not an atomic OS transaction. Concurrent external destruction or creation during that gap is not independently proven safe. New-window matching compares prelaunch lifetimes with the resulting app's windows, including packaged apps that use an existing process. It cannot establish causality against an unrelated concurrent launch of the same app. Do not claim OS isolation or proven focus/pointer non-interference from these checks.
+
+## Run without IDE
 
 ```bash
 npm install --ignore-scripts
 pi --no-extensions --no-skills --no-context-files --no-prompt-templates \
-  -e ./src/index.ts --tools computer_windows,computer_observe,computer_act,computer_close
+  -e ./src/index.ts --tools computer_apps,computer_open,computer_windows,computer_observe,computer_act,computer_close
 ```
 
-This explicit invocation does not load Pi Agent IDE. The tracked `.pi/extensions/computer-use.ts` is only the project's development entry point; it does not install anything globally.
+The tracked `.pi/extensions/computer-use.ts` is only this project's development entry point. Nothing is installed globally.
 
-For a **live model-driven qualification**, after authorizing the empty window:
+For opt-in real-model Windows qualification:
 
 ```bash
 npm rebuild node-pty
-node scripts/live-notepad.mjs
+node --experimental-transform-types scripts/live-windows.mjs
 ```
 
-This uses your configured Pi model and credentials in an isolated Pi process with only the PoC tools. It edits the authorized document and leaves it open for the parent/user to inspect. Results go into ignored `.tmp/native-runs` and `.tmp/native-live-summary.json`. A passing run still needs screenshot/TUI judgement and cleanup of the owned test document without saving. Do not run it against existing files or multiple tabs.
+This creates an empty disposable canary outside the isolated model's extension session, then tests existing-window YOLO access, two new Notepad windows, Calculator, missing-app refusal, and unsaved cleanup. The isolated model has only the six computer tools, no IDE or shell. It uses your configured model/credentials. Do not run while you need uninterrupted desktop focus. If a run fails, inspect its owned test windows and clean them up; do not rerun blindly.
 
-The script is opt-in, not part of normal automated tests.
-
-To keep compact evidence after a passing run, use `node scripts/export-native-evidence.mjs`. It exports only the owned window's initial/final PNGs and action results to `docs/evidence`; it does not copy the full session or credentials.
-
-The agent receives screenshots even when the terminal cannot display inline images. The current PoC uses Pi's standard text renderer. Human-visible image previews are not required for this experiment.
+Artifacts stay in ignored `.tmp/native-runs` and `.tmp/native-yolo-summary.json`. After a passing run, `node scripts/export-native-evidence.mjs` exports compact owned-window evidence to `docs/evidence/yolo`. Judge actual screenshots and the real Pi viewport too. Human inline images are not required; PNG must still reach the agent.
 
 ## Contract checks
 
@@ -103,10 +104,8 @@ npm run test:integration
 npm run typecheck
 ```
 
-The isolated real-Pi contract test uses a deterministic MCP fixture. It checks loading, structured observation, stale-write refusal, and child EOF cleanup. It is **not** evidence of Windows accessibility or input reliability.
+The real-Pi MCP fixture substitutes Windows lifetime identity only; real registration, session logic, MCP, result forwarding, and EOF run. Unit checks cover new/existing windows, activation PID mismatch, ambiguous/missing apps, stale/cross-window references, lifetime reuse, cancellation, input uncertainty, and scoped pixel bounds. Fixtures are not native Windows input evidence.
 
-For a read-only native capability probe, set `CUA_DRIVER_PATH` to the Windows executable path visible from WSL, set a working `WSL_INTEROP` when needed, and run `npm run probe:driver`. It writes the actual runtime tool schemas under `.tmp` and never captures a desktop or dispatches UI input.
+For a read-only native schema probe, set `CUA_DRIVER_PATH` and working inherited `WSL_INTEROP`, then run `npm run probe:driver`. It writes `.tmp/driver-tools.json` without capturing UI or sending input.
 
-## Qualification limits
-
-The accepted first scenario is an owned Windows Notepad document: insert `Pi computer use PoC 123`, edit it to `Pi computer use PoC 456`, and confirm fresh application state plus screenshot. Browser support, other applications, background reliability, latency, and production safety are separate questions. A source review, handshake, mock test, or model's claim of success cannot establish those.
+[Original PoC result](standalone-poc-results.md) describes the earlier four-tool single-window revision. Current live outcomes and limitations belong in the YOLO result report, not in that historical evidence.
