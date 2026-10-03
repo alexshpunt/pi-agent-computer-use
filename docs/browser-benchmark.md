@@ -36,3 +36,13 @@ This reduces model/tool round trips in this attempt, not measured completion tim
 ## Third check: Level 2
 
 Before the focused API change, Level 2 (Stop Signs) passed in six browser calls: one observe, four coordinate selections, then Verify by element ref with wait_ms2000. The returned text and PNG showed Level 3 (Wiggles). No Level 3 input was sent; the game was closed before native tests and reload. This is untimed observed progress, not a speed score.
+
+## Fourth check: focused short hints
+
+After [focused hints/Codemode verification](browser-focus-results.md), a fresh owned profile replayed Level 1 in **two browser calls**: open, then `{click:"aq",wait_ms:2000,observe:true}`. The checkbox label was grounded in the actual marked screenshot. The returned text and PNG showed **Level 2: Stop Signs**. No Level 2 input was sent; this game window is intentionally left open for discussion.
+
+No page/observation IDs or coordinate calculation were needed. On the local four-choice qualification, one Codemode invocation ran four compact inputs and one final observation; see the linked report. The game replay itself required only one input, so it does not measure multi-choice batching speed. No timer ran.
+
+`inspect_tui` revision471 in pane `w3E9:p6` showed both browser calls and the readable Level 2 checkpoint. The opening script mistakenly printed the whole structured state, including image base64, before forwarding the PNG. That was caller output misuse, not an additional browser action; later output omitted image data and forwarded it only through `image(...)`.
+
+Remaining ergonomic limits: custom controls can have empty text names, so their labels still need visual grounding; labels grow to two or more letters to avoid silently reusing retired targets; explicit wait is still not page-readiness detection.
