@@ -15,7 +15,7 @@ test("real Pi loads browser tools, forwards original PNG, refuses foreign input 
       conversation:[
         assistantMessage([toolCall({id:"open",name:"browser_open",arguments:{url:"https://example.test"}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"foreign",name:"browser_act",arguments:{page_ref:"foreign",observation_id:"stale",action:"fill",element_ref:"invented",text:"blocked"}})],{stopReason:"toolUse"}),
-        assistantMessage([toolCall({id:"point",name:"browser_act",arguments:{page_ref:"foreign",observation_id:"stale",action:"click",x:10,y:20}})],{stopReason:"toolUse"}),
+        assistantMessage([toolCall({id:"point",name:"browser_act",arguments:{page_ref:"foreign",observation_id:"stale",action:"click",x:10,y:20,wait_ms:100}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"attach",name:"browser_open",arguments:{url:"https://example.test",profile:"personal"}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"tabs",name:"browser_tabs",arguments:{}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"close",name:"browser_close",arguments:{}})],{stopReason:"toolUse"}),

@@ -20,3 +20,15 @@ Two remaining costs are visible: open does not return its known page ref when ca
 - Parent tool results supplied actual page screenshots and confirmed Level 2. `inspect_tui` captured pane `w3E9:p6`, revision 201: the call sequence and Level 2 text were readable in the real viewport. The stock collapsed renderer does not show inline screenshots; the separate owned browser window shows the page.
 
 This is one checkbox, not a completed game or a general browser compatibility result.
+
+## Second iteration: opening recovery and explicit wait
+
+The user chose both remaining improvements and requested agent-selected `wait_ms`, not automatic readiness detection. Open now retries a refused capture once on the same tab and preserves a known `page_ref` if capture still fails. Actions accept an optional pause of 0..5000 ms after input; the default remains zero.
+
+After reload, Level 1 took **two browser calls instead of five**: open returned a complete observation, then the screenshot click at `(413,173)` with `wait_ms:2000` returned Level 2 directly. No tabs recovery or separate observation was needed. No input was sent on Level 2. The owned game browser is intentionally paused there for discussion.
+
+This reduces model/tool round trips in this attempt, not measured completion time. A two-second pause is not proof that every page is ready.
+
+42 unit tests, typecheck and three real-Pi integrations passed. The native custom-control check passed with a 200 ms delayed update and `wait_ms:300`, including coordinate bounds, stale-scroll refusal and owned cleanup. [New native records](evidence/browser-wait/run.json) are separate from the first iteration's evidence. The retry test proves one backend open, a bounded capture retry and direct recovery through the known ref after repeated capture failure.
+
+`inspect_tui` captured pane `w3E9:p6`, revision 257: both calls, the Level 2 result and the round-trip comparison were readable. The agent also received and checked the actual Level 2 PNG. The collapsed TUI still does not display inline screenshots.

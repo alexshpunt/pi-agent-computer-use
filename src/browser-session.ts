@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Content } from "./session.ts";
 
 /** One owned backend tab. IDs never refer to a personal browser connection. */
@@ -25,6 +26,8 @@ export interface BrowserAction {
   page_ref: string; observation_id: string;
   action: "click" | "fill" | "press" | "scroll" | "navigate" | "close_tab";
   element_ref?: string; x?: number; y?: number; text?: string; key?: string; delta_y?: number; url?: string;
+  /** Optional pause after input and before capture, 0..5000 ms. No automatic readiness claim. */
+  wait_ms?: number;
 }
 /** Browser result for Pi; screenshots are original page pixels, not rendered text. */
 export interface BrowserResult {
@@ -92,13 +95,13 @@ export class BrowserSession {
         text: snapshot.text, elements, screenshot: snapshot.screenshot, truncated: snapshot.truncated ?? false, browser: snapshot.browser, tabs }, snapshot.png);
   }
 
-  private failure(error: unknown, dispatched: boolean, completed = false): BrowserResult {
+  private failure(error: unknown, dispatched: boolean, completed = false, state: Record<string, unknown> = {}): BrowserResult {
     const reason = error instanceof Error ? error.message : String(error);
     const uncertain = dispatched && (completed || !(error instanceof BrowserRefusal));
     return this.result(uncertain ? "unknown" : "refused",
       (uncertain
         ? "Outcome unknown. The page may have changed; observe before deciding and never replay blindly. "
-        : "Browser operation refused; obtain a fresh owned page observation. ") + reason);
+        : "Browser operation refused; obtain a fresh owned page observation. ") + reason, state);
   }
 
   /** Open a new owned visible tab, starting a fresh browser/profile on first use. HTTP(S) only. */
@@ -106,14 +109,20 @@ export class BrowserSession {
     return this.queue(async () => {
       if (signal?.aborted || !this.url(url)) return this.result("refused", "Cancelled or invalid URL. Use HTTP(S), without embedded credentials.");
       let completed = false;
+      let entry: PageEntry | undefined;
       try {
         const id = await this.backend.open(url);
         completed = true;
         await this.tabs();
-        const entry = [...this.entries.values()].find(item => item.id === id);
+        entry = [...this.entries.values()].find(item => item.id === id);
         if (!entry) throw new Error("Opened page is unavailable; do not reopen blindly.");
-        return await this.read(entry);
-      } catch (error) { return this.failure(error, true, completed); }
+        try { return await this.read(entry); }
+        catch (error) {
+          if (!(error instanceof BrowserRefusal)) throw error;
+          // Retry capture only, never navigation or browser launch.
+          return await this.read(entry);
+        }
+      } catch (error) { return this.failure(error, true, completed, entry ? { page_ref: entry.ref } : {}); }
     });
   }
 
@@ -162,6 +171,8 @@ export class BrowserSession {
         }
         if (["click", "fill", "press"].includes(action.action) && !coordinates && !observation.elements.has(action.element_ref ?? ""))
           throw new BrowserRefusal("Use an element_ref from this page observation.");
+        if (action.wait_ms !== undefined && (action.action === "close_tab" || !Number.isInteger(action.wait_ms) || action.wait_ms < 0 || action.wait_ms > 5000))
+          throw new BrowserRefusal("wait_ms needs an integer within 0..5000, except on close_tab.");
         if (action.action === "navigate" && !this.url(action.url ?? "")) throw new BrowserRefusal("Use an HTTP(S) URL without credentials.");
         if (action.action === "fill" && (typeof action.text !== "string" || action.text.length > 4000)) throw new BrowserRefusal("Fill needs text, at most 4000 characters.");
         if (action.action === "press" && !keys.has(action.key ?? "")) throw new BrowserRefusal("Unsupported key.");
@@ -177,6 +188,8 @@ export class BrowserSession {
         }
         await this.backend.act(entry.id, { ...action, element_id: observation.elements.get(action.element_ref ?? "") });
         completed = true;
+        if (action.wait_ms) await delay(action.wait_ms, undefined, { signal });
+        if (signal?.aborted) throw new Error("Cancelled after input; do not replay.");
         return await this.read(entry);
       } catch (error) { return this.failure(error, dispatched, completed); }
     });

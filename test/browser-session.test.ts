@@ -93,6 +93,44 @@ test("screenshot clicks need a complete in-bounds point, not an element, and can
   expect(backend.calls).toEqual(["native-0:click"]);
 });
 
+test("open retries a failed capture once without opening another tab, then preserves a known ref on failure", async () => {
+  const backend = new Backend(); const session = new BrowserSession(backend);
+  const original = backend.observe.bind(backend);
+  let reads = 0;
+  backend.observe = async id => {
+    if (++reads === 1) throw new BrowserRefusal("Page navigated during observation");
+    return original(id);
+  };
+  const opened = await session.open("https://example.test");
+  expect(opened.details.status).toBe("observed");
+  expect(reads).toBe(2); expect(backend.pages.size).toBe(1);
+  backend.observe = async () => { throw new BrowserRefusal("Page keeps changing"); };
+  const unknown = await session.open("https://example.test/two");
+  expect(unknown.details.status).toBe("unknown");
+  expect(unknown.details.page_ref).toEqual(expect.any(String));
+  expect(unknown.content[0]).toMatchObject({ type: "text", text: expect.stringContaining(String(unknown.details.page_ref)) });
+  backend.observe = original;
+  expect((await session.observe(field(unknown, "page_ref"))).details.status).toBe("observed");
+  expect(backend.pages.size).toBe(2);
+});
+
+test("optional wait captures a delayed change once; invalid waits refuse before input", async () => {
+  const backend = new Backend(); const session = new BrowserSession(backend);
+  let settled = false;
+  const original = backend.observe.bind(backend);
+  backend.observe = async id => ({ ...await original(id), text: settled ? "Ready" : "Loading" });
+  backend.act = async () => { backend.calls.push("click"); setTimeout(() => { settled = true; }, 5); };
+  const opened = await session.open("https://example.test");
+  const request = { page_ref: field(opened, "page_ref"), observation_id: field(opened, "observation_id"),
+    action: "click" as const, element_ref: element(opened) };
+  for (const wait_ms of [-1, 5001, NaN, 1.5])
+    expect((await session.act({ ...request, wait_ms })).details.status).toBe("refused");
+  expect(backend.calls).toEqual([]);
+  const result = await session.act({ ...request, wait_ms: 20 });
+  expect(result.details.text).toBe("Ready"); expect(backend.calls).toEqual(["click"]);
+  expect((await session.act({ ...request, wait_ms: 20 })).details.status).toBe("refused");
+});
+
 test("failure to observe after completed input is unknown, not a pre-input refusal", async () => {
   const backend = new Backend(); const session = new BrowserSession(backend);
   const opened = await session.open("https://example.test");

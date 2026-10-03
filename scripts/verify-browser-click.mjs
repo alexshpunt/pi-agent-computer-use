@@ -26,12 +26,12 @@ const image = async (state, name) => {
 };
 let success = false;
 try {
-  const opened = await call("open", { url: fixture.url + "/pointer" });
+  const opened = await call("open", { url: fixture.url + "/pointer?delay" });
   assert.deepEqual(opened.details.elements, []);
   assert.match(opened.details.text, /Clicks: 0/);
   await image(opened, "before");
   await call("act", { ...point(opened), x: opened.details.screenshot.width }, "refused");
-  const clicked = await call("act", point(opened));
+  const clicked = await call("act", { ...point(opened), wait_ms: 300 });
   assert.match(clicked.details.text, /Clicks: 1/);
   await image(clicked, "clicked");
   await call("act", point(opened), "refused");

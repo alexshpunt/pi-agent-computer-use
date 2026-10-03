@@ -7,7 +7,7 @@ export function registerBrowserTools(pi: ExtensionAPI, browser = new BrowserClie
   const page = Type.String({ minLength: 1 });
   pi.registerTool({
     name: "browser_open", label: "Browser open",
-    description: "Open an HTTP(S) URL in a new visible tab of this session's agent-only Windows browser. First use creates a disposable profile with no personal cookies/accounts/tabs. Returns page_ref, latest observation, semantic elements and real PNG. Human sees this same session. No install, personal-browser attachment or OS isolation. Unknown may have opened a tab: use browser_tabs, never blindly reopen.",
+    description: "Open an HTTP(S) URL in a new visible tab of this session's agent-only Windows browser. First use creates a disposable profile with no personal cookies/accounts/tabs. Returns page_ref, latest observation, semantic elements and real PNG. Human sees this same session. No install, personal-browser attachment or OS isolation. Capture retries once if the page changes. Unknown includes page_ref when known: observe it, otherwise use browser_tabs; never blindly reopen.",
     parameters: Type.Object({ url: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     async execute(_id, params, signal) { return browser.call("open", params, signal); },
@@ -21,12 +21,13 @@ export function registerBrowserTools(pi: ExtensionAPI, browser = new BrowserClie
   });
   pi.registerTool({
     name: "browser_act", label: "Browser act",
-    description: "Perform ONE action grounded in this owned tab's latest observation_id. click needs either its element_ref OR x/y pixels in the latest screenshot (top-left origin, CSS-pixel scale); fill/press need its element_ref; fill replaces input with text; scroll uses delta_y (-2000..2000); navigate uses HTTP(S) url; close_tab closes only that owned tab. Input consumes the observation even on failure. Returns fresh page state and PNG, except on close. No selectors, arbitrary JS or global host keyboard/mouse. Unknown may have changed the page: observe before deciding, never replay blindly.",
+    description: "Perform ONE action grounded in this owned tab's latest observation_id. click needs either its element_ref OR x/y pixels in the latest screenshot (top-left origin, CSS-pixel scale); fill/press need its element_ref; fill replaces input with text; scroll uses delta_y (-2000..2000); navigate uses HTTP(S) url; close_tab closes only that owned tab. Optional wait_ms (integer 0..5000, default 0, except close_tab) pauses after input before capture; it is not a readiness guarantee. Input consumes the observation even on failure. Returns fresh page state and PNG, except on close. No selectors, arbitrary JS or global host keyboard/mouse. Unknown may have changed the page: observe before deciding, never replay blindly.",
     parameters: Type.Object({
       page_ref: page, observation_id: page,
       action: Type.Union(["click", "fill", "press", "scroll", "navigate", "close_tab"].map(value => Type.Literal(value))),
       element_ref: Type.Optional(page), text: Type.Optional(Type.String({ maxLength: 4000 })),
       x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
+      wait_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 5000 })),
       key: Type.Optional(Type.Union(["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].map(value => Type.Literal(value)))),
       delta_y: Type.Optional(Type.Number({ minimum: -2000, maximum: 2000 })), url: Type.Optional(page),
     }, { additionalProperties: false }),
