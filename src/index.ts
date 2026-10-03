@@ -1,4 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
+import { registerBrowserTools } from "./browser-tools.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "./config.ts";
 import { McpDriver } from "./driver.ts";
@@ -66,6 +67,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
 
 /** Standalone computer UI extension. The final Pi Agent IDE provider API remains separate. */
 export default function computerUse(pi: ExtensionAPI): void {
+  registerBrowserTools(pi);
   const getMode = registerComputerMode(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;

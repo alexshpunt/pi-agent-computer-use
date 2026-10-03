@@ -4,8 +4,14 @@
   "private": true,
   "description": "Standalone Windows computer-use proof of concept for Pi running in WSL.",
   "type": "module",
-  "pi": { "extensions": ["./src/index.ts"] },
-  "engines": { "node": ">=22.19.0" },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "pi-test run -- vitest run --config vitest.integration.config.ts",
@@ -13,7 +19,8 @@
     "probe:driver": "node scripts/probe-driver.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.31.0"
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "playwright-core": "1.63.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

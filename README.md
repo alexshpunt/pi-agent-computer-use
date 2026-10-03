@@ -22,6 +22,8 @@ The standalone extension uses Cua Driver 0.32.0 to reach the Windows desktop fro
 
 YOLO is the default desktop-wide UI mode. The user can select session-owned Safe access with `/computer-mode safe` and return with `/computer-mode yolo`, without reload or target config. Live Notepad checks verified old-reference denial and separate ownership for windows sharing one PID. See [the Safe results and limits](docs/safe-windows-results.md). Neither mode is OS isolation. The final IDE provider API and migration route are still open. The [earlier single-window PoC report](docs/standalone-poc-results.md) is historical.
 
+The visible browser slice adds five independent browser tools. It launches installed Windows Chrome/Edge with a fresh disposable profile, private CDP pipe and a real window showing the agent's actual session. It does not attach to personal tabs or change desktop mode. See [browser use and boundaries](docs/browser.md). [Live browser checks](docs/browser-results.md) passed on local synthetic pages, including tabs, form input and fresh-profile cleanup ([LPT-370](https://linear.app/alexshpunt/issue/LPT-370)).
+
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
 - [Research references](docs/research-references.md)
