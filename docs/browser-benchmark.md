@@ -1,6 +1,8 @@
 # Browser benchmark: I'm Not a Robot
 
-The user chose [Neal's game](https://neal.fun/not-a-robot/) for an untimed, step-by-step browser ergonomics check. Only the owned browser tools interact with the game. After each level, stop for discussion. Do not read site code, hidden state or solutions.
+The user chose [Neal's game](https://neal.fun/not-a-robot/) as a visible owned-browser ergonomics check. The accepted follow-up goal is to complete the whole game; timers are allowed and the earlier per-level stop rule no longer applies. Only owned browser tools interact with the game. Do not read site code, hidden state or solutions.
+
+**Current checkpoint: paused by the user on 2026-10-03. Levels 1–9 passed; Level 10 is unresolved.** Do not resume until the user gives the next direction. See the [follow-up status](browser-follow-up-status.md) for implemented changes, verification gaps and local evidence. The sections below record earlier runs; their browser states and stop rules are historical.
 
 ## First iteration: screenshot click
 
@@ -46,3 +48,11 @@ No page/observation IDs or coordinate calculation were needed. On the local four
 `inspect_tui` revision471 in pane `w3E9:p6` showed both browser calls and the readable Level 2 checkpoint. The opening script mistakenly printed the whole structured state, including image base64, before forwarding the PNG. That was caller output misuse, not an additional browser action; later output omitted image data and forwarded it only through `image(...)`.
 
 Remaining ergonomic limits: custom controls can have empty text names, so their labels still need visual grounding; labels grow to two or more letters to avoid silently reusing retired targets; explicit wait is still not page-readiness detection.
+
+## Follow-up checkpoint: Levels 1–9 passed
+
+Stable per-DOM hints, default image-only action results, compact Codemode sequences and region crops were exercised in the parent session. Level 5 passed after visual rotation corrections; Level 6 passed after waiting for the opponent between moves. Level 7 exposed hints on non-interactive text spans, so coordinate input completed the word search. Plate reading and nested stop-sign selection passed Levels 8 and 9.
+
+The last observed browser was at Level 10, Whack-a-Mole. Verify remained disabled despite square selections. The cause is unresolved: this is not proof of a Playwright backend limitation. The browser was left open, but has not been rechecked since the user paused work.
+
+The latest code adds target filtering, disabled-target refusal, a label-visibility toggle, pointer movement and crop-after-compact-scroll support. These final edits are not yet parent-reloaded. Latest checks: 53 unit tests, typecheck, three real-Pi contracts and eight native target operations passed. The native region rerun failed a cross-capture viewport-width assertion (1086 versus 1085); it remains open. The full game and follow-up delivery are not complete. See the linked status report for the distinction between earlier passing evidence and this unfinished checkpoint.
