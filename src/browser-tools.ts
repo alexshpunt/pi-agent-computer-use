@@ -21,11 +21,12 @@ export function registerBrowserTools(pi: ExtensionAPI, browser = new BrowserClie
   });
   pi.registerTool({
     name: "browser_act", label: "Browser act",
-    description: "Perform ONE action grounded in this owned tab's latest observation_id. click/fill/press need its element_ref; fill replaces input with text; scroll uses delta_y (-2000..2000); navigate uses HTTP(S) url; close_tab closes only that owned tab. Input consumes the observation even on failure. Returns fresh page state and PNG, except on close. No selectors, arbitrary JS or global host keyboard/mouse. Unknown may have changed the page: observe before deciding, never replay blindly.",
+    description: "Perform ONE action grounded in this owned tab's latest observation_id. click needs either its element_ref OR x/y pixels in the latest screenshot (top-left origin, CSS-pixel scale); fill/press need its element_ref; fill replaces input with text; scroll uses delta_y (-2000..2000); navigate uses HTTP(S) url; close_tab closes only that owned tab. Input consumes the observation even on failure. Returns fresh page state and PNG, except on close. No selectors, arbitrary JS or global host keyboard/mouse. Unknown may have changed the page: observe before deciding, never replay blindly.",
     parameters: Type.Object({
       page_ref: page, observation_id: page,
       action: Type.Union(["click", "fill", "press", "scroll", "navigate", "close_tab"].map(value => Type.Literal(value))),
       element_ref: Type.Optional(page), text: Type.Optional(Type.String({ maxLength: 4000 })),
+      x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
       key: Type.Optional(Type.Union(["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].map(value => Type.Literal(value)))),
       delta_y: Type.Optional(Type.Number({ minimum: -2000, maximum: 2000 })), url: Type.Optional(page),
     }, { additionalProperties: false }),

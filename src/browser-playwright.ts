@@ -7,7 +7,7 @@ import { browserLaunchOptions } from "./browser-launch.ts";
 import { BrowserRefusal, type BrowserBackend, type BrowserSnapshot } from "./browser-session.ts";
 
 interface Entry {
-  page: Page; generation: number; observedGeneration?: number;
+  page: Page; generation: number; observedGeneration?: number; observedGeometry?: string;
   elements: Map<string, ElementHandle<HTMLElement | SVGElement>>;
 }
 
@@ -126,26 +126,44 @@ export class PlaywrightBrowser implements BrowserBackend {
     const text = await page.locator("body").innerText();
     const title = await page.title();
     const url = page.url();
-    const png = await page.screenshot({ type: "png", timeout: 10_000 });
+    const geometry = await this.geometry(page);
+    const png = await page.screenshot({ type: "png", scale: "css", timeout: 10_000 });
+    if (geometry !== await this.geometry(page)) throw new BrowserRefusal("Viewport changed during capture; observe again.");
+    entry.observedGeometry = geometry;
     if (generation !== entry.generation || page.isClosed()) throw new BrowserRefusal("Page navigated during observation; read again.");
     if (png.length > 12_000_000) throw new BrowserRefusal("Viewport screenshot exceeds the bounded response size.");
     entry.observedGeneration = generation;
     return { url, title, text: text.slice(0, 16_000), elements, png: png.toString("base64"),
+      screenshot: { width: png.readUInt32BE(16), height: png.readUInt32BE(20) },
       browser: this.context?.browser()?.version(), truncated: text.length > 16_000 || handles.length > 120 };
   }
 
-  /** Target existing handles only. Never resolve model-supplied selectors or inject global host input. */
+  private async geometry(page: Page): Promise<string> {
+    const metrics = await page.evaluate(() => ({ width: innerWidth, height: innerHeight, x: scrollX, y: scrollY,
+      dpr: devicePixelRatio, scale: visualViewport?.scale, offsetX: visualViewport?.offsetLeft, offsetY: visualViewport?.offsetTop }));
+    if (metrics.scale !== 1 || metrics.offsetX !== 0 || metrics.offsetY !== 0)
+      throw new BrowserRefusal("Pinch-zoomed viewport is unsupported; restore it before observing.");
+    return JSON.stringify(metrics);
+  }
+
+  /** Click an observed handle or screenshot point. Never inject global host input or model-supplied selectors. */
   async act(id: string, action: Record<string, unknown>): Promise<void> {
     const entry = this.current(id);
     if (entry.observedGeneration !== entry.generation) throw new BrowserRefusal("Document changed since observation.");
     const handle = entry.elements.get(String(action.element_id));
-    if (["click", "fill", "press"].includes(String(action.action))) {
+    const coordinates = action.action === "click" && typeof action.x === "number" && typeof action.y === "number";
+    if (coordinates && entry.observedGeometry !== await this.geometry(entry.page))
+      throw new BrowserRefusal("Viewport, scroll or zoom changed since the screenshot; observe again.");
+    if (["click", "fill", "press"].includes(String(action.action)) && !coordinates) {
       if (!handle || !(await handle.evaluate(element => element.isConnected && element.ownerDocument === document)))
         throw new BrowserRefusal("Observed element was removed or belongs to an old document.");
     }
     entry.observedGeneration = undefined;
     switch (action.action) {
-      case "click": await handle!.click(); break;
+      case "click":
+        if (coordinates) await entry.page.mouse.click(Number(action.x), Number(action.y));
+        else await handle!.click();
+        break;
       case "fill": await handle!.fill(String(action.text)); break;
       case "press": await handle!.press(String(action.key)); break;
       case "scroll": await entry.page.evaluate(delta => window.scrollBy(0, delta), Number(action.delta_y)); break;

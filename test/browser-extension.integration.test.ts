@@ -15,6 +15,7 @@ test("real Pi loads browser tools, forwards original PNG, refuses foreign input 
       conversation:[
         assistantMessage([toolCall({id:"open",name:"browser_open",arguments:{url:"https://example.test"}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"foreign",name:"browser_act",arguments:{page_ref:"foreign",observation_id:"stale",action:"fill",element_ref:"invented",text:"blocked"}})],{stopReason:"toolUse"}),
+        assistantMessage([toolCall({id:"point",name:"browser_act",arguments:{page_ref:"foreign",observation_id:"stale",action:"click",x:10,y:20}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"attach",name:"browser_open",arguments:{url:"https://example.test",profile:"personal"}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"tabs",name:"browser_tabs",arguments:{}})],{stopReason:"toolUse"}),
         assistantMessage([toolCall({id:"close",name:"browser_close",arguments:{}})],{stopReason:"toolUse"}),
@@ -24,6 +25,8 @@ test("real Pi loads browser tools, forwards original PNG, refuses foreign input 
     expect(getToolExecutionDetails(getToolExecution(result,"open"))).toMatchObject({status:"observed",page_ref:expect.any(String),observation_id:expect.any(String)});
     expect(getToolExecutionResult(result,"open")).toMatchObject({content:expect.arrayContaining([expect.objectContaining({type:"image",mimeType:"image/png"})])});
     expect(getToolExecution(result,"foreign").isError).toBe(true);
+    expect(getToolExecutionDetails(getToolExecution(result,"point"))).toMatchObject({status:"refused"});
+    expect(getToolResultText(result,"point")).toContain("Stale, closed or foreign");
     expect(getToolExecution(result,"attach").isError).toBe(true);
     expect(getToolResultText(result,"close")).toContain("Owned browser closed");
     const calls=(await readFile(path.join(cwd,"browser-calls.jsonl"),"utf8")).trim().split("\n").map(line=>JSON.parse(line));

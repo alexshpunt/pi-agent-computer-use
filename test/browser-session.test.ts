@@ -75,6 +75,24 @@ test("invalid navigation and pre-dispatch cancellation do not write; unknown inp
   expect(backend.calls).toEqual(["native-0:fill"]);
 });
 
+test("screenshot clicks need a complete in-bounds point, not an element, and cannot replay", async () => {
+  const backend = new Backend(); const session = new BrowserSession(backend);
+  const original = backend.observe.bind(backend);
+  backend.observe = async id => ({ ...await original(id), screenshot: { width: 800, height: 600 } });
+  const opened = await session.open("https://example.test");
+  const request = { page_ref: field(opened, "page_ref"), observation_id: field(opened, "observation_id"), action: "click" as const };
+  for (const point of [{ x: 800, y: 10 }, { x: 10, y: 600 }, { x: -1, y: 10 }, { x: NaN, y: 10 },
+    { x: 10 }, { x: 10, y: 20, element_ref: element(opened) }]) {
+    expect((await session.act({ ...request, ...point })).details.status).toBe("refused");
+  }
+  expect(backend.calls).toEqual([]);
+  expect(opened.details.screenshot).toEqual({ width: 800, height: 600 });
+  const changed = await session.act({ ...request, x: 120, y: 140 });
+  expect(changed.details.status).toBe("observed");
+  expect((await session.act({ ...request, x: 120, y: 140 })).details.status).toBe("refused");
+  expect(backend.calls).toEqual(["native-0:click"]);
+});
+
 test("failure to observe after completed input is unknown, not a pre-input refusal", async () => {
   const backend = new Backend(); const session = new BrowserSession(backend);
   const opened = await session.open("https://example.test");
