@@ -1,0 +1,199 @@
+import { createHash } from "node:crypto";
+
+/** Provider identity at Pi's existing, mutable application-boundary hook. */
+export interface VisionModel { provider: string; api: string; model: string }
+interface ImageBytes { bytes: Buffer; mime: string; hash: string; width?: number; height?: number }
+interface Frame {
+  id: string; hash: string; mime: string; bytes: number; width?: number; height?: number;
+  time: string; stage: "captured" | "prepared" | "evicted"; finalDelivery: "unconfirmed";
+  original: "unavailable"; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
+  source?: unknown; configuration?: unknown;
+}
+interface Action {
+  id: string; parentId?: string; tool: string; input: unknown; time: string; started: number;
+  durationMs?: number; status: string; isError?: boolean; text?: string; adapterStructure?: unknown;
+}
+interface Request extends VisionModel {
+  id: string; time: string; imageCount: number; unavailableImages: number;
+  texts: { path: string; text: string }[]; textTruncated: boolean;
+  frameIds: string[]; finalPayload: "unconfirmed"; responseStatus?: number;
+}
+const limitations = [
+  "Final delivery is unconfirmed: later handlers can replace this application-boundary payload.",
+  "Codex WebSocket may send a delta; wire payload and effective server context are not observed.",
+  "The three-card viewer does not limit the model context.",
+  "A clean original and provider-internal resize are unavailable unless an adapter supplies them.",
+  "Action links match image bytes; identical screenshots can have more than one source.",
+];
+const maxImageBytes = 12 * 1024 * 1024;
+const maxAssetBytes = 48 * 1024 * 1024;
+
+function imageBytes(data: string, mime: string): ImageBytes | undefined {
+  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mime) ||
+    data.length > Math.ceil(maxImageBytes / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) return;
+  const bytes = Buffer.from(data, "base64");
+  if (!bytes.length || bytes.length > maxImageBytes) return;
+  const png = mime === "image/png" && bytes.length >= 24 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  return { bytes, mime, hash: createHash("sha256").update(bytes).digest("hex"),
+    ...(png ? { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) } : {}) };
+}
+function dataUrl(value: unknown): ImageBytes | undefined {
+  if (typeof value !== "string") return;
+  const match = /^data:(image\/[a-z]+);base64,([\s\S]*)$/.exec(value);
+  return match ? imageBytes(match[2], match[1]) : undefined;
+}
+/** Bound adapter metadata, strip image data and common secret fields, and reject cycles. */
+function metadata(value: unknown): unknown {
+  try {
+    const json = JSON.stringify(value, (key, item) =>
+      ["image", "png", "data", "authorization", "apiKey", "access_token", "refresh_token", "password"].includes(key) ? undefined : item);
+    if (json === undefined) return undefined;
+    return json.length <= 32_000 ? JSON.parse(json) : { truncated: true, excerpt: json.slice(0, 32_000) };
+  } catch { return { unavailable: "Metadata could not be serialized." }; }
+}
+
+/** Bounded, session-local mirror. Never mutates context or asserts confirmed transport delivery. */
+export class VisionTrace {
+  private frames: Frame[] = [];
+  private captures: Frame[] = [];
+  private actions: Action[] = [];
+  private requests: Request[] = [];
+  private assets = new Map<string, ImageBytes>();
+  private sequence = 0;
+  private revision = 0;
+  constructor(private sessionId: string) {}
+
+  /** Drop all previous-session pixels, metadata and correlation state. */
+  reset(sessionId: string): void {
+    this.sessionId = sessionId;
+    this.frames = []; this.captures = []; this.actions = []; this.requests = [];
+    this.assets.clear(); this.sequence = 0; this.revision++;
+  }
+
+  /** Record a computer-use call, including its Codemode parent when available. */
+  startAction(id: string, tool: string, input: unknown, parentId?: string): void {
+    this.actions.push({ id, parentId, tool, input: metadata(input), time: new Date().toISOString(), started: performance.now(), status: "running" });
+    this.actions = this.actions.slice(-100); this.revision++;
+  }
+
+  /** Record adapter output separately from what a parent script forwards to the model. */
+  finishAction(id: string, content: readonly unknown[], details: unknown, isError: boolean): void {
+    const action = this.actions.find(item => item.id === id);
+    if (!action) return;
+    action.durationMs = performance.now() - action.started;
+    action.isError = isError;
+    action.adapterStructure = metadata(details);
+    const state = details && typeof details === "object" ? details as Record<string, unknown> : {};
+    action.status = typeof state.status === "string" ? state.status : isError ? "error" : "completed";
+    action.text = content.map(block => {
+      const value = block as Record<string, unknown>;
+      return value?.type === "text" && typeof value.text === "string" ? value.text : "";
+    }).filter(Boolean).join("\n").slice(0, 16_000);
+    for (const block of content) {
+      const value = block as Record<string, unknown>;
+      if (value?.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string") continue;
+      const image = imageBytes(value.data, value.mimeType);
+      if (!image) continue;
+      this.assets.set(image.hash, image);
+      this.captures.push({ ...this.frame(image, "captured"), actionId: id,
+        source: metadata({ tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, image_region: state.image_region }),
+        configuration: metadata({ requested: action.input, effective: "unreported by current adapter", timings: state.timings }) });
+      this.captures = this.captures.slice(-3);
+    }
+    this.prune(); this.revision++;
+  }
+
+  private frame(image: ImageBytes, stage: Frame["stage"]): Frame {
+    return { id: `frame-${++this.sequence}`, hash: image.hash, mime: image.mime, bytes: image.bytes.length,
+      width: image.width, height: image.height, time: new Date().toISOString(), stage,
+      finalDelivery: "unconfirmed", original: "unavailable" };
+  }
+
+  /** Snapshot the existing hook payload, not final HTTP bytes or provider embeddings. */
+  observePayload(payload: unknown, model: VisionModel): void {
+    const request: Request = { ...model, id: `request-${++this.sequence}`, time: new Date().toISOString(), imageCount: 0,
+      unavailableImages: 0, texts: [], textTruncated: false, frameIds: [], finalPayload: "unconfirmed" };
+    const selected: { image: ImageBytes; path: string; detail?: string }[] = [];
+    let nodes = 0;
+    let textBytes = 0;
+    const seen = new WeakSet<object>();
+    const visit = (value: unknown, path: string, depth: number): void => {
+      if (!value || typeof value !== "object" || depth > 40 || ++nodes > 100_000 || seen.has(value)) return;
+      seen.add(value);
+      if (Array.isArray(value)) { value.forEach((item, index) => visit(item, `${path}[${index}]`, depth + 1)); seen.delete(value); return; }
+      const node = value as Record<string, unknown>;
+      let image: ImageBytes | undefined;
+      const inline = (node.inlineData ?? node.inline_data) as Record<string, unknown> | undefined;
+      const isImage = ["input_image", "image_url", "image"].includes(String(node.type)) || !!inline;
+      if (isImage) {
+        request.imageCount++;
+        const source = node.source as Record<string, unknown> | undefined;
+        if (typeof node.image_url === "string") image = dataUrl(node.image_url);
+        else if (node.image_url && typeof node.image_url === "object") image = dataUrl((node.image_url as Record<string, unknown>).url);
+        else if (source?.type === "base64" && typeof source.data === "string" && typeof source.media_type === "string") image = imageBytes(source.data, source.media_type);
+        else if (inline && typeof inline.data === "string") image = imageBytes(inline.data, String(inline.mimeType ?? inline.mime_type));
+        else if (typeof node.data === "string" && typeof node.mimeType === "string") image = imageBytes(node.data, node.mimeType);
+        if (image) {
+          selected.push({ image, path, detail: typeof node.detail === "string" ? node.detail : undefined });
+          if (selected.length > 3) selected.shift();
+        } else request.unavailableImages++;
+        seen.delete(value); return;
+      }
+      const candidate = ["input_text", "output_text", "text"].includes(String(node.type)) ? node.text
+        : ["function_call_output", "custom_tool_call_output"].includes(String(node.type)) ? node.output
+        : node.role === "tool" && typeof node.content === "string" ? node.content : undefined;
+      if (typeof candidate === "string") {
+        const excerpt = candidate.slice(0, 16_000);
+        if (excerpt) request.texts.push({ path, text: excerpt });
+        textBytes += excerpt.length;
+        while (textBytes > 64_000) {
+          textBytes -= request.texts.shift()!.text.length;
+          request.textTruncated = true;
+        }
+        if (excerpt.length !== candidate.length) request.textTruncated = true;
+      }
+      for (const [key, item] of Object.entries(node)) visit(item, `${path}.${key}`, depth + 1);
+      seen.delete(value);
+    };
+    visit(payload, "$", 0);
+    if (nodes > 100_000) request.textTruncated = true;
+    for (const { image, path, detail } of selected) {
+      const matches = this.captures.filter(item => item.hash === image.hash);
+      const capture = matches.length === 1 ? matches[0] : undefined;
+      const frame = { ...this.frame(image, "prepared"), actionId: capture?.actionId, source: capture?.source,
+        configuration: capture?.configuration, matchingActionIds: matches.map(item => item.actionId!).filter(Boolean), requestId: request.id, path, detail };
+      this.assets.set(image.hash, image);
+      this.frames.push(frame); request.frameIds.push(frame.id);
+    }
+    this.frames = this.frames.slice(-3);
+    this.requests.push(request); this.requests = this.requests.slice(-20);
+    this.prune(); this.revision++;
+  }
+
+  /** A provider response is useful evidence, but not proof of unchanged image delivery. */
+  response(status: number): void {
+    const request = this.requests.at(-1);
+    if (request) { request.responseStatus = status; this.revision++; }
+  }
+
+  private prune(): void {
+    const retained = new Set([...this.frames, ...this.captures].map(frame => frame.hash));
+    for (const hash of this.assets.keys()) if (!retained.has(hash)) this.assets.delete(hash);
+    let size = [...this.assets.values()].reduce((sum, image) => sum + image.bytes.length, 0);
+    for (const [hash, image] of this.assets) {
+      if (size <= maxAssetBytes) break;
+      this.assets.delete(hash); size -= image.bytes.length;
+    }
+    for (const frame of [...this.frames, ...this.captures]) if (!this.assets.has(frame.hash)) frame.stage = "evicted";
+  }
+
+  /** Return retained bytes only; never download an external image URL. */
+  asset(hash: string): Buffer | undefined { return this.assets.get(hash)?.bytes; }
+  /** Content type for a retained image asset. */
+  assetMime(hash: string): string | undefined { return this.assets.get(hash)?.mime; }
+  /** JSON-safe viewer state without image base64. Retained UI text can still be sensitive. */
+  snapshot() {
+    return structuredClone({ sessionId: this.sessionId, revision: this.revision, limitations,
+      frames: this.frames, captures: this.captures, actions: this.actions, requests: this.requests });
+  }
+}

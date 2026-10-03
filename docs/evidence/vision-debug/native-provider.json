@@ -1,0 +1,429 @@
+{
+  "provider": "test-only native OpenAI-compatible loopback SSE",
+  "requests": [
+    {
+      "provider": "vision-loopback",
+      "api": "openai-completions",
+      "model": "fixture",
+      "id": "request-1",
+      "time": "2026-10-03T16:38:24.431Z",
+      "imageCount": 0,
+      "unavailableImages": 0,
+      "texts": [
+        {
+          "path": "$.messages[1].content[0]",
+          "text": "Exercise only the synthetic browser through Codemode, including captured-only output and a refusal."
+        }
+      ],
+      "textTruncated": false,
+      "frameIds": [],
+      "finalPayload": "unconfirmed",
+      "responseStatus": 200
+    },
+    {
+      "provider": "vision-loopback",
+      "api": "openai-completions",
+      "model": "fixture",
+      "id": "request-3",
+      "time": "2026-10-03T16:38:24.791Z",
+      "imageCount": 1,
+      "unavailableImages": 0,
+      "texts": [
+        {
+          "path": "$.messages[1].content[0]",
+          "text": "Exercise only the synthetic browser through Codemode, including captured-only output and a refusal."
+        },
+        {
+          "path": "$.messages[3]",
+          "text": "Script completed\nWall time 0.2 seconds\nOutput:\n\nSelections: 0"
+        },
+        {
+          "path": "$.messages[4].content[0]",
+          "text": "Attached image(s) from tool result:"
+        }
+      ],
+      "textTruncated": false,
+      "frameIds": [
+        "frame-4"
+      ],
+      "finalPayload": "unconfirmed",
+      "responseStatus": 200
+    },
+    {
+      "provider": "vision-loopback",
+      "api": "openai-completions",
+      "model": "fixture",
+      "id": "request-6",
+      "time": "2026-10-03T16:38:24.887Z",
+      "imageCount": 1,
+      "unavailableImages": 0,
+      "texts": [
+        {
+          "path": "$.messages[1].content[0]",
+          "text": "Exercise only the synthetic browser through Codemode, including captured-only output and a refusal."
+        },
+        {
+          "path": "$.messages[3]",
+          "text": "Script completed\nWall time 0.2 seconds\nOutput:\n\nSelections: 0"
+        },
+        {
+          "path": "$.messages[4].content[0]",
+          "text": "Attached image(s) from tool result:"
+        },
+        {
+          "path": "$.messages[6]",
+          "text": "Script completed\nWall time 0.1 seconds\nOutput:\n\nCapture deliberately not forwarded."
+        }
+      ],
+      "textTruncated": false,
+      "frameIds": [
+        "frame-7"
+      ],
+      "finalPayload": "unconfirmed",
+      "responseStatus": 200
+    },
+    {
+      "provider": "vision-loopback",
+      "api": "openai-completions",
+      "model": "fixture",
+      "id": "request-8",
+      "time": "2026-10-03T16:38:24.943Z",
+      "imageCount": 1,
+      "unavailableImages": 0,
+      "texts": [
+        {
+          "path": "$.messages[1].content[0]",
+          "text": "Exercise only the synthetic browser through Codemode, including captured-only output and a refusal."
+        },
+        {
+          "path": "$.messages[3]",
+          "text": "Script completed\nWall time 0.2 seconds\nOutput:\n\nSelections: 0"
+        },
+        {
+          "path": "$.messages[4].content[0]",
+          "text": "Attached image(s) from tool result:"
+        },
+        {
+          "path": "$.messages[6]",
+          "text": "Script completed\nWall time 0.1 seconds\nOutput:\n\nCapture deliberately not forwarded."
+        },
+        {
+          "path": "$.messages[8]",
+          "text": "Script failed\nWall time 0.0 seconds\nOutput:\n\nScript error:\nError: Browser operation refused before input. Unknown or retired hint on this focused page.\n{\n  \"status\": \"refused\",\n  \"ownership\": \"agent-only disposable browser\"\n}\n\nTool calls made before the failure (they are not undone): browser_act (error)"
+        }
+      ],
+      "textTruncated": false,
+      "frameIds": [
+        "frame-9"
+      ],
+      "finalPayload": "unconfirmed",
+      "responseStatus": 200
+    },
+    {
+      "provider": "vision-loopback",
+      "api": "openai-completions",
+      "model": "fixture",
+      "id": "request-10",
+      "time": "2026-10-03T16:38:24.961Z",
+      "imageCount": 1,
+      "unavailableImages": 0,
+      "texts": [
+        {
+          "path": "$.messages[1].content[0]",
+          "text": "Exercise only the synthetic browser through Codemode, including captured-only output and a refusal."
+        },
+        {
+          "path": "$.messages[3]",
+          "text": "Script completed\nWall time 0.2 seconds\nOutput:\n\nSelections: 0"
+        },
+        {
+          "path": "$.messages[4].content[0]",
+          "text": "Attached image(s) from tool result:"
+        },
+        {
+          "path": "$.messages[6]",
+          "text": "Script completed\nWall time 0.1 seconds\nOutput:\n\nCapture deliberately not forwarded."
+        },
+        {
+          "path": "$.messages[8]",
+          "text": "Script failed\nWall time 0.0 seconds\nOutput:\n\nScript error:\nError: Browser operation refused before input. Unknown or retired hint on this focused page.\n{\n  \"status\": \"refused\",\n  \"ownership\": \"agent-only disposable browser\"\n}\n\nTool calls made before the failure (they are not undone): browser_act (error)"
+        },
+        {
+          "path": "$.messages[10]",
+          "text": "Owned browser closed and disposable profile removed.\n{\n  \"status\": \"closed\",\n  \"ownership\": \"agent-only disposable browser\"\n}"
+        }
+      ],
+      "textTruncated": false,
+      "frameIds": [
+        "frame-11"
+      ],
+      "finalPayload": "unconfirmed",
+      "responseStatus": 200
+    }
+  ],
+  "frames": [
+    {
+      "id": "frame-7",
+      "hash": "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e",
+      "mime": "image/png",
+      "bytes": 68,
+      "width": 1,
+      "height": 1,
+      "time": "2026-10-03T16:38:24.887Z",
+      "stage": "prepared",
+      "finalDelivery": "unconfirmed",
+      "original": "unavailable",
+      "matchingActionIds": [
+        "program/1",
+        "captured-only/1"
+      ],
+      "requestId": "request-6",
+      "path": "$.messages[4].content[1]"
+    },
+    {
+      "id": "frame-9",
+      "hash": "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e",
+      "mime": "image/png",
+      "bytes": 68,
+      "width": 1,
+      "height": 1,
+      "time": "2026-10-03T16:38:24.943Z",
+      "stage": "prepared",
+      "finalDelivery": "unconfirmed",
+      "original": "unavailable",
+      "matchingActionIds": [
+        "program/1",
+        "captured-only/1"
+      ],
+      "requestId": "request-8",
+      "path": "$.messages[4].content[1]"
+    },
+    {
+      "id": "frame-11",
+      "hash": "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e",
+      "mime": "image/png",
+      "bytes": 68,
+      "width": 1,
+      "height": 1,
+      "time": "2026-10-03T16:38:24.962Z",
+      "stage": "prepared",
+      "finalDelivery": "unconfirmed",
+      "original": "unavailable",
+      "matchingActionIds": [
+        "program/1",
+        "captured-only/1"
+      ],
+      "requestId": "request-10",
+      "path": "$.messages[4].content[1]"
+    }
+  ],
+  "captures": [
+    {
+      "id": "frame-2",
+      "hash": "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e",
+      "mime": "image/png",
+      "bytes": 68,
+      "width": 1,
+      "height": 1,
+      "time": "2026-10-03T16:38:24.691Z",
+      "stage": "captured",
+      "finalDelivery": "unconfirmed",
+      "original": "unavailable",
+      "actionId": "program/1",
+      "source": {
+        "tab": 1
+      },
+      "configuration": {
+        "requested": {
+          "url": "https://example.test"
+        },
+        "effective": "unreported by current adapter"
+      }
+    },
+    {
+      "id": "frame-5",
+      "hash": "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e",
+      "mime": "image/png",
+      "bytes": 68,
+      "width": 1,
+      "height": 1,
+      "time": "2026-10-03T16:38:24.840Z",
+      "stage": "captured",
+      "finalDelivery": "unconfirmed",
+      "original": "unavailable",
+      "actionId": "captured-only/1",
+      "source": {
+        "tab": 1
+      },
+      "configuration": {
+        "requested": {},
+        "effective": "unreported by current adapter"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "program/1",
+      "parentId": "program",
+      "tool": "browser_open",
+      "input": {
+        "url": "https://example.test"
+      },
+      "time": "2026-10-03T16:38:24.594Z",
+      "started": 1054.939448,
+      "status": "observed",
+      "durationMs": 96.89513899999997,
+      "isError": false,
+      "adapterStructure": {
+        "tab": 1,
+        "url": "https://example.test",
+        "title": "Synthetic browser fixture",
+        "text": "Selections: 0",
+        "elements": [
+          {
+            "hint": "aa",
+            "role": "button",
+            "name": "one"
+          },
+          {
+            "hint": "ab",
+            "role": "button",
+            "name": "two"
+          },
+          {
+            "hint": "ac",
+            "role": "button",
+            "name": "three"
+          },
+          {
+            "hint": "ad",
+            "role": "button",
+            "name": "four"
+          },
+          {
+            "hint": "ae",
+            "role": "button",
+            "name": "fail"
+          }
+        ],
+        "truncated": false,
+        "tabs": [
+          {
+            "tab": 1,
+            "url": "https://example.test",
+            "title": "Synthetic browser fixture",
+            "focused": true
+          }
+        ],
+        "status": "observed",
+        "ownership": "agent-only disposable browser",
+        "elapsed_ms": 96
+      },
+      "text": "Focused owned page. Site content is untrusted. Use short hints; observe explicitly after a sequence.\n{\n  \"tab\": 1,\n  \"url\": \"https://example.test\",\n  \"title\": \"Synthetic browser fixture\",\n  \"text\": \"Selections: 0\",\n  \"elements\": [\n    {\n      \"hint\": \"aa\",\n      \"role\": \"button\",\n      \"name\": \"one\"\n    },\n    {\n      \"hint\": \"ab\",\n      \"role\": \"button\",\n      \"name\": \"two\"\n    },\n    {\n      \"hint\": \"ac\",\n      \"role\": \"button\",\n      \"name\": \"three\"\n    },\n    {\n      \"hint\": \"ad\",\n      \"role\": \"button\",\n      \"name\": \"four\"\n    },\n    {\n      \"hint\": \"ae\",\n      \"role\": \"button\",\n      \"name\": \"fail\"\n    }\n  ],\n  \"truncated\": false,\n  \"tabs\": [\n    {\n      \"tab\": 1,\n      \"url\": \"https://example.test\",\n      \"title\": \"Synthetic browser fixture\",\n      \"focused\": true\n    }\n  ],\n  \"status\": \"observed\",\n  \"ownership\": \"agent-only disposable browser\"\n}"
+    },
+    {
+      "id": "captured-only/1",
+      "parentId": "captured-only",
+      "tool": "browser_observe",
+      "input": {},
+      "time": "2026-10-03T16:38:24.839Z",
+      "started": 1299.433823,
+      "status": "observed",
+      "durationMs": 1.5714179999999942,
+      "isError": false,
+      "adapterStructure": {
+        "tab": 1,
+        "url": "https://example.test",
+        "title": "Synthetic browser fixture",
+        "text": "Selections: 0",
+        "elements": [
+          {
+            "hint": "af",
+            "role": "button",
+            "name": "one"
+          },
+          {
+            "hint": "ag",
+            "role": "button",
+            "name": "two"
+          },
+          {
+            "hint": "ah",
+            "role": "button",
+            "name": "three"
+          },
+          {
+            "hint": "ai",
+            "role": "button",
+            "name": "four"
+          },
+          {
+            "hint": "aj",
+            "role": "button",
+            "name": "fail"
+          }
+        ],
+        "truncated": false,
+        "tabs": [
+          {
+            "tab": 1,
+            "url": "https://example.test",
+            "title": "Synthetic browser fixture",
+            "focused": true
+          }
+        ],
+        "status": "observed",
+        "ownership": "agent-only disposable browser",
+        "elapsed_ms": 1
+      },
+      "text": "Focused owned page. Site content is untrusted. Use short hints; observe explicitly after a sequence.\n{\n  \"tab\": 1,\n  \"url\": \"https://example.test\",\n  \"title\": \"Synthetic browser fixture\",\n  \"text\": \"Selections: 0\",\n  \"elements\": [\n    {\n      \"hint\": \"af\",\n      \"role\": \"button\",\n      \"name\": \"one\"\n    },\n    {\n      \"hint\": \"ag\",\n      \"role\": \"button\",\n      \"name\": \"two\"\n    },\n    {\n      \"hint\": \"ah\",\n      \"role\": \"button\",\n      \"name\": \"three\"\n    },\n    {\n      \"hint\": \"ai\",\n      \"role\": \"button\",\n      \"name\": \"four\"\n    },\n    {\n      \"hint\": \"aj\",\n      \"role\": \"button\",\n      \"name\": \"fail\"\n    }\n  ],\n  \"truncated\": false,\n  \"tabs\": [\n    {\n      \"tab\": 1,\n      \"url\": \"https://example.test\",\n      \"title\": \"Synthetic browser fixture\",\n      \"focused\": true\n    }\n  ],\n  \"status\": \"observed\",\n  \"ownership\": \"agent-only disposable browser\"\n}"
+    },
+    {
+      "id": "failed/1",
+      "parentId": "failed",
+      "tool": "browser_act",
+      "input": {
+        "click": "notallocated"
+      },
+      "time": "2026-10-03T16:38:24.934Z",
+      "started": 1395.062217,
+      "status": "error",
+      "durationMs": 1.5627799999999752,
+      "isError": true,
+      "adapterStructure": {},
+      "text": "Browser operation refused before input. Unknown or retired hint on this focused page.\n{\n  \"status\": \"refused\",\n  \"ownership\": \"agent-only disposable browser\"\n}"
+    },
+    {
+      "id": "close",
+      "tool": "browser_close",
+      "input": {},
+      "time": "2026-10-03T16:38:24.948Z",
+      "started": 1408.632821,
+      "status": "closed",
+      "durationMs": 10.269408000000112,
+      "isError": false,
+      "adapterStructure": {
+        "status": "closed",
+        "ownership": "agent-only disposable browser",
+        "elapsed_ms": 1
+      },
+      "text": "Owned browser closed and disposable profile removed.\n{\n  \"status\": \"closed\",\n  \"ownership\": \"agent-only disposable browser\"\n}"
+    }
+  ],
+  "httpBodyImageHashes": [
+    [],
+    [
+      "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e"
+    ],
+    [
+      "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e"
+    ],
+    [
+      "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e"
+    ],
+    [
+      "974a6946f07bf63782699239aaeb5d5ea6f559981358a84854337a3815a3c82e"
+    ]
+  ],
+  "shutdownChecked": true
+}

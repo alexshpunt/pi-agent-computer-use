@@ -1,0 +1,55 @@
+{
+  "sessionId": "01a0fc8a-1ee1-707f-b17e-92558e0dff49",
+  "frames": 3,
+  "requests": 5,
+  "actions": [
+    {
+      "id": "call_UaiVjq5WwYMFIok2pXFu8UBp|ctc_07f615dc51229a2d016ac12e1f573087d2aefe4684b33c0032/1",
+      "parentId": "call_UaiVjq5WwYMFIok2pXFu8UBp|ctc_07f615dc51229a2d016ac12e1f573087d2aefe4684b33c0032",
+      "tool": "browser_open",
+      "status": "observed",
+      "isError": false,
+      "durationMs": 3549.8388590011746
+    },
+    {
+      "id": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb/1",
+      "parentId": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb",
+      "tool": "browser_act",
+      "status": "acted",
+      "isError": false,
+      "durationMs": 41.968415001407266
+    },
+    {
+      "id": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb/2",
+      "parentId": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb",
+      "tool": "browser_observe",
+      "status": "observed",
+      "isError": false,
+      "durationMs": 114.56088500097394
+    },
+    {
+      "id": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb/3",
+      "parentId": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb",
+      "tool": "browser_act",
+      "status": "error",
+      "isError": true,
+      "durationMs": 3.4167919997125864
+    },
+    {
+      "id": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb/4",
+      "parentId": "call_vgD1DbvwsXmUGNslO4Av5AP8|ctc_07f615dc51229a2d016ac12e2a4f0087d29b6723d96d4814cb",
+      "tool": "browser_observe",
+      "status": "observed",
+      "isError": false,
+      "durationMs": 113.79302099905908
+    }
+  ],
+  "matchingForwardedFrames": 3,
+  "finalDelivery": "unconfirmed",
+  "viewerFetch": {
+    "samples": 20,
+    "p50_ms": 7.66827600000002,
+    "p95_ms": 9.708407999999991,
+    "note": "Local state fetch only, not capture/model/UI latency."
+  }
+}
