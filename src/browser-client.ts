@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { BrowserResult } from "./browser-session.ts";
 import { cleanupBrowserProfile } from "./browser-profile.ts";
+import { BrowserImagePipeline } from "./browser-image-pipeline.ts";
+import type { VisionImages } from "./vision-images.ts";
 
 const run = promisify(execFile);
 /** The only protocol operations accepted by the trusted Windows browser worker. */
@@ -28,7 +30,10 @@ export class BrowserClient {
   private readonly launcher?: () => Promise<ChildProcessWithoutNullStreams>;
 
   /** An injected launcher must return a new owned stdio worker; used by protocol contract tests. */
-  constructor(launcher?: () => Promise<ChildProcessWithoutNullStreams>) { this.launcher = launcher; }
+  constructor(launcher?: () => Promise<ChildProcessWithoutNullStreams>, images?: VisionImages) {
+    this.launcher = launcher; this.images = images ? new BrowserImagePipeline(images) : undefined;
+  }
+  private readonly images?: BrowserImagePipeline;
 
   /** Keep retired labels retired when Pi reloads or restores session history. Does not launch a worker. */
   restoreHints(offset: number): void {
@@ -110,6 +115,7 @@ export class BrowserClient {
     if (this.retiring) return this.retiring;
     const child = this.child;
     const exited = this.exited;
+    this.images?.reset();
     if (!child && !this.ownedProfile) return Promise.resolve();
     this.retiring = (async () => {
       child?.stdin.end();
@@ -175,7 +181,18 @@ export class BrowserClient {
   /** Serialize requests, including startup and close, on this one owned pipe. */
   call(operation: BrowserOperation, args: Record<string, unknown> = {}, signal?: AbortSignal): Promise<BrowserResult> {
     if (operation === "close") return this.close();
-    return this.queue(() => this.request(operation, args, signal));
+    return this.queue(async () => {
+      let sent = false;
+      try {
+        const capture = this.images?.begin(operation, args);
+        sent = true;
+        const result = await this.request(operation, capture?.args ?? args, signal);
+        return capture ? await this.images!.finish(result, capture.configuration) : result;
+      } catch (error) {
+        this.images?.reset();
+        return this.error(sent && ["open", "act"].includes(operation), String(error));
+      }
+    });
   }
 
   private error(unknown: boolean, reason: string): BrowserResult {

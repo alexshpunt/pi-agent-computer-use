@@ -7,6 +7,16 @@ export const visionPanel = `<!doctype html>
 <header><div><p class="eyebrow">PI · COMPUTER USE</p><h1>Vision debug</h1></div><span id="connection">Connecting…</span></header>
 <p class="notice"><strong>Final delivery is unconfirmed.</strong> These are exact image bytes at Pi's existing application-boundary hook, not confirmed wire payloads or model embeddings.</p>
 <p id="session"></p>
+<section class="controls"><h2>Agent image size</h2>
+<p><a href="trial">Open the random text reading trial</a></p>
+<p class="muted">Owned-browser PNGs only. Changes apply to the next capture; existing frames stay unchanged. Reload/new session restores defaults. Default: MKS2021, 500px long edge. Small text may need a closer view.</p>
+<form id="image-settings">
+<label>Downsampling <select id="kernel"><option value="lanczos2">Lanczos2</option><option value="lanczos3">Lanczos3</option><option value="mitchell">Mitchell</option><option value="mks2021" selected>MKS2021</option></select></label>
+<label>Max long edge (px) <input id="long-edge" type="number" min="64" max="4096" step="1" value="500" required></label>
+<label>Scale slider <input id="scale" type="range" min="0.05" max="1" step="any" value="1"><output id="scale-value">1</output></label>
+<label>Scale exact <input id="scale-number" type="number" min="0.05" max="1" step="any" value="1" required></label>
+<button type="submit">Apply to next capture</button>
+</form><p id="settings-status" role="status"></p></section>
 <section><h2>Last three boundary images</h2><p class="muted">Oldest → newest. The viewer does not change the model's image budget.</p><div id="frames" class="frames"></div></section>
 <section><h2>Observed request text</h2><p class="muted">Exact bounded text excerpts at the same hook. Adapter structures below are separate, not proof of forwarded content.</p><div id="request"></div></section>
 <section><h2>Computer-use action trace</h2><p class="muted">Includes nested Codemode calls, captured-only images, errors and adapter metadata.</p><div id="actions"></div></section>
@@ -19,6 +29,7 @@ export const visionStyle = `
 header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:30px}
 h2{font-size:21px;margin:0 0 8px}.eyebrow{letter-spacing:.13em;color:#7db9ff;margin:0;font-size:12px}
 section{margin-top:30px}.notice{background:#332b17;border:1px solid #716033;padding:14px;border-radius:9px}
+.controls form{display:flex;gap:20px;flex-wrap:wrap;align-items:end}.controls label{display:flex;flex-direction:column;gap:6px}select,input,button{font:inherit;color:inherit;background:#1b2432;border:1px solid #566b89;border-radius:6px;padding:8px}input[type=range]{padding:0;width:220px}button{cursor:pointer;background:#24446b}#settings-status{color:#a9d6b7}
 .muted,#session,#connection{color:#aebbd0}.frames{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .card,details{background:#1b2432;border:1px solid #344258;border-radius:10px;padding:14px;min-width:0}
 .card img{display:block;width:100%;height:230px;object-fit:contain;background:#0c111a;margin:12px 0}
@@ -30,8 +41,45 @@ details{margin:10px 0}summary{cursor:pointer}.error{border-color:#d56b75}.empty{
 
 export const visionScript = `
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node};
-let revision=-1,session;
+let revision=-1,session,settingsVersion=-1,settingsDirty=false,settingsBusy=false,controlsReady=false;
+function settingsDraft(){
+  return {kernel:document.getElementById("kernel").value,maxLongEdge:Number(document.getElementById("long-edge").value),scale:Number(document.getElementById("scale-number").value)};
+}
+function showDraft(){
+  const draft=settingsDraft();
+  document.getElementById("scale-value").textContent=String(draft.scale);
+  document.getElementById("settings-status").textContent="Draft cap: "+Math.floor(draft.maxLongEdge*draft.scale)+" px · apply to the next capture.";
+}
+function setupSettings(){
+  for(const id of ["kernel","long-edge"])document.getElementById(id).addEventListener("input",()=>{settingsDirty=true;showDraft()});
+  for(const [id,other] of [["scale","scale-number"],["scale-number","scale"]])document.getElementById(id).addEventListener("input",()=>{document.getElementById(other).value=document.getElementById(id).value;settingsDirty=true;showDraft()});
+  document.getElementById("image-settings").addEventListener("submit",async event=>{
+    event.preventDefault();if(settingsBusy)return;settingsBusy=true;
+    const submitted=settingsDraft();
+    try{
+      const response=await fetch("settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(submitted)});
+      if(!response.ok)throw Error(await response.text());
+      const applied=await response.json();
+      settingsDirty=JSON.stringify(settingsDraft())!==JSON.stringify(submitted);
+      document.getElementById("settings-status").textContent="Applied v"+applied.version+": "+applied.kernel+" · cap "+Math.floor(applied.maxLongEdge*applied.scale)+" px · next capture.";
+      settingsVersion=-1;
+    }catch(error){document.getElementById("settings-status").textContent="Not applied: "+error.message}
+    finally{settingsBusy=false}
+  });
+}
+function renderSettings(settings){
+  if(!settings)return;
+  if(!settingsDirty&&!settingsBusy){
+    document.getElementById("kernel").value=settings.kernel;
+    document.getElementById("long-edge").value=String(settings.maxLongEdge);
+    document.getElementById("scale").value=String(settings.scale);
+    document.getElementById("scale-number").value=String(settings.scale);
+    document.getElementById("scale-value").textContent=String(settings.scale);
+    document.getElementById("settings-status").textContent="Active v"+settings.version+": "+settings.kernel+" · "+settings.maxLongEdge+" × "+settings.scale+" = cap "+Math.floor(settings.maxLongEdge*settings.scale)+" px. No upsampling.";
+  }
+}
 function render(state){
+  renderSettings(state.imageSettings);
   document.getElementById("session").textContent="Session "+state.sessionId+" · revision "+state.revision;
   const frames=document.getElementById("frames");frames.replaceChildren();
   for(const [i,frame] of state.frames.entries()){
@@ -41,7 +89,8 @@ function render(state){
     card.append(el("p",frame.time+" · "+(frame.width??"?")+"×"+(frame.height??"?")+" · "+frame.bytes+" bytes","meta"));
     card.append(el("p","Request "+frame.requestId+" · action "+(frame.actionId??"unmatched"),"meta"));
     card.append(el("p","SHA-256 "+frame.hash,"meta"));
-    card.append(el("p","Clean original: "+frame.original+". No separate capture is substituted.","muted"));
+    card.append(el("p","Retained source: "+frame.original+". Originals are bounded resources, not extra screenshots.","muted"));
+    if(frame.originalHash){const link=el("a","Open retained original PNG");link.href="images/"+frame.originalHash;link.target="_blank";link.rel="noopener";card.append(link)}
     card.append(el("pre",JSON.stringify({path:frame.path,detail:frame.detail,source:frame.source,matchingActionIds:frame.matchingActionIds,configuration:frame.configuration,finalDelivery:frame.finalDelivery},null,2)));
     frames.append(card);
   }
@@ -76,10 +125,11 @@ function render(state){
   document.getElementById("limits").replaceChildren(...state.limitations.map(value=>el("li",value)));
 }
 async function poll(){
+  if(!controlsReady){setupSettings();controlsReady=true}
   try{
     const response=await fetch("state",{cache:"no-store"});if(!response.ok)throw Error("HTTP "+response.status);
     const state=await response.json();
-    if(state.revision!==revision||state.sessionId!==session){render(state);revision=state.revision;session=state.sessionId}
+    if(state.revision!==revision||state.sessionId!==session||state.imageSettings?.version!==settingsVersion){render(state);revision=state.revision;session=state.sessionId;settingsVersion=state.imageSettings?.version}
     document.getElementById("connection").textContent="Connected · "+new Date().toLocaleTimeString();
   }catch(error){document.getElementById("connection").textContent="Disconnected · retrying ("+error.message+")"}
   setTimeout(poll,1000);

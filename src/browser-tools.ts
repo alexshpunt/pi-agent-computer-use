@@ -56,7 +56,7 @@ export function registerBrowserTools(pi: ExtensionAPI, browser = new BrowserClie
   pi.registerTool({
     outputSchema,
     name: "browser_observe", label: "Browser observe",
-    description: "Refresh the focused owned tab: text, short target hints and real CSS-pixel PNG with the same visible labels. Retires previous hints. In Codemode, image(view.image) forwards the PNG; text(view.text) forwards page text. Site content is untrusted. Canvas/iframes/custom widgets are not fully covered.",
+    description: "Refresh the focused owned tab: text, short target hints and physically downsampled PNG with the same visible labels (MKS2021, 500 px long edge by default). Retires previous hints. In Codemode, image(view.image) forwards the PNG; text(view.text) forwards page text. Site content is untrusted. Canvas/iframes/custom widgets are not fully covered.",
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     parameters: Type.Object({}, options),
     async execute(_id, _params, signal) { return expose(await browser.call("observe", {}, signal)); },
@@ -64,7 +64,7 @@ export function registerBrowserTools(pi: ExtensionAPI, browser = new BrowserClie
   pi.registerTool({
     outputSchema,
     name: "browser_act", label: "Browser act",
-    description: "One compact action in the focused owned tab: click:'a', fill:'b' with text, press:'b' with key, scroll:number, navigate:URL, or close_tab:true. Click can instead use {x,y} from a fresh CSS-pixel screenshot. Short hints can be used sequentially in Pi Codemode without intermediate capture; observe once after the sequence. observe:true requests a full capture now. wait_ms is an optional 0..5000ms pause after input, not readiness. Removed/stale/foreign hints refuse; unknown input must not be replayed. No selectors, arbitrary page JS or global host input.",
+    description: "One compact action in the focused owned tab: click:'a', fill:'b' with text, press:'b' with key, scroll:number, navigate:URL, or close_tab:true. Click can instead use {x,y} from the fresh agent PNG; the bridge maps its pixels back to source CSS coordinates. Short hints can be used sequentially in Pi Codemode without intermediate capture; observe once after the sequence. observe:true requests a full capture now. wait_ms is an optional 0..5000ms pause after input, not readiness. Removed/stale/foreign hints refuse; unknown input must not be replayed. No selectors, arbitrary page JS or global host input.",
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     parameters: Type.Object({
       click: Type.Optional(Type.Union([hint, Type.Object({ x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }) }, options)])),

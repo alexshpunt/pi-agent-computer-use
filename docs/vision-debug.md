@@ -1,12 +1,12 @@
 # Vision debug viewer
 
-[LPT-373](https://linear.app/alexshpunt/issue/LPT-373) adds a read-only local viewer for the current Pi session. It uses existing extension hooks, not a provider override, a second JavaScript executor or a new model-facing tool.
+[LPT-373](https://linear.app/alexshpunt/issue/LPT-373) added the local observation viewer for the current Pi session. [Agent image size](vision-scale.md) now adds a narrowly scoped resizing control form. It uses existing extension hooks, not a provider override, a second JavaScript executor or a new model-facing tool.
 
 ## Open and stop
 
 The extension starts the viewer on `session_start` and prints its URL. `/computer-debug status` shows it again. `/computer-debug off` closes the server and clears retained pixels; `/computer-debug on` starts a fresh viewer.
 
-The URL has a random per-server path. The server listens on `127.0.0.1` only, rejects foreign Host/Origin headers and accepts only reads. Do not publish or forward it. A process with access to this session's URL can read its retained UI data; this is not an OS sandbox. There is no persistent service or machine configuration.
+The URL has a random per-server path. The server listens on `127.0.0.1` only, rejects foreign Host/Origin headers. Reads expose the trace and random reading samples. Same-origin, bounded JSON writes apply an image-settings tuple or grade one reading trial and start the next. Expected text stays out of the HTML/JSON. Do not publish or forward it. A process with access to this session's URL can read its retained UI data and change image resizing settings; this is not an OS sandbox. There is no persistent service or machine configuration.
 
 Closing/reloading the Pi session closes the server. A new session has a new viewer URL and no previous-session frames. Reopening the same URL while its server is running reconnects to current state. After shutdown, the old URL is unavailable.
 
@@ -24,8 +24,8 @@ The three displayed images are a viewer limit, not the effective image budget tr
 - Browser/Windows tool hooks record adapter images and metadata separately. A capture not forwarded by Codemode stays in the adapter trace and does not become a new boundary-image card.
 - Image hashes link pixels to matching computer-use actions. Identical captures are ambiguous: the panel lists candidate calls rather than assigning a unique source.
 - Adapter structure is labelled separately from observed provider text. Metadata in tool `details` is not automatically model input. Text excerpts are labelled when truncated.
-- The existing browser capture already includes DOM hints. It does not retain a clean pre-overlay original. The panel says `original: unavailable`; it does not make a second screenshot and call it the original.
-- Requested settings and known adapter timings are recorded. Effective settings not reported by the adapter remain unknown. The viewer does not change Safe/YOLO or expose vision controls; those belong to LPT-374.
+- The browser capture can already include DOM hints. The resizing path retains the exact pre-resize PNG separately, not a clean pre-overlay capture. Other adapters can still report originals as unavailable. It does not substitute a second screenshot.
+- Requested settings and known adapter timings are recorded. Effective settings not reported by the adapter remain unknown. The viewer cannot change Safe/YOLO. LPT-375 adds only resizing controls; the broader options in LPT-374 remain separate.
 
 ## Bounds and cleanup
 

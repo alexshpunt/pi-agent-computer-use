@@ -1,17 +1,19 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { VisionTrace } from "./vision-trace.ts";
+import { VisionImages } from "./vision-images.ts";
 import { startVisionServer, type VisionServer } from "./vision-server.ts";
 
 /** Live debug state for trusted host integrations and verification, never model control. */
 export interface VisionDebug { trace: VisionTrace; url(): string | undefined; close(): Promise<void> }
 
-/** Mirror existing Pi hooks in a read-only session-local viewer. No provider override or new agent tool. */
-export function registerVisionDebug(pi: ExtensionAPI): VisionDebug {
+/** Mirror existing Pi hooks and expose session image settings. No provider override or new agent tool. */
+export function registerVisionDebug(pi: ExtensionAPI, images = new VisionImages()): VisionDebug {
   const trace = new VisionTrace("unstarted");
   let server: VisionServer | undefined;
   let loading: Promise<VisionServer> | undefined;
   let sessionId: string | undefined;
   let enabled = false;
+  let imageSession: string | undefined;
   const close = async () => {
     enabled = false;
     if (loading) await loading.catch(() => undefined);
@@ -20,9 +22,10 @@ export function registerVisionDebug(pi: ExtensionAPI): VisionDebug {
   };
   const start = async (ctx: ExtensionContext) => {
     const id = ctx.sessionManager.getSessionId();
+    if (imageSession !== id) { images.reset(); imageSession = id; }
     if (id !== sessionId) { await close(); sessionId = id; trace.reset(id); }
     if (!server) {
-      loading ??= startVisionServer(trace);
+      loading ??= startVisionServer(trace, images);
       try { server = await loading; } finally { loading = undefined; }
     }
     enabled = true;
@@ -49,7 +52,7 @@ export function registerVisionDebug(pi: ExtensionAPI): VisionDebug {
   });
   pi.on("after_provider_response", (event) => { if (enabled) trace.response(event.status); });
   pi.registerCommand("computer-debug", {
-    description: "Show, start or stop the session's read-only vision debug viewer",
+    description: "Show, start or stop the session's vision debug viewer and image controls",
     handler: async (args, ctx) => {
       const value = args.trim();
       if (value === "off") { await close(); ctx.ui.setStatus("vision-debug", undefined); ctx.ui.notify("Vision debug stopped; retained pixels cleared.", "info"); }

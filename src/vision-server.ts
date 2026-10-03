@@ -1,16 +1,20 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { VisionTrace } from "./vision-trace.ts";
+import { VisionImages } from "./vision-images.ts";
 import { visionPanel, visionScript, visionStyle } from "./vision-panel.ts";
+import { VisionTrials } from "./vision-trial.ts";
+import { visionTrialPanel, visionTrialScript, visionTrialStyle } from "./vision-trial-panel.ts";
 
-/** A loopback-only, read-only server with an unguessable session route. */
+/** A private loopback viewer with bounded settings and trial-grading writes. */
 export interface VisionServer { url: string; close(): Promise<void> }
 
-/** Start explicitly from a session/command, never from an extension factory. */
-export async function startVisionServer(trace: VisionTrace): Promise<VisionServer> {
+/** Start from a session/command. Settings affect following captures, not historical frames. */
+export async function startVisionServer(trace: VisionTrace, images = new VisionImages()): Promise<VisionServer> {
   const token = randomBytes(24).toString("hex");
+  const trials = new VisionTrials(images);
   let origin = "";
-  const server = createServer((request, response) => {
+  const server = createServer(async (request, response) => {
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "no-referrer");
@@ -18,19 +22,48 @@ export async function startVisionServer(trace: VisionTrace): Promise<VisionServe
     if (request.headers.host !== new URL(origin).host || (request.headers.origin && request.headers.origin !== origin)) {
       response.writeHead(403).end("Foreign host or origin."); return;
     }
-    if (!["GET", "HEAD"].includes(request.method ?? "")) { response.writeHead(405).end("Read-only viewer."); return; }
     const url = new URL(request.url ?? "/", origin);
     const base = `/${token}/`;
     if (!url.pathname.startsWith(base)) { response.writeHead(404).end("Not found."); return; }
     const route = url.pathname.slice(base.length);
+    if (request.method === "POST" && ["settings", "trial/apply"].includes(route)) {
+      const limit = route === "settings" ? 1024 : 4096;
+      if (request.headers.origin !== origin || request.headers["content-type"] !== "application/json") {
+        response.writeHead(403).end("Settings require same-origin JSON."); request.resume(); return;
+      }
+      try {
+        if (Number(request.headers["content-length"]) > limit) { response.writeHead(413).end("Settings body exceeds limit."); request.resume(); return; }
+        const chunks: Buffer[] = []; let length = 0;
+        for await (const chunk of request) {
+          length += chunk.length;
+          if (length > limit) { response.writeHead(413).end("Settings body exceeds limit."); request.resume(); return; }
+          chunks.push(Buffer.from(chunk));
+        }
+        const input: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const applied = route === "settings" ? images.update(input) : await trials.apply(input);
+        response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(applied));
+      } catch (error) { response.writeHead(400).end(error instanceof Error ? error.message : String(error)); }
+      return;
+    }
+    if (!["GET", "HEAD"].includes(request.method ?? "")) { response.writeHead(405).end("Only settings can be written."); return; }
     let body: string | Buffer | undefined;
     let mime = "text/plain; charset=utf-8";
     if (route === "") { body = visionPanel; mime = "text/html; charset=utf-8"; }
     else if (route === "panel.js") { body = visionScript; mime = "text/javascript; charset=utf-8"; }
     else if (route === "style.css") { body = visionStyle; mime = "text/css; charset=utf-8"; }
-    else if (route === "state") { body = JSON.stringify(trace.snapshot()); mime = "application/json"; }
+    else if (route === "state") { body = JSON.stringify({ ...trace.snapshot(), imageSettings: images.settings() }); mime = "application/json"; }
+    else if (route === "trial") { body = visionTrialPanel; mime = "text/html; charset=utf-8"; }
+    else if (route === "trial.js") { body = visionTrialScript; mime = "text/javascript; charset=utf-8"; }
+    else if (route === "trial.css") { body = visionTrialStyle; mime = "text/css; charset=utf-8"; }
+    else if (route === "trial/results") { body = JSON.stringify(trials.results()); mime = "application/json"; }
+    else if (/^trial\/pixels\/[a-f0-9]{32}$/.test(route)) { body = trials.pixels(route.slice(13)); mime = "image/png"; }
+    else if (route === "trial/new") {
+      if (request.method !== "GET") { response.writeHead(405).end("Use GET for a fresh trial."); return; }
+      try { body = JSON.stringify(await trials.create()); mime = "application/json"; }
+      catch { response.writeHead(500).end("Could not render the sample."); return; }
+    }
     else if (/^images\/[a-f0-9]{64}$/.test(route)) {
-      const hash = route.slice(7); body = trace.asset(hash); mime = trace.assetMime(hash) ?? mime;
+      const hash = route.slice(7); body = trace.asset(hash) ?? images.asset(hash); mime = trace.assetMime(hash) ?? "image/png";
     }
     if (body === undefined) { response.writeHead(404).end("Not retained in this session."); return; }
     response.setHeader("Content-Type", mime);

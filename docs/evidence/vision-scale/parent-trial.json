@@ -1,0 +1,225 @@
+{
+  "trial": "39cc60553e8930f3431303bab7caee40",
+  "submitted": {
+    "image": {
+      "configuration": {
+        "kernel": "lanczos3",
+        "maxLongEdge": 800,
+        "scale": 1,
+        "version": 0
+      },
+      "cap": 800,
+      "source": {
+        "hash": "757d1650a3fb993512a9d50e67ba554ebd297b42c2b822442677dbff7c983515",
+        "width": 1085,
+        "height": 706,
+        "bytes": 76366
+      },
+      "output": {
+        "hash": "4f50e34e8164e65432a4d0939ac37e30c161eaa787be63fc12f0a1207b97f55a",
+        "width": 800,
+        "height": 520,
+        "bytes": 109395
+      },
+      "mapping": {
+        "offsetX": 0,
+        "offsetY": 0,
+        "scaleX": 1.35625,
+        "scaleY": 1.3576923076923078
+      },
+      "timings": {
+        "decode_ms": 29.728795999661088,
+        "resample_ms": 21.996028999798,
+        "encode_ms": 10.60558900050819,
+        "total_ms": 62.33041399996728
+      },
+      "sourceCss": {
+        "width": 1085,
+        "height": 706
+      }
+    },
+    "answers": [
+      "birch cedar stone 5112",
+      "birch stone violet 6755",
+      "cedar violet river 7698",
+      "stone orchid birch 9877",
+      "orchid forest cedar 7409",
+      "cedar orchid stone 2201",
+      "river harbor cedar 3239",
+      "river cedar stone 3608",
+      "birch orchid forest 8844",
+      "winter forest harbor 7054",
+      "violet stone violet 4077",
+      "forest cedar cedar 9089"
+    ],
+    "trial": "39cc60553e8930f3431303bab7caee40",
+    "after": {
+      "trial": "b378713ca012151d6cb6060e989d5d45",
+      "image": {
+        "configuration": {
+          "kernel": "lanczos3",
+          "maxLongEdge": 800,
+          "scale": 0.625,
+          "version": 1
+        },
+        "cap": 500,
+        "source": {
+          "hash": "b1cfa5f17aa85aeddd66b2738783f48784e719b6da66b4a6c67d92d89d7e1777",
+          "width": 1085,
+          "height": 1292,
+          "bytes": 131908
+        },
+        "output": {
+          "hash": "a1dd92af04c6457818a47c80c058df318e4ec507bb530635427aae4d9e5638bf",
+          "width": 419,
+          "height": 500,
+          "bytes": 104974
+        },
+        "mapping": {
+          "offsetX": 0,
+          "offsetY": 0,
+          "scaleX": 2.5894988066825775,
+          "scaleY": 2.584
+        },
+        "timings": {
+          "decode_ms": 31.715844999998808,
+          "resample_ms": 6.78630100004375,
+          "encode_ms": 6.070948000997305,
+          "total_ms": 44.57309400103986
+        },
+        "sourceCss": {
+          "width": 1085,
+          "height": 1292
+        }
+      },
+      "emptyFields": true
+    }
+  },
+  "grade": {
+    "trial": "39cc60553e8930f3431303bab7caee40",
+    "configuration": {
+      "kernel": "lanczos3",
+      "maxLongEdge": 800,
+      "scale": 1,
+      "version": 0
+    },
+    "rows": [
+      {
+        "row": 1,
+        "fontSize": 28,
+        "background": "light",
+        "status": "correct"
+      },
+      {
+        "row": 2,
+        "fontSize": 20,
+        "background": "light",
+        "status": "correct"
+      },
+      {
+        "row": 3,
+        "fontSize": 16,
+        "background": "light",
+        "status": "correct"
+      },
+      {
+        "row": 4,
+        "fontSize": 12,
+        "background": "light",
+        "status": "correct"
+      },
+      {
+        "row": 5,
+        "fontSize": 10,
+        "background": "light",
+        "status": "correct"
+      },
+      {
+        "row": 6,
+        "fontSize": 8,
+        "background": "light",
+        "status": "correct"
+      },
+      {
+        "row": 7,
+        "fontSize": 28,
+        "background": "dark",
+        "status": "correct"
+      },
+      {
+        "row": 8,
+        "fontSize": 20,
+        "background": "dark",
+        "status": "correct"
+      },
+      {
+        "row": 9,
+        "fontSize": 16,
+        "background": "dark",
+        "status": "correct"
+      },
+      {
+        "row": 10,
+        "fontSize": 12,
+        "background": "dark",
+        "status": "correct"
+      },
+      {
+        "row": 11,
+        "fontSize": 10,
+        "background": "dark",
+        "status": "correct"
+      },
+      {
+        "row": 12,
+        "fontSize": 8,
+        "background": "dark",
+        "status": "correct"
+      }
+    ]
+  },
+  "assets": [
+    {
+      "name": "agent",
+      "hash": "4f50e34e8164e65432a4d0939ac37e30c161eaa787be63fc12f0a1207b97f55a",
+      "width": 800,
+      "height": 520,
+      "bytes": 109395
+    },
+    {
+      "name": "original",
+      "hash": "757d1650a3fb993512a9d50e67ba554ebd297b42c2b822442677dbff7c983515",
+      "width": 1085,
+      "height": 706,
+      "bytes": 76366
+    },
+    {
+      "name": "after-agent",
+      "hash": "a1dd92af04c6457818a47c80c058df318e4ec507bb530635427aae4d9e5638bf",
+      "width": 419,
+      "height": 500,
+      "bytes": 104974
+    }
+  ],
+  "boundaryFrames": [
+    {
+      "id": "frame-67",
+      "requestId": "request-66",
+      "hash": "4f50e34e8164e65432a4d0939ac37e30c161eaa787be63fc12f0a1207b97f55a",
+      "stage": "prepared",
+      "width": 800,
+      "height": 520,
+      "finalDelivery": "unconfirmed",
+      "original": "unavailable"
+    }
+  ],
+  "models": [
+    {
+      "provider": "openai-codex",
+      "api": "openai-codex-responses",
+      "model": "gpt-6.1-sol"
+    }
+  ],
+  "boundary": "Existing Pi application hook; final delivery and provider preprocessing unconfirmed.",
+  "method": "Twelve transcriptions entered and graded in the actual form before exporting the full-resolution source."
+}

@@ -1,0 +1,290 @@
+{
+  "protocol": "Fresh random text for each trial; all twelve fields attempted from downsampled PNG only. All measured source viewports 1085x1287 and outputs 337x400. One trial per kernel, plus MKS2021 confirmation; exploratory not statistical.",
+  "records": [
+    {
+      "trial": "b70e7f906f3922c8bf983b816dc344ac",
+      "image": {
+        "configuration": {
+          "kernel": "lanczos2",
+          "maxLongEdge": 800,
+          "scale": 0.5,
+          "version": 9
+        },
+        "cap": 400,
+        "source": {
+          "hash": "f7338872990b20de7716fccdac95d61b8d45c71718e004e694a75d09a77f53e3",
+          "width": 1085,
+          "height": 1287,
+          "bytes": 134729
+        },
+        "output": {
+          "hash": "cad44d270001109a618b57287cd288c12a2d988c6bcd8a8e1cc1e2d91ce5b0d5",
+          "width": 337,
+          "height": 400,
+          "bytes": 64900
+        },
+        "mapping": {
+          "offsetX": 0,
+          "offsetY": 0,
+          "scaleX": 3.2195845697329375,
+          "scaleY": 3.2175
+        },
+        "timings": {
+          "decode_ms": 12.030564000830054,
+          "resample_ms": 3.9317450001835823,
+          "encode_ms": 4.137437999248505,
+          "total_ms": 20.09974700026214
+        },
+        "sourceCss": {
+          "width": 1085,
+          "height": 1287
+        }
+      },
+      "light": [
+        "cedar river orchid 6113",
+        "violet winter cedar 9886",
+        "harbor harbor river 7709",
+        "river orchid violet 3347",
+        "meadow orchid river 6900",
+        "cedar meadow cedar 6865"
+      ],
+      "dark": [
+        "harbor harbor orchid 1946",
+        "orchid forest cedar 5926",
+        "stone stone birch 9939",
+        "cedar stone cedar 8598",
+        "winter stone forest 8812",
+        "harbor harbor stone 6388"
+      ],
+      "result": "Trial b70e7f906f3922c8bf983b816dc344ac · lanczos2 / cap 400 · Light 3/6, Dark 3/6: light 1 correct · light 2 correct · light 3 correct · light 4 wrong · light 5 wrong · light 6 wrong · dark 1 correct · dark 2 correct · dark 3 correct · dark 4 wrong · dark 5 wrong · dark 6 wrong"
+    },
+    {
+      "trial": "337ef86ffea2004e772967bfa920525d",
+      "image": {
+        "configuration": {
+          "kernel": "lanczos3",
+          "maxLongEdge": 800,
+          "scale": 0.5,
+          "version": 10
+        },
+        "cap": 400,
+        "source": {
+          "hash": "a3fe61892ced31e991dcc0b269922f7bfb0408d2124939870e17613af51feb48",
+          "width": 1085,
+          "height": 1287,
+          "bytes": 134847
+        },
+        "output": {
+          "hash": "ddd39f6cfb47bb6e67fff5d5e4bfac77477e0c042c5c6c7f3b3b8e75c62e0b29",
+          "width": 337,
+          "height": 400,
+          "bytes": 76352
+        },
+        "mapping": {
+          "offsetX": 0,
+          "offsetY": 0,
+          "scaleX": 3.2195845697329375,
+          "scaleY": 3.2175
+        },
+        "timings": {
+          "decode_ms": 14.317847998812795,
+          "resample_ms": 5.244508000090718,
+          "encode_ms": 4.411055000498891,
+          "total_ms": 23.973410999402404
+        },
+        "sourceCss": {
+          "width": 1085,
+          "height": 1287
+        }
+      },
+      "light": [
+        "river birch winter 4372",
+        "winter violet meadow 8123",
+        "violet cedar winter 6855",
+        "harbor harbor stone 8755",
+        "forest birch stone 2895",
+        "birch cedar winter 1388"
+      ],
+      "dark": [
+        "winter stone cedar 9139",
+        "river harbor meadow 1168",
+        "river orchid river 8542",
+        "cedar stone cedar 2385",
+        "stone forest river 7376",
+        "orchid violet harbor 9680"
+      ],
+      "result": "Trial 337ef86ffea2004e772967bfa920525d · lanczos3 / cap 400 · Light 3/6, Dark 3/6: light 1 correct · light 2 correct · light 3 correct · light 4 wrong · light 5 wrong · light 6 wrong · dark 1 correct · dark 2 correct · dark 3 correct · dark 4 wrong · dark 5 wrong · dark 6 wrong"
+    },
+    {
+      "trial": "8063db23ad3964460d636d6c6cdc5345",
+      "image": {
+        "configuration": {
+          "kernel": "mitchell",
+          "maxLongEdge": 800,
+          "scale": 0.5,
+          "version": 11
+        },
+        "cap": 400,
+        "source": {
+          "hash": "098782301d184ad079ea91dc210d7a35cdf392c33a2f63899b87e9b91f73e60a",
+          "width": 1085,
+          "height": 1287,
+          "bytes": 135307
+        },
+        "output": {
+          "hash": "539269e58f22410b1b6768a868d93bd07163c0ffe0fcca59922e4816202fd7e6",
+          "width": 337,
+          "height": 400,
+          "bytes": 61535
+        },
+        "mapping": {
+          "offsetX": 0,
+          "offsetY": 0,
+          "scaleX": 3.2195845697329375,
+          "scaleY": 3.2175
+        },
+        "timings": {
+          "decode_ms": 10.672168999910355,
+          "resample_ms": 3.655037000775337,
+          "encode_ms": 4.339639998972416,
+          "total_ms": 18.666845999658108
+        },
+        "sourceCss": {
+          "width": 1085,
+          "height": 1287
+        }
+      },
+      "light": [
+        "forest orchid birch 1681",
+        "meadow harbor winter 6716",
+        "river meadow violet 7267",
+        "harbor forest violet 4025",
+        "meadow harbor meadow 6390",
+        "meadow river meadow 8833"
+      ],
+      "dark": [
+        "river cedar stone 1038",
+        "winter birch forest 4108",
+        "violet cedar violet 8902",
+        "forest stone winter 3483",
+        "stone violet orchid 8446",
+        "birch birch winter 9779"
+      ],
+      "result": "Trial 8063db23ad3964460d636d6c6cdc5345 · mitchell / cap 400 · Light 3/6, Dark 3/6: light 1 correct · light 2 correct · light 3 correct · light 4 wrong · light 5 wrong · light 6 wrong · dark 1 correct · dark 2 correct · dark 3 correct · dark 4 wrong · dark 5 wrong · dark 6 wrong"
+    },
+    {
+      "trial": "9ae29c4c947db0cfc3ef164f0b050ada",
+      "image": {
+        "configuration": {
+          "kernel": "mks2021",
+          "maxLongEdge": 800,
+          "scale": 0.5,
+          "version": 12
+        },
+        "cap": 400,
+        "source": {
+          "hash": "534ef0532404846f5c81e749e460fe80dc5639715dffe5652eec210d0ed10d29",
+          "width": 1085,
+          "height": 1287,
+          "bytes": 133739
+        },
+        "output": {
+          "hash": "6b9ad0b2902ee12a2d8287c6c40806c69b73f0fdf43b3be842877ad9bb1cc2b7",
+          "width": 337,
+          "height": 400,
+          "bytes": 73007
+        },
+        "mapping": {
+          "offsetX": 0,
+          "offsetY": 0,
+          "scaleX": 3.2195845697329375,
+          "scaleY": 3.2175
+        },
+        "timings": {
+          "decode_ms": 12.528923999518156,
+          "resample_ms": 6.8356950003653765,
+          "encode_ms": 5.673545999452472,
+          "total_ms": 25.038164999336004
+        },
+        "sourceCss": {
+          "width": 1085,
+          "height": 1287
+        }
+      },
+      "light": [
+        "orchid river orchid 8061",
+        "violet stone birch 4176",
+        "violet stone meadow 3025",
+        "orchid birch stone 7421",
+        "winter stone forest 6844",
+        "winter birch stone 8348"
+      ],
+      "dark": [
+        "winter stone violet 7255",
+        "river violet forest 9581",
+        "river meadow meadow 4563",
+        "river harbor forest 8972",
+        "river cedar birch 8809",
+        "orchid orchid river 9835"
+      ],
+      "result": "Trial 9ae29c4c947db0cfc3ef164f0b050ada · mks2021 / cap 400 · Light 3/6, Dark 4/6: light 1 correct · light 2 correct · light 3 correct · light 4 wrong · light 5 wrong · light 6 wrong · dark 1 correct · dark 2 correct · dark 3 correct · dark 4 wrong · dark 5 correct · dark 6 wrong"
+    },
+    {
+      "trial": "56a66e811813534397e8ec0170c73daa",
+      "image": {
+        "configuration": {
+          "kernel": "mks2021",
+          "maxLongEdge": 800,
+          "scale": 0.5,
+          "version": 13
+        },
+        "cap": 400,
+        "source": {
+          "hash": "2a8f965c3e634449793e2800dad798954d41003f03b019a8f987a0565805a2de",
+          "width": 1085,
+          "height": 1287,
+          "bytes": 135183
+        },
+        "output": {
+          "hash": "c579c003ec1b448ea26d2c56f35bee18403d09fbec721d20923805d9fce1c73b",
+          "width": 337,
+          "height": 400,
+          "bytes": 73127
+        },
+        "mapping": {
+          "offsetX": 0,
+          "offsetY": 0,
+          "scaleX": 3.2195845697329375,
+          "scaleY": 3.2175
+        },
+        "timings": {
+          "decode_ms": 11.168250000104308,
+          "resample_ms": 7.600275998935103,
+          "encode_ms": 4.841632001101971,
+          "total_ms": 23.610158000141382
+        },
+        "sourceCss": {
+          "width": 1085,
+          "height": 1287
+        }
+      },
+      "light": [
+        "violet birch orchid 4136",
+        "winter meadow cedar 3261",
+        "orchid harbor forest 7328",
+        "meadow forest violet 3780",
+        "birch birch meadow 4597",
+        "forest cedar winter 2288"
+      ],
+      "dark": [
+        "cedar stone violet 6128",
+        "river harbor birch 5542",
+        "stone winter orchid 8857",
+        "stone stone cedar 4852",
+        "cedar winter meadow 6343",
+        "harbor meadow cedar 6868"
+      ],
+      "result": "Trial 56a66e811813534397e8ec0170c73daa · mks2021 / cap 400 · Light 4/6, Dark 3/6: light 1 correct · light 2 correct · light 3 correct · light 4 wrong · light 5 correct · light 6 wrong · dark 1 correct · dark 2 correct · dark 3 correct · dark 4 wrong · dark 5 wrong · dark 6 wrong"
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "parent": {
+    "configuration": {
+      "kernel": "mks2021",
+      "maxLongEdge": 500,
+      "scale": 1,
+      "version": 0
+    },
+    "cap": 500,
+    "source": {
+      "hash": "29f67b6a3695d9970ecf9d2ee38e4e409bf4a2cb6ccf47f352f0d4dd67a38609",
+      "width": 1085,
+      "height": 706,
+      "bytes": 78679
+    },
+    "output": {
+      "hash": "721dc12f97b0fbbf77e610c993228f63ff1f878ef0b35e9f3d02b28af6bead13",
+      "width": 500,
+      "height": 325,
+      "bytes": 54222
+    },
+    "mapping": {
+      "offsetX": 0,
+      "offsetY": 0,
+      "scaleX": 2.17,
+      "scaleY": 2.1723076923076925
+    },
+    "timings": {
+      "decode_ms": 13.061439000070095,
+      "resample_ms": 5.626530999317765,
+      "encode_ms": 5.146792000159621,
+      "total_ms": 23.83476199954748
+    },
+    "sourceCss": {
+      "width": 1085,
+      "height": 706
+    }
+  },
+  "viewerControls": [
+    {
+      "hint": "dx",
+      "role": "combobox",
+      "name": "Downsampling\nLanczos2\nLanczos3\nMitchell\nMKS2021",
+      "value": "mks2021"
+    },
+    {
+      "hint": "dy",
+      "role": "input",
+      "name": "Max long edge (px)",
+      "value": "500"
+    },
+    {
+      "hint": "dz",
+      "role": "input",
+      "name": "Scale slider\n1",
+      "value": "1"
+    },
+    {
+      "hint": "ea",
+      "role": "input",
+      "name": "Scale exact",
+      "value": "1"
+    }
+  ],
+  "tui": {
+    "pane": "w3E9:p6",
+    "revision": 2371,
+    "inlineImage": false
+  },
+  "native": {
+    "overview": {
+      "success": true,
+      "operations": 19,
+      "cleanup": {
+        "workerCount": 0,
+        "browserCount": 0,
+        "profiles": [],
+        "windows": [],
+        "listeners": []
+      }
+    },
+    "trial": {
+      "success": true,
+      "operations": 23,
+      "cleanup": {
+        "workerCount": 0,
+        "browserCount": 0,
+        "profiles": [],
+        "windows": [],
+        "listeners": []
+      }
+    }
+  },
+  "automated": {
+    "unit": 70,
+    "realPi": 5,
+    "typecheck": true
+  },
+  "boundary": "Application output only; final delivery unconfirmed"
+}

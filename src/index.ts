@@ -1,5 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { registerVisionDebug } from "./vision-debug.ts";
+import { VisionImages } from "./vision-images.ts";
+import { BrowserClient } from "./browser-client.ts";
 import { registerBrowserTools } from "./browser-tools.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "./config.ts";
@@ -68,8 +70,9 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
 
 /** Standalone computer UI extension. The final Pi Agent IDE provider API remains separate. */
 export default function computerUse(pi: ExtensionAPI): void {
-  registerVisionDebug(pi);
-  registerBrowserTools(pi);
+  const images = new VisionImages();
+  registerVisionDebug(pi, images);
+  registerBrowserTools(pi, new BrowserClient(undefined, images));
   const getMode = registerComputerMode(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;

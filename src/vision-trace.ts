@@ -6,7 +6,7 @@ interface ImageBytes { bytes: Buffer; mime: string; hash: string; width?: number
 interface Frame {
   id: string; hash: string; mime: string; bytes: number; width?: number; height?: number;
   time: string; stage: "captured" | "prepared" | "evicted"; finalDelivery: "unconfirmed";
-  original: "unavailable"; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
+  original: "unavailable" | "available"; originalHash?: string; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
   source?: unknown; configuration?: unknown;
 }
 interface Action {
@@ -22,7 +22,7 @@ const limitations = [
   "Final delivery is unconfirmed: later handlers can replace this application-boundary payload.",
   "Codex WebSocket may send a delta; wire payload and effective server context are not observed.",
   "The three-card viewer does not limit the model context.",
-  "A clean original and provider-internal resize are unavailable unless an adapter supplies them.",
+  "Pre-resize source pixels are bounded adapter resources; pre-overlay clean pixels and provider-internal resize may be unavailable.",
   "Action links match image bytes; identical screenshots can have more than one source.",
 ];
 const maxImageBytes = 12 * 1024 * 1024;
@@ -89,6 +89,8 @@ export class VisionTrace {
       const value = block as Record<string, unknown>;
       return value?.type === "text" && typeof value.text === "string" ? value.text : "";
     }).filter(Boolean).join("\n").slice(0, 16_000);
+    const reported = state.agent_image as { source?: { hash?: unknown } } | undefined;
+    const originalHash = typeof reported?.source?.hash === "string" && /^[a-f0-9]{64}$/.test(reported.source.hash) ? reported.source.hash : undefined;
     for (const block of content) {
       const value = block as Record<string, unknown>;
       if (value?.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string") continue;
@@ -97,7 +99,8 @@ export class VisionTrace {
       this.assets.set(image.hash, image);
       this.captures.push({ ...this.frame(image, "captured"), actionId: id,
         source: metadata({ tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, image_region: state.image_region }),
-        configuration: metadata({ requested: action.input, effective: "unreported by current adapter", timings: state.timings }) });
+        configuration: metadata({ requested: action.input, effective: state.agent_image ?? "unreported by current adapter", timings: state.timings }),
+        ...(originalHash ? { original: "available" as const, originalHash } : {}) });
       this.captures = this.captures.slice(-3);
     }
     this.prune(); this.revision++;
@@ -161,7 +164,7 @@ export class VisionTrace {
       const matches = this.captures.filter(item => item.hash === image.hash);
       const capture = matches.length === 1 ? matches[0] : undefined;
       const frame = { ...this.frame(image, "prepared"), actionId: capture?.actionId, source: capture?.source,
-        configuration: capture?.configuration, matchingActionIds: matches.map(item => item.actionId!).filter(Boolean), requestId: request.id, path, detail };
+        configuration: capture?.configuration, original: capture?.original ?? "unavailable", originalHash: capture?.originalHash, matchingActionIds: matches.map(item => item.actionId!).filter(Boolean), requestId: request.id, path, detail };
       this.assets.set(image.hash, image);
       this.frames.push(frame); request.frameIds.push(frame.id);
     }

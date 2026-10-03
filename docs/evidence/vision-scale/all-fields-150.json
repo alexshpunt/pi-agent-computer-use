@@ -1,0 +1,63 @@
+{
+  "protocol": "All twelve fields attempted from the 126x150 returned PNG; exact match grading, no original or OCR.",
+  "records": [
+    {
+      "trial": "480e8d74aa53e611b336e4f1980d68d0",
+      "image": {
+        "configuration": {
+          "kernel": "lanczos3",
+          "maxLongEdge": 800,
+          "scale": 0.1875,
+          "version": 7
+        },
+        "cap": 150,
+        "source": {
+          "hash": "3dfca3d7b18467e123b8c12cddd4d1c81c969ef51a7794589087c8f359899739",
+          "width": 1085,
+          "height": 1287,
+          "bytes": 133947
+        },
+        "output": {
+          "hash": "5a93924bacf79ed5fc67d7976f221133b81be0cfe5d88084ab614aab75938869",
+          "width": 126,
+          "height": 150,
+          "bytes": 17062
+        },
+        "mapping": {
+          "offsetX": 0,
+          "offsetY": 0,
+          "scaleX": 8.61111111111111,
+          "scaleY": 8.58
+        },
+        "timings": {
+          "decode_ms": 15.272055000066757,
+          "resample_ms": 4.199920000508428,
+          "encode_ms": 2.0579339992254972,
+          "total_ms": 21.529908999800682
+        },
+        "sourceCss": {
+          "width": 1085,
+          "height": 1287
+        }
+      },
+      "light": [
+        "river forest birch 5460",
+        "river river forest 9791",
+        "river cedar cedar 8656",
+        "cedar cedar river 6327",
+        "orchid winter harbor 7394",
+        "forest harbor birch 7314"
+      ],
+      "dark": [
+        "river violet stone 6687",
+        "orchid meadow cedar 9998",
+        "harbor harbor river 8650",
+        "birch stone violet 4718",
+        "meadow forest stone 8411",
+        "violet winter forest 6882"
+      ],
+      "note": "All twelve attempted from 126x150 PNG; fine rows are speculative, not confidently read.",
+      "result": "Trial 480e8d74aa53e611b336e4f1980d68d0 · lanczos3 / cap 150 · Light 0/6, Dark 0/6: light 1 wrong · light 2 wrong · light 3 wrong · light 4 wrong · light 5 wrong · light 6 wrong · dark 1 wrong · dark 2 wrong · dark 3 wrong · dark 4 wrong · dark 5 wrong · dark 6 wrong"
+    }
+  ]
+}
