@@ -17,21 +17,23 @@ const call = async (operation, args={}, status="observed", signal) => {
   assert.equal(result.details.status,status,JSON.stringify(result.details));
   return result;
 };
-const act = (r,action,extra={}) => call("act",{page_ref:r.details.page_ref,observation_id:r.details.observation_id,action,...extra});
-const element = (r,name) => { const found=r.details.elements.find(e=>e.name===name); assert.ok(found,name); return found.element_ref; };
+const act = (_state, action, extra = {}) => call("act", {
+  ...(action === "click" ? { click: extra.hint } : action === "fill" ? { fill: extra.hint, text: extra.text } : { scroll: extra.delta_y }), observe: true,
+});
+const element = (r,name) => { const found=r.details.elements.find(e=>e.name===name); assert.ok(found,name); return found.hint; };
 const image = async (r,name) => { const png=r.content.find(c=>c.type==="image"); assert.ok(png); await writeFile(directory+"/"+name+".png",Buffer.from(png.data,"base64")); };
 const blank = r => assert.match(r.details.text,/Storage marker: absent; Cookie marker: absent/);
 let slowServer;
 let success=false;
 try {
   let r=await call("open",{url:fixture.url});
-  const first=r.details.page_ref;
-  r=await act(r,"click",{element_ref:element(r,"Open message form")});
+  const first=r.details.tab;
+  r=await act(r,"click",{hint:element(r,"Open message form")});
   blank(r);
-  const stale={page_ref:first,observation_id:r.details.observation_id,action:"fill",element_ref:element(r,"Message"),text:"must not write"};
-  r=await act(r,"fill",{element_ref:element(r,"Message"),text:"Pi visible browser"});
+  const stale={fill:element(r,"Message"),text:"must not write"};
+  r=await act(r,"fill",{hint:element(r,"Message"),text:"Pi visible browser"});
   await call("act",stale,"refused");
-  r=await act(r,"click",{element_ref:element(r,"Submit message")});
+  r=await act(r,"click",{hint:element(r,"Submit message")});
   assert.match(r.details.text,/Confirmed: Pi visible browser/);
   assert.match(r.details.text,/Storage marker: Pi visible browser; Cookie marker: present/);
   await image(r,"confirmed");
@@ -43,23 +45,23 @@ try {
   records.push({operation:"native-active",details:active});
   r=await act(r,"scroll",{delta_y:1800});
   await image(r,"scrolled");
-  r=await act(r,"click",{element_ref:element(r,"Open second tab")});
+  r=await act(r,"click",{hint:element(r,"Open second tab")});
   const tabs=await call("tabs",{},"listed");
   const second=tabs.details.tabs.find(t=>t.title==="Pi browser second tab");
-  assert.ok(second); assert.notEqual(second.page_ref,first);
-  const secondState=await call("observe",{page_ref:second.page_ref});
+  assert.ok(second); assert.notEqual(second.tab,first);
+  const secondState=await call("focus",{tab:second.tab});
   assert.match(secondState.details.text,/Second owned tab/);
   await image(secondState,"second-tab");
-  await call("act",{page_ref:second.page_ref,observation_id:secondState.details.observation_id,action:"click",element_ref:element(r,"Back to start")},"refused");
-  await call("observe",{page_ref:"foreign"},"refused");
-  r=await call("observe",{page_ref:first});
+  await call("act",{click:stale.fill},"refused");
+  await call("focus",{tab:99999},"refused");
+  r=await call("focus",{tab:first});
   r=await act(r,"scroll",{delta_y:-2000});
   assert.match(r.details.text,/Confirmed: Pi visible browser/);
   await image(r,"returned");
   const closed=await client.close(); records.push({operation:"close",details:closed.details}); assert.equal(closed.details.status,"closed");
-  await call("observe",{page_ref:first},"refused");
+  await call("observe",{},"refused");
   r=await call("open",{url:fixture.url+"/form"});
-  assert.notEqual(r.details.page_ref,first); blank(r);
+  assert.notEqual(element(r,"Message"),stale.fill); blank(r);
   await image(r,"clean-profile");
   assert.equal((await client.close()).details.status,"closed");
 

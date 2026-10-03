@@ -39,7 +39,7 @@ test("aborted in-flight input is unknown, ends the owned pipe and cannot be repl
     return child;
   });
   const controller=new AbortController();
-  const action=client.call("act",{action:"click"},controller.signal);
+  const action=client.call("act",{click:"a"},controller.signal);
   await dispatched;
   controller.abort();
   expect((await action).details.status).toBe("unknown");
@@ -61,6 +61,19 @@ test("a disconnected worker with an uncleaned lease blocks new launch and never 
   expect((await client.call("open", {url:"https://example.test"})).details.status).toBe("refused");
   expect((await client.close()).details.status).toBe("unknown");
   expect(launches).toBe(1);
+});
+
+test("short hints are never reused after an owned worker is replaced", async () => {
+  const client = new BrowserClient(async () => spawn(process.execPath,
+    ["test/fixtures/browser-worker.ts", "/dev/null"], { stdio: ["pipe", "pipe", "pipe"] }));
+  try {
+    const first = await client.call("open", { url: "https://example.test" });
+    const old = (first.details.elements as { hint: string }[])[0].hint;
+    await client.close();
+    const second = await client.call("open", { url: "https://example.test" });
+    expect((second.details.elements as { hint: string }[]).map(e => e.hint)).not.toContain(old);
+    expect((await client.call("act", { click: old })).details.status).toBe("refused");
+  } finally { await client.close(); }
 });
 
 test("profile cleanup refuses personal paths and malformed leases before filesystem or process access", async () => {

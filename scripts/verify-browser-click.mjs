@@ -5,7 +5,7 @@ import { BrowserClient } from "../src/browser-client.ts";
 import { startBrowserFixture } from "../test/fixtures/browser-site.mjs";
 import { browserNativeState } from "./browser-native-state.mjs";
 
-// Opt-in Windows check on a custom local control absent from semantic element refs.
+// Opt-in Windows check for fresh screenshot coordinates, bounded wait and scroll refusal.
 const directory = ".tmp/browser-click";
 await mkdir(directory, { recursive: true });
 const fixture = await startBrowserFixture();
@@ -17,8 +17,7 @@ const call = async (operation, args, status = "observed") => {
   assert.equal(result.details.status, status, JSON.stringify(result.details));
   return result;
 };
-const point = state => ({ page_ref: state.details.page_ref, observation_id: state.details.observation_id,
-  action: "click", x: 150, y: 140 });
+const point = () => ({ click: { x: 150, y: 140 } });
 const image = async (state, name) => {
   const png = Buffer.from(state.content.find(item => item.type === "image").data, "base64");
   assert.deepEqual(state.details.screenshot, { width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
@@ -27,19 +26,19 @@ const image = async (state, name) => {
 let success = false;
 try {
   const opened = await call("open", { url: fixture.url + "/pointer?delay" });
-  assert.deepEqual(opened.details.elements, []);
   assert.match(opened.details.text, /Clicks: 0/);
   await image(opened, "before");
-  await call("act", { ...point(opened), x: opened.details.screenshot.width }, "refused");
-  const clicked = await call("act", { ...point(opened), wait_ms: 300 });
+  await call("act", { click: { x: opened.details.screenshot.width, y: 140 } }, "refused");
+  await call("act", { ...point(), wait_ms: 300 }, "acted");
+  await call("act", point(), "refused");
+  const clicked = await call("observe", {});
   assert.match(clicked.details.text, /Clicks: 1/);
   await image(clicked, "clicked");
-  await call("act", point(opened), "refused");
   const moving = await call("open", { url: fixture.url + "/pointer?scroll" });
   await setTimeout(3500);
-  const stale = await call("act", point(moving), "refused");
+  const stale = await call("act", point(), "refused");
   assert.match(stale.content[0].text, /Viewport, scroll or zoom changed/);
-  const untouched = await call("observe", { page_ref: moving.details.page_ref });
+  const untouched = await call("observe", {});
   assert.match(untouched.details.text, /Clicks: 0/);
   success = true;
 } finally {

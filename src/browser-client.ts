@@ -7,7 +7,7 @@ import { cleanupBrowserProfile } from "./browser-profile.ts";
 
 const run = promisify(execFile);
 /** The only protocol operations accepted by the trusted Windows browser worker. */
-export type BrowserOperation = "open" | "observe" | "act" | "tabs" | "close";
+export type BrowserOperation = "open" | "focus" | "observe" | "act" | "tabs" | "close";
 interface Request {
   resolve(result: BrowserResult): void;
   reject(error: Error): void;
@@ -18,6 +18,7 @@ export class BrowserClient {
   private child?: ChildProcessWithoutNullStreams;
   private pending = new Map<number, Request>();
   private serial = 0;
+  private hintOffset = 0;
   private tail: Promise<unknown> = Promise.resolve();
   private buffer = "";
   private stderr = "";
@@ -28,6 +29,15 @@ export class BrowserClient {
 
   /** An injected launcher must return a new owned stdio worker; used by protocol contract tests. */
   constructor(launcher?: () => Promise<ChildProcessWithoutNullStreams>) { this.launcher = launcher; }
+
+  /** Keep retired labels retired when Pi reloads or restores session history. Does not launch a worker. */
+  restoreHints(offset: number): void {
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("Invalid hint checkpoint.");
+    this.hintOffset = Math.max(this.hintOffset, offset);
+  }
+
+  /** Last allocated label number, without any browser or target identity. */
+  get allocatedHints(): number { return this.hintOffset; }
 
   private async launch(): Promise<ChildProcessWithoutNullStreams> {
     if (this.launcher) return this.launcher();
@@ -70,6 +80,11 @@ export class BrowserClient {
           if (response.event === "profile-created" && typeof response.profile === "string") {
             if (this.ownedProfile && this.ownedProfile !== response.profile) throw new Error("Unexpected second profile lease.");
             this.ownedProfile = response.profile;
+            continue;
+          }
+          if (response.event === "hints-allocated") {
+            if (!Number.isSafeInteger(response.offset) || response.offset < this.hintOffset) throw new Error("Invalid hint lease.");
+            this.hintOffset = response.offset;
             continue;
           }
           const request = this.pending.get(response.id);
@@ -137,7 +152,7 @@ export class BrowserClient {
             this.retireInBackground();
           }, 40_000);
           sent = true;
-          this.child!.stdin.write(JSON.stringify({ id, operation, args }) + "\n");
+          this.child!.stdin.write(JSON.stringify({ id, operation, args, hint_offset: this.hintOffset }) + "\n");
         });
         result.details.elapsed_ms = Math.round(performance.now() - start);
         return result;

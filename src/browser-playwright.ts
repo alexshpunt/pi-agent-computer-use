@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium, type BrowserContext, type ElementHandle, type Page } from "playwright-core";
+import { chromium, type BrowserContext, type ElementHandle, type JSHandle, type Page } from "playwright-core";
 import { browserLaunchOptions } from "./browser-launch.ts";
 import { BrowserRefusal, type BrowserBackend, type BrowserSnapshot } from "./browser-session.ts";
 
 interface Entry {
   page: Page; generation: number; observedGeneration?: number; observedGeometry?: string;
   elements: Map<string, ElementHandle<HTMLElement | SVGElement>>;
+  overlay?: JSHandle<HTMLElement>;
 }
 
 /** Windows-only visible browser adapter. Creates its own profile and never connects to an existing browser. */
@@ -97,45 +98,81 @@ export class PlaywrightBrowser implements BrowserBackend {
   }
 
   /** Select the owned tab and capture bounded top-level DOM semantics plus real viewport PNG. */
-  async observe(id: string): Promise<BrowserSnapshot> {
+  async observe(id: string, hintFor: (id: string) => string = id => id): Promise<BrowserSnapshot> {
     const entry = this.current(id);
     entry.observedGeneration = undefined;
+    if (entry.overlay) {
+      await entry.overlay.evaluate(node => node.remove()).catch(() => undefined);
+      await entry.overlay.dispose().catch(() => undefined); entry.overlay = undefined;
+    }
     for (const handle of entry.elements.values()) await handle.dispose().catch(() => undefined);
     entry.elements.clear();
     const page = entry.page;
     await page.bringToFront();
     const generation = entry.generation;
-    const handles = await page.locator("a[href], button, input:not([type=hidden]), textarea, select, [role=button], [role=link], [contenteditable=true]").elementHandles() as ElementHandle<HTMLElement | SVGElement>[];
-    const elements: BrowserSnapshot["elements"] = [];
-    for (const handle of handles.slice(0, 120)) {
-      if (!(await handle.isVisible())) { await handle.dispose(); continue; }
+    // Bounded top-document heuristics, not site-specific selectors or a promise to find every widget.
+    const candidates = await page.evaluateHandle(() => {
+      const selector = 'a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio],[role=textbox],[contenteditable=true],[onclick],[jsaction],[tabindex]';
+      const visible = (node: Element) => {
+        const rect = node.getBoundingClientRect(); const style = getComputedStyle(node);
+        return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth && style.visibility !== 'hidden' && style.display !== 'none';
+      };
+      const nodes = [...document.body.querySelectorAll('*')].slice(0, 8000);
+      const explicit = nodes.filter(node => node.matches(selector) && visible(node));
+      const pointers = nodes.filter(node => visible(node) && getComputedStyle(node).cursor === 'pointer' && !node.closest(selector));
+      const leaves = pointers.filter(node => !pointers.some(other => other !== node && node.contains(other)));
+      return [...new Set([...explicit, ...leaves])].slice(0, 120);
+    });
+    const handles: ElementHandle<HTMLElement | SVGElement>[] = [];
+    try {
+      for (const property of (await candidates.getProperties()).values()) {
+        const element = property.asElement();
+        if (element) handles.push(element as ElementHandle<HTMLElement | SVGElement>);
+        else await property.dispose();
+      }
+    } finally { await candidates.dispose(); }
+    const elements: BrowserSnapshot['elements'] = [];
+    const labels: { hint: string; x: number; y: number }[] = [];
+    for (const handle of handles) {
       const data = await handle.evaluate(element => {
         const input = element as HTMLInputElement;
-        const labels = "labels" in input && input.labels ? [...input.labels].map(label => label.innerText).join(" ") : "";
-        const labelled = (element.getAttribute("aria-labelledby") ?? "").split(/\s+/).map(id => document.getElementById(id)?.textContent ?? "").join(" ").trim();
+        const labels = 'labels' in input && input.labels ? [...input.labels].map(label => label.innerText).join(' ') : '';
+        const labelled = (element.getAttribute('aria-labelledby') ?? '').split(/\s+/).map(id => document.getElementById(id)?.textContent ?? '').join(' ').trim();
         const tag = element.tagName.toLowerCase();
-        const roles: Record<string, string> = { a: "link", button: "button", textarea: "textbox", select: "combobox", input: "input" };
-        const role = element.getAttribute("role") ?? roles[tag] ?? tag;
-        return { role, name: (element.getAttribute("aria-label") || labelled || labels || (element as HTMLElement).innerText || input.placeholder || element.getAttribute("title") || "").trim().slice(0, 300),
-          ...(input.type !== "password" && "value" in element ? { value: String(input.value).slice(0, 1000) } : {}) };
+        const roles: Record<string, string> = { a: 'link', button: 'button', textarea: 'textbox', select: 'combobox', input: 'input' };
+        const rect = element.getBoundingClientRect();
+        return { role: element.getAttribute('role') ?? roles[tag] ?? tag,
+          name: (element.getAttribute('aria-label') || labelled || labels || (element as HTMLElement).innerText || input.placeholder || element.getAttribute('title') || '').trim().slice(0, 300),
+          ...(input.type !== 'password' && 'value' in element ? { value: String(input.value).slice(0, 1000) } : {}),
+          x: Math.max(0, rect.left), y: Math.max(0, rect.top) };
       });
-      const ref = randomUUID(); entry.elements.set(ref, handle);
-      elements.push({ id: ref, ...data });
+      const id = randomUUID(); entry.elements.set(id, handle);
+      const { x, y, ...semantic } = data;
+      elements.push({ id, ...semantic }); labels.push({ hint: hintFor(id), x, y });
     }
-    for (const handle of handles.slice(120)) await handle.dispose();
-    const text = await page.locator("body").innerText();
-    const title = await page.title();
-    const url = page.url();
+    const text = await page.locator('body').innerText();
+    const title = await page.title(); const url = page.url();
+    entry.overlay = await page.evaluateHandle(labels => {
+      const root = document.createElement('div');
+      root.style.cssText = 'all:initial!important;position:fixed!important;inset:0!important;z-index:2147483647!important;pointer-events:none!important;';
+      const shadow = root.attachShadow({ mode: 'closed' });
+      for (const { hint, x, y } of labels) {
+        const marker = document.createElement('span'); marker.textContent = hint;
+        marker.style.cssText = 'position:absolute;pointer-events:none;background:#ffe66a;color:#111;border:1px solid #111;border-radius:3px;padding:1px 3px;font:bold 13px monospace;line-height:16px;';
+        marker.style.left = x + 'px'; marker.style.top = y + 'px'; shadow.append(marker);
+      }
+      document.documentElement.append(root); return root;
+    }, labels);
     const geometry = await this.geometry(page);
-    const png = await page.screenshot({ type: "png", scale: "css", timeout: 10_000 });
-    if (geometry !== await this.geometry(page)) throw new BrowserRefusal("Viewport changed during capture; observe again.");
+    const png = await page.screenshot({ type: 'png', scale: 'css', timeout: 10_000 });
+    if (geometry !== await this.geometry(page)) throw new BrowserRefusal('Viewport changed during capture; observe again.');
     entry.observedGeometry = geometry;
-    if (generation !== entry.generation || page.isClosed()) throw new BrowserRefusal("Page navigated during observation; read again.");
-    if (png.length > 12_000_000) throw new BrowserRefusal("Viewport screenshot exceeds the bounded response size.");
+    if (generation !== entry.generation || page.isClosed()) throw new BrowserRefusal('Page navigated during observation; read again.');
+    if (png.length > 12_000_000) throw new BrowserRefusal('Viewport screenshot exceeds the bounded response size.');
     entry.observedGeneration = generation;
-    return { url, title, text: text.slice(0, 16_000), elements, png: png.toString("base64"),
+    return { url, title, text: text.slice(0, 16_000), elements, png: png.toString('base64'),
       screenshot: { width: png.readUInt32BE(16), height: png.readUInt32BE(20) },
-      browser: this.context?.browser()?.version(), truncated: text.length > 16_000 || handles.length > 120 };
+      browser: this.context?.browser()?.version(), truncated: text.length > 16_000 || handles.length === 120 };
   }
 
   private async geometry(page: Page): Promise<string> {
@@ -155,10 +192,10 @@ export class PlaywrightBrowser implements BrowserBackend {
     if (coordinates && entry.observedGeometry !== await this.geometry(entry.page))
       throw new BrowserRefusal("Viewport, scroll or zoom changed since the screenshot; observe again.");
     if (["click", "fill", "press"].includes(String(action.action)) && !coordinates) {
-      if (!handle || !(await handle.evaluate(element => element.isConnected && element.ownerDocument === document)))
+      if (!handle || !(await handle.evaluate(element => element.isConnected && element.ownerDocument === document)) || !(await handle.isVisible()))
         throw new BrowserRefusal("Observed element was removed or belongs to an old document.");
     }
-    entry.observedGeneration = undefined;
+    if (action.action === "scroll" || action.action === "navigate") entry.observedGeneration = undefined;
     switch (action.action) {
       case "click":
         if (coordinates) await entry.page.mouse.click(Number(action.x), Number(action.y));

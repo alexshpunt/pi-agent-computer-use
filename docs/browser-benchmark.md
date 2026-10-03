@@ -32,3 +32,7 @@ This reduces model/tool round trips in this attempt, not measured completion tim
 42 unit tests, typecheck and three real-Pi integrations passed. The native custom-control check passed with a 200 ms delayed update and `wait_ms:300`, including coordinate bounds, stale-scroll refusal and owned cleanup. [New native records](evidence/browser-wait/run.json) are separate from the first iteration's evidence. The retry test proves one backend open, a bounded capture retry and direct recovery through the known ref after repeated capture failure.
 
 `inspect_tui` captured pane `w3E9:p6`, revision 257: both calls, the Level 2 result and the round-trip comparison were readable. The agent also received and checked the actual Level 2 PNG. The collapsed TUI still does not display inline screenshots.
+
+## Third check: Level 2
+
+Before the focused API change, Level 2 (Stop Signs) passed in six browser calls: one observe, four coordinate selections, then Verify by element ref with wait_ms2000. The returned text and PNG showed Level 3 (Wiggles). No Level 3 input was sent; the game was closed before native tests and reload. This is untimed observed progress, not a speed score.
