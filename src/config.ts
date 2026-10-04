@@ -5,22 +5,22 @@ import path from "node:path";
 export interface ComputerConfig { command: string; args?: string[]; interop?: string }
 
 /** Find the qualified Windows Driver without changing PATH, services, or machine setup. */
-export async function findDriver(): Promise<string> {
+export async function findDriver(version: "0.32.0" | "0.33.1" = "0.32.0"): Promise<string> {
   if (process.env.CUA_DRIVER_PATH) return process.env.CUA_DRIVER_PATH;
-  const suffix = ["AppData", "Local", "Programs", "PiComputerUsePoC", "cua-driver-0.32.0", "cua-driver.exe"];
+  const suffix = ["AppData", "Local", "Programs", "PiComputerUsePoC", `cua-driver-${version}`, "cua-driver.exe"];
   const candidates = process.platform === "win32"
-    ? [path.join(process.env.LOCALAPPDATA ?? "", "Programs", "PiComputerUsePoC", "cua-driver-0.32.0", "cua-driver.exe")]
+    ? [path.join(process.env.LOCALAPPDATA ?? "", "Programs", "PiComputerUsePoC", `cua-driver-${version}`, "cua-driver.exe")]
     : (await readdir("/mnt/c/Users").catch(() => [] as string[])).map(user => path.join("/mnt/c/Users", user, ...suffix));
   const found = [];
   for (const candidate of candidates) if ((await stat(candidate).catch(() => undefined))?.isFile()) found.push(candidate);
   if (found.length !== 1) throw new Error(found.length
     ? "Multiple Windows Driver installs found. Set CUA_DRIVER_PATH to the intended cua-driver.exe."
-    : "Windows Cua Driver 0.32.0 was not found. Install it once using docs/standalone-poc.md or set CUA_DRIVER_PATH. Do not install a Linux Driver for the Windows host.");
+    : `Windows Cua Driver ${version} was not found. Install the qualified version or set CUA_DRIVER_PATH. Do not install a Linux Driver for the Windows host.`);
   return found[0];
 }
 
 /** Read optional local overrides, otherwise discover the installed Driver. Normal opening needs no config file. */
-export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
+export async function loadComputerConfig(cwd: string, version: "0.32.0" | "0.33.1" = "0.32.0"): Promise<ComputerConfig> {
   let raw: Record<string, unknown> = {};
   try {
     raw = JSON.parse(await readFile(path.join(cwd, ".pi", "computer-use.json"), "utf8"));
@@ -33,6 +33,6 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     || (raw.args !== undefined && (!Array.isArray(raw.args) || !raw.args.every(arg => typeof arg === "string")))
     || (raw.interop !== undefined && typeof raw.interop !== "string"))
     throw new Error("Invalid computer-use configuration. Remove the old target field: this extension uses YOLO session window references, not configured PID/HWND.");
-  return { command: raw.command as string | undefined ?? await findDriver(),
+  return { command: raw.command as string | undefined ?? await findDriver(version),
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(raw.interop ? { interop: raw.interop as string } : {}) };
 }

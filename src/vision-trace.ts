@@ -6,7 +6,7 @@ interface ImageBytes { bytes: Buffer; mime: string; hash: string; width?: number
 interface Frame {
   id: string; hash: string; mime: string; bytes: number; width?: number; height?: number;
   time: string; stage: "captured" | "prepared" | "evicted"; finalDelivery: "unconfirmed";
-  original: "unavailable" | "available"; originalHash?: string; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
+  original: "unavailable"; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
   source?: unknown; configuration?: unknown;
 }
 interface Action {
@@ -22,7 +22,8 @@ const limitations = [
   "Final delivery is unconfirmed: later handlers can replace this application-boundary payload.",
   "Codex WebSocket may send a delta; wire payload and effective server context are not observed.",
   "The three-card viewer does not limit the model context.",
-  "Pre-resize source pixels are bounded adapter resources; pre-overlay clean pixels and provider-internal resize may be unavailable.",
+  "Native CUA exposes returned PNG/JPEG bytes, not retained full-resolution originals.",
+  "Native JPEG dimensions are reported by matching adapter metadata. Provider-internal resize and final delivery are unobserved.",
   "Action links match image bytes; identical screenshots can have more than one source.",
 ];
 const maxImageBytes = 12 * 1024 * 1024;
@@ -89,18 +90,23 @@ export class VisionTrace {
       const value = block as Record<string, unknown>;
       return value?.type === "text" && typeof value.text === "string" ? value.text : "";
     }).filter(Boolean).join("\n").slice(0, 16_000);
-    const reported = state.agent_image as { source?: { hash?: unknown } } | undefined;
-    const originalHash = typeof reported?.source?.hash === "string" && /^[a-f0-9]{64}$/.test(reported.source.hash) ? reported.source.hash : undefined;
+    const reported = state.agent_image as { output?: { hash?: unknown; width?: unknown; height?: unknown }; route?: unknown; coordinate_space?: unknown; native?: unknown; origin?: unknown } | undefined;
     for (const block of content) {
       const value = block as Record<string, unknown>;
       if (value?.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string") continue;
       const image = imageBytes(value.data, value.mimeType);
       if (!image) continue;
+      // JPEG geometry comes from matching native output metadata, not a new decoder.
+      if (reported?.output?.hash === image.hash) {
+        const { width, height } = reported.output;
+        if (Number.isSafeInteger(width) && (width as number) > 0 && Number.isSafeInteger(height) && (height as number) > 0) {
+          image.width ??= width as number; image.height ??= height as number;
+        }
+      }
       this.assets.set(image.hash, image);
       this.captures.push({ ...this.frame(image, "captured"), actionId: id,
-        source: metadata({ tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, image_region: state.image_region, saved_crop: state.saved_crop, origin: (state.agent_image as { origin?: unknown } | undefined)?.origin }),
-        configuration: metadata({ requested: action.input, effective: state.agent_image ?? "unreported by current adapter", timings: state.timings }),
-        ...(originalHash ? { original: "available" as const, originalHash } : {}) });
+        source: metadata({ tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, origin: reported?.origin, route: reported?.route, coordinate_space: reported?.coordinate_space, native: reported?.native }),
+        configuration: metadata({ requested: action.input, effective: state.agent_image ?? "unreported by current adapter", timings: state.timings }) });
       this.captures = this.captures.slice(-3);
     }
     this.prune(); this.revision++;
@@ -163,8 +169,8 @@ export class VisionTrace {
     for (const { image, path, detail } of selected) {
       const matches = this.captures.filter(item => item.hash === image.hash);
       const capture = matches.length === 1 ? matches[0] : undefined;
-      const frame = { ...this.frame(image, "prepared"), actionId: capture?.actionId, source: capture?.source,
-        configuration: capture?.configuration, original: capture?.original ?? "unavailable", originalHash: capture?.originalHash, matchingActionIds: matches.map(item => item.actionId!).filter(Boolean), requestId: request.id, path, detail };
+      const frame = { ...this.frame(image, "prepared"), width: image.width ?? capture?.width, height: image.height ?? capture?.height, actionId: capture?.actionId, source: capture?.source,
+        configuration: capture?.configuration, original: capture?.original ?? "unavailable", matchingActionIds: matches.map(item => item.actionId!).filter(Boolean), requestId: request.id, path, detail };
       this.assets.set(image.hash, image);
       this.frames.push(frame); request.frameIds.push(frame.id);
     }

@@ -1,5 +1,7 @@
 # Visible browser results
 
+Historical pre-CUA route. Its code, runners and dependencies were retired by LPT-396; revision-linked results remain evidence, not current API guarantees. Use [the native CUA browser contract](browser.md) for current actions, scaling and fresh zoom.
+
 [LPT-370](https://linear.app/alexshpunt/issue/LPT-370) passed on 2026-10-03. Pi in WSL controlled a new **visible Windows Chrome** using a disposable profile and a private debugging pipe. No personal browser session was attached. The agent and human saw the same page, not separate engines or a mirror.
 
 ## Environment and boundary

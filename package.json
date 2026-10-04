@@ -7,6 +7,9 @@
   "pi": {
     "extensions": [
       "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   },
   "engines": {
@@ -19,9 +22,7 @@
     "probe:driver": "node scripts/probe-driver.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.31.0",
-    "playwright-core": "1.63.0",
-    "sharp": "0.35.5"
+    "@modelcontextprotocol/sdk": "1.31.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

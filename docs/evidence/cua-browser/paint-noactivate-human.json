@@ -1,0 +1,9 @@
+{
+  "target": { "pid": 2380, "window_id": 459140 },
+  "covered_gate": {
+    "source": "actual ask_user answer",
+    "question_id": "cua_noactivate_covered",
+    "value": "covered",
+    "label": "Да, перекрыто; фокус в другом окне"
+  }
+}

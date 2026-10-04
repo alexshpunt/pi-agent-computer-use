@@ -8,13 +8,12 @@ export const visionPanel = `<!doctype html>
 <p class="notice"><strong>Final delivery is unconfirmed.</strong> These are exact image bytes at Pi's existing application-boundary hook, not confirmed wire payloads or model embeddings.</p>
 <p id="session"></p>
 <section class="controls"><h2>Agent image size</h2>
-<p><a href="trial">Open the random text reading trial</a></p>
-<p class="muted">Owned-browser PNGs only. Changes apply to the next capture; existing frames stay unchanged. Reload/new session restores defaults. Default: MKS2021, 500px long edge. Small text may need a closer view.</p>
+<p class="muted" id="route-note">Native CUA browser-window PNGs, including browser chrome. Lanczos3 is fixed by the driver. Default: 500px long edge. Detail uses fresh padded JPEG zoom, not saved-original crops. Changes apply only to the next capture.</p>
 <form id="image-settings">
-<label>Downsampling <select id="kernel"><option value="lanczos2">Lanczos2</option><option value="lanczos3">Lanczos3</option><option value="mitchell">Mitchell</option><option value="mks2021" selected>MKS2021</option></select></label>
-<label>Max long edge (px) <input id="long-edge" type="number" min="64" max="4096" step="1" value="500" required></label>
+<label>Driver kernel <select id="kernel" disabled><option value="lanczos3" selected>Lanczos3</option></select></label>
+<label>Max long edge (px) <input id="long-edge" type="text" inputmode="numeric" pattern="[0-9]+" value="500" required></label>
 <label>Scale slider <input id="scale" type="range" min="0.05" max="1" step="any" value="1"><output id="scale-value">1</output></label>
-<label>Scale exact <input id="scale-number" type="number" min="0.05" max="1" step="any" value="1" required></label>
+<label>Scale exact <input id="scale-number" type="text" inputmode="decimal" value="1" required></label>
 <button type="submit">Apply to next capture</button>
 </form><p id="settings-status" role="status"></p></section>
 <section><h2>Last three boundary images</h2><p class="muted">Oldest → newest. The viewer does not change the model's image budget.</p><div id="frames" class="frames"></div></section>
@@ -89,8 +88,7 @@ function render(state){
     card.append(el("p",frame.time+" · "+(frame.width??"?")+"×"+(frame.height??"?")+" · "+frame.bytes+" bytes","meta"));
     card.append(el("p","Request "+frame.requestId+" · action "+(frame.actionId??"unmatched"),"meta"));
     card.append(el("p","SHA-256 "+frame.hash,"meta"));
-    card.append(el("p","Retained source: "+frame.original+". Originals are bounded resources, not extra screenshots.","muted"));
-    if(frame.originalHash){const link=el("a","Open retained original PNG");link.href="images/"+frame.originalHash;link.target="_blank";link.rel="noopener";card.append(link)}
+    card.append(el("p","CUA returns native capture bytes; no full-resolution original is retained.","muted"));
     card.append(el("pre",JSON.stringify({path:frame.path,detail:frame.detail,source:frame.source,matchingActionIds:frame.matchingActionIds,configuration:frame.configuration,finalDelivery:frame.finalDelivery},null,2)));
     frames.append(card);
   }

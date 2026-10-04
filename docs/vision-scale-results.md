@@ -1,5 +1,7 @@
 # Agent image size: results
 
+Historical pre-CUA route. Its code, runners and dependencies were retired by LPT-396; revision-linked results remain evidence, not current API guarantees. Use [the native CUA browser contract](browser.md) for current actions, scaling and fresh zoom.
+
 [LPT-375](https://linear.app/alexshpunt/issue/LPT-375) adds physical PNG resizing and the local reading trial. The user chose **MKS2021, maximum long edge 500 px, scale 1** for the owned-browser overview. General desktop/display images and per-request crop scale remain separate work.
 
 ## What passed

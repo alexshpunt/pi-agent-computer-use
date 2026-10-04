@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import browserFixture from "./browser-extension.ts";
+import browserFixture from "./cua-browser-extension.ts";
 import { registerVisionDebug } from "../../src/vision-debug.ts";
 
 export default function visionFixture(pi: ExtensionAPI): void {

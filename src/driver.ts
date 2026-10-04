@@ -15,7 +15,8 @@ export class McpDriver implements Driver {
 
   private readonly windowIdentity: WindowIdentity;
 
-  constructor(private readonly config: ComputerConfig) {
+  /** Each backend opts into one qualified pin; desktop remains on 0.32.0. */
+  constructor(private readonly config: ComputerConfig, private readonly version: "0.32.0" | "0.33.1" = "0.32.0") {
     this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
   }
 
@@ -54,8 +55,8 @@ export class McpDriver implements Driver {
     try {
       await client.connect(transport, { signal, timeout: 15_000 });
       const server = client.getServerVersion();
-      if (server?.name !== "cua-driver" || server.version !== "0.32.0")
-        throw new Error("This PoC requires cua-driver 0.32.0. Requalify before changing the pin.");
+      if (server?.name !== "cua-driver" || server.version !== this.version)
+        throw new Error(`This backend requires cua-driver ${this.version}. Requalify before changing the pin.`);
       return client;
     } catch (error) {
       await this.close();

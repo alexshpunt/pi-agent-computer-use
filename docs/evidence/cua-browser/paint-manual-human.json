@@ -1,0 +1,28 @@
+{
+  "target": {
+    "pid": 45248,
+    "window_id": 5639126
+  },
+  "page": "http://127.0.0.1:45583/",
+  "chromiumFlagsChanged": false,
+  "userAnswers": [
+    {
+      "id": "cua_manual_background_ready",
+      "value": "covered",
+      "label": "Да, окно теперь в фоне и перекрыто"
+    },
+    {
+      "id": "cua_manual_uncover_stage",
+      "value": "one",
+      "label": "STAGE ONE — зелёный фон"
+    }
+  ],
+  "provenance": "Actual ask_user answers; window occlusion/foreground was not independently measured.",
+  "nativeClickCount": 1,
+  "nativePageScreenshotCount": 0,
+  "visualChecks": {
+    "covered": "STAGE ZERO, yellow, including final delayed capture",
+    "uncovered": "STAGE ONE, green"
+  },
+  "interpretation": "The same-window control reproduced stale window paint while covered and current paint after the user's uncovering. Candidate launch flags remain untested."
+}

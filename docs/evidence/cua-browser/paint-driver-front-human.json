@@ -1,0 +1,21 @@
+{
+  "target": { "pid": 10532, "window_id": 10359628 },
+  "activation_permission": {
+    "source": "actual ask_user answer",
+    "question_id": "cua_driver_raise_focus_permission",
+    "value": "allow_driver_foreground",
+    "label": "Да, для этого теста переключение фокуса допустимо"
+  },
+  "covered_gate": {
+    "source": "actual ask_user answer",
+    "question_id": "cua_driver_front_covered",
+    "value": "covered",
+    "label": "Готово, браузер перекрыт"
+  },
+  "raised_gate": {
+    "source": "actual ask_user answer",
+    "question_id": "cua_driver_front_visible_result",
+    "value": "visible_one",
+    "label": "Да, поднялся; зелёный STAGE ONE"
+  }
+}

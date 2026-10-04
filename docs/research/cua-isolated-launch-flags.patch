@@ -1,0 +1,34 @@
+--- a/libs/cua-driver/rust/crates/cua-driver-core/src/browser/prepare.rs
++++ b/libs/cua-driver/rust/crates/cua-driver-core/src/browser/prepare.rs
+@@ -406,10 +406,15 @@
+         .arg("--disable-component-update")
+         .arg("--disable-default-apps")
+         .arg("--disable-extensions");
++    // Match the Windows launch_app Chromium anti-throttling policy. This
++    // isolated launch path otherwise omits those flags for background windows.
+     #[cfg(target_os = "windows")]
+     command
+         .arg("--window-position=40,40")
+-        .arg("--window-size=900,640");
++        .arg("--window-size=900,640")
++        .arg("--disable-features=CalculateNativeWinOcclusion")
++        .arg("--disable-backgrounding-occluded-windows")
++        .arg("--disable-renderer-backgrounding");
+     #[cfg(target_os = "linux")]
+     {
+         let native_wayland = std::env::var("XDG_SESSION_TYPE")
+@@ -1612,7 +1617,13 @@
+             assert!(args.iter().any(|arg| arg == required), "missing {required}");
+         }
+         #[cfg(target_os = "windows")]
+-        for required in ["--window-position=40,40", "--window-size=900,640"] {
++        for required in [
++            "--window-position=40,40",
++            "--window-size=900,640",
++            "--disable-features=CalculateNativeWinOcclusion",
++            "--disable-backgrounding-occluded-windows",
++            "--disable-renderer-backgrounding",
++        ] {
+             assert!(args.iter().any(|arg| arg == required), "missing {required}");
+         }
+         #[cfg(target_os = "linux")]

@@ -1,0 +1,4207 @@
+{
+  "records": [
+    {
+      "operation": "open",
+      "args": {
+        "url": "http://127.0.0.1:45809/"
+      },
+      "elapsed_ms": 5672.442363,
+      "details": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 55029,
+            "mimeType": "image/png",
+            "hash": "86d65ad178dc87b7d2046ffceb2aad7ec3f04c2f5c594157e4a0887601625207"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000000",
+            "pid": 57824,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 176362156,
+            "window_title": "Pi CUA adapter fixture - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000000",
+          "pid": 57824,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 176362156,
+          "window_title": "Pi CUA adapter fixture - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 0\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\" [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true]\n- paragraph\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]\nHints belong only to this CUA snapshot.\na: button \"One\"\nb: button \"Two\"\nc: button \"Three\"\nd: button \"Four\"\ne: textbox \"Message\"\nf: button \"Submit\"\ng: link \"Next local page\"\nh: generic \"\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "a",
+            "role": "button",
+            "name": "One"
+          },
+          {
+            "hint": "b",
+            "role": "button",
+            "name": "Two"
+          },
+          {
+            "hint": "c",
+            "role": "button",
+            "name": "Three"
+          },
+          {
+            "hint": "d",
+            "role": "button",
+            "name": "Four"
+          },
+          {
+            "hint": "e",
+            "role": "textbox",
+            "name": "Message"
+          },
+          {
+            "hint": "f",
+            "role": "button",
+            "name": "Submit"
+          },
+          {
+            "hint": "g",
+            "role": "link",
+            "name": "Next local page"
+          },
+          {
+            "hint": "h",
+            "role": "generic",
+            "name": ""
+          }
+        ],
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p1",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 1,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 1,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 23,
+          "total_nodes": 23
+        }
+      },
+      "images": [
+        {
+          "file": "native-0.png",
+          "bytes": 55029,
+          "sha256": "86d65ad178dc87b7d2046ffceb2aad7ec3f04c2f5c594157e4a0887601625207"
+        }
+      ]
+    },
+    {
+      "operation": "act",
+      "args": {
+        "click": "a",
+        "observe": false
+      },
+      "elapsed_ms": 904.2199979999996,
+      "details": {
+        "tab": 1,
+        "action": "click",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "clicked (77, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "act",
+      "args": {
+        "click": "b",
+        "observe": false
+      },
+      "elapsed_ms": 934.0279820000005,
+      "details": {
+        "tab": 1,
+        "action": "click",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "clicked (153, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "act",
+      "args": {
+        "click": "c",
+        "observe": false
+      },
+      "elapsed_ms": 843.1494439999997,
+      "details": {
+        "tab": 1,
+        "action": "click",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "clicked (239, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "act",
+      "args": {
+        "click": "d",
+        "observe": false
+      },
+      "elapsed_ms": 825.3381909999989,
+      "details": {
+        "tab": 1,
+        "action": "click",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "clicked (327, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "observe",
+      "args": {},
+      "elapsed_ms": 1740.5556570000008,
+      "details": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 55005,
+            "mimeType": "image/png",
+            "hash": "21a55b5ed5df2d9d9b32a7faf8f5c81225664896c8aed84019e6aa93cee50c8b"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000001",
+            "invalidated_snapshot_ids": [
+              "s00000001"
+            ],
+            "pid": 57824,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 176362156,
+            "window_title": "Pi CUA adapter fixture - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000001",
+          "invalidated_snapshot_ids": [
+            "s00000001"
+          ],
+          "pid": 57824,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 176362156,
+          "window_title": "Pi CUA adapter fixture - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 4\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true,focused=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\" [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true]\n- paragraph\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]\nHints belong only to this CUA snapshot.\ni: button \"Four\"\nj: button \"One\"\nk: button \"Two\"\nl: button \"Three\"\nm: textbox \"Message\"\nn: button \"Submit\"\no: link \"Next local page\"\np: generic \"\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "i",
+            "role": "button",
+            "name": "Four"
+          },
+          {
+            "hint": "j",
+            "role": "button",
+            "name": "One"
+          },
+          {
+            "hint": "k",
+            "role": "button",
+            "name": "Two"
+          },
+          {
+            "hint": "l",
+            "role": "button",
+            "name": "Three"
+          },
+          {
+            "hint": "m",
+            "role": "textbox",
+            "name": "Message"
+          },
+          {
+            "hint": "n",
+            "role": "button",
+            "name": "Submit"
+          },
+          {
+            "hint": "o",
+            "role": "link",
+            "name": "Next local page"
+          },
+          {
+            "hint": "p",
+            "role": "generic",
+            "name": ""
+          }
+        ],
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p2",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 1,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 1,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 23,
+          "total_nodes": 23
+        }
+      },
+      "images": [
+        {
+          "file": "native-5.png",
+          "bytes": 55005,
+          "sha256": "21a55b5ed5df2d9d9b32a7faf8f5c81225664896c8aed84019e6aa93cee50c8b"
+        }
+      ]
+    },
+    {
+      "operation": "act",
+      "args": {
+        "click": "a",
+        "observe": false
+      },
+      "elapsed_ms": 0.26288100000056147,
+      "details": {
+        "status": "refused",
+        "text": "Unknown or retired hint in the focused CUA snapshot.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "act",
+      "args": {
+        "fill": "m",
+        "text": "Pi CUA adapter 396",
+        "observe": false
+      },
+      "elapsed_ms": 944.6531640000012,
+      "details": {
+        "tab": 1,
+        "action": "fill",
+        "native": {
+          "delivery": {
+            "delivered_count": 18,
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "typed 18 char(s) into tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe, replacing 0 char(s)"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "act",
+      "args": {
+        "click": "n",
+        "observe": false
+      },
+      "elapsed_ms": 937.8376070000013,
+      "details": {
+        "tab": 1,
+        "action": "click",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "clicked (511, 360) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "observe",
+      "args": {},
+      "elapsed_ms": 2129.2221790000003,
+      "details": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 66303,
+            "mimeType": "image/png",
+            "hash": "05c7e8807a7b8488d26eff56197ec7801732bc9b5dcd9d709fb3703d850cd4c5"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000002",
+            "invalidated_snapshot_ids": [
+              "s00000002"
+            ],
+            "pid": 57824,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 176362156,
+            "window_title": "Pi CUA adapter fixture - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000002",
+          "invalidated_snapshot_ids": [
+            "s00000002"
+          ],
+          "pid": 57824,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 176362156,
+          "window_title": "Pi CUA adapter fixture - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 4\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\": Pi CUA adapter 396 [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true,focused=true]\n- paragraph\n  - statictext \"Submitted: Pi CUA adapter 396\"\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]\n        - statictext \"Pi CUA adapter 396\" [editable=\"plaintext\"]\nHints belong only to this CUA snapshot.\nq: button \"Submit\"\nr: button \"One\"\ns: button \"Two\"\nt: button \"Three\"\nu: button \"Four\"\nv: textbox \"Message\" = \"Pi CUA adapter 396\"\nw: link \"Next local page\"\nx: generic \"\"\ny: statictext \"Pi CUA adapter 396\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "q",
+            "role": "button",
+            "name": "Submit"
+          },
+          {
+            "hint": "r",
+            "role": "button",
+            "name": "One"
+          },
+          {
+            "hint": "s",
+            "role": "button",
+            "name": "Two"
+          },
+          {
+            "hint": "t",
+            "role": "button",
+            "name": "Three"
+          },
+          {
+            "hint": "u",
+            "role": "button",
+            "name": "Four"
+          },
+          {
+            "hint": "v",
+            "role": "textbox",
+            "name": "Message",
+            "value": "Pi CUA adapter 396"
+          },
+          {
+            "hint": "w",
+            "role": "link",
+            "name": "Next local page"
+          },
+          {
+            "hint": "x",
+            "role": "generic",
+            "name": ""
+          },
+          {
+            "hint": "y",
+            "role": "statictext",
+            "name": "Pi CUA adapter 396"
+          }
+        ],
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p3",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 2,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 25,
+          "total_nodes": 25
+        }
+      },
+      "images": [
+        {
+          "file": "native-9.png",
+          "bytes": 66303,
+          "sha256": "05c7e8807a7b8488d26eff56197ec7801732bc9b5dcd9d709fb3703d850cd4c5"
+        }
+      ]
+    },
+    {
+      "operation": "act",
+      "args": {
+        "hover": "w",
+        "observe": false
+      },
+      "elapsed_ms": 1120.6905399999996,
+      "details": {
+        "tab": 1,
+        "action": "hover",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "dispatched trusted hover in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "act",
+      "args": {
+        "scroll": {
+          "hint": "w",
+          "delta_y": 700
+        },
+        "observe": false
+      },
+      "elapsed_ms": 1042.7370429999992,
+      "details": {
+        "tab": 1,
+        "action": "scroll",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "dispatched trusted scroll in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "observe",
+      "args": {
+        "image_only": true
+      },
+      "elapsed_ms": 1858.023753999998,
+      "details": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 17032,
+            "mimeType": "image/png",
+            "hash": "41955262a46f7c567ce43782affaa7fcb4e679ce73b5a0eecc3154d890b55ea0"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000003",
+            "invalidated_snapshot_ids": [
+              "s00000003"
+            ],
+            "pid": 57824,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 176362156,
+            "window_title": "Pi CUA adapter fixture - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000003",
+          "invalidated_snapshot_ids": [
+            "s00000003"
+          ],
+          "pid": 57824,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 176362156,
+          "window_title": "Pi CUA adapter fixture - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": [
+        {
+          "file": "native-12.png",
+          "bytes": 17032,
+          "sha256": "41955262a46f7c567ce43782affaa7fcb4e679ce73b5a0eecc3154d890b55ea0"
+        }
+      ]
+    },
+    {
+      "operation": "act",
+      "args": {
+        "navigate": "http://127.0.0.1:45809/next",
+        "observe": false
+      },
+      "elapsed_ms": 653.785745000001,
+      "details": {
+        "tab": 1,
+        "action": "navigate",
+        "native": {
+          "refs_invalidated": true,
+          "status": "ok",
+          "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+          "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+          "url": "http://127.0.0.1:45809/next"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "observe",
+      "args": {},
+      "elapsed_ms": 1948.4514930000005,
+      "details": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 24427,
+            "mimeType": "image/png",
+            "hash": "7c1419a1b863d5e03eb9400e72805c434fed326d1311f09af7f1c49546e5da58"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000004",
+            "invalidated_snapshot_ids": [
+              "s00000004"
+            ],
+            "pid": 57824,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 176362156,
+            "window_title": "Pi CUA second fixture - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000004",
+          "invalidated_snapshot_ids": [
+            "s00000004"
+          ],
+          "pid": 57824,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 176362156,
+          "window_title": "Pi CUA second fixture - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"Next local page reached\"\n- link \"Return\" [focusable=true]\nHints belong only to this CUA snapshot.\nz: link \"Return\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "z",
+            "role": "link",
+            "name": "Return"
+          }
+        ],
+        "page": {
+          "title": "Pi CUA second fixture",
+          "url": "http://127.0.0.1:45809/next"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p4",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        }
+      },
+      "images": [
+        {
+          "file": "native-14.png",
+          "bytes": 24427,
+          "sha256": "7c1419a1b863d5e03eb9400e72805c434fed326d1311f09af7f1c49546e5da58"
+        }
+      ]
+    },
+    {
+      "operation": "tabs",
+      "args": {},
+      "elapsed_ms": 604.7057180000011,
+      "details": {
+        "tabs": [
+          {
+            "tab": 1,
+            "title": "Pi CUA second fixture",
+            "url": "http://127.0.0.1:45809/next",
+            "focused": true,
+            "active": true
+          }
+        ],
+        "status": "listed",
+        "text": "Owned CUA tabs; listing does not activate a tab. Window-image work requires one active tab.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "close",
+      "args": {},
+      "elapsed_ms": 507.34867999999915,
+      "details": {
+        "status": "closed",
+        "text": "Owned CUA browser session released.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    },
+    {
+      "operation": "open",
+      "args": {
+        "url": "http://127.0.0.1:45809/"
+      },
+      "elapsed_ms": 4770.049996999998,
+      "details": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 55029,
+            "mimeType": "image/png",
+            "hash": "86d65ad178dc87b7d2046ffceb2aad7ec3f04c2f5c594157e4a0887601625207"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_5a8ca708411b49a19537270c171fc989_0000000000000000",
+            "pid": 48208,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 5050818,
+            "window_title": "Pi CUA adapter fixture - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_5a8ca708411b49a19537270c171fc989_0000000000000000",
+          "pid": 48208,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 5050818,
+          "window_title": "Pi CUA adapter fixture - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 0\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\" [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true]\n- paragraph\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]\nHints belong only to this CUA snapshot.\naa: button \"One\"\nab: button \"Two\"\nac: button \"Three\"\nad: button \"Four\"\nae: textbox \"Message\"\naf: button \"Submit\"\nag: link \"Next local page\"\nah: generic \"\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "aa",
+            "role": "button",
+            "name": "One"
+          },
+          {
+            "hint": "ab",
+            "role": "button",
+            "name": "Two"
+          },
+          {
+            "hint": "ac",
+            "role": "button",
+            "name": "Three"
+          },
+          {
+            "hint": "ad",
+            "role": "button",
+            "name": "Four"
+          },
+          {
+            "hint": "ae",
+            "role": "textbox",
+            "name": "Message"
+          },
+          {
+            "hint": "af",
+            "role": "button",
+            "name": "Submit"
+          },
+          {
+            "hint": "ag",
+            "role": "link",
+            "name": "Next local page"
+          },
+          {
+            "hint": "ah",
+            "role": "generic",
+            "name": ""
+          }
+        ],
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p1",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 1,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 1,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 23,
+          "total_nodes": 23
+        }
+      },
+      "images": [
+        {
+          "file": "native-17.png",
+          "bytes": 55029,
+          "sha256": "86d65ad178dc87b7d2046ffceb2aad7ec3f04c2f5c594157e4a0887601625207"
+        }
+      ]
+    },
+    {
+      "operation": "close",
+      "args": {},
+      "elapsed_ms": 384.6787149999982,
+      "details": {
+        "status": "closed",
+        "text": "Owned CUA browser session released.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": []
+    }
+  ],
+  "nativeCalls": [
+    {
+      "name": "start_session",
+      "args": {
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "active": true,
+        "capture_scope": "auto",
+        "desktop_capture_authorized": false,
+        "desktop_unlocked": false,
+        "effective_scope": "window",
+        "escalation_detail": null,
+        "escalation_reason": null,
+        "revived": false,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      }
+    },
+    {
+      "name": "browser_prepare",
+      "args": {
+        "allow_launch": true,
+        "profile": {
+          "mode": "isolated_new"
+        },
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "action": "launched_isolated_browser",
+        "attachment": null,
+        "endpoint_ownership": {
+          "detail": "driver-owned profile port file plus live loopback socket owner",
+          "listener_pid": 57824,
+          "method": "spawned_by_driver",
+          "owner_pid": 57824
+        },
+        "message": "Launched a separate driver-owned isolated Chromium process; no existing browser process was modified or terminated.",
+        "prepared": true,
+        "prepared_pid": 57824,
+        "side_effects": {
+          "changed_preferences": false,
+          "closed_setup_page": false,
+          "copied_profile_data": false,
+          "created_profile": true,
+          "displayed_consent_prompt": false,
+          "enabled_remote_debugging": false,
+          "focused_setup_address_field": false,
+          "foregrounded_window": false,
+          "injected_global_input": false,
+          "launched_browser": true,
+          "opened_setup_page": false,
+          "restarted_browser": false,
+          "reused_driver_profile": false,
+          "used_bounded_pixel_fallback": false
+        },
+        "status": "ok"
+      }
+    },
+    {
+      "name": "list_windows",
+      "args": {
+        "pid": 57824,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "_legacy_windows": [
+          {
+            "height": 951,
+            "is_on_screen": true,
+            "minimized": false,
+            "pid": 57824,
+            "title": "about:blank - Google Chrome",
+            "width": 1332,
+            "window_id": 176362156,
+            "x": 69,
+            "y": 60
+          }
+        ],
+        "current_space_id": null,
+        "windows": [
+          {
+            "app_name": "chrome.exe",
+            "bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "is_on_screen": true,
+            "layer": 0,
+            "minimized": false,
+            "pid": 57824,
+            "title": "about:blank - Google Chrome",
+            "window_id": 176362156,
+            "z_index": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "about:blank - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+            "title": "about:blank",
+            "url": "about:blank"
+          }
+        ],
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7"
+      }
+    },
+    {
+      "name": "set_agent_cursor_enabled",
+      "args": {
+        "enabled": true,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "enabled": true,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      }
+    },
+    {
+      "name": "set_agent_cursor_motion",
+      "args": {
+        "glide_duration_ms": 250,
+        "idle_hide_ms": 5000,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "motion": {
+          "arc_flow": 0,
+          "arc_size": 0.25,
+          "dwell_after_click_ms": 80,
+          "end_handle": 0.3,
+          "glide_duration_ms": 250,
+          "idle_hide_ms": 5000,
+          "spring": 0.72,
+          "start_handle": 0.3,
+          "turn_radius": 80
+        },
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      }
+    },
+    {
+      "name": "browser_navigate",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "url": "http://127.0.0.1:45809/",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "refs_invalidated": true,
+        "status": "ok",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "url": "http://127.0.0.1:45809/"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-efe61425-20af-4b12-9dd6-d962ff2f8e42",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-d517c2ad-8bf9-4ed4-af8c-d41b3c1ee97c"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA adapter fixture",
+            "ref": "p1:6",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA owned browser",
+            "ref": "p1:7",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:8",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Selections: 0",
+            "ref": "p1:9",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:10",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Previous fixture storage: empty",
+            "ref": "p1:11",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:12",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:13",
+            "role": "labeltext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p1:14",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:16",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Native detail: cedar river 396",
+            "ref": "p1:17",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:18",
+            "role": "generic",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:20",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "no_layout"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:21",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Bottom reached",
+            "ref": "p1:22",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 0\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\" [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true]\n- paragraph\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]",
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "One",
+            "ref": "p1:0",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Two",
+            "ref": "p1:1",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Three",
+            "ref": "p1:2",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Four",
+            "ref": "p1:3",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "type",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p1:4",
+            "role": "textbox",
+            "states": {
+              "editable": "plaintext",
+              "focusable": true,
+              "required": false
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Submit",
+            "ref": "p1:5",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Next local page",
+            "ref": "p1:15",
+            "role": "link",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [
+              "type"
+            ],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:19",
+            "role": "generic",
+            "states": {
+              "editable": "plaintext"
+            },
+            "value": null,
+            "visibility": "unknown"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p1",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 1,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 1,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 23,
+          "total_nodes": 23
+        },
+        "status": "ok",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-26164996-7823-458f-9cde-bc64f9b402f4",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-269aa25f-c17d-41b9-ada8-b6d66305454f"
+      }
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000000",
+        "pid": 57824,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 176362156,
+        "window_title": "Pi CUA adapter fixture - Google Chrome"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-213c1584-a1ea-4e38-aa1e-d6d47142ad59",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-b0aa1cf4-d8e5-43d3-aa5c-cc990e5e9fba"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-5ab1e234-2613-4769-a886-e6c08eb9e5d1",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-2cc6284a-888f-457c-b3cd-5a03651c6c9f"
+      }
+    },
+    {
+      "name": "browser_click",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p1:0",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "clicked (77, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-c6ebebbb-5464-4258-8fc1-8ed1623159c8",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-6db236f6-bd75-4fd1-9a07-c926f03d0de2"
+      }
+    },
+    {
+      "name": "browser_click",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p1:1",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "clicked (153, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-8de301f3-8232-46c4-bc05-425ca8b1042d",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-1115adbf-d04f-4842-bf5d-aaee5ea53f76"
+      }
+    },
+    {
+      "name": "browser_click",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p1:2",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "clicked (239, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-e08e7dae-0809-4542-81c5-f56a6be20fbe",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-512aaa46-58d0-49c8-9415-e95d0340d79e"
+      }
+    },
+    {
+      "name": "browser_click",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p1:3",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "clicked (327, 286) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-2aa1d94d-b540-48bb-a996-220713387332",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-9363b3b3-b875-4eea-b8e2-f1a7c763c66e"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA adapter fixture",
+            "ref": "p2:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA owned browser",
+            "ref": "p2:7",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:8",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Selections: 4",
+            "ref": "p2:9",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:10",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Previous fixture storage: empty",
+            "ref": "p2:11",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:12",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:13",
+            "role": "labeltext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p2:14",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:16",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Native detail: cedar river 396",
+            "ref": "p2:17",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:18",
+            "role": "generic",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:20",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "no_layout"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:21",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Bottom reached",
+            "ref": "p2:22",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 4\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true,focused=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\" [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true]\n- paragraph\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]",
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Four",
+            "ref": "p2:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "One",
+            "ref": "p2:2",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Two",
+            "ref": "p2:3",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Three",
+            "ref": "p2:4",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "type",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p2:5",
+            "role": "textbox",
+            "states": {
+              "editable": "plaintext",
+              "focusable": true,
+              "required": false
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Submit",
+            "ref": "p2:6",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Next local page",
+            "ref": "p2:15",
+            "role": "link",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [
+              "type"
+            ],
+            "frame": "main",
+            "name": null,
+            "ref": "p2:19",
+            "role": "generic",
+            "states": {
+              "editable": "plaintext"
+            },
+            "value": null,
+            "visibility": "unknown"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p2",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 1,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 1,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 23,
+          "total_nodes": 23
+        },
+        "status": "ok",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-dff067ac-34a0-4b3d-b6ae-d05c0b2a7e54",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-7687dd3c-9fe8-4e3e-b20c-2d419c431b68"
+      }
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000001",
+        "invalidated_snapshot_ids": [
+          "s00000001"
+        ],
+        "pid": 57824,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 176362156,
+        "window_title": "Pi CUA adapter fixture - Google Chrome"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-c65fbdd1-edba-4f64-b6bd-32306488abf5",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-85e9b643-99ee-4279-b00f-d1dd455f87cc"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-1a86e29b-9300-4c51-bca4-f26c67448aa0",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-c4f9b20d-7330-49fb-9169-28c8789b8264"
+      }
+    },
+    {
+      "name": "browser_type",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p2:5",
+        "text": "Pi CUA adapter 396",
+        "replace": true,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "delivered_count": 18,
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "typed 18 char(s) into tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe, replacing 0 char(s)"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-687ec631-2da4-4ca5-b7e4-71a9818354d2",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-8537e416-e10a-4779-9ac9-89cf44e5e084"
+      }
+    },
+    {
+      "name": "browser_click",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p2:6",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "clicked (511, 360) in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-7b8ccb53-88d7-41a6-bcf2-30412fd9b56e",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-603719b7-aa91-4fc6-be50-872487d93fe2"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA adapter fixture",
+            "ref": "p3:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA owned browser",
+            "ref": "p3:7",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:8",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Selections: 4",
+            "ref": "p3:9",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:10",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Previous fixture storage: empty",
+            "ref": "p3:11",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:12",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:13",
+            "role": "labeltext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p3:14",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:16",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Submitted: Pi CUA adapter 396",
+            "ref": "p3:17",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:18",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Native detail: cedar river 396",
+            "ref": "p3:19",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:20",
+            "role": "generic",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:23",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Bottom reached",
+            "ref": "p3:24",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 4\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\": Pi CUA adapter 396 [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true,focused=true]\n- paragraph\n  - statictext \"Submitted: Pi CUA adapter 396\"\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]\n        - statictext \"Pi CUA adapter 396\" [editable=\"plaintext\"]",
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Submit",
+            "ref": "p3:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "One",
+            "ref": "p3:2",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Two",
+            "ref": "p3:3",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Three",
+            "ref": "p3:4",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Four",
+            "ref": "p3:5",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "type",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p3:6",
+            "role": "textbox",
+            "states": {
+              "editable": "plaintext",
+              "focusable": true,
+              "required": false
+            },
+            "value": "Pi CUA adapter 396",
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Next local page",
+            "ref": "p3:15",
+            "role": "link",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [
+              "type"
+            ],
+            "frame": "main",
+            "name": null,
+            "ref": "p3:21",
+            "role": "generic",
+            "states": {
+              "editable": "plaintext"
+            },
+            "value": null,
+            "visibility": "unknown"
+          },
+          {
+            "actions": [
+              "type"
+            ],
+            "frame": "main",
+            "name": "Pi CUA adapter 396",
+            "ref": "p3:22",
+            "role": "statictext",
+            "states": {
+              "editable": "plaintext"
+            },
+            "value": null,
+            "visibility": "unknown"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p3",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 2,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 25,
+          "total_nodes": 25
+        },
+        "status": "ok",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-e54dccc3-8a9d-419a-b7d1-6f2a75458cf6",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-1724d7df-546b-4d61-9e38-69d3fcb6c426"
+      }
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000002",
+        "invalidated_snapshot_ids": [
+          "s00000002"
+        ],
+        "pid": 57824,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 176362156,
+        "window_title": "Pi CUA adapter fixture - Google Chrome"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-3f32e368-44cc-4284-ad48-6772b42199c8",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-e15f5946-7d70-49fb-8eb8-0723bc413d12"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-32322a8c-54e4-43dc-97ed-f380c50e0756",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-82c63428-ce0f-4637-841a-c579d18fd76d"
+      }
+    },
+    {
+      "name": "browser_pointer",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p3:15",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "action": "hover",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "dispatched trusted hover in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-28df1137-4b68-495f-bacc-d6eb1da494ab",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-6fd30046-21cc-4bf6-a3eb-ad1c4af8d6a6"
+      }
+    },
+    {
+      "name": "browser_pointer",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "ref": "p3:15",
+        "action": "scroll",
+        "delta_y": 700,
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "dispatched trusted scroll in tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-4b603e50-9c8f-42e4-89cd-bf28203a9ded",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-69b49103-83df-4849-b3ce-2da7cfe9b86a"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-bf11c40b-b41e-43f2-b582-2e639f193ba8",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-d5f543d2-2ab0-4ad8-a4f0-09e7cc46deb3"
+      }
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000003",
+        "invalidated_snapshot_ids": [
+          "s00000003"
+        ],
+        "pid": 57824,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 176362156,
+        "window_title": "Pi CUA adapter fixture - Google Chrome"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-a83567f7-668f-4434-9a9f-0e28a280b339",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-f87c25e7-7634-4796-9d66-fea1c83b69b4"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-ea2814a9-ba39-4b58-bac8-f7d9039055df",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-dc5a5836-94b4-4e70-80ae-237c3a55e0f5"
+      }
+    },
+    {
+      "name": "browser_navigate",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "url": "http://127.0.0.1:45809/next",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "refs_invalidated": true,
+        "status": "ok",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "url": "http://127.0.0.1:45809/next"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA second fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-bedb401f-6ccc-4e87-b546-657cbce6c801",
+            "title": "Pi CUA second fixture",
+            "url": "http://127.0.0.1:45809/next"
+          }
+        ],
+        "target_id": "bt-9f47ad75-66cc-4399-b811-d3f60a10e93f"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA second fixture",
+            "ref": "p4:1",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Next local page reached",
+            "ref": "p4:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"Next local page reached\"\n- link \"Return\" [focusable=true]",
+        "page": {
+          "title": "Pi CUA second fixture",
+          "url": "http://127.0.0.1:45809/next"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Return",
+            "ref": "p4:0",
+            "role": "link",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p4",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-3c1a2a1f-2b64-41e0-a8e7-f270e66e1efe",
+        "target_id": "bt-89265e96-89ad-46af-8910-b974b2391fc7"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA second fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-d73d7479-bf86-4ddf-9858-f6ed771da3fe",
+            "title": "Pi CUA second fixture",
+            "url": "http://127.0.0.1:45809/next"
+          }
+        ],
+        "target_id": "bt-fddc9703-2559-46c3-8dcd-cbc0d751041a"
+      }
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_533657688f1740ae9fd237c153e9ec8a_0000000000000004",
+        "invalidated_snapshot_ids": [
+          "s00000004"
+        ],
+        "pid": 57824,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 176362156,
+        "window_title": "Pi CUA second fixture - Google Chrome"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA second fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-e6430a38-7273-4246-a786-94c0f8e1bca1",
+            "title": "Pi CUA second fixture",
+            "url": "http://127.0.0.1:45809/next"
+          }
+        ],
+        "target_id": "bt-6fa74e0a-bcbc-4bd7-97d4-ca91751b1aa5"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 57824,
+        "window_id": 176362156,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA second fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-e79e73cd-6605-4d53-a46c-d90af01d2786",
+            "title": "Pi CUA second fixture",
+            "url": "http://127.0.0.1:45809/next"
+          }
+        ],
+        "target_id": "bt-1642ea57-32ea-4079-a624-00199cbc24d9"
+      }
+    },
+    {
+      "name": "end_session",
+      "args": {
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      },
+      "isError": false,
+      "state": {
+        "active": false,
+        "session": "pi-browser-f33494f3-1444-4f82-8059-345eb6de2bde"
+      }
+    },
+    {
+      "name": "start_session",
+      "args": {
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "active": true,
+        "capture_scope": "auto",
+        "desktop_capture_authorized": false,
+        "desktop_unlocked": false,
+        "effective_scope": "window",
+        "escalation_detail": null,
+        "escalation_reason": null,
+        "revived": false,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      }
+    },
+    {
+      "name": "browser_prepare",
+      "args": {
+        "allow_launch": true,
+        "profile": {
+          "mode": "isolated_new"
+        },
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "action": "launched_isolated_browser",
+        "attachment": null,
+        "endpoint_ownership": {
+          "detail": "driver-owned profile port file plus live loopback socket owner",
+          "listener_pid": 48208,
+          "method": "spawned_by_driver",
+          "owner_pid": 48208
+        },
+        "message": "Launched a separate driver-owned isolated Chromium process; no existing browser process was modified or terminated.",
+        "prepared": true,
+        "prepared_pid": 48208,
+        "side_effects": {
+          "changed_preferences": false,
+          "closed_setup_page": false,
+          "copied_profile_data": false,
+          "created_profile": true,
+          "displayed_consent_prompt": false,
+          "enabled_remote_debugging": false,
+          "focused_setup_address_field": false,
+          "foregrounded_window": false,
+          "injected_global_input": false,
+          "launched_browser": true,
+          "opened_setup_page": false,
+          "restarted_browser": false,
+          "reused_driver_profile": false,
+          "used_bounded_pixel_fallback": false
+        },
+        "status": "ok"
+      }
+    },
+    {
+      "name": "list_windows",
+      "args": {
+        "pid": 48208,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "_legacy_windows": [
+          {
+            "height": 951,
+            "is_on_screen": true,
+            "minimized": false,
+            "pid": 48208,
+            "title": "Untitled - Google Chrome",
+            "width": 1332,
+            "window_id": 5050818,
+            "x": 69,
+            "y": 60
+          }
+        ],
+        "current_space_id": null,
+        "windows": [
+          {
+            "app_name": "chrome.exe",
+            "bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "is_on_screen": true,
+            "layer": 0,
+            "minimized": false,
+            "pid": 48208,
+            "title": "Untitled - Google Chrome",
+            "window_id": 5050818,
+            "z_index": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 48208,
+        "window_id": 5050818,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "about:blank - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-7b0cf3bd-9bce-4f72-aef5-3b5e117d3475",
+            "title": "about:blank",
+            "url": "about:blank"
+          }
+        ],
+        "target_id": "bt-553de8ca-37d4-451f-9bcb-52d813f031b4"
+      }
+    },
+    {
+      "name": "set_agent_cursor_enabled",
+      "args": {
+        "enabled": true,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "enabled": true,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      }
+    },
+    {
+      "name": "set_agent_cursor_motion",
+      "args": {
+        "glide_duration_ms": 250,
+        "idle_hide_ms": 5000,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "motion": {
+          "arc_flow": 0,
+          "arc_size": 0.25,
+          "dwell_after_click_ms": 80,
+          "end_handle": 0.3,
+          "glide_duration_ms": 250,
+          "idle_hide_ms": 5000,
+          "spring": 0.72,
+          "start_handle": 0.3,
+          "turn_radius": 80
+        },
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      }
+    },
+    {
+      "name": "browser_navigate",
+      "args": {
+        "target_id": "bt-553de8ca-37d4-451f-9bcb-52d813f031b4",
+        "tab_id": "tab-7b0cf3bd-9bce-4f72-aef5-3b5e117d3475",
+        "url": "http://127.0.0.1:45809/",
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "refs_invalidated": true,
+        "status": "ok",
+        "tab_id": "tab-7b0cf3bd-9bce-4f72-aef5-3b5e117d3475",
+        "target_id": "bt-553de8ca-37d4-451f-9bcb-52d813f031b4",
+        "url": "http://127.0.0.1:45809/"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 48208,
+        "window_id": 5050818,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-5273b44d-6d2b-456e-b8cc-17382adc6494",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-aaca8e55-3060-49b0-9307-61dcd62d1843"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-553de8ca-37d4-451f-9bcb-52d813f031b4",
+        "tab_id": "tab-7b0cf3bd-9bce-4f72-aef5-3b5e117d3475",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA adapter fixture",
+            "ref": "p1:6",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA owned browser",
+            "ref": "p1:7",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:8",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Selections: 0",
+            "ref": "p1:9",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:10",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Previous fixture storage: empty",
+            "ref": "p1:11",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:12",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:13",
+            "role": "labeltext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p1:14",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:16",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Native detail: cedar river 396",
+            "ref": "p1:17",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:18",
+            "role": "generic",
+            "states": {},
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:20",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "no_layout"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:21",
+            "role": "paragraph",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Bottom reached",
+            "ref": "p1:22",
+            "role": "statictext",
+            "states": {},
+            "value": null,
+            "visibility": "offscreen"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"Pi CUA owned browser\"\n- paragraph\n  - statictext \"Selections: 0\"\n- paragraph\n  - statictext \"Previous fixture storage: empty\"\n- button \"One\" [focusable=true]\n- button \"Two\" [focusable=true]\n- button \"Three\" [focusable=true]\n- button \"Four\" [focusable=true]\n- paragraph\n  - labeltext\n    - statictext \"Message\"\n    - textbox \"Message\" [editable=\"plaintext\",focusable=true,required=false]\n  - button \"Submit\" [focusable=true]\n- paragraph\n- paragraph\n  - statictext \"Native detail: cedar river 396\"\n- link \"Next local page\" [focusable=true]\n- generic\n- paragraph\n  - statictext \"Bottom reached\"\n      - generic [editable=\"plaintext\"]",
+        "page": {
+          "title": "Pi CUA adapter fixture",
+          "url": "http://127.0.0.1:45809/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "One",
+            "ref": "p1:0",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Two",
+            "ref": "p1:1",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Three",
+            "ref": "p1:2",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Four",
+            "ref": "p1:3",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "type",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Message",
+            "ref": "p1:4",
+            "role": "textbox",
+            "states": {
+              "editable": "plaintext",
+              "focusable": true,
+              "required": false
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Submit",
+            "ref": "p1:5",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Next local page",
+            "ref": "p1:15",
+            "role": "link",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "near_viewport"
+          },
+          {
+            "actions": [
+              "type"
+            ],
+            "frame": "main",
+            "name": null,
+            "ref": "p1:19",
+            "role": "generic",
+            "states": {
+              "editable": "plaintext"
+            },
+            "value": null,
+            "visibility": "unknown"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p1",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 1,
+            "offscreen": 2,
+            "page_occluded": 0,
+            "unknown": 1,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 23,
+          "total_nodes": 23
+        },
+        "status": "ok",
+        "tab_id": "tab-7b0cf3bd-9bce-4f72-aef5-3b5e117d3475",
+        "target_id": "bt-553de8ca-37d4-451f-9bcb-52d813f031b4"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 48208,
+        "window_id": 5050818,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-2390f45a-f2c5-40b4-a3ed-1706f4f2da11",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-57269409-f186-4249-a0cd-006e4eaaed58"
+      }
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 48208,
+        "window_id": 5050818,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_5a8ca708411b49a19537270c171fc989_0000000000000000",
+        "pid": 48208,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 5050818,
+        "window_title": "Pi CUA adapter fixture - Google Chrome"
+      }
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 48208,
+        "window_id": 5050818,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA adapter fixture - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-b6d16721-66d4-4e92-a958-f9cace6722ad",
+            "title": "Pi CUA adapter fixture",
+            "url": "http://127.0.0.1:45809/"
+          }
+        ],
+        "target_id": "bt-0b20544c-fa71-4176-96aa-1df9ac72efb1"
+      }
+    },
+    {
+      "name": "end_session",
+      "args": {
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      },
+      "isError": false,
+      "state": {
+        "active": false,
+        "session": "pi-browser-c1a57ba5-fc3b-4f97-bc9b-673a5bbdb443"
+      }
+    }
+  ],
+  "source": "Real Windows CUA on synthetic loopback fixture; not adapter mocks."
+}

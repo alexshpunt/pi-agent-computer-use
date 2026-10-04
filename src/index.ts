@@ -1,8 +1,8 @@
 import { Type } from "@earendil-works/pi-ai";
 import { registerVisionDebug } from "./vision-debug.ts";
-import { VisionImages } from "./vision-images.ts";
-import { BrowserClient } from "./browser-client.ts";
-import { registerBrowserTools } from "./browser-tools.ts";
+import { CuaImageSettings } from "./cua-image-settings.ts";
+import { CuaBrowser } from "./cua-browser.ts";
+import { registerCuaBrowserTools } from "./cua-browser-tools.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "./config.ts";
 import { McpDriver } from "./driver.ts";
@@ -70,9 +70,10 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
 
 /** Standalone computer UI extension. The final Pi Agent IDE provider API remains separate. */
 export default function computerUse(pi: ExtensionAPI): void {
-  const images = new VisionImages();
+  const images = new CuaImageSettings();
   registerVisionDebug(pi, images);
-  registerBrowserTools(pi, new BrowserClient(undefined, images));
+  registerCuaBrowserTools(pi, new CuaBrowser(async () =>
+    new McpDriver(await loadComputerConfig(process.cwd(), "0.33.1"), "0.33.1"), () => images.settings()));
   const getMode = registerComputerMode(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;

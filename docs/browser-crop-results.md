@@ -1,5 +1,7 @@
 # Original-frame crop results
 
+Historical pre-CUA route. Its code, runners and dependencies were retired by LPT-396; revision-linked results remain evidence, not current API guarantees. Use [the native CUA browser contract](browser.md) for current actions, scaling and fresh zoom.
+
 LPT-377 passed on the owned visible Windows browser from WSL. No personal pages, desktop input, IDE changes or game actions were used.
 
 ## What passed

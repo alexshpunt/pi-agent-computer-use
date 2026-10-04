@@ -1,13 +1,13 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { VisionTrace } from "./vision-trace.ts";
-import { VisionImages } from "./vision-images.ts";
+import { CuaImageSettings } from "./cua-image-settings.ts";
 import { startVisionServer, type VisionServer } from "./vision-server.ts";
 
 /** Live debug state for trusted host integrations and verification, never model control. */
 export interface VisionDebug { trace: VisionTrace; url(): string | undefined; close(): Promise<void> }
 
 /** Mirror existing Pi hooks and expose session image settings. No provider override or new agent tool. */
-export function registerVisionDebug(pi: ExtensionAPI, images = new VisionImages()): VisionDebug {
+export function registerVisionDebug(pi: ExtensionAPI, images: CuaImageSettings = new CuaImageSettings()): VisionDebug {
   const trace = new VisionTrace("unstarted");
   let server: VisionServer | undefined;
   let loading: Promise<VisionServer> | undefined;

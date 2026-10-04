@@ -1,0 +1,2867 @@
+{
+  "url": "http://127.0.0.1:44949/",
+  "records": [
+    {
+      "label": "open",
+      "time": 1791105351339,
+      "state": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 16070,
+            "mimeType": "image/png",
+            "hash": "6a7f6a485a2dd7996c8e1827e26aae639ca7b984de7c2a635c2bf7382b0e9706"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000000",
+            "pid": 41724,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 1904928,
+            "window_title": "Pi CUA paint probe - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000000",
+          "pid": 41724,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 1904928,
+          "window_title": "Pi CUA paint probe - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"STAGE ZERO\"\n- button \"Advance\" [focusable=true]\nHints belong only to this CUA snapshot.\na: button \"Advance\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "a",
+            "role": "button",
+            "name": "Advance"
+          }
+        ],
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p1",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        }
+      },
+      "images": [
+        {
+          "file": "0-1.png",
+          "bytes": 16070,
+          "hash": "6a7f6a485a2dd7996c8e1827e26aae639ca7b984de7c2a635c2bf7382b0e9706"
+        }
+      ],
+      "fixtureEvents": []
+    },
+    {
+      "label": "act",
+      "time": 1791105353007,
+      "state": {
+        "tab": 1,
+        "action": "click",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "clicked (94, 270) in tab-c7794dc6-4719-4b6a-9c29-f13a750de222"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": [],
+      "fixtureEvents": []
+    },
+    {
+      "label": "observe",
+      "time": 1791105355472,
+      "state": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 36437,
+            "mimeType": "image/png",
+            "hash": "316685563e794b2a29b1e74f532d981036f99b966d92fa01e42b53d23f0a5669"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000001",
+            "invalidated_snapshot_ids": [
+              "s00000001"
+            ],
+            "pid": 41724,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 1904928,
+            "window_title": "Pi CUA paint probe - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000001",
+          "invalidated_snapshot_ids": [
+            "s00000001"
+          ],
+          "pid": 41724,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 1904928,
+          "window_title": "Pi CUA paint probe - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"STAGE ONE\"\n- button \"Advance\" [focusable=true,focused=true]\nHints belong only to this CUA snapshot.\nb: button \"Advance\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "b",
+            "role": "button",
+            "name": "Advance"
+          }
+        ],
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p2",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        }
+      },
+      "images": [
+        {
+          "file": "2-1.png",
+          "bytes": 36437,
+          "hash": "316685563e794b2a29b1e74f532d981036f99b966d92fa01e42b53d23f0a5669"
+        }
+      ],
+      "fixtureEvents": []
+    },
+    {
+      "label": "direct-ONE-0ms",
+      "time": 1791105355595,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000002",
+        "invalidated_snapshot_ids": [
+          "s00000002"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "3-1.png",
+          "bytes": 36437,
+          "hash": "316685563e794b2a29b1e74f532d981036f99b966d92fa01e42b53d23f0a5669"
+        }
+      ],
+      "fixtureEvents": []
+    },
+    {
+      "label": "direct-ONE-250ms",
+      "time": 1791105355966,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000003",
+        "invalidated_snapshot_ids": [
+          "s00000003"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "4-1.png",
+          "bytes": 36437,
+          "hash": "316685563e794b2a29b1e74f532d981036f99b966d92fa01e42b53d23f0a5669"
+        }
+      ],
+      "fixtureEvents": []
+    },
+    {
+      "label": "direct-ONE-1000ms",
+      "time": 1791105357081,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000004",
+        "invalidated_snapshot_ids": [
+          "s00000004"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "5-1.png",
+          "bytes": 36437,
+          "hash": "316685563e794b2a29b1e74f532d981036f99b966d92fa01e42b53d23f0a5669"
+        }
+      ],
+      "fixtureEvents": []
+    },
+    {
+      "label": "direct-ONE-3000ms",
+      "time": 1791105359620,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000005",
+        "invalidated_snapshot_ids": [
+          "s00000005"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "6-1.png",
+          "bytes": 36437,
+          "hash": "316685563e794b2a29b1e74f532d981036f99b966d92fa01e42b53d23f0a5669"
+        }
+      ],
+      "fixtureEvents": []
+    },
+    {
+      "label": "native-page-ONE",
+      "time": 1791105359749,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA paint probe",
+            "ref": "p3:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "STAGE ONE",
+            "ref": "p3:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"STAGE ONE\"\n- button \"Advance\" [focusable=true,focused=true]",
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Advance",
+            "ref": "p3:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "screenshot": {
+          "coordinate_space": "viewport_css_px",
+          "height": 819,
+          "mime_type": "image/png",
+          "pixel_to_css_scale_x": 0.6666666666666666,
+          "pixel_to_css_scale_y": 0.6666666666666666,
+          "scope": "viewport",
+          "source": "cdp_tab",
+          "tab_activation": "not_requested",
+          "viewport_css_height": 546,
+          "viewport_css_width": 886,
+          "width": 1329,
+          "window_foregrounding": "not_requested"
+        },
+        "screenshot_height": 819,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 1329,
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p3",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "images": [
+        {
+          "file": "7-0.png",
+          "bytes": 26302,
+          "hash": "87b2d05e67c6e20e95b22a358af88f84da623b26bec1849a3e6c1ebc08252e54"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "window-after-page-ONE",
+      "time": 1791105359881,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000006",
+        "invalidated_snapshot_ids": [
+          "s00000006"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "8-1.png",
+          "bytes": 34344,
+          "hash": "c07b655c6929d62398204b50915ffff54240b565b0e82a504952c8ee2f9be93d"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "observe",
+      "time": 1791105362569,
+      "state": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 34344,
+            "mimeType": "image/png",
+            "hash": "c07b655c6929d62398204b50915ffff54240b565b0e82a504952c8ee2f9be93d"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000007",
+            "invalidated_snapshot_ids": [
+              "s00000007"
+            ],
+            "pid": 41724,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 1904928,
+            "window_title": "Pi CUA paint probe - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000007",
+          "invalidated_snapshot_ids": [
+            "s00000007"
+          ],
+          "pid": 41724,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 1904928,
+          "window_title": "Pi CUA paint probe - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"STAGE ONE\"\n- button \"Advance\" [focusable=true,focused=true]\nHints belong only to this CUA snapshot.\nc: button \"Advance\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "c",
+            "role": "button",
+            "name": "Advance"
+          }
+        ],
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p4",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        }
+      },
+      "images": [
+        {
+          "file": "9-1.png",
+          "bytes": 34344,
+          "hash": "c07b655c6929d62398204b50915ffff54240b565b0e82a504952c8ee2f9be93d"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "act",
+      "time": 1791105363416,
+      "state": {
+        "tab": 1,
+        "action": "click",
+        "native": {
+          "delivery": {
+            "mode": "background"
+          },
+          "effect": "unverifiable",
+          "route": "trusted_input",
+          "summary": "clicked (94, 270) in tab-c7794dc6-4719-4b6a-9c29-f13a750de222"
+        },
+        "status": "acted",
+        "text": "CUA input finished; site effect is not yet verified. Observe after the sequence.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": [],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "observe",
+      "time": 1791105365926,
+      "state": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 34344,
+            "mimeType": "image/png",
+            "hash": "c07b655c6929d62398204b50915ffff54240b565b0e82a504952c8ee2f9be93d"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000008",
+            "invalidated_snapshot_ids": [
+              "s00000008"
+            ],
+            "pid": 41724,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 1904928,
+            "window_title": "Pi CUA paint probe - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000008",
+          "invalidated_snapshot_ids": [
+            "s00000008"
+          ],
+          "pid": 41724,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 1904928,
+          "window_title": "Pi CUA paint probe - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"STAGE TWO\"\n- button \"Advance\" [focusable=true,focused=true]\nHints belong only to this CUA snapshot.\nd: button \"Advance\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "d",
+            "role": "button",
+            "name": "Advance"
+          }
+        ],
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p5",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        }
+      },
+      "images": [
+        {
+          "file": "11-1.png",
+          "bytes": 34344,
+          "hash": "c07b655c6929d62398204b50915ffff54240b565b0e82a504952c8ee2f9be93d"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "direct-TWO-0ms",
+      "time": 1791105366067,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000009",
+        "invalidated_snapshot_ids": [
+          "s00000009"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "12-1.png",
+          "bytes": 34344,
+          "hash": "c07b655c6929d62398204b50915ffff54240b565b0e82a504952c8ee2f9be93d"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "direct-TWO-250ms",
+      "time": 1791105366450,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_000000000000000a",
+        "invalidated_snapshot_ids": [
+          "s0000000a"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "13-1.png",
+          "bytes": 32658,
+          "hash": "f1ffe5b80ded163ed2b87cf54b8df83b94d005c4113becbc164270a8448c1cba"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "direct-TWO-1000ms",
+      "time": 1791105367622,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_000000000000000b",
+        "invalidated_snapshot_ids": [
+          "s0000000b"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "14-1.png",
+          "bytes": 32303,
+          "hash": "a1b931ba40f0e9734616ba97967ad33b4b0c2b6c145ff18cbe0a4dfb9be03cf7"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "direct-TWO-3000ms",
+      "time": 1791105370747,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_000000000000000c",
+        "invalidated_snapshot_ids": [
+          "s0000000c"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "15-1.png",
+          "bytes": 32303,
+          "hash": "a1b931ba40f0e9734616ba97967ad33b4b0c2b6c145ff18cbe0a4dfb9be03cf7"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        }
+      ]
+    },
+    {
+      "label": "native-page-TWO",
+      "time": 1791105370858,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA paint probe",
+            "ref": "p6:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "STAGE TWO",
+            "ref": "p6:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"STAGE TWO\"\n- button \"Advance\" [focusable=true,focused=true]",
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Advance",
+            "ref": "p6:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "screenshot": {
+          "coordinate_space": "viewport_css_px",
+          "height": 819,
+          "mime_type": "image/png",
+          "pixel_to_css_scale_x": 0.6666666666666666,
+          "pixel_to_css_scale_y": 0.6666666666666666,
+          "scope": "viewport",
+          "source": "cdp_tab",
+          "tab_activation": "not_requested",
+          "viewport_css_height": 546,
+          "viewport_css_width": 886,
+          "width": 1329,
+          "window_foregrounding": "not_requested"
+        },
+        "screenshot_height": 819,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 1329,
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p6",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "images": [
+        {
+          "file": "16-0.png",
+          "bytes": 29430,
+          "hash": "3a67595e64c246da0a68c7f41d5e891d1a9ffd42bb8d4dedb3dce20c2e22d787"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        },
+        {
+          "url": "/paint?stage=2",
+          "time": 1791105370773
+        }
+      ]
+    },
+    {
+      "label": "window-after-page-TWO",
+      "time": 1791105370974,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_000000000000000d",
+        "invalidated_snapshot_ids": [
+          "s0000000d"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "images": [
+        {
+          "file": "17-1.png",
+          "bytes": 34736,
+          "hash": "80a9e9c339495d9da0c7ed1d2e15530058a6bb19e8f20dbe840a4b361bc22d9e"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        },
+        {
+          "url": "/paint?stage=2",
+          "time": 1791105370773
+        }
+      ]
+    },
+    {
+      "label": "observe",
+      "time": 1791105373909,
+      "state": {
+        "tab": 1,
+        "agent_image": {
+          "route": "cua_window",
+          "coordinate_space": "window_image_pixels",
+          "configuration": {
+            "maxLongEdge": 500,
+            "scale": 1,
+            "version": 0,
+            "kernel": "lanczos3"
+          },
+          "output": {
+            "width": 500,
+            "height": 357,
+            "bytes": 34736,
+            "mimeType": "image/png",
+            "hash": "80a9e9c339495d9da0c7ed1d2e15530058a6bb19e8f20dbe840a4b361bc22d9e"
+          },
+          "native": {
+            "app_name": "chrome.exe",
+            "capture_coverage": {
+              "browser_chrome": {
+                "status": "not_observable_in_window_scope"
+              },
+              "recovery": {
+                "act_target": {
+                  "display_id": "primary",
+                  "kind": "desktop"
+                },
+                "inspect": "get_desktop_state",
+                "verify": "get_desktop_state",
+                "when": "verified_window_action_ineffective"
+              }
+            },
+            "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_000000000000000e",
+            "invalidated_snapshot_ids": [
+              "s0000000e"
+            ],
+            "pid": 41724,
+            "screenshot_height": 357,
+            "screenshot_mime_type": "image/png",
+            "screenshot_width": 500,
+            "window_bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "window_id": 1904928,
+            "window_title": "Pi CUA paint probe - Google Chrome"
+          }
+        },
+        "screenshot": {
+          "width": 500,
+          "height": 357
+        },
+        "native": {
+          "app_name": "chrome.exe",
+          "capture_coverage": {
+            "browser_chrome": {
+              "status": "not_observable_in_window_scope"
+            },
+            "recovery": {
+              "act_target": {
+                "display_id": "primary",
+                "kind": "desktop"
+              },
+              "inspect": "get_desktop_state",
+              "verify": "get_desktop_state",
+              "when": "verified_window_action_ineffective"
+            }
+          },
+          "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_000000000000000e",
+          "invalidated_snapshot_ids": [
+            "s0000000e"
+          ],
+          "pid": 41724,
+          "screenshot_height": 357,
+          "screenshot_mime_type": "image/png",
+          "screenshot_width": 500,
+          "window_bounds": {
+            "height": 951,
+            "width": 1332,
+            "x": 69,
+            "y": 60
+          },
+          "window_id": 1904928,
+          "window_title": "Pi CUA paint probe - Google Chrome"
+        },
+        "status": "observed",
+        "text": "Native CUA browser-window image, including browser chrome. Semantic hints use page refs, not these pixels.\n- heading \"STAGE TWO\"\n- button \"Advance\" [focusable=true,focused=true]\nHints belong only to this CUA snapshot.\ne: button \"Advance\"",
+        "ownership": "driver-owned isolated browser",
+        "elements": [
+          {
+            "hint": "e",
+            "role": "button",
+            "name": "Advance"
+          }
+        ],
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p7",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        }
+      },
+      "images": [
+        {
+          "file": "18-1.png",
+          "bytes": 34736,
+          "hash": "80a9e9c339495d9da0c7ed1d2e15530058a6bb19e8f20dbe840a4b361bc22d9e"
+        }
+      ],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        },
+        {
+          "url": "/paint?stage=2",
+          "time": 1791105370773
+        }
+      ]
+    },
+    {
+      "label": "close",
+      "time": 1791105374542,
+      "state": {
+        "status": "closed",
+        "text": "Owned CUA browser session released.",
+        "ownership": "driver-owned isolated browser"
+      },
+      "images": [],
+      "fixtureEvents": [
+        {
+          "url": "/paint?stage=1",
+          "time": 1791105359635
+        },
+        {
+          "url": "/paint?stage=2",
+          "time": 1791105370773
+        }
+      ]
+    }
+  ],
+  "nativeCalls": [
+    {
+      "name": "start_session",
+      "args": {
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 419.92622900000003,
+      "state": {
+        "active": true,
+        "capture_scope": "auto",
+        "desktop_capture_authorized": false,
+        "desktop_unlocked": false,
+        "effective_scope": "window",
+        "escalation_detail": null,
+        "escalation_reason": null,
+        "revived": false,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "isError": false
+    },
+    {
+      "name": "browser_prepare",
+      "args": {
+        "allow_launch": true,
+        "profile": {
+          "mode": "isolated_new"
+        },
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 1309.0422310000001,
+      "state": {
+        "action": "launched_isolated_browser",
+        "attachment": null,
+        "endpoint_ownership": {
+          "detail": "driver-owned profile port file plus live loopback socket owner",
+          "listener_pid": 41724,
+          "method": "spawned_by_driver",
+          "owner_pid": 41724
+        },
+        "message": "Launched a separate driver-owned isolated Chromium process; no existing browser process was modified or terminated.",
+        "prepared": true,
+        "prepared_pid": 41724,
+        "side_effects": {
+          "changed_preferences": false,
+          "closed_setup_page": false,
+          "copied_profile_data": false,
+          "created_profile": true,
+          "displayed_consent_prompt": false,
+          "enabled_remote_debugging": false,
+          "focused_setup_address_field": false,
+          "foregrounded_window": false,
+          "injected_global_input": false,
+          "launched_browser": true,
+          "opened_setup_page": false,
+          "restarted_browser": false,
+          "reused_driver_profile": false,
+          "used_bounded_pixel_fallback": false
+        },
+        "status": "ok"
+      },
+      "isError": false
+    },
+    {
+      "name": "list_windows",
+      "args": {
+        "pid": 41724,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 696.319512,
+      "state": {
+        "_legacy_windows": [
+          {
+            "height": 951,
+            "is_on_screen": true,
+            "minimized": false,
+            "pid": 41724,
+            "title": "Untitled - Google Chrome",
+            "width": 1332,
+            "window_id": 1904928,
+            "x": 69,
+            "y": 60
+          }
+        ],
+        "current_space_id": null,
+        "windows": [
+          {
+            "app_name": "chrome.exe",
+            "bounds": {
+              "height": 951,
+              "width": 1332,
+              "x": 69,
+              "y": 60
+            },
+            "is_on_screen": true,
+            "layer": 0,
+            "minimized": false,
+            "pid": 41724,
+            "title": "Untitled - Google Chrome",
+            "window_id": 1904928,
+            "z_index": 0
+          }
+        ]
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 819.2227000000003,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "about:blank - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+            "title": "about:blank",
+            "url": "about:blank"
+          }
+        ],
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "isError": false
+    },
+    {
+      "name": "set_agent_cursor_enabled",
+      "args": {
+        "enabled": true,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 8.184783000000607,
+      "state": {
+        "enabled": true,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "isError": false
+    },
+    {
+      "name": "set_agent_cursor_motion",
+      "args": {
+        "glide_duration_ms": 250,
+        "idle_hide_ms": 5000,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 8.90871100000004,
+      "state": {
+        "motion": {
+          "arc_flow": 0,
+          "arc_size": 0.25,
+          "dwell_after_click_ms": 80,
+          "end_handle": 0.3,
+          "glide_duration_ms": 250,
+          "idle_hide_ms": 5000,
+          "spring": 0.72,
+          "start_handle": 0.3,
+          "turn_radius": 80
+        },
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "isError": false
+    },
+    {
+      "name": "browser_navigate",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "url": "http://127.0.0.1:44949/",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 28.402643999999782,
+      "state": {
+        "refs_invalidated": true,
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "url": "http://127.0.0.1:44949/"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 822.4774749999997,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-48635c48-5b98-40f4-afaa-7bf8a96425d0",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-f2f16132-6f58-4074-9520-c6c91e21ff59"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 15.621428999999807,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA paint probe",
+            "ref": "p1:1",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "STAGE ZERO",
+            "ref": "p1:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"STAGE ZERO\"\n- button \"Advance\" [focusable=true]",
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Advance",
+            "ref": "p1:0",
+            "role": "button",
+            "states": {
+              "focusable": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p1",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 961.2258440000005,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-908c9d94-113c-43fc-af05-c73b62369dc9",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-ff9f3eb5-6068-4447-a4db-8ba3c205e900"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 131.17518199999995,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000000",
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 830.1526969999995,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-26aa78b0-4d91-4a1b-aed3-6a6e6e7aaa6e",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-7fdcc113-4a6d-4823-8c9e-adfee53bac67"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 733.8686990000006,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-0ae03b8b-6d6d-41d4-ab7f-029643c58fdc",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-f673acba-ad31-4e60-88a2-8dae1cfcc935"
+      },
+      "isError": false
+    },
+    {
+      "name": "browser_click",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "ref": "p1:0",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 51.899122000000716,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "clicked (94, 270) in tab-c7794dc6-4719-4b6a-9c29-f13a750de222"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 762.633874000001,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-5f739771-95e4-41af-a712-f1b2fed252b6",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-a90efc36-1783-4fa2-a070-5e52cc0fb4bf"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 9.438215000000127,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA paint probe",
+            "ref": "p2:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "STAGE ONE",
+            "ref": "p2:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"STAGE ONE\"\n- button \"Advance\" [focusable=true,focused=true]",
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Advance",
+            "ref": "p2:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p2",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 792.0360440000004,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-a41071b7-7e47-47b0-b2b4-e611b9d3787d",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-25c76bc1-e451-4549-b535-c7f349bf2916"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 106.80978299999879,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000001",
+        "invalidated_snapshot_ids": [
+          "s00000001"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 783.9692529999993,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-c1dc7781-a35b-419b-b9f6-4f9bcedd2861",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-b7f5c565-efcc-479a-ac37-51629edcfc0a"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 884.0447309999981,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-fe24e50b-475d-4b09-92b5-2dd0561e4a12",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-e9239697-9c9e-46e2-a251-f87eb0146844"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 8.619825999998284,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA paint probe",
+            "ref": "p4:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "STAGE ONE",
+            "ref": "p4:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"STAGE ONE\"\n- button \"Advance\" [focusable=true,focused=true]",
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Advance",
+            "ref": "p4:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p4",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 871.3693600000006,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-c109bd34-d5e3-4d9a-8582-65e8bdac792e",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-656d1aac-5715-44f1-b998-28b288865a93"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 126.79218899999978,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000007",
+        "invalidated_snapshot_ids": [
+          "s00000007"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 784.4044400000021,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-e59b1a9a-071f-4fba-b3b1-a1723cea97ca",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-9645c860-0e23-4e88-ad8c-460b5df7378b"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 778.9011500000015,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-d716baeb-1d33-4e25-9bd6-4bb5689ea594",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-ad1e3248-8849-4b75-836d-8a36d0a61013"
+      },
+      "isError": false
+    },
+    {
+      "name": "browser_click",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "ref": "p4:1",
+        "delivery_mode": "background",
+        "input_route": "trusted",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 63.92269799999849,
+      "state": {
+        "delivery": {
+          "mode": "background"
+        },
+        "effect": "unverifiable",
+        "route": "trusted_input",
+        "summary": "clicked (94, 270) in tab-c7794dc6-4719-4b6a-9c29-f13a750de222"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 771.2583139999988,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-92a9b77a-2b37-4edd-b4d3-e3382f7325ae",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-a1ef2b96-f00d-46c6-a46e-f5d558e5eb8d"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 12.81133299999783,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA paint probe",
+            "ref": "p5:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "STAGE TWO",
+            "ref": "p5:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"STAGE TWO\"\n- button \"Advance\" [focusable=true,focused=true]",
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Advance",
+            "ref": "p5:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p5",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 835.6839500000024,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-051b85c7-856e-49e9-b39d-c4e9bccca8c9",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-d9bab37a-96a7-4b9c-86bc-434dabd6d7f1"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 112.70529899999747,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_0000000000000008",
+        "invalidated_snapshot_ids": [
+          "s00000008"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 768.1840510000002,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-4924106a-1d07-48cf-8d59-412a7b5a89a4",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-8fdf8641-b169-468a-8336-660464485906"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 920.5781450000031,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-e1de04b5-f857-4d97-8c1b-a719e38281f2",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-88f6c73c-1d66-41cb-8f25-a83925aa4d30"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "snapshot_format": "semantic_v2",
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 12.044717000000674,
+      "state": {
+        "content_refs": [
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "Pi CUA paint probe",
+            "ref": "p7:0",
+            "role": "rootwebarea",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          },
+          {
+            "actions": [],
+            "frame": "main",
+            "name": "STAGE TWO",
+            "ref": "p7:2",
+            "role": "heading",
+            "states": {},
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "mode": "snapshot",
+        "oopif": {
+          "frames": 0,
+          "status": "attached"
+        },
+        "outline": "- heading \"STAGE TWO\"\n- button \"Advance\" [focusable=true,focused=true]",
+        "page": {
+          "title": "Pi CUA paint probe",
+          "url": "http://127.0.0.1:44949/"
+        },
+        "refs": [
+          {
+            "actions": [
+              "click",
+              "pointer"
+            ],
+            "frame": "main",
+            "name": "Advance",
+            "ref": "p7:1",
+            "role": "button",
+            "states": {
+              "focusable": true,
+              "focused": true
+            },
+            "value": null,
+            "visibility": "in_viewport"
+          }
+        ],
+        "snapshot": {
+          "complete": true,
+          "continuation": null,
+          "format": "semantic_v2",
+          "id": "p7",
+          "node_budget": 300,
+          "omitted": {
+            "budget": 0,
+            "css_hidden": 0,
+            "no_layout": 0,
+            "offscreen": 0,
+            "page_occluded": 0,
+            "unknown": 0,
+            "unprovable_frame": 0
+          },
+          "scope": "viewport",
+          "selected_nodes": 3,
+          "total_nodes": 3
+        },
+        "status": "ok",
+        "tab_id": "tab-c7794dc6-4719-4b6a-9c29-f13a750de222",
+        "target_id": "bt-404b2958-85ef-472b-a059-593e4dfe58bc"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 1028.7291829999995,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-866ef2c7-dd5b-44c9-a3d9-ebcb0c51d367",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-55fbdebe-115c-46aa-89a2-ee6c6bd1b0e6"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_window_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "include_accessibility_tree": false,
+        "max_image_dimension": 500,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 134.05883299999914,
+      "state": {
+        "app_name": "chrome.exe",
+        "capture_coverage": {
+          "browser_chrome": {
+            "status": "not_observable_in_window_scope"
+          },
+          "recovery": {
+            "act_target": {
+              "display_id": "primary",
+              "kind": "desktop"
+            },
+            "inspect": "get_desktop_state",
+            "verify": "get_desktop_state",
+            "when": "verified_window_action_ineffective"
+          }
+        },
+        "capture_id": "capture_7cfdbddff49c4dbea79dd41546136b09_000000000000000e",
+        "invalidated_snapshot_ids": [
+          "s0000000e"
+        ],
+        "pid": 41724,
+        "screenshot_height": 357,
+        "screenshot_mime_type": "image/png",
+        "screenshot_width": 500,
+        "window_bounds": {
+          "height": 951,
+          "width": 1332,
+          "x": 69,
+          "y": 60
+        },
+        "window_id": 1904928,
+        "window_title": "Pi CUA paint probe - Google Chrome"
+      },
+      "isError": false
+    },
+    {
+      "name": "get_browser_state",
+      "args": {
+        "pid": 41724,
+        "window_id": 1904928,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 814.359287000003,
+      "state": {
+        "binding_quality": "exact",
+        "binding_route": "native_cdp_window",
+        "endpoint_access_class": "driver_owned",
+        "endpoint_transport": "legacy_json_version",
+        "mode": "bind",
+        "mutation_allowed": true,
+        "native_title": "Pi CUA paint probe - Google Chrome",
+        "status": "ok",
+        "tabs": [
+          {
+            "active": true,
+            "tab_id": "tab-f3437d25-c544-41dd-8472-f87162113b53",
+            "title": "Pi CUA paint probe",
+            "url": "http://127.0.0.1:44949/"
+          }
+        ],
+        "target_id": "bt-c409b950-d95c-4e4a-8f7c-46d084f24fd9"
+      },
+      "isError": false
+    },
+    {
+      "name": "end_session",
+      "args": {
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "elapsed_ms": 558.5222429999994,
+      "state": {
+        "active": false,
+        "session": "pi-browser-74603d93-88a6-4acf-af9e-e4095825f1f3"
+      },
+      "isError": false
+    }
+  ]
+}

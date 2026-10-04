@@ -1,99 +1,81 @@
 # Visible agent browser
 
-Six browser tools control an **owned visible Windows Chrome/Edge** from Pi in WSL. Windows Node runs Playwright through a private stdio connection. The human sees the actual agent browser, not a mirror or a screenshot viewer. There is no Pi Agent IDE dependency.
+Six tools use **Cua Driver 0.33.1** to control one driver-owned visible Windows Chromium browser from Pi in WSL. CUA owns the browser launch, profile, semantic snapshots, native screenshots, zoom and input. There is no Playwright, Sharp, page-JavaScript bridge or Pi Agent IDE dependency.
 
-The first browser slice passed [LPT-370](https://linear.app/alexshpunt/issue/LPT-370); its [report](browser-results.md) is historical. [LPT-372](https://linear.app/alexshpunt/issue/LPT-372) adds a focused surface, short labels and compact actions in existing Pi Codemode.
+## Setup and ownership
 
-## Setup
+Use the project-local extension and its declared dependencies. The browser route discovers the separately pinned Windows CUA 0.33.1 runtime. Desktop tools still use 0.32.0. Missing or wrong runtimes refuse; tools do not install them. This qualification used the official signed 0.33.1 prerelease, not an automatic upgrade policy.
 
-Use the project-local extension and its declared dependencies. No browser extension, account or per-window config is needed.
+`browser_open({url})` calls CUA's `isolated_new` route once. It creates a fresh profile, checks the launched PID/window lifetime and binds only that owned browser. It returns the first semantic snapshot and whole-window PNG. A second open refuses while that session exists. Navigate it or close it instead. No personal browser endpoint, profile, tab or permission grant is accepted.
 
-WSL requires Windows Node at `C:\Program Files\nodejs\node.exe`, plus installed Chrome in Program Files or Edge in Program Files (x86). Chrome is tried first. Missing programs are refused, never installed automatically. Windows Node22.22.2, Chrome154.0.8037.58 and playwright-core1.63.0 were tested; Edge and other installations have not been qualified live.
+Close ends that exact native session, deletes its owned profile and releases the Driver/identity peer. Unknown cleanup blocks another launch. A profile is browser-data separation, **not OS isolation**.
 
-First open creates a worker and a headed browser with a new temporary profile. Control uses Chromium's private debugging pipe, **not a debugging port**. The browser sandbox stays enabled. Launch options do not disable browser security checks.
+## Focus and hints
 
-## Focus once, then work
+`browser_focus({tab:1})` selects the agent's working surface. It does not activate another tab. Its returned overview raises only the owned browser through CUA and may switch keyboard focus. Current native window-image work requires **exactly one active tab**. `browser_tabs({})` lists only owned tabs; it does not activate them. Standalone tab creation, activation and closure are unavailable on the public CUA route used here.
 
-- `browser_open({url})` opens **and focuses** a new owned tab, returning text, short hints and a labelled PNG.
-- `browser_tabs({})` lists owned tabs with small numbers and their focus state. It does not change focus.
-- `browser_focus({tab:1})` selects an owned tab in the real window and returns its working surface.
-- `browser_act({click:"a"})` acts in that surface. No page, observation or long element IDs are needed.
-- `browser_observe({})` refreshes the focused page after a sequence. It replaces old hints.
-- `browser_close({})` closes the entire owned browser/worker and deletes its profile. Opening later starts with clean storage.
+A full `browser_observe({})` returns CUA semantic text, short lowercase hints and a native PNG. Each semantic observation retires the previous hints. Aliases are never rebound to new snapshot refs or reused after reload/reopen. `image_only:true` captures without discovering targets or renewing hints.
 
-Each act takes exactly one action:
-
-```js
-{click:"a"}
-{fill:"b", text:"Hello"}
-{press:"b", key:"Enter"}
-{scroll:600}
-{navigate:"https://example.org"}
-{close_tab:true}
-```
-
-Fill replaces a value. Press supports Enter, Tab, Escape, Backspace, Delete and arrow keys. Scroll is bounded to -2000..2000; navigation requires HTTP(S) without embedded credentials.
-
-Actions return a compact **input outcome**, not a fresh screenshot. `observe:true` requests immediate full state. `wait_ms` requests a pause after input (integer0..5000, default0, not allowed on close_tab). A pause is not a page-ready guarantee.
-
-## Existing Pi Codemode
-
-Use labels from the current working surface, not invented labels. For example, if it shows four choices labelled `a`, `b`, `c`, `d`:
+Use hints from the current snapshot, not remembered ones. Four known choices can use that snapshot in one existing Pi Codemode sequence:
 
 ```js
 for (const hint of ["a", "b", "c", "d"])
-  await tools.browser_act({click:hint});
+  await tools.browser_act({click:hint, observe:false});
 const view = await tools.browser_observe({});
 text(view.text);
 image(view.image);
 ```
 
-This is one model/tool exchange, four serial page inputs, and one final capture. It does not send arbitrary code to the site. Pi already supplies the Codemode executor; this extension adds no second executor.
+No page/observation IDs are repeated. The extension wraps CUA refs; it adds no executor or DOM target registry. Structured results expose `text`, `elements`, `tabs`, optional `image` and `agent_image`. Forward pixels with `image(view.image)`, not base64 text.
 
-Tools declare structured results. Codemode receives the state directly, including `elements`, `tabs` and the optional `image` block; there is no need to parse tool prose or print base64. Use `image(view.image)` to send a captured PNG to the model. Refusal or unknown input **throws** at the Pi tool boundary, so an awaited sequence stops there. Completed actions are not rolled back. Observe before deciding what to do next; do not replay a partly completed sequence.
+## Supported input
 
-## Hints and screenshots
+Each `browser_act` accepts one action:
 
-Short lowercase sequences (`a`..`z`, `aa`..) identify saved DOM handles, never selectors. The list and visible yellow labels use the same allocation. Observe/focus replaces those hints; labels are not reused across captures, focus changes, close/reopen or worker replacement. Only the allocation counter is saved in Pi session history for reload recovery, not browser ownership or DOM handles. Labels grow with a long session; they are whole tokens, not a prefix-free keyboard command language.
+```js
+{click:"a"}
+{fill:"b", text:"Hello"}
+{hover:"c"}
+{scroll:{hint:"c", delta_y:600}}
+{navigate:"https://example.org"}
+{click:{x:150, y:140}}
+```
 
-Within a working surface, several short-hint clicks/fills/presses can use the same saved handles without recapture. Main-document navigation, removed/hidden targets and closed tabs refuse known stale input. A handle is never looked up again by selector and rebound to a replacement node. Dynamic pages can still change between validation and input; an uncertain outcome is reported as unknown.
+Hint input calls native browser click/type/pointer APIs. Fill replaces a text input, textarea or contenteditable value; unsupported controls refuse. Scroll is bounded to -2000..2000. Pixel clicks use the last returned window or zoom image's coordinates, not CSS coordinates. CUA maps the point once using the capture ID or its zoom state. The adapter rejects known page/window geometry drift before pixel input. This is not an atomic renderer-readiness or external-scroll guarantee.
 
-For canvas or a target missing from the list, use `{click:{x:150,y:140}}` from the **latest** PNG. Pixels are viewport CSS pixels measured from the top-left; dimensions are in `screenshot.width/height`. A complete in-bounds point is required. After any dispatched input, another coordinate click needs a new observation. A changed viewport, scroll position or zoom also refuses stale coordinates. Pinch zoom is unsupported.
+`observe:false` returns a compact input outcome. By default an action returns a native image-only capture; `observe:true` also renews semantics and hints. `wait_ms` pauses after input (integer 0..5000), **not a readiness guarantee**. Arbitrary keys, coordinate pointer movement, drag, dialogs, uploads/downloads and generic overlay drawings are not exposed by this slice. No other engine or global-input fallback fills these gaps.
 
-The non-intercepting label overlay appears in the real page and PNG. Labels describe the last capture; they are not a continuously tracked live map. Observe again when the page layout changes. The overlay can alter a site's DOM or visual composition; no claim is made that every site tolerates it unchanged.
+A refused or unknown result throws at the Pi tool boundary, stopping an awaited sequence. Earlier inputs are not rolled back. Never replay a partial sequence or an unknown launch/input. Native structured refusals count as refusals even when MCP `isError` is false.
 
-## Outcomes and recovery
+## Native vision and human cursor
 
-- `observed`: fresh page text, hints and pixels.
-- `acted`: input finished; its intended site effect is not yet verified.
-- `listed`: owned tabs.
-- `closed`: owned cleanup or tab closure completed.
-- `refused`: the operation was rejected before input.
-- `unknown`: input/open may have partly run, or cleanup needs attention.
+Before every overview or zoom, CUA automatically brings the exact owned browser window to the foreground. This is the user-approved compromise for covered-window paint throttling and may switch keyboard focus. Capture-free inputs and tab listing do not raise it. Results and `agent_image.foreground` record the native outcome; a failed or uncertain raise stops capture, without replay. Raising is **not a paint-readiness guarantee**.
 
-Open retries a refused capture once on the same tab, never repeating launch or navigation. If capture still fails, its known tab remains focused and its number is included when available. Observe the focus, or list owned tabs if necessary; never open a duplicate blindly.
+Overview is a clean **whole-window PNG including browser chrome**, capped at 500px long edge by default. CUA uses Lanczos3; the extension does not resize pixels. `/computer-debug` shows the private loopback viewer. Its maximum-edge textbox and synchronized scale slider/exact textbox affect the next capture. Effective cap is `floor(maxLongEdge * scale)`; actual raster dimensions can round below it. Old four-kernel controls and retained-original trials are retired.
 
-Scroll/navigation requires a fresh observation before more input. Refused/unknown native dispatch retires the working observation. Cancellation and connection loss end the owned pipe; the worker closes its browser. A failed profile cleanup stays pending and blocks a new launch rather than claiming success.
+For detail, ground a rectangle in the last overview image and request:
 
-## Boundaries
+```js
+await tools.browser_observe({zoom:{x:100, y:120, width:100, height:60}});
+```
 
-The disposable profile has no personal cookies, passwords, accounts, extensions or tabs. Close discards its storage. This is **browser-data separation, not OS isolation**: the browser and worker run with normal Windows user permissions and network access.
+CUA makes a **fresh native padded JPEG**, up to 500px wide. It is not a crop of a saved original and cannot nest zooms. Click coordinates then come from that returned JPEG. Keep window and zoom coordinate domains separate.
 
-These browser tools never adopt personal tabs, even under desktop YOLO, and cannot change Safe/YOLO. Selecting a tab may activate its window; there is no focus non-interference guarantee. Input is page-scoped, not global host keyboard/mouse input. The model cannot supply selectors, page JS, executables, profiles or a personal debugging endpoint. Site content is untrusted data, not instructions.
+The human sees CUA's independent agent cursor in the actual Windows window. The Driver excludes that overlay from perception captures where supported. The cursor is not a generic rectangle/label overlay; hints are text metadata, not painted labels on the page.
 
-Observations contain bounded top-document text and up to120 viewport targets. Heuristics include native controls, common roles, onclick/jsaction/tabindex and pointer-cursor leaves from up to8000 DOM nodes. They are not universal custom-widget detection, a complete accessibility tree, or an iframe/shadow-root API. Native dialogs are dismissed. Login, uploads/downloads, persistent profiles, other engines/platforms and general site compatibility remain outside this slice.
+Vision debug mirrors exact returned bytes, hashes, native coordinate metadata and nested action outcomes. It polls trace state, not the screen continuously. It shows the last three application-boundary images without changing the model's context. Later Pi handlers/provider processing remain unobserved; final wire delivery is unconfirmed.
 
-Lightpanda remains a possible later headless backend, not the visible backend used here.
+**Observed limit:** native Chrome window PNGs can show an older paint than the live window and semantic snapshot, even after a pause. A successful input or matching text is not proof of current pixels. Inspect pixels and use bounded read-only observations; do not repeat input to force a repaint. The cause remains open.
 
-## Opt-in verification
+## Verification and history
 
-Native scripts use only new profiles and synthetic loopback pages:
+Read [the operating skill](../skills/owned-browser-use/SKILL.md) before browser actions. Opt-in scripts use only fresh profiles and synthetic pages:
 
-- `node scripts/verify-browser-focus.mjs`: four custom short-hint clicks, labels, compact outcomes, form input, removed/navigation/foreign-hint refusal and worker-reopen cleanup.
-- `node scripts/verify-browser-click.mjs`: coordinate bounds, explicit wait, stale-scroll refusal and cleanup.
-- `node scripts/verify-browser-native.mjs`: storage, tabs, stale/foreign refusal, cancellation and cleanup.
-- `node scripts/live-browser.mjs`: isolated real-model Pi with only browser tools and existing Codemode, no IDE/shell.
-- `node scripts/browser-fixture.mjs`: parent-session fixture; exact URL is printed and recorded under ignored `.tmp`. Stop only this owned server.
-- `node --experimental-transform-types scripts/capture-browser-window.mjs`: read-only window capture when exactly one marked owned browser exists; no policy promotion.
+- `node --experimental-transform-types scripts/verify-cua-adapter.mjs`: native lifecycle, four hints, refusal, input and navigation.
+- `node scripts/live-cua-browser.mjs`: isolated real-model Pi through the production extension and existing Codemode.
+- `node scripts/cua-browser-fixture.mjs`: disposable parent-session fixture; stop only its owned server.
+- `node scripts/export-cua-preview.mjs <viewer-url> <output-directory>`: export exact retained preview assets without new input/capture.
+- `node scripts/probe-cua-browser.mjs`: runtime capability/schema inspection.
+- `node scripts/verify-cua-browser-native.mjs`: raw native qualification with a human-grounded zoom point prompt.
 
-Markers check cookie/storage separation, not every kind of browser data. Fewer captures or model exchanges are not a measured speed score.
+Historical Playwright, stable-DOM-hint, Sharp/MKS2021 and saved-crop results remain in Git and their linked tasks. They are not current capabilities. The unfinished LPT-372 patch was archived and read back exactly in its [Linear document](https://linear.app/alexshpunt/document/lpt-372-paused-playwright-backend-patch-before-cua-retirement-dcff0b18e49e) before removal. The game remains paused. Lightpanda, other platforms, desktop/display vision, cache changes and Sandbox are separate work.

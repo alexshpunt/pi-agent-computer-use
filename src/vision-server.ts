@@ -1,18 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { VisionTrace } from "./vision-trace.ts";
-import { VisionImages } from "./vision-images.ts";
+import { CuaImageSettings } from "./cua-image-settings.ts";
 import { visionPanel, visionScript, visionStyle } from "./vision-panel.ts";
-import { VisionTrials } from "./vision-trial.ts";
-import { visionTrialPanel, visionTrialScript, visionTrialStyle } from "./vision-trial-panel.ts";
 
-/** A private loopback viewer with bounded settings and trial-grading writes. */
+/** A private loopback viewer with bounded native capture settings. */
 export interface VisionServer { url: string; close(): Promise<void> }
 
 /** Start from a session/command. Settings affect following captures, not historical frames. */
-export async function startVisionServer(trace: VisionTrace, images = new VisionImages()): Promise<VisionServer> {
+export async function startVisionServer(trace: VisionTrace, images: CuaImageSettings = new CuaImageSettings()): Promise<VisionServer> {
   const token = randomBytes(24).toString("hex");
-  const trials = new VisionTrials(images);
   let origin = "";
   const server = createServer(async (request, response) => {
     response.setHeader("Cache-Control", "no-store");
@@ -26,8 +23,11 @@ export async function startVisionServer(trace: VisionTrace, images = new VisionI
     const base = `/${token}/`;
     if (!url.pathname.startsWith(base)) { response.writeHead(404).end("Not found."); return; }
     const route = url.pathname.slice(base.length);
-    if (request.method === "POST" && ["settings", "trial/apply"].includes(route)) {
-      const limit = route === "settings" ? 1024 : 4096;
+    if (route === "trial" || route.startsWith("trial/") || route === "trial.js" || route === "trial.css") {
+      response.writeHead(410).end("The old resampling trial is retired on the native CUA route. Native overview uses Lanczos3; detail uses fresh padded zoom."); return;
+    }
+    if (request.method === "POST" && route === "settings") {
+      const limit = 1024;
       if (request.headers.origin !== origin || request.headers["content-type"] !== "application/json") {
         response.writeHead(403).end("Settings require same-origin JSON."); request.resume(); return;
       }
@@ -40,7 +40,7 @@ export async function startVisionServer(trace: VisionTrace, images = new VisionI
           chunks.push(Buffer.from(chunk));
         }
         const input: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        const applied = route === "settings" ? images.update(input) : await trials.apply(input);
+        const applied = images.update(input);
         response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(applied));
       } catch (error) { response.writeHead(400).end(error instanceof Error ? error.message : String(error)); }
       return;
@@ -52,18 +52,8 @@ export async function startVisionServer(trace: VisionTrace, images = new VisionI
     else if (route === "panel.js") { body = visionScript; mime = "text/javascript; charset=utf-8"; }
     else if (route === "style.css") { body = visionStyle; mime = "text/css; charset=utf-8"; }
     else if (route === "state") { body = JSON.stringify({ ...trace.snapshot(), imageSettings: images.settings() }); mime = "application/json"; }
-    else if (route === "trial") { body = visionTrialPanel; mime = "text/html; charset=utf-8"; }
-    else if (route === "trial.js") { body = visionTrialScript; mime = "text/javascript; charset=utf-8"; }
-    else if (route === "trial.css") { body = visionTrialStyle; mime = "text/css; charset=utf-8"; }
-    else if (route === "trial/results") { body = JSON.stringify(trials.results()); mime = "application/json"; }
-    else if (/^trial\/pixels\/[a-f0-9]{32}$/.test(route)) { body = trials.pixels(route.slice(13)); mime = "image/png"; }
-    else if (route === "trial/new") {
-      if (request.method !== "GET") { response.writeHead(405).end("Use GET for a fresh trial."); return; }
-      try { body = JSON.stringify(await trials.create()); mime = "application/json"; }
-      catch { response.writeHead(500).end("Could not render the sample."); return; }
-    }
     else if (/^images\/[a-f0-9]{64}$/.test(route)) {
-      const hash = route.slice(7); body = trace.asset(hash) ?? images.asset(hash); mime = trace.assetMime(hash) ?? "image/png";
+      const hash = route.slice(7); body = trace.asset(hash); mime = trace.assetMime(hash) ?? "image/png";
     }
     if (body === undefined) { response.writeHead(404).end("Not retained in this session."); return; }
     response.setHeader("Content-Type", mime);
