@@ -1,4 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
+import { observationSource } from "./observation-source.ts";
+import { nativeImageCap } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Content, Driver, DriverResult, WindowTarget } from "./session.ts";
 
@@ -248,19 +250,21 @@ export class CuaBrowser {
     if (images.length !== 1 || images[0].type !== "image") throw new Error("CUA returned no exact native image.");
     if (kind === "window" && typeof state.capture_id !== "string") throw new Error("CUA window capture has no scoped capture ID.");
     this.image = { ...context, kind, width, height, ...(kind === "window" ? { captureId: state.capture_id as string } : {}) };
+    const source = observationSource("browser", state, { session_id: this.owned!.session, ...this.owned!.target!,
+      target_id: this.owned!.targetId!, tab_id: this.owned!.focused! }, kind === "zoom");
     const bytes = Buffer.from(images[0].data, "base64");
     const agent_image = { route: kind === "window" ? "cua_window" : "cua_fresh_zoom", coordinate_space: kind === "window" ? "window_image_pixels" : "zoom_image_pixels",
       configuration: settings ? { ...settings, kernel: "lanczos3" } : { kernel: "lanczos3", padding: "20% each side", maxWidth: 500 },
       output: { width, height, bytes: bytes.length, mimeType: mime, hash: createHash("sha256").update(bytes).digest("hex") }, foreground, native: state };
     return this.result("observed", kind === "window" ? "CUA raised the owned browser before capture; keyboard focus may change. Native window image includes browser chrome. Semantic hints use page refs, not these pixels." :
-      "CUA raised the owned browser before fresh native zoom; keyboard focus may change. This padded detail is not a retained or nested crop.", { tab: this.tabNumber(), foreground, agent_image, screenshot: { width, height }, native: state }, images);
+      "CUA raised the owned browser before fresh native zoom; keyboard focus may change. This padded detail is not a retained or nested crop.", { tab: this.tabNumber(), source, foreground, agent_image, screenshot: { width, height }, native: state }, images);
   }
 
   private async capture(foreground: Record<string, unknown>): Promise<CuaBrowserResult> {
     const settings = { ...this.settings() };
-    if (!Number.isSafeInteger(settings.maxLongEdge) || settings.maxLongEdge < 64 || settings.maxLongEdge > 4096 || !Number.isFinite(settings.scale) || settings.scale < 0.05 || settings.scale > 1)
-      throw new Refused("Use a long edge 64..4096 and scale 0.05..1.");
-    const cap = Math.max(1, Math.floor(settings.maxLongEdge * settings.scale));
+    let cap: number;
+    try { cap = nativeImageCap(settings); }
+    catch (error) { throw new Refused(error instanceof Error ? error.message : String(error)); }
     this.image = undefined;
     const page = this.pageKey(await this.requireFocused());
     const native = await this.native("get_window_state", { ...this.owned!.target, include_accessibility_tree: false, max_image_dimension: cap });

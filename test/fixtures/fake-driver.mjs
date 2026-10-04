@@ -22,12 +22,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     windows.push(window);
     state = { pid: 42, windows: [window] };
   } else if (name === "fixture_identity") state = { identity: `lifetime:${args.pid}:${args.window_id}` };
-  else if (name === "get_window_state") state = { snapshot_id: "s" + ++snapshot, ...args,
+  else if (name === "get_desktop_state") state = { display: "primary", platform: "windows", capture_id: "display-capture",
+    screenshot_width: 1, screenshot_height: 1, screenshot_original_width: 3840, screenshot_original_height: 2560, scale_factor: 1.5 };
+  else if (name === "get_window_state") state = { screenshot_width: 1, screenshot_height: 1,
+    window_bounds: { x: 40, y: 50, width: 600, height: 400 }, snapshot_id: "s" + ++snapshot, ...args,
     elements: [{ element_token: "s" + snapshot + ":0", role: "edit", value: "", enabled: true }] };
   else state = { windows, effect: "unverifiable" };
   return { content: [
     { type: "text", text: JSON.stringify(state) },
-    ...(name === "get_window_state" ? [{ type: "image", data: png, mimeType: "image/png" }] : []),
+    ...(["get_window_state", "get_desktop_state"].includes(name) ? [{ type: "image", data: png, mimeType: "image/png" }] : []),
   ], ...(name !== "launch_app" ? { structuredContent: state } : {}) };
 });
 process.stdin.on("end", () => appendFileSync(log, JSON.stringify({ event: "stdin-eof" }) + "\n"));

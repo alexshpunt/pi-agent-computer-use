@@ -26,7 +26,7 @@ text(view.text);
 image(view.image);
 ```
 
-No page/observation IDs are repeated. The extension wraps CUA refs; it adds no executor or DOM target registry. Structured results expose `text`, `elements`, `tabs`, optional `image` and `agent_image`. Forward pixels with `image(view.image)`, not base64 text.
+No page/observation IDs are repeated. The extension wraps CUA refs; it adds no executor or DOM target registry. Structured results expose `text`, `elements`, `tabs`, optional `image`, `agent_image` and the [common observation source](observation-sources.md). Forward pixels with `image(view.image)`, not base64 text.
 
 ## Supported input
 
@@ -78,4 +78,4 @@ Read [the operating skill](../skills/owned-browser-use/SKILL.md) before browser 
 - `node scripts/probe-cua-browser.mjs`: runtime capability/schema inspection.
 - `node scripts/verify-cua-browser-native.mjs`: raw native qualification with a human-grounded zoom point prompt.
 
-Historical Playwright, stable-DOM-hint, Sharp/MKS2021 and saved-crop results remain in Git and their linked tasks. They are not current capabilities. The unfinished LPT-372 patch was archived and read back exactly in its [Linear document](https://linear.app/alexshpunt/document/lpt-372-paused-playwright-backend-patch-before-cua-retirement-dcff0b18e49e) before removal. The game remains paused. Lightpanda, other platforms, desktop/display vision, cache changes and Sandbox are separate work.
+Historical Playwright, stable-DOM-hint, Sharp/MKS2021 and saved-crop results remain in Git and their linked tasks. They are not current capabilities. The unfinished LPT-372 patch was archived and read back exactly in its [Linear document](https://linear.app/alexshpunt/document/lpt-372-paused-playwright-backend-patch-before-cua-retirement-dcff0b18e49e) before removal. The game remains paused. Primary-display reading and common window/browser source metadata are described in [Observation sources](observation-sources.md). Lightpanda, other platforms, display input/detail, cache changes and Sandbox remain separate work.

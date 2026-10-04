@@ -42,6 +42,10 @@ function fixture() {
 test("CUA owns the isolated browser, cursor, exact target and unchanged native 500px image", async () => {
   const f = fixture(); const result = await f.browser.call("open", { url: "http://localhost/" });
   expect(result.details.status).toBe("observed"); expect(result.content).toContainEqual(png);
+  expect(result.details.source).toMatchObject({ kind: "browser", domain: "windows-host",
+    identity: { pid: 111, window_id: 22, tab_id: "owned-tab" }, semantic_scope: "owned_page",
+    image: { scope: "native_window", dimensions: { width: 500, height: 350 }, original_dimensions: null },
+    capabilities: { input: "owned_browser", detail: "browser_window_zoom" } });
   expect(f.calls.find(c => c.name === "browser_prepare")?.args).toMatchObject({ allow_launch: true, profile: { mode: "isolated_new" } });
   expect(f.calls.find(c => c.name === "set_agent_cursor_enabled")?.args.enabled).toBe(true);
   expect(f.calls.find(c => c.name === "get_window_state")?.args).toMatchObject({ pid: 111, window_id: 22, max_image_dimension: 500, include_accessibility_tree: false });

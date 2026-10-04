@@ -24,6 +24,8 @@ YOLO is the default desktop-wide UI mode. The user can select session-owned Safe
 
 The browser now uses Cua Driver 0.33.1 only: an owned visible Windows browser, snapshot-scoped short hints, native input and a human-visible agent cursor. Native window PNGs default to 500px long edge with Lanczos3; fresh padded JPEG zoom provides detail. Playwright, Sharp and the duplicate browser worker/image engine are removed. Existing Pi Codemode batches supported inputs. Before each overview/zoom it raises only its owned window through CUA; keyboard focus may switch. Read [the current browser contract](docs/browser.md), [verified CUA results and limits](docs/cua-browser-results.md) and [operating skill](skills/owned-browser-use/SKILL.md). The earlier [Playwright results](docs/browser-results.md), [focus results](docs/browser-focus-results.md), [resampling results](docs/vision-scale-results.md) and [saved-crop results](docs/browser-crop-results.md) are historical, not current API promises. Native pixels can lag the live window and semantics; input success is not proof of fresh paint.
 
+`computer_observe({display:"primary"})` reads the full primary Windows display in YOLO; Safe refuses it. Display, desktop-window and owned-browser images share source metadata and the native 500px cap settings. Display reads grant no input or zoom. See [the source contract](docs/observation-sources.md) and [verified results](docs/observation-sources-results.md).
+
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
 - [Research references](docs/research-references.md)

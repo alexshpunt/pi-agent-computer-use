@@ -35,13 +35,26 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
   pi.registerTool({
     name: "computer_observe", label: "Computer observe",
-    description: "Read a session window_ref's current accessibility tree and screenshot together. Returns observation_id and element_token references. Only this window's previous observation expires. Use both tree and pixels; ground one action, then read again. Safe denies outside-session windows even with old refs; YOLO permits them. Only the user can change mode with /computer-mode. No IDE dependency.",
+    outputSchema: Type.Object({
+      status: Type.String(), text: Type.String(), source: Type.Optional(Type.Unknown()),
+      image: Type.Optional(Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() })),
+    }, { additionalProperties: true }),
+    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading grants no input or zoom and is forbidden in Safe. Window observations return observation_id/element_token for one action. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode.",
     parameters: Type.Object({
-      window_ref: Type.String({ minLength: 1 }),
+      window_ref: Type.Optional(Type.String({ minLength: 1 })),
+      display: Type.Optional(Type.String({ description: "Only primary is supported; display reading is YOLO-only and grants no input." })),
       query: Type.Optional(Type.String({ description: "Project the tree to matching labels/values and ancestors." })),
     }, { additionalProperties: false }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).observe(params.window_ref, signal, params.query); },
+    async execute(_id, params, signal, _update, ctx) {
+      if ((params.window_ref !== undefined) === (params.display !== undefined) || (params.display !== undefined && params.query !== undefined))
+        return { content: [{ type: "text" as const, text: "Choose exactly one window_ref or display: primary. query is window-only." }], details: { status: "refused" }, isError: true };
+      const current = await getSession(ctx.cwd);
+      const result = await (params.display !== undefined ? current.observeDisplay(params.display, signal) : current.observe(params.window_ref!, signal, params.query));
+      const image = result.content.find(block => block.type === "image");
+      return { ...result, structuredContent: JSON.parse(JSON.stringify({ ...result.details,
+        text: result.content.filter(block => block.type === "text").map(block => block.text).join("\n"), ...(image ? { image } : {}) })) };
+    },
   });
   pi.registerTool({
     name: "computer_act", label: "Computer act",
@@ -80,7 +93,7 @@ export default function computerUse(pi: ExtensionAPI): void {
   async function getSession(cwd: string): Promise<ComputerSession> {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(config => {
-      session = new ComputerSession(new McpDriver(config), getMode);
+      session = new ComputerSession(new McpDriver(config), getMode, () => images.settings());
       return session;
     });
     try { return await loading; }

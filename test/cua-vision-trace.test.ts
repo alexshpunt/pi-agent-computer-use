@@ -3,6 +3,22 @@ import { readFile } from "node:fs/promises";
 import { expect, test } from "vitest";
 import { VisionTrace } from "../src/vision-trace.ts";
 
+test("the common source envelope reaches capture and provider-preview metadata without changing image bytes", async () => {
+  const bytes = await readFile(new URL("./fixtures/cua-zoom.jpg", import.meta.url));
+  const data = bytes.toString("base64"); const hash = createHash("sha256").update(bytes).digest("hex");
+  const source = { kind: "display", domain: "windows-host", identity: { display_id: "primary" }, capabilities: { input: "none" },
+    image: { scope: "primary_display", coordinate_space: "display_image_pixels", dimensions: { width: 499, height: 333 }, original_dimensions: { width: 3840, height: 2560 } } };
+  const trace = new VisionTrace("source-proof");
+  trace.startAction("capture", "computer_observe", { display: "primary" });
+  trace.finishAction("capture", [{ type: "image", data, mimeType: "image/jpeg" }], { status: "observed", source, image: { type: "image", data, mimeType: "image/jpeg" } }, false);
+  trace.observePayload({ input: [{ type: "input_image", image_url: `data:image/jpeg;base64,${data}` }] }, { provider: "test", api: "test", model: "test" });
+  expect(trace.snapshot().captures[0].source).toMatchObject({ observation: source });
+  expect(trace.snapshot().frames[0].source).toMatchObject({ observation: source });
+  expect(trace.snapshot().actions[0].adapterStructure).not.toHaveProperty("image");
+  expect(JSON.stringify(trace.snapshot().actions[0].adapterStructure)).not.toContain(data);
+  expect(trace.asset(hash)?.equals(bytes)).toBe(true);
+});
+
 test("native JPEG preview keeps exact bytes, matching dimensions and its zoom coordinate domain", async () => {
   const bytes = await readFile(new URL("./fixtures/cua-zoom.jpg", import.meta.url));
   const data = bytes.toString("base64"); const hash = createHash("sha256").update(bytes).digest("hex");

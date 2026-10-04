@@ -1,4 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
+import { observationSource, type ObservationSource } from "./observation-source.ts";
+import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 
 /** Native Windows address. Models use session window references instead. */
@@ -42,6 +44,8 @@ export interface ComputerResult {
     observation_id?: string;
     opened?: boolean;
     state?: Record<string, unknown>;
+    source?: ObservationSource;
+    agent_image?: Record<string, unknown>;
   };
   isError?: boolean;
 }
@@ -55,7 +59,10 @@ export class ComputerSession {
   private tail: Promise<unknown> = Promise.resolve();
   private readonly entries = new Map<string, WindowEntry>();
 
-  constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo") {}
+  private readonly sessionId = randomUUID();
+
+  constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo",
+    private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" })) {}
 
   private queue(work: () => Promise<ComputerResult>): Promise<ComputerResult> {
     const result = this.tail.then(work, work);
@@ -228,17 +235,62 @@ export class ComputerSession {
     });
   }
 
+  private imageMetadata(images: Content[], state: Record<string, unknown>, settings: CuaVisionSettings): Record<string, unknown> {
+    const image = images.find(block => block.type === "image");
+    if (!image || image.type !== "image") throw new Error("No native grounding image.");
+    const bytes = Buffer.from(image.data, "base64");
+    return { route: state.display === "primary" ? "cua_display" : "cua_window", configuration: settings,
+      output: { width: state.screenshot_width, height: state.screenshot_height, bytes: bytes.length,
+        mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") },
+      coordinate_space: state.display === "primary" ? "display_image_pixels" : "window_image_pixels",
+      native: { capture_id: state.capture_id, agent_overlay_capture: state.agent_overlay_capture } };
+  }
+
+  /** Read the primary display in YOLO only. This source never grants or grounds desktop input. */
+  observeDisplay(display: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const denied = () => this.result("refused", "Safe mode forbids full-display reading. Only the user can select YOLO with /computer-mode.");
+      if (this.getMode() !== "yolo") return denied();
+      if (signal?.aborted) return this.result("refused", "Cancelled before display capture.");
+      if (display !== "primary") return this.result("refused", "Only the native primary display is supported. No monitor-selection or display-zoom API is exposed.");
+      try {
+        const settings = { ...this.settings() }; const cap = nativeImageCap(settings);
+        const native = await this.driver.call("get_desktop_state", { max_image_dimension: cap }, signal);
+        if (this.getMode() !== "yolo") return denied();
+        if (signal?.aborted) return this.result("refused", "Cancelled during display capture; pixels withheld.");
+        const state = native.structuredContent;
+        if (native.isError || state?.status === "refused" || state?.effect === "refused")
+          return this.result("refused", "CUA refused primary-display capture.");
+        const images = native.content.filter(block => block.type === "image" && block.mimeType === "image/png");
+        if (!state || state.display !== "primary" || state.platform !== "windows" || images.length !== 1 ||
+          !Number.isSafeInteger(state.screenshot_width) || !Number.isSafeInteger(state.screenshot_height) ||
+          (state.screenshot_width as number) <= 0 || (state.screenshot_height as number) <= 0 ||
+          Math.max(state.screenshot_width as number, state.screenshot_height as number) > cap)
+          throw new Error("CUA returned no valid scoped primary-display image.");
+        const source = observationSource("display", state, { session_id: this.sessionId, display_id: "primary" });
+        return this.result("observed", "Native primary-display overview. Read only: no display-wide input or zoom. Paint freshness is unverified.",
+          state, { source, agent_image: this.imageMetadata(images, state, settings) }, images);
+      } catch (error) {
+        if (this.getMode() !== "yolo") return denied();
+        if (signal?.aborted) return this.result("refused", "Cancelled during display capture; diagnostics withheld.");
+        return this.failed(error, false);
+      }
+    });
+  }
+
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string): Promise<ComputerResult> {
     if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined;
     const current = await this.current(entry.ref, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
+    const settings = { ...this.settings() };
     const native = await this.driver.call("get_window_state", {
       ...entry.target, max_elements: 200, max_depth: 15, timeout_ms: 5000,
-      max_image_dimension: 1280, ...(query ? { query } : {}),
+      max_image_dimension: nativeImageCap(settings), ...(query ? { query } : {}),
     }, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
+    if (signal?.aborted) return this.result("refused", "Cancelled during observation; pixels withheld.");
     if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry));
     const state = native.structuredContent;
     if (!state || !Array.isArray(state.elements)) throw new Error("Driver returned no structured UI elements.");
@@ -253,8 +305,10 @@ export class ComputerSession {
       tokens: new Set(state.elements.map(element => (element as { element_token?: unknown }).element_token)
         .filter((token): token is string => typeof token === "string")),
       captureId: typeof state.capture_id === "string" ? state.capture_id : undefined };
-    return this.result("observed", "Fresh window observation. Use observation_id for one action, then read again.",
-      state, { ...this.addressed(entry), observation_id: id }, images);
+    if (signal?.aborted) { entry.observation = undefined; return this.result("refused", "Cancelled during observation; pixels withheld."); }
+    const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
+    return this.result("observed", "Fresh native window observation; paint freshness is unverified. Use observation_id for one action, then read again.",
+      state, { ...this.addressed(entry), observation_id: id, source, agent_image: this.imageMetadata(images, state, settings) }, images);
   }
 
   /** Read fresh UI state and a screenshot for an existing session reference. Only this window's earlier observation expires. */

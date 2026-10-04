@@ -4,6 +4,14 @@ export interface CuaVisionSettings {
 }
 const defaults = (): CuaVisionSettings => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" });
 
+/** Validate and freeze the native cap; returned raster sizes are never adjusted by the extension. */
+export function nativeImageCap(settings: Pick<CuaVisionSettings, "maxLongEdge" | "scale">): number {
+  if (!Number.isSafeInteger(settings.maxLongEdge) || settings.maxLongEdge < 64 || settings.maxLongEdge > 4096 ||
+    !Number.isFinite(settings.scale) || settings.scale < 0.05 || settings.scale > 1)
+    throw new Error("Use a long edge 64..4096 and scale 0.05..1.");
+  return Math.max(1, Math.floor(settings.maxLongEdge * settings.scale));
+}
+
 /** Session-local controls for the native cap. CUA owns resizing and fresh zoom. */
 export class CuaImageSettings {
   private current = defaults();

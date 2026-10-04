@@ -46,8 +46,11 @@ function dataUrl(value: unknown): ImageBytes | undefined {
 /** Bound adapter metadata, strip image data and common secret fields, and reject cycles. */
 function metadata(value: unknown): unknown {
   try {
-    const json = JSON.stringify(value, (key, item) =>
-      ["image", "png", "data", "authorization", "apiKey", "access_token", "refresh_token", "password"].includes(key) ? undefined : item);
+    const json = JSON.stringify(value, function (key, item) {
+      // A source's image field is geometry, not an image payload.
+      if (key === "image" && this.domain === "windows-host" && ["display", "window", "browser"].includes(this.kind)) return item;
+      return ["image", "png", "data", "authorization", "apiKey", "access_token", "refresh_token", "password"].includes(key) ? undefined : item;
+    });
     if (json === undefined) return undefined;
     return json.length <= 32_000 ? JSON.parse(json) : { truncated: true, excerpt: json.slice(0, 32_000) };
   } catch { return { unavailable: "Metadata could not be serialized." }; }
@@ -105,7 +108,7 @@ export class VisionTrace {
       }
       this.assets.set(image.hash, image);
       this.captures.push({ ...this.frame(image, "captured"), actionId: id,
-        source: metadata({ tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, origin: reported?.origin, route: reported?.route, coordinate_space: reported?.coordinate_space, native: reported?.native }),
+        source: metadata({ observation: state.source, tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, origin: reported?.origin, route: reported?.route, coordinate_space: reported?.coordinate_space, native: reported?.native }),
         configuration: metadata({ requested: action.input, effective: state.agent_image ?? "unreported by current adapter", timings: state.timings }) });
       this.captures = this.captures.slice(-3);
     }

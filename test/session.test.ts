@@ -38,6 +38,23 @@ async function readExisting(session: ComputerSession) {
   return { ref, observed: await session.observe(ref) };
 }
 
+test("window observations use the shared cap and keep current host geometry separate from unknown DPI", async () => {
+  const f = fixture(); const native = f.driver.call;
+  let bounds = { x: 80, y: 90, width: 1000, height: 700 };
+  f.driver.call = vi.fn<Driver["call"]>(async (...args) => {
+    const result = await native(...args);
+    return args[0] === "get_window_state" ? { ...result, structuredContent: { ...result.structuredContent,
+      screenshot_width: 500, screenshot_height: 350, window_bounds: bounds } } : result;
+  });
+  const { ref, observed } = await readExisting(f.session);
+  expect(observed.details.source).toMatchObject({ kind: "window", domain: "windows-host", identity: { window_ref: ref, ...target },
+    image: { native_bounds: bounds, dimensions: { width: 500, height: 350 }, original_dimensions: null },
+    scale: { native_scale_factor: null, dpi: null, device_pixel_ratio: null } });
+  expect(observed.content).toContainEqual({ type: "image", mimeType: "image/png", data: "cG5n" });
+  expect(vi.mocked(f.driver.call).mock.calls.find(([name]) => name === "get_window_state")?.[1]).toMatchObject({ max_image_dimension: 500 });
+  bounds = { x: 200, y: 300, width: 1000, height: 700 };
+  expect((await f.session.observe(ref)).details.source?.image.native_bounds).toEqual(bounds);
+});
 test("opens a genuinely new window and returns its first observation in the same result", async () => {
   const { session, driver } = fixture();
   const opened = await session.open("Notepad");
