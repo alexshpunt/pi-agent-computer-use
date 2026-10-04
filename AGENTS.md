@@ -13,6 +13,10 @@ Add missing capabilities in our adapter layer between Pi and the unmodified driv
 
 Do not restore the retired Playwright browser, Sharp image engine, saved-original crop pipeline or stable-DOM hint registry as a fallback. A focused crop/resize dependency may serve an approved adapter feature; it must not become another browser or capture engine. Keep source identity, coordinate domains, permissions and freshness limits explicit. An adapter must not bypass ownership or Safe mode, or silently fall back to a wider source.
 
+## Human-only overlays
+
+Prefer a small Qt helper for on-screen observation and crop frames; Qt is a candidate, not an adopted dependency. Keep CUA as the only capture/input backend. Before adopting Qt, measure its deployment, startup and memory costs, review licensing, and verify click-through, focus behavior and capture exclusion on each target platform. Do not claim cross-platform support without live checks. [Qt overlay research](https://linear.app/alexshpunt/issue/LPT-408) is separate from model-facing image annotations.
+
 ## Access and scope
 
 Browser tools may use only their owned session, even under YOLO. Desktop YOLO is the default; only the user can change Safe/YOLO. Safe is a UI policy, not OS isolation. LPT-372 and its game are paused; its unfinished old-backend patch is archived in Linear. [Sandbox work](https://linear.app/alexshpunt/issue/LPT-364) is separate and deferred.
