@@ -6,14 +6,14 @@ import { createCuaBrowserSite } from "../test/fixtures/cua-browser-site.mjs";
 
 // Opt-in replacement-adapter check. Only the Driver's isolated browser is touched.
 const command = process.env.CUA_DRIVER_PATH;
-assert.ok(command?.endsWith("/cua-driver-0.33.1/cua-driver.exe"), "Use the qualified separate Windows runtime.");
+assert.ok(command?.endsWith("/cua-driver-0.33.2/cua-driver.exe"), "Use the qualified separate Windows runtime.");
 const directory = `.tmp/cua-pivot/adapter-foreground-${Date.now()}`;
 await mkdir(directory, { recursive: true });
 const site = await createCuaBrowserSite();
 const nativeCalls = [];
 const records = [];
 const browser = new CuaBrowser(async () => {
-  const driver = new McpDriver({ command }, "0.33.1");
+  const driver = new McpDriver({ command }, "0.33.2");
   return {
     async call(name, args, signal) {
       const result = await driver.call(name, args, signal);

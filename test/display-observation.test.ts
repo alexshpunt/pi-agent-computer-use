@@ -24,7 +24,7 @@ test("YOLO display reading preserves native bytes, dimensions and a read-only Wi
   expect(result.details.source).toMatchObject({ kind: "display", domain: "windows-host", identity: { display_id: "primary" },
     image: { dimensions: { width: 499, height: 333 }, original_dimensions: { width: 3840, height: 2560 },
       coordinate_space: "display_image_pixels", origin: { x: 0, y: 0, relative_to: "primary_display" } },
-    scale: { native_scale_factor: 1.5, dpi: null, device_pixel_ratio: null }, capabilities: { input: "none", detail: "unsupported" } });
+    scale: { native_scale_factor: 1.5, dpi: null, device_pixel_ratio: null }, capabilities: { input: "none", detail: "display_crop" } });
   expect(result.details).not.toHaveProperty("observation_id");
   expect(result.details.source?.captured_at).toEqual(expect.any(String));
   const deniedInput = await f.session.act({ window_ref: "primary", observation_id: "display-capture", action: "click", x: 10, y: 10 });

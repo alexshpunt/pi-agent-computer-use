@@ -8,7 +8,7 @@ import { loadComputerConfig } from "../src/config.ts";
 const [pid, window_id] = process.argv.slice(2).map(Number);
 assert.ok(Number.isSafeInteger(pid) && pid > 0);
 assert.ok(Number.isSafeInteger(window_id) && window_id > 0);
-const driver = new McpDriver(await loadComputerConfig(process.cwd(), "0.33.1"), "0.33.1");
+const driver = new McpDriver(await loadComputerConfig(process.cwd(), "0.33.2"), "0.33.2");
 const directory = ".tmp/cua-pivot/capture-probe";
 const records = [];
 await mkdir(directory, { recursive: true });

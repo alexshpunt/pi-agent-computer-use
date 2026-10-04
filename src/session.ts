@@ -2,6 +2,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { observationSource, type ObservationSource } from "./observation-source.ts";
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
+import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -50,7 +51,7 @@ export interface ComputerResult {
   isError?: boolean;
 }
 interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 
@@ -60,6 +61,29 @@ export class ComputerSession {
   private readonly entries = new Map<string, WindowEntry>();
 
   private readonly sessionId = randomUUID();
+  private displayOverview?: DetailContext;
+
+  private geometry(state: Record<string, unknown>, display: boolean): string {
+    if (display) return JSON.stringify([state.screen_width, state.screen_height, state.scale_factor]);
+    const bounds = state.window_bounds as Record<string, unknown> | undefined;
+    if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(v => typeof v === "number" && Number.isFinite(v)) ||
+      (bounds.width as number) <= 0 || (bounds.height as number) <= 0) throw new Error("Window geometry is missing.");
+    return JSON.stringify([bounds.x, bounds.y, bounds.width, bounds.height]);
+  }
+
+  private overview(state: Record<string, unknown>, id: string, display: boolean, images: Content[]): DetailContext | undefined {
+    const width = state.screenshot_width as number; const height = state.screenshot_height as number;
+    const originalWidth = (state.screenshot_original_width ?? (display ? state.screen_width : width)) as number;
+    const originalHeight = (state.screenshot_original_height ?? (display ? state.screen_height : height)) as number;
+    if (![width, height, originalWidth, originalHeight].every(v => Number.isSafeInteger(v) && v > 0)) return;
+    const image = images.length === 1 ? images[0] : undefined;
+    if (image?.type !== "image" || image.mimeType !== "image/png") return;
+    const bytes = Buffer.from(image.data, "base64");
+    if (bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+      bytes.readUInt32BE(16) !== width || bytes.readUInt32BE(20) !== height) return;
+    try { return { id, width, height, originalWidth, originalHeight, geometry: this.geometry(state, display) }; }
+    catch { return undefined; }
+  }
 
   constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo",
     private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" })) {}
@@ -93,7 +117,7 @@ export class ComputerSession {
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
-    this.entries.clear();
+    this.entries.clear(); this.displayOverview = undefined;
     await this.driver.close().catch(() => undefined);
     const reason = error instanceof Error ? error.message : String(error);
     return this.result(dispatched ? "unknown" : "refused", dispatched
@@ -247,12 +271,17 @@ export class ComputerSession {
   }
 
   /** Read the primary display in YOLO only. This source never grants or grounds desktop input. */
-  observeDisplay(display: string, signal?: AbortSignal): Promise<ComputerResult> {
+  observeDisplay(display: string, signal?: AbortSignal, zoom?: DetailRequest): Promise<ComputerResult> {
     return this.queue(async () => {
-      const denied = () => this.result("refused", "Safe mode forbids full-display reading. Only the user can select YOLO with /computer-mode.");
+      const denied = () => {
+        this.displayOverview = undefined;
+        return this.result("refused", "Safe mode forbids full-display reading. Only the user can select YOLO with /computer-mode.");
+      };
       if (this.getMode() !== "yolo") return denied();
       if (signal?.aborted) return this.result("refused", "Cancelled before display capture.");
-      if (display !== "primary") return this.result("refused", "Only the native primary display is supported. No monitor-selection or display-zoom API is exposed.");
+      if (display !== "primary") return this.result("refused", "Only the native primary display is supported.");
+      if (zoom) return this.displayDetail(zoom, signal);
+      this.displayOverview = undefined;
       try {
         const settings = { ...this.settings() }; const cap = nativeImageCap(settings);
         const native = await this.driver.call("get_desktop_state", { max_image_dimension: cap }, signal);
@@ -268,8 +297,9 @@ export class ComputerSession {
           Math.max(state.screenshot_width as number, state.screenshot_height as number) > cap)
           throw new Error("CUA returned no valid scoped primary-display image.");
         const source = observationSource("display", state, { session_id: this.sessionId, display_id: "primary" });
-        return this.result("observed", "Native primary-display overview. Read only: no display-wide input or zoom. Paint freshness is unverified.",
-          state, { source, agent_image: this.imageMetadata(images, state, settings) }, images);
+        const id = randomUUID(); this.displayOverview = this.overview(state, id, true, images);
+        return this.result("observed", "Native primary-display overview. Read only; zoom uses image_id and these pixels. Paint freshness is unverified.",
+          state, { source, agent_image: { ...this.imageMetadata(images, state, settings), image_id: id } }, images);
       } catch (error) {
         if (this.getMode() !== "yolo") return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display capture; diagnostics withheld.");
@@ -278,9 +308,76 @@ export class ComputerSession {
     });
   }
 
+  private async displayDetail(request: DetailRequest, signal?: AbortSignal): Promise<ComputerResult> {
+    const overview = this.displayOverview;
+    let cap: number;
+    try { cap = validateDetail(request, overview, false); }
+    catch (error) { return this.result("refused", (error as Error).message); }
+    this.displayOverview = undefined;
+    try {
+      if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail permission or request cancelled.");
+      const native = await this.driver.call("get_desktop_state", { max_image_dimension: 0 }, signal);
+      if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled; pixels withheld.");
+      const state = native.structuredContent;
+      const images = native.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
+      if (native.isError || state?.status === "refused" || state?.effect === "refused" || !state || state.display !== "primary" || state.platform !== "windows" ||
+        images.length !== 1 || state.screenshot_width !== overview!.originalWidth || state.screenshot_height !== overview!.originalHeight ||
+        this.geometry(state, true) !== overview!.geometry)
+        return this.result("refused", "Fresh display geometry or capture is incompatible. Take a new overview.");
+      const capturedAt = new Date().toISOString();
+      const region = nativeRegion(request, overview!);
+      const detail = await cropDisplay(images[0], overview!, region, cap);
+      if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during processing; pixels withheld.");
+      const output = { screenshot_width: detail.width, screenshot_height: detail.height, display: "primary" };
+      const source = observationSource("display", output, { session_id: this.sessionId, display_id: "primary" });
+      source.captured_at = capturedAt;
+      source.image.scope = "primary_display_region"; source.image.coordinate_space = "detail_image_pixels"; source.capabilities.detail = "unsupported";
+      source.image.original_dimensions = { width: overview!.originalWidth, height: overview!.originalHeight };
+      source.image.origin = { x: region.left, y: region.top, relative_to: "primary_display" };
+      const configuration = { maxLongEdge: request.maxLongEdge ?? 1200, scale: request.scale ?? 1, kernel: "lanczos3" as const, version: 0, route: "cua_native" as const };
+      const agent_image = { ...this.imageMetadata([detail.image], output, configuration), route: "cua_fresh_display_crop",
+        coordinate_space: "detail_image_pixels", configuration: { ...configuration, route: "adapter_crop_resize" },
+        region: { overview: { image_id: overview!.id, dimensions: { width: overview!.width, height: overview!.height }, x: request.x, y: request.y, width: request.width, height: request.height }, native: region },
+        native: { resolution: "full", intermediate_pixels: "withheld" }, input: "none" };
+      return this.result("observed", "Fresh native display pixels cropped above CUA. Read only; no nested crop or input. Paint freshness is unverified.",
+        undefined, { source, agent_image }, [detail.image]);
+    } catch { return this.result("refused", "Display detail failed; private intermediate pixels and diagnostics withheld. Take a new overview."); }
+  }
+
+  private async windowDetail(entry: WindowEntry, request: DetailRequest, signal?: AbortSignal): Promise<ComputerResult> {
+    const overview = entry.detail;
+    try { validateDetail(request, overview, true); }
+    catch (error) { return this.result("refused", (error as Error).message); }
+    entry.detail = undefined; entry.observation = undefined;
+    const sameGeometry = async () => {
+      if (!this.allowed(entry) || signal?.aborted || !await this.current(entry.ref, signal)) return false;
+      const windows = await this.list(signal);
+      const window = windows.find(w => w.pid === entry.target.pid && w.window_id === entry.target.window_id);
+      return window && this.geometry({ window_bounds: window.bounds }, false) === overview!.geometry;
+    };
+    try {
+      if (!await sameGeometry() || !this.allowed(entry) || signal?.aborted) return this.result("refused", "Window geometry or permission changed. Observe again.");
+      const native = await this.driver.call("zoom", { ...entry.target, x1: request.x, y1: request.y, x2: request.x + request.width, y2: request.y + request.height }, signal);
+      if (!this.allowed(entry) || signal?.aborted || !await sameGeometry() || !this.allowed(entry) || signal?.aborted)
+        return this.result("refused", "Window changed, detail revoked or cancelled; pixels withheld.");
+      const state = native.structuredContent;
+      const images = native.content.filter(block => block.type === "image" && block.mimeType === "image/jpeg");
+      if (native.isError || state?.status === "refused" || state?.effect === "refused" || !state || images.length !== 1 ||
+        !Number.isSafeInteger(state.width) || !Number.isSafeInteger(state.height) || (state.width as number) <= 0 || (state.width as number) > 500 || (state.height as number) <= 0)
+        return this.result("refused", "CUA refused or returned invalid window zoom.");
+      const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, true);
+      source.capabilities.input = "none"; source.semantic_scope = "none";
+      const image = images[0] as Extract<Content, { type: "image" }>; const bytes = Buffer.from(image.data, "base64");
+      return this.result("observed", "Fresh native window zoom. CUA owns JPEG padding and geometry. Read only; take a new overview before input or another detail.",
+        undefined, { ...this.addressed(entry), source, agent_image: { route: "cua_fresh_window_zoom", coordinate_space: "zoom_image_pixels",
+          configuration: { padding: "20% each side", maxWidth: 500, route: "cua_native" }, native: state,
+          region: { overview: { image_id: overview!.id, dimensions: { width: overview!.width, height: overview!.height }, x: request.x, y: request.y, width: request.width, height: request.height } },
+          output: { width: state.width, height: state.height, bytes: bytes.length, mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") }, input: "none" } }, images);
+    } catch { return this.result("refused", "Window detail failed; pixels and diagnostics withheld. Observe again."); }
+  }
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string): Promise<ComputerResult> {
     if (!this.allowed(entry)) return this.denied(entry.ref);
-    entry.observation = undefined;
+    entry.observation = undefined; entry.detail = undefined;
     const current = await this.current(entry.ref, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
@@ -299,20 +396,22 @@ export class ComputerSession {
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!await this.current(entry.ref, signal)) return this.result("refused", "Window changed during observation. Discover again.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
+    // Detail geometry is separate from the one-shot input observation; no original image is saved.
     const id = randomUUID();
+    entry.detail = this.overview(state, id, false, images);
     entry.observation = { id, width: typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
       tokens: new Set(state.elements.map(element => (element as { element_token?: unknown }).element_token)
         .filter((token): token is string => typeof token === "string")),
       captureId: typeof state.capture_id === "string" ? state.capture_id : undefined };
-    if (signal?.aborted) { entry.observation = undefined; return this.result("refused", "Cancelled during observation; pixels withheld."); }
+    if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during observation; pixels withheld."); }
     const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
     return this.result("observed", "Fresh native window observation; paint freshness is unverified. Use observation_id for one action, then read again.",
-      state, { ...this.addressed(entry), observation_id: id, source, agent_image: this.imageMetadata(images, state, settings) }, images);
+      state, { ...this.addressed(entry), observation_id: id, source, agent_image: { ...this.imageMetadata(images, state, settings), image_id: id } }, images);
   }
 
   /** Read fresh UI state and a screenshot for an existing session reference. Only this window's earlier observation expires. */
-  observe(ref: string, signal?: AbortSignal, query?: string): Promise<ComputerResult> {
+  observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
       try {
@@ -320,7 +419,9 @@ export class ComputerSession {
         if (known && !this.allowed(known)) return this.denied(ref);
         const entry = await this.current(ref, signal);
         if (known && !this.allowed(known)) return this.denied(ref);
-        return entry ? await this.capture(entry, signal, query) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        if (zoom && query !== undefined) return this.result("refused", "query and zoom cannot be combined.");
+        if (zoom && !known?.detail) return this.result("refused", "Detail needs a current overview. Observe again.");
+        return entry ? zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query) : this.result("refused", "Unknown or closed window_ref. Discover again.");
       } catch (error) { return this.failed(error, false); }
     });
   }
@@ -368,7 +469,7 @@ export class ComputerSession {
         };
         if (signal?.aborted) return this.result("refused", "Cancelled before action dispatch.");
         if (!this.allowed(entry)) return this.denied(entry.ref);
-        entry.observation = undefined;
+        entry.observation = undefined; entry.detail = undefined;
         dispatched = true;
         const native = await this.driver.call(nativeName, args, signal);
         if (!this.allowed(entry)) return this.result("unknown",
@@ -389,7 +490,7 @@ export class ComputerSession {
   /** Release owned runtime and invalidate references. Application windows and files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
-      this.entries.clear();
+      this.entries.clear(); this.displayOverview = undefined;
       await this.driver.close();
       return this.result("closed", "Owned computer-use runtime closed. Application windows were not closed.");
     });

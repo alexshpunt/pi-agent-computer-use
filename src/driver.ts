@@ -15,8 +15,8 @@ export class McpDriver implements Driver {
 
   private readonly windowIdentity: WindowIdentity;
 
-  /** Each backend opts into one qualified pin; desktop remains on 0.32.0. */
-  constructor(private readonly config: ComputerConfig, private readonly version: "0.32.0" | "0.33.1" = "0.32.0") {
+  /** Window, display and browser routes share the explicitly qualified Windows pin. */
+  constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
   }
 

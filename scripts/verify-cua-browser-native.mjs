@@ -9,7 +9,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 // Opt-in CUA-only Windows qualification. The driver owns the isolated profile.
 // Only the prepared PID is enumerated; no existing browser or desktop is read.
 const command = process.env.CUA_DRIVER_PATH;
-assert.ok(command?.endsWith("/cua-driver-0.33.1/cua-driver.exe"), "Use the separately provisioned 0.33.1 runtime.");
+assert.ok(command?.endsWith("/cua-driver-0.33.2/cua-driver.exe"), "Use the separately provisioned 0.33.2 runtime.");
 const directory = ".tmp/cua-pivot/native";
 await mkdir(directory, { recursive: true });
 const session = `pi-browser-${randomUUID().slice(0, 8)}`;
@@ -60,7 +60,7 @@ async function call(name, args) {
 let started = false;
 try {
   await client.connect(transport, { timeout: 15_000 });
-  assert.deepEqual(client.getServerVersion(), { name: "cua-driver", version: "0.33.1" });
+  assert.deepEqual(client.getServerVersion(), { name: "cua-driver", version: "0.33.2" });
   await call("start_session", {});
   started = true;
   const prepared = await call("browser_prepare", { allow_launch: true, profile: { mode: "isolated_new" } });

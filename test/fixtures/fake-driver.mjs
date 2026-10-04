@@ -9,7 +9,7 @@ const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
 let snapshot = 0;
 let nextWindow = 100;
 const windows = [];
-const server = new Server({ name: "cua-driver", version: "0.32.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   appendFileSync(log, JSON.stringify(request.params) + "\n");

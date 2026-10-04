@@ -1,10 +1,10 @@
 # Visible agent browser
 
-Six tools use **Cua Driver 0.33.1** to control one driver-owned visible Windows Chromium browser from Pi in WSL. CUA owns the browser launch, profile, semantic snapshots, native screenshots, zoom and input. There is no Playwright, Sharp, page-JavaScript bridge or Pi Agent IDE dependency.
+Six tools use **Cua Driver 0.33.2** to control one driver-owned visible Windows Chromium browser from Pi in WSL. CUA owns the browser launch, profile, semantic snapshots, native screenshots, zoom and input. There is no Playwright, browser-side Sharp processing, page-JavaScript bridge or Pi Agent IDE dependency.
 
 ## Setup and ownership
 
-Use the project-local extension and its declared dependencies. The browser route discovers the separately pinned Windows CUA 0.33.1 runtime. Desktop tools still use 0.32.0. Missing or wrong runtimes refuse; tools do not install them. This qualification used the official signed 0.33.1 prerelease, not an automatic upgrade policy.
+Use the project-local extension and its declared dependencies. Browser, desktop-window and display routes discover the same qualified Windows CUA 0.33.2 runtime. Missing or wrong runtimes refuse; tools do not install them. A signed/checksummed release is adopted explicitly after compatibility checks, not by automatic startup upgrades.
 
 `browser_open({url})` calls CUA's `isolated_new` route once. It creates a fresh profile, checks the launched PID/window lifetime and binds only that owned browser. It returns the first semantic snapshot and whole-window PNG. A second open refuses while that session exists. Navigate it or close it instead. No personal browser endpoint, profile, tab or permission grant is accepted.
 
@@ -78,4 +78,4 @@ Read [the operating skill](../skills/owned-browser-use/SKILL.md) before browser 
 - `node scripts/probe-cua-browser.mjs`: runtime capability/schema inspection.
 - `node scripts/verify-cua-browser-native.mjs`: raw native qualification with a human-grounded zoom point prompt.
 
-Historical Playwright, stable-DOM-hint, Sharp/MKS2021 and saved-crop results remain in Git and their linked tasks. They are not current capabilities. The unfinished LPT-372 patch was archived and read back exactly in its [Linear document](https://linear.app/alexshpunt/document/lpt-372-paused-playwright-backend-patch-before-cua-retirement-dcff0b18e49e) before removal. The game remains paused. Primary-display reading and common window/browser source metadata are described in [Observation sources](observation-sources.md). Lightpanda, other platforms, display input/detail, cache changes and Sandbox remain separate work.
+Historical Playwright, stable-DOM-hint, Sharp/MKS2021 and saved-crop results remain in Git and their linked tasks. They are not current capabilities. The unfinished LPT-372 patch was archived and read back exactly in its [Linear document](https://linear.app/alexshpunt/document/lpt-372-paused-playwright-backend-patch-before-cua-retirement-dcff0b18e49e) before removal. The game remains paused. Primary-display reading and common window/browser source metadata are described in [Observation sources](observation-sources.md). [Desktop-window and display detail](native-detail.md) use the same qualified CUA runtime but do not change browser zoom/input. Lightpanda, other platforms, display input, cache changes and Sandbox remain separate work.

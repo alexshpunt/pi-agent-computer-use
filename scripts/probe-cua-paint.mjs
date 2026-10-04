@@ -43,7 +43,7 @@ let driver;
 let session;
 let target;
 const browser = new CuaBrowser(async () => {
-  driver = new McpDriver(await loadComputerConfig(process.cwd(), "0.33.1"), "0.33.1");
+  driver = new McpDriver(await loadComputerConfig(process.cwd(), "0.33.2"), "0.33.2");
   return {
     async call(name, args, signal) {
       session = args.session ?? session;

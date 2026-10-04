@@ -5,7 +5,7 @@ import path from "node:path";
 export interface ComputerConfig { command: string; args?: string[]; interop?: string }
 
 /** Find the qualified Windows Driver without changing PATH, services, or machine setup. */
-export async function findDriver(version: "0.32.0" | "0.33.1" = "0.32.0"): Promise<string> {
+export async function findDriver(version: "0.33.2" = "0.33.2"): Promise<string> {
   if (process.env.CUA_DRIVER_PATH) return process.env.CUA_DRIVER_PATH;
   const suffix = ["AppData", "Local", "Programs", "PiComputerUsePoC", `cua-driver-${version}`, "cua-driver.exe"];
   const candidates = process.platform === "win32"
@@ -20,7 +20,7 @@ export async function findDriver(version: "0.32.0" | "0.33.1" = "0.32.0"): Promi
 }
 
 /** Read optional local overrides, otherwise discover the installed Driver. Normal opening needs no config file. */
-export async function loadComputerConfig(cwd: string, version: "0.32.0" | "0.33.1" = "0.32.0"): Promise<ComputerConfig> {
+export async function loadComputerConfig(cwd: string, version: "0.33.2" = "0.33.2"): Promise<ComputerConfig> {
   let raw: Record<string, unknown> = {};
   try {
     raw = JSON.parse(await readFile(path.join(cwd, ".pi", "computer-use.json"), "utf8"));

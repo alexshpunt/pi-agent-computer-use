@@ -8,7 +8,7 @@ export const visionPanel = `<!doctype html>
 <p class="notice"><strong>Final delivery is unconfirmed.</strong> These are exact image bytes at Pi's existing application-boundary hook, not confirmed wire payloads or model embeddings.</p>
 <p id="session"></p>
 <section class="controls"><h2>Agent image size</h2>
-<p class="muted" id="route-note">Native CUA browser-window PNGs, including browser chrome. Lanczos3 is fixed by the driver. Default: 500px long edge. Detail uses fresh padded JPEG zoom, not saved-original crops. Changes apply only to the next capture.</p>
+<p class="muted" id="route-note">Native CUA window/display PNG overviews; browser captures include chrome. Lanczos3 is fixed, default long edge 500px. Window detail is fresh padded JPEG; display detail crops fresh full-resolution CUA pixels in the adapter. No retained originals. These controls apply to the next overview, not per-request detail settings.</p>
 <form id="image-settings">
 <label>Driver kernel <select id="kernel" disabled><option value="lanczos3" selected>Lanczos3</option></select></label>
 <label>Max long edge (px) <input id="long-edge" type="text" inputmode="numeric" pattern="[0-9]+" value="500" required></label>
@@ -88,7 +88,7 @@ function render(state){
     card.append(el("p",frame.time+" · "+(frame.width??"?")+"×"+(frame.height??"?")+" · "+frame.bytes+" bytes","meta"));
     card.append(el("p","Request "+frame.requestId+" · action "+(frame.actionId??"unmatched"),"meta"));
     card.append(el("p","SHA-256 "+frame.hash,"meta"));
-    card.append(el("p","CUA returns native capture bytes; no full-resolution original is retained.","muted"));
+    card.append(el("p","Native CUA capture or marked adapter output; no full-resolution original is retained.","muted"));
     card.append(el("pre",JSON.stringify({path:frame.path,detail:frame.detail,source:frame.source,matchingActionIds:frame.matchingActionIds,configuration:frame.configuration,finalDelivery:frame.finalDelivery},null,2)));
     frames.append(card);
   }

@@ -39,18 +39,25 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
       status: Type.String(), text: Type.String(), source: Type.Optional(Type.Unknown()),
       image: Type.Optional(Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() })),
     }, { additionalProperties: true }),
-    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading grants no input or zoom and is forbidden in Safe. Window observations return observation_id/element_token for one action. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode.",
+    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one action. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode.",
     parameters: Type.Object({
       window_ref: Type.Optional(Type.String({ minLength: 1 })),
       display: Type.Optional(Type.String({ description: "Only primary is supported; display reading is YOLO-only and grants no input." })),
-      query: Type.Optional(Type.String({ description: "Project the tree to matching labels/values and ancestors." })),
+      query: Type.Optional(Type.String({ description: "Project the tree to matching labels/values and ancestors; cannot combine with zoom." })),
+      zoom: Type.Optional(Type.Object({
+        image_id: Type.String({ minLength: 1, description: "agent_image.image_id from the latest overview of this source, not a detail." }),
+        x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }),
+        width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }),
+        maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096, description: "Display detail only; default 1200. CUA window zoom keeps native JPEG padding and 500px width." })),
+        scale: Type.Optional(Type.Number({ minimum: 0.05, maximum: 1, description: "Display detail only; default 1. Does not change overview settings." })),
+      }, { additionalProperties: false })),
     }, { additionalProperties: false }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     async execute(_id, params, signal, _update, ctx) {
-      if ((params.window_ref !== undefined) === (params.display !== undefined) || (params.display !== undefined && params.query !== undefined))
-        return { content: [{ type: "text" as const, text: "Choose exactly one window_ref or display: primary. query is window-only." }], details: { status: "refused" }, isError: true };
+      if ((params.window_ref !== undefined) === (params.display !== undefined) || (params.display !== undefined && params.query !== undefined) || (params.zoom !== undefined && params.query !== undefined))
+        return { content: [{ type: "text" as const, text: "Choose exactly one window_ref or display: primary. query is window-only and cannot combine with zoom." }], details: { status: "refused" }, isError: true };
       const current = await getSession(ctx.cwd);
-      const result = await (params.display !== undefined ? current.observeDisplay(params.display, signal) : current.observe(params.window_ref!, signal, params.query));
+      const result = await (params.display !== undefined ? current.observeDisplay(params.display, signal, params.zoom) : current.observe(params.window_ref!, signal, params.query, params.zoom));
       const image = result.content.find(block => block.type === "image");
       return { ...result, structuredContent: JSON.parse(JSON.stringify({ ...result.details,
         text: result.content.filter(block => block.type === "text").map(block => block.text).join("\n"), ...(image ? { image } : {}) })) };
@@ -86,7 +93,7 @@ export default function computerUse(pi: ExtensionAPI): void {
   const images = new CuaImageSettings();
   registerVisionDebug(pi, images);
   registerCuaBrowserTools(pi, new CuaBrowser(async () =>
-    new McpDriver(await loadComputerConfig(process.cwd(), "0.33.1"), "0.33.1"), () => images.settings()));
+    new McpDriver(await loadComputerConfig(process.cwd())), () => images.settings()));
   const getMode = registerComputerMode(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;

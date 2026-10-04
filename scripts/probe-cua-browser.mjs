@@ -6,7 +6,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 // Opt-in, metadata-only probe for the separately qualified browser runtime.
 // No session is created, window observed or UI input sent.
 const command = process.env.CUA_DRIVER_PATH;
-assert.ok(command?.endsWith(".exe"), "Set CUA_DRIVER_PATH to the separate Windows 0.33.1 executable.");
+assert.ok(command?.endsWith(".exe"), "Set CUA_DRIVER_PATH to the separate Windows 0.33.2 executable.");
 assert.ok(process.env.WSL_INTEROP && (await stat(process.env.WSL_INTEROP)).isSocket(), "A live WSL interop socket is required.");
 const transport = new StdioClientTransport({
   command,
@@ -27,7 +27,7 @@ try {
   await client.connect(transport, { timeout: 15_000 });
   const server = client.getServerVersion();
   assert.equal(server?.name, "cua-driver");
-  assert.equal(server.version, "0.33.1");
+  assert.equal(server.version, "0.33.2");
   const tools = [];
   let cursor;
   do {

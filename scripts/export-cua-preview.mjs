@@ -3,13 +3,13 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 
 // Opt-in evidence export from this Pi session's private loopback viewer.
-// Run only after inspecting synthetic owned-browser frames. No new capture or input.
+// Export only authorized frames to ignored storage; display pixels must never become public evidence. No new capture or input.
 const [viewer, directory] = process.argv.slice(2);
 const base = new URL(viewer);
 assert.equal(base.hostname, "127.0.0.1");
 assert.equal(base.protocol, "http:");
 assert.match(base.pathname, /^\/[a-f0-9]{48}\/$/);
-assert.ok(directory?.startsWith(".tmp/cua-pivot/"));
+assert.ok(directory?.startsWith(".tmp/cua-pivot/") || directory?.startsWith(".tmp/native-zoom/"));
 const response = await fetch(new URL("state", base));
 assert.ok(response.ok, `Viewer state: ${response.status}`);
 const state = await response.json();

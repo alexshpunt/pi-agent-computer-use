@@ -21,7 +21,7 @@ Switching cannot undo input already dispatched under YOLO. Pending work checks t
 | `computer_apps` | Installed app names and `app_id`, optionally filtered by name. Does not launch. |
 | `computer_open` | A genuinely new window's `window_ref`, first accessibility observation, and PNG in one call. |
 | `computer_windows` | Permitted window metadata with session `window_ref`; optional app/title filter. Safe lists only session-opened windows. |
-| `computer_observe` | Fresh accessibility elements and scoped PNG for a reference. |
+| `computer_observe` | Window tree/PNG, YOLO primary-display PNG, or read-only window/display detail from a current overview. |
 | `computer_act` | One grounded text/value/click/select-all/navigation action. |
 | `computer_close` | Release owned Driver and lifetime peer; invalidate references. Does not close apps or save files. |
 
@@ -37,20 +37,20 @@ For disposable single-tab Notepad cleanup, clear only your text, verify blank/un
 
 ## Install the Driver once
 
-The pin is **Cua Driver 0.32.0**, source release `cua-driver-rs-v0.32.0` at `66ca6c0833a7e04dd611c473100ba36bbf1f11be`. GitHub marks it prerelease. Later binaries need fresh qualification.
+The pin is **Cua Driver 0.33.2**, official release `cua-driver-rs-v0.33.2`. Window, display and browser routes share this qualified pin. GitHub marks the monorepo release as prerelease; the archive uses a plain stable version. Later binaries need fresh qualification, not automatic startup upgrades.
 
-For Windows x86_64 use the official [binary archive](https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.32.0/cua-driver-rs-0.32.0-windows-x86_64-binary.zip). Published SHA-256:
+For Windows x86_64 use the official [binary archive](https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.33.2/cua-driver-rs-0.33.2-windows-x86_64-binary.zip). Published SHA-256:
 
 ```text
-16aa3666f4ab4faba2fa6261ecb9349d2e9a0c97eca2a0b0960db5a311c2b1e1
+82fd647e6f4b69ed811e52e9586a4e56291e477ad699fb02441193a45364337c
 ```
 
-Check the hash before extraction. Extract the **whole archive** into a new user-local directory, for example `%LOCALAPPDATA%\Programs\PiComputerUsePoC\cua-driver-0.32.0`. Do not overwrite another install. Keep supplied native libraries and UIA helper beside the executable.
+Check the hash before extraction. Extract the **whole archive** into a new user-local directory, for example `%LOCALAPPDATA%\Programs\PiComputerUsePoC\cua-driver-0.33.2`. Do not overwrite another install. Keep supplied native libraries and UIA helper beside the executable.
 
 Check signatures before running executables:
 
 ```powershell
-Get-ChildItem "$env:LOCALAPPDATA\Programs\PiComputerUsePoC\cua-driver-0.32.0\*.exe" |
+Get-ChildItem "$env:LOCALAPPDATA\Programs\PiComputerUsePoC\cua-driver-0.33.2\*.exe" |
   ForEach-Object { Get-AuthenticodeSignature $_.FullName }
 ```
 
@@ -64,7 +64,7 @@ No `.pi/computer-use.json` is required. For an unusual environment, an ignored l
 
 ```json
 {
-  "command": "/mnt/c/Users/YOU/AppData/Local/Programs/PiComputerUsePoC/cua-driver-0.32.0/cua-driver.exe"
+  "command": "/mnt/c/Users/YOU/AppData/Local/Programs/PiComputerUsePoC/cua-driver-0.33.2/cua-driver.exe"
 }
 ```
 

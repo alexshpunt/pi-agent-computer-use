@@ -6,8 +6,8 @@ export interface ObservationSource {
   captured_at: string;
   timestamp_boundary: "native_call_completed";
   image: {
-    scope: "primary_display" | "native_window" | "native_window_zoom";
-    coordinate_space: "display_image_pixels" | "window_image_pixels" | "zoom_image_pixels";
+    scope: "primary_display" | "primary_display_region" | "native_window" | "native_window_zoom";
+    coordinate_space: "display_image_pixels" | "window_image_pixels" | "zoom_image_pixels" | "detail_image_pixels";
     dimensions: { width: number | null; height: number | null };
     original_dimensions: { width: number; height: number } | null;
     origin: { x: number; y: number; relative_to: "primary_display" | "window" } | null;
@@ -15,7 +15,7 @@ export interface ObservationSource {
   };
   semantic_scope: "none" | "native_window" | "owned_page";
   scale: { native_scale_factor: number | null; screenshot_scale: number | null; dpi: null; device_pixel_ratio: null };
-  capabilities: { read: true; input: "none" | "window_observation" | "owned_browser"; detail: "unsupported" | "browser_window_zoom" };
+  capabilities: { read: true; input: "none" | "window_observation" | "owned_browser"; detail: "unsupported" | "browser_window_zoom" | "window_zoom" | "display_crop" };
   visibility: { minimized: boolean | null; occluded: null; paint_freshness: "unverified" };
 }
 const positive = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
@@ -36,7 +36,7 @@ export function observationSource(kind: ObservationSource["kind"], native: Recor
     semantic_scope: kind === "display" ? "none" : kind === "window" ? "native_window" : "owned_page",
     scale: { native_scale_factor: positive(native.scale_factor), screenshot_scale: positive(native.screenshot_scale), dpi: null, device_pixel_ratio: null },
     capabilities: { read: true, input: kind === "display" ? "none" : kind === "window" ? "window_observation" : "owned_browser",
-      detail: kind === "browser" ? "browser_window_zoom" : "unsupported" },
+      detail: kind === "browser" ? "browser_window_zoom" : zoom ? "unsupported" : kind === "display" ? "display_crop" : "window_zoom" },
     visibility: { minimized: typeof native.minimized === "boolean" ? native.minimized : null, occluded: null, paint_freshness: "unverified" },
   };
 }

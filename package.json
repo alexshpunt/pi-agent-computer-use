@@ -22,7 +22,8 @@
     "probe:driver": "node scripts/probe-driver.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.31.0"
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "sharp": "0.35.5"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
