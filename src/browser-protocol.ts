@@ -28,7 +28,7 @@ export function serveBrowserWorker(backend: BrowserBackend): void {
         switch (request.operation) {
           case "open": result = await session.open(request.args.url); break;
           case "focus": result = await session.focus(request.args.tab); break;
-          case "observe": result = await session.observe(); break;
+          case "observe": result = await session.observe(undefined, request.args); break;
           case "act": result = await session.act(request.args as BrowserAction); break;
           case "tabs": result = await session.list(); break;
           case "close": result = await session.close(); break;

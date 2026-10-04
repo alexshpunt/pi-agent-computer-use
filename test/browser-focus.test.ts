@@ -14,6 +14,10 @@ class FocusBackend implements BrowserBackend {
       elements: ["one", "two", "three", "four"].map(name => ({ id: id + ":" + name, role: "button", name })),
       screenshot: { width: 800, height: 600 }, png: "fixture-png" };
   }
+  async capture(id: string) {
+    const view = await this.observe(id);
+    return { png: view.png, screenshot: view.screenshot!, documentChanged: false };
+  }
   async act(id: string, action: Record<string, unknown>) {
     if (this.failure) throw this.failure;
     this.inputs.push({ id, target: action.element_id });

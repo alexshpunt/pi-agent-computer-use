@@ -98,7 +98,7 @@ export class VisionTrace {
       if (!image) continue;
       this.assets.set(image.hash, image);
       this.captures.push({ ...this.frame(image, "captured"), actionId: id,
-        source: metadata({ tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, image_region: state.image_region }),
+        source: metadata({ tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, image_region: state.image_region, saved_crop: state.saved_crop, origin: (state.agent_image as { origin?: unknown } | undefined)?.origin }),
         configuration: metadata({ requested: action.input, effective: state.agent_image ?? "unreported by current adapter", timings: state.timings }),
         ...(originalHash ? { original: "available" as const, originalHash } : {}) });
       this.captures = this.captures.slice(-3);

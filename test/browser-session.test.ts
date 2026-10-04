@@ -11,6 +11,10 @@ class Backend implements BrowserBackend {
     return { url: this.pages.get(id)!, title: "Fixture", text: "Message", elements: [{ id: "input-1", role: "textbox", name: "Message" }],
       screenshot: { width: 800, height: 600 }, png: "fixture-png" };
   }
+  async capture(id: string) {
+    const view = await this.observe(id);
+    return { png: view.png, screenshot: view.screenshot!, documentChanged: false };
+  }
   async act(id: string, action: Record<string, unknown>) {
     this.calls.push(id + ":" + action.action);
     if (this.failed) throw new Error("connection lost after dispatch");

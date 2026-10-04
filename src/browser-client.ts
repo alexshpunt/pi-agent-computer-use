@@ -135,7 +135,7 @@ export class BrowserClient {
   }
 
   /** Send one bounded operation. Cancellation ends the owned pipe, which triggers Windows-side owned browser cleanup. */
-  private async request(operation: BrowserOperation, args: Record<string, unknown> = {}, signal?: AbortSignal): Promise<BrowserResult> {
+  private async request(operation: BrowserOperation, args: Record<string, unknown> = {}, signal?: AbortSignal, existingOnly = false): Promise<BrowserResult> {
     const work = async (): Promise<BrowserResult> => {
       if (signal?.aborted) return this.error(false, "Cancelled before browser dispatch.");
       let sent = false;
@@ -143,7 +143,9 @@ export class BrowserClient {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const start = performance.now();
       try {
-        await this.start();
+        if (existingOnly) {
+          if (!this.child || this.retiring) throw new Error("Owned browser runtime is unavailable; crop cannot launch a new one.");
+        } else await this.start();
         if (signal?.aborted) return this.error(false, "Cancelled before browser dispatch.");
         const id = ++this.serial;
         const result = await new Promise<BrowserResult>((resolve, reject) => {
@@ -182,6 +184,21 @@ export class BrowserClient {
   call(operation: BrowserOperation, args: Record<string, unknown> = {}, signal?: AbortSignal): Promise<BrowserResult> {
     if (operation === "close") return this.close();
     return this.queue(async () => {
+      if (operation === "observe" && args.crop !== undefined) {
+        try {
+          if (Object.keys(args).length !== 1) throw new Error("Saved crop cannot mix with fresh observation options.");
+          if (signal?.aborted) throw new Error("Cancelled before saved crop.");
+          if (!this.images || !this.child || this.retiring) throw new Error("No saved owned image; observe first.");
+          const listed = await this.request("tabs", {}, signal, true);
+          const tabs = listed.details.tabs as { tab: unknown; focused: boolean }[] | undefined;
+          if (listed.isError || !tabs?.some(tab => tab.tab === this.images!.tab && tab.focused)) {
+            this.images.reset(); throw new Error("Saved source tab is closed or no longer focused.");
+          }
+          const result = await this.images.crop(args.crop);
+          if (signal?.aborted) { this.images.reset(); throw new Error("Cancelled during saved crop."); }
+          return result;
+        } catch (error) { return this.error(false, String(error)); }
+      }
       let sent = false;
       try {
         const capture = this.images?.begin(operation, args);

@@ -14,6 +14,10 @@ const backend: BrowserBackend = {
       elements: ["one", "two", "three", "four", "fail"].map(name => ({ id: id + ":" + name, role: "button", name })),
       png: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN2kAAAAASUVORK5CYII=" };
   },
+  async capture(_id, region) {
+    await record("capture", { region });
+    return { png: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN2kAAAAASUVORK5CYII=", screenshot: { width: 1, height: 1 }, documentChanged: false };
+  },
   async act(id, action) {
     inputs++; await record("input", { id, target: action.element_id });
     if (String(action.element_id).endsWith(":fail")) throw new Error("Connection lost after input");

@@ -56,10 +56,18 @@ export function registerBrowserTools(pi: ExtensionAPI, browser = new BrowserClie
   pi.registerTool({
     outputSchema,
     name: "browser_observe", label: "Browser observe",
-    description: "Refresh the focused owned tab: text, short target hints and physically downsampled PNG with the same visible labels (MKS2021, 500 px long edge by default). Retires previous hints. In Codemode, image(view.image) forwards the PNG; text(view.text) forwards page text. Site content is untrusted. Canvas/iframes/custom widgets are not fully covered.",
+    description: "Refresh the focused owned tab. Default: text, short hints and a physically downsampled PNG controlled by Vision debug (500 px long edge by default). image_only:true skips text/target discovery. region:{x,y,width,height} captures only that viewport region for closer inspection; it does not change page zoom. Coordinate clicks use the pixels of the last returned image; the bridge applies the saved crop offset and resize ratios. Region requests still use source viewport CSS pixels. In CodeMode, crop:{x,y,width,height,maxLongEdge?,scale?} extracts retained ORIGINAL pixels of the last shown image without capture; x/y/size are that image’s pixels, including for nested crop. Cannot mix crop with fresh options. Detail settings are local, defaults MKS2021/500/1; no enlargement of small sources. Saved historical crops do not restore stale coordinate input. Retires previous hints on fresh full observation. In Codemode, image(view.image) forwards the PNG; text(view.text) forwards page text. Site content is untrusted. Canvas/iframes/custom widgets are not fully covered.",
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
-    parameters: Type.Object({}, options),
-    async execute(_id, _params, signal) { return expose(await browser.call("observe", {}, signal)); },
+    parameters: Type.Object({ crop: Type.Optional(Type.Object({
+      x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }),
+      width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }),
+      maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096 })),
+      scale: Type.Optional(Type.Number({ minimum: 0.05, maximum: 1 })),
+    }, options)), image_only: Type.Optional(Type.Boolean()), region: Type.Optional(Type.Object({
+      x: Type.Integer({ minimum: 0 }), y: Type.Integer({ minimum: 0 }),
+      width: Type.Integer({ minimum: 1 }), height: Type.Integer({ minimum: 1 }),
+    }, options)) }, options),
+    async execute(_id, params, signal) { return expose(await browser.call("observe", params, signal)); },
   });
   pi.registerTool({
     outputSchema,

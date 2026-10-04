@@ -7,6 +7,8 @@ export const visionKernels = ["lanczos2", "lanczos3", "mitchell", "mks2021"] as 
 export interface VisionSettings {
   kernel: typeof visionKernels[number]; maxLongEdge: number; scale: number; version: number;
 }
+/** Rectangle in an explicitly named image/viewport coordinate space. */
+export interface ImageRectangle { x: number; y: number; width: number; height: number }
 /** Actual image dimensions and the transform back to source CSS pixels. */
 export interface AgentImage {
   configuration: VisionSettings; cap: number;
@@ -14,6 +16,7 @@ export interface AgentImage {
   sourceCss?: { width: number; height: number };
   output: { hash: string; width: number; height: number; bytes: number };
   mapping: { offsetX: number; offsetY: number; scaleX: number; scaleY: number };
+  origin?: { kind: "fresh_capture" | "saved_crop"; observation: string; raster: ImageRectangle; css: ImageRectangle; inputReady: boolean };
   timings: { decode_ms: number; resample_ms: number; encode_ms: number; total_ms: number };
 }
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -55,18 +58,35 @@ export class VisionImages {
   /** Resize fresh source pixels once, fit the whole view, never enlarge, and report actual PNG sizes. */
   async process(png: string, configuration: VisionSettings,
     region?: { x: number; y: number }): Promise<{ png: string; metadata: AgentImage }> {
+    return this.render(png, configuration, region);
+  }
+
+  /** Extract retained original pixels, not an earlier resized result. Does not retain a second source. */
+  async crop(id: string, rectangle: ImageRectangle, configuration: VisionSettings): Promise<{ png: string; metadata: AgentImage }> {
+    const original = this.originals.get(id);
+    if (!original) throw new Error("Original image expired or is not retained in this session.");
+    return this.render(original.toString("base64"), configuration, undefined, rectangle);
+  }
+
+  private async render(png: string, configuration: VisionSettings, region?: { x: number; y: number },
+    rectangle?: ImageRectangle): Promise<{ png: string; metadata: AgentImage }> {
     const started = performance.now();
     if (png.length > Math.ceil(maxBytes / 3) * 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(png)) throw new Error("Source PNG exceeds the image limit or is malformed.");
     const original = Buffer.from(png, "base64");
     const options = { limitInputPixels: 32_000_000, failOn: "error" as const };
     const info = await sharp(original, options).metadata();
     if (info.format !== "png" || !info.width || !info.height) throw new Error("Expected one source PNG.");
-    const decoded = await sharp(original, options).raw().toBuffer({ resolveWithObject: true });
+    if (rectangle && (!Object.values(rectangle).every(Number.isInteger) || rectangle.x < 0 || rectangle.y < 0 ||
+      rectangle.width <= 0 || rectangle.height <= 0 || rectangle.x + rectangle.width > info.width || rectangle.y + rectangle.height > info.height))
+      throw new Error("Crop is outside original raster bounds.");
+    const decoded = await sharp(original, options)
+      .extract(rectangle ? { left: rectangle.x, top: rectangle.y, width: rectangle.width, height: rectangle.height }
+        : { left: 0, top: 0, width: info.width, height: info.height }).raw().toBuffer({ resolveWithObject: true });
     const decodedAt = performance.now();
     const cap = Math.max(1, Math.floor(configuration.maxLongEdge * configuration.scale));
-    const longEdge = Math.max(info.width, info.height);
-    const width = Math.max(1, Math.min(info.width, Math.floor(info.width * cap / longEdge)));
-    const height = Math.max(1, Math.min(info.height, Math.floor(info.height * cap / longEdge)));
+    const longEdge = Math.max(decoded.info.width, decoded.info.height);
+    const width = Math.max(1, Math.min(decoded.info.width, Math.floor(decoded.info.width * cap / longEdge)));
+    const height = Math.max(1, Math.min(decoded.info.height, Math.floor(decoded.info.height * cap / longEdge)));
     // Materialize resampled pixels before encoding so stage timings do not conflate both.
     const raw = await sharp(decoded.data, { raw: { width: decoded.info.width, height: decoded.info.height, channels: decoded.info.channels } })
       .resize(width, height, { fit: "fill", withoutEnlargement: true,
@@ -75,8 +95,9 @@ export class VisionImages {
     const output = await sharp(raw.data, { raw: { width: raw.info.width, height: raw.info.height, channels: raw.info.channels } })
       .png({ compressionLevel: 6 }).toBuffer();
     const encodedAt = performance.now();
+    if (output.length > maxBytes) throw new Error("Agent PNG exceeds the bounded image limit; choose smaller detail settings.");
     const sourceHash = hash(original);
-    this.originals.delete(sourceHash); this.originals.set(sourceHash, original);
+    if (!rectangle) { this.originals.delete(sourceHash); this.originals.set(sourceHash, original); }
     let bytes = [...this.originals.values()].reduce((sum, item) => sum + item.length, 0);
     for (const [id, item] of this.originals) {
       if (this.originals.size <= 6 && bytes <= 48 * 1024 * 1024) break;

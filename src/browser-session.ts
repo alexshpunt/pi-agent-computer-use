@@ -7,15 +7,23 @@ export interface BrowserTab { id: string; url: string; title: string }
 export interface BrowserSnapshot {
   url: string; title: string; text: string; png: string; browser?: string;
   elements: { id: string; role: string; name: string; value?: string }[];
-  /** PNG pixels equal viewport CSS pixels, measured from the top-left. */
+  /** Full viewport CSS dimensions; PNG raster rounding is reported separately in agent_image.source. */
   screenshot?: { width: number; height: number };
   truncated?: boolean;
+}
+/** A crop in full-viewport CSS coordinates; it never changes page zoom. */
+export interface BrowserRegion { x: number; y: number; width: number; height: number }
+/** Pixels captured without discovering targets or extracting page text. */
+export interface BrowserImage {
+  png: string; screenshot: { width: number; height: number }; documentChanged: boolean;
+  timings?: { screenshot_ms: number };
 }
 /** Trusted backend limited to the visible browser/profile it created. */
 export interface BrowserBackend {
   open(url: string): Promise<string>;
   list(): Promise<BrowserTab[]>;
   observe(id: string, hintFor?: (nativeId: string) => string): Promise<BrowserSnapshot>;
+  capture(id: string, region?: BrowserRegion): Promise<BrowserImage>;
   act(id: string, action: Record<string, unknown>): Promise<void>;
   closeTab(id: string): Promise<void>;
   close(): Promise<void>;
@@ -131,6 +139,24 @@ export class BrowserSession {
         screenshot: snapshot.screenshot, truncated: snapshot.truncated ?? false, browser: snapshot.browser, tabs }, snapshot.png);
   }
 
+  private async pixels(entry: PageEntry, region?: BrowserRegion): Promise<BrowserResult> {
+    const prior = entry.observation;
+    if (region) {
+      const size = prior?.screenshot;
+      if (Object.keys(region).some(key => !["x", "y", "width", "height"].includes(key)) ||
+        ![region.x, region.y, region.width, region.height].every(Number.isInteger) ||
+        region.x < 0 || region.y < 0 || region.width <= 0 || region.height <= 0 ||
+        (size && (region.x + region.width > size.width || region.y + region.height > size.height)))
+        throw new BrowserRefusal("Region needs an in-bounds rectangle in the last viewport's CSS pixels.");
+    }
+    entry.observation = undefined;
+    const image = await this.backend.capture(entry.id, region);
+    entry.observation = { hints: image.documentChanged ? new Map() : prior?.hints ?? new Map(),
+      screenshot: image.screenshot, coordinatesReady: true };
+    return { content: [{ type: "image", data: image.png, mimeType: "image/png" }],
+      details: { status: "observed", tab: entry.tab, screenshot: image.screenshot,
+        ...(region ? { image_region: region } : {}), timings: image.timings } };
+  }
   private failure(error: unknown, dispatched = false, completed = false, state: Record<string, unknown> = {}): BrowserResult {
     const reason = error instanceof Error ? error.message : String(error);
     const unknown = dispatched && (completed || !(error instanceof BrowserRefusal));
@@ -169,13 +195,17 @@ export class BrowserSession {
     });
   }
 
-  /** Refresh only the focused page. Old labels are retired, never rebound. */
-  observe(signal?: AbortSignal): Promise<BrowserResult> {
+  /** Refresh the focused page; image_only and region capture pixels without target discovery. */
+  observe(signal?: AbortSignal, options: { image_only?: boolean; region?: BrowserRegion } = {}): Promise<BrowserResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
       try {
         await this.tabs(); if (!this.focused) throw new BrowserRefusal("No focused owned page.");
-        return await this.read(this.focused);
+        if (Object.keys(options).some(key => !["image_only", "region"].includes(key)) ||
+          (options.image_only !== undefined && typeof options.image_only !== "boolean") ||
+          (options.region !== undefined && (!options.region || typeof options.region !== "object" || Array.isArray(options.region))))
+          throw new BrowserRefusal("Invalid observation options.");
+        return options.image_only || options.region ? await this.pixels(this.focused, options.region) : await this.read(this.focused);
       } catch (error) { return this.failure(error); }
     });
   }

@@ -1,0 +1,253 @@
+{
+  "overview": {
+    "tab": 1,
+    "screenshot": {
+      "width": 1086,
+      "height": 706
+    },
+    "agent_image": {
+      "configuration": {
+        "kernel": "mks2021",
+        "maxLongEdge": 500,
+        "scale": 1,
+        "version": 0
+      },
+      "cap": 500,
+      "source": {
+        "hash": "d440d616f57565b423ae6f805944d50554e75df7cffd5a30b80ac997bf06e11a",
+        "width": 1085,
+        "height": 706,
+        "bytes": 23016
+      },
+      "output": {
+        "hash": "e3d35c756ab77d42d2ee31194eb609a3f636e6ef9f488914bda5a89767c82d2b",
+        "width": 500,
+        "height": 325,
+        "bytes": 13943
+      },
+      "mapping": {
+        "offsetX": 0,
+        "offsetY": 0,
+        "scaleX": 2.172,
+        "scaleY": 2.1723076923076925
+      },
+      "timings": {
+        "decode_ms": 77.17368499934673,
+        "resample_ms": 20.187564000487328,
+        "encode_ms": 29.99387399852276,
+        "total_ms": 127.35512299835682
+      },
+      "sourceCss": {
+        "width": 1086,
+        "height": 706
+      },
+      "origin": {
+        "kind": "fresh_capture",
+        "observation": "9903b7ef-99fc-4fb2-8f2e-c56f60ebce05",
+        "raster": {
+          "x": 0,
+          "y": 0,
+          "width": 1085,
+          "height": 706
+        },
+        "css": {
+          "x": 0,
+          "y": 0,
+          "width": 1086,
+          "height": 706
+        },
+        "inputReady": true
+      }
+    }
+  },
+  "detail": {
+    "tab": 1,
+    "screenshot": {
+      "width": 1086,
+      "height": 706
+    },
+    "agent_image": {
+      "configuration": {
+        "kernel": "mks2021",
+        "maxLongEdge": 1200,
+        "scale": 1,
+        "version": 0
+      },
+      "cap": 1200,
+      "source": {
+        "hash": "d440d616f57565b423ae6f805944d50554e75df7cffd5a30b80ac997bf06e11a",
+        "width": 1085,
+        "height": 706,
+        "bytes": 23016
+      },
+      "output": {
+        "hash": "2fec177ed209445b55be3a9c07e8731fb9c51dab5866b77b07f0a49d0dbe1c0b",
+        "width": 611,
+        "height": 190,
+        "bytes": 11086
+      },
+      "mapping": {
+        "offsetX": 95.08755760368663,
+        "offsetY": 95,
+        "scaleX": 1.0009216589861751,
+        "scaleY": 1
+      },
+      "timings": {
+        "decode_ms": 15.108026996254921,
+        "resample_ms": 5.125906005501747,
+        "encode_ms": 4.432229995727539,
+        "total_ms": 24.666162997484207
+      },
+      "sourceCss": {
+        "width": 611.563133640553,
+        "height": 190
+      },
+      "origin": {
+        "kind": "saved_crop",
+        "observation": "9903b7ef-99fc-4fb2-8f2e-c56f60ebce05",
+        "raster": {
+          "x": 95,
+          "y": 95,
+          "width": 611,
+          "height": 190
+        },
+        "css": {
+          "x": 95.08755760368663,
+          "y": 95,
+          "width": 611.563133640553,
+          "height": 190
+        },
+        "inputReady": true
+      }
+    }
+  },
+  "nested": {
+    "tab": 1,
+    "screenshot": {
+      "width": 1086,
+      "height": 706
+    },
+    "agent_image": {
+      "configuration": {
+        "kernel": "mks2021",
+        "maxLongEdge": 1000,
+        "scale": 1,
+        "version": 0
+      },
+      "cap": 1000,
+      "source": {
+        "hash": "d440d616f57565b423ae6f805944d50554e75df7cffd5a30b80ac997bf06e11a",
+        "width": 1085,
+        "height": 706,
+        "bytes": 23016
+      },
+      "output": {
+        "hash": "d3b659536626e01d26aa89e07d245cdd0c7722b786c33dbe3efa294d32505b72",
+        "width": 360,
+        "height": 90,
+        "bytes": 4970
+      },
+      "mapping": {
+        "offsetX": 110.10138248847926,
+        "offsetY": 155,
+        "scaleX": 1.0009216589861751,
+        "scaleY": 1
+      },
+      "timings": {
+        "decode_ms": 5.007649004459381,
+        "resample_ms": 0.7999809980392456,
+        "encode_ms": 8.22351200133562,
+        "total_ms": 14.031142003834248
+      },
+      "sourceCss": {
+        "width": 360.33179723502303,
+        "height": 90
+      },
+      "origin": {
+        "kind": "saved_crop",
+        "observation": "9903b7ef-99fc-4fb2-8f2e-c56f60ebce05",
+        "raster": {
+          "x": 110,
+          "y": 155,
+          "width": 360,
+          "height": 90
+        },
+        "css": {
+          "x": 110.10138248847926,
+          "y": 155,
+          "width": 360.33179723502303,
+          "height": 90
+        },
+        "inputReady": true
+      }
+    }
+  },
+  "reading": [
+    "Original pixels 26509860",
+    "Small detail 53055198",
+    "Fine print 11219131"
+  ],
+  "tui": {
+    "pane": "w3E9:p6",
+    "revision": 3043,
+    "inlinePNG": false
+  },
+  "preview": {
+    "tab": 2,
+    "agent_image": {
+      "configuration": {
+        "kernel": "mks2021",
+        "maxLongEdge": 500,
+        "scale": 1,
+        "version": 0
+      },
+      "cap": 500,
+      "source": {
+        "hash": "b67ec12e8dce8e6144015571285673a0dd3239554f9e8ffb79d4cb43c07a8bb0",
+        "width": 1085,
+        "height": 706,
+        "bytes": 64985
+      },
+      "output": {
+        "hash": "594d539432ffa35c8ba027de4d7b257b641e069853fa7a539c740cbefc875dff",
+        "width": 500,
+        "height": 325,
+        "bytes": 65255
+      },
+      "mapping": {
+        "offsetX": 0,
+        "offsetY": 0,
+        "scaleX": 2.172,
+        "scaleY": 2.1723076923076925
+      },
+      "timings": {
+        "decode_ms": 61.20534099638462,
+        "resample_ms": 12.447804003953934,
+        "encode_ms": 6.0781809985637665,
+        "total_ms": 79.73132599890232
+      },
+      "sourceCss": {
+        "width": 1086,
+        "height": 706
+      },
+      "origin": {
+        "kind": "fresh_capture",
+        "observation": "01d4698c-74eb-4ce0-a948-115ac74f66c1",
+        "raster": {
+          "x": 0,
+          "y": 0,
+          "width": 1085,
+          "height": 706
+        },
+        "css": {
+          "x": 0,
+          "y": 0,
+          "width": 1086,
+          "height": 706
+        },
+        "inputReady": true
+      }
+    },
+    "textExcerpt": "Active v0: mks2021 · 500 × 1 = cap 500 px. No upsampling.\n\nLast three boundary images\n\nOldest → newest. The viewer does not change the model's image budget.\n\nt-2 · prepared\n\n2026-10-04T05:39:36.714Z · 611×190 · 11086 bytes\n\nRequest request-52 · action call_Tp0V1zyR23R6NlV2HjkmDEBa|ctc_07f615dc51229a2d016ac1e660aaf087d2aff8a51ce75a8ecb/1\n\nSHA-256 2fec177ed209445b55be3a9c07e8731fb9c51dab5866b77b07f0a49d0dbe1c0b\n\nRetained source: available. Originals are bounded resources, not extra screenshots.\n\nOpen retained original PNG\n{\n  \"path\": \"$.input[239].output[1]\",\n  \"detail\": \"auto\",\n  \"source\": {\n    \"tab\": 1,\n    \"screenshot\": {\n      \"width\": 1086,\n      \"height\": 706\n    },\n    \"saved_crop\": true,\n    \"origin\": {\n      \"kind\": \"saved_crop\",\n      \"observation\": \"9903b7ef-99fc-4fb2-8f2e-c56f60ebce05\",\n      \"raster\": {\n        \"x\": 95,\n        \"y\": 95,\n        \"width\": 611,\n        \"height\": 190\n      },\n      \"css\": {\n        \"x\": 95.08755760368663,\n        \"y\": 95,\n        \"width\": 611.563133640553,\n        \"height\": 190\n      },\n      \"inputReady\": true\n    }\n  },\n  \"matchingActionIds\": [\n    \"call_Tp0V1zyR23R6NlV2HjkmDEBa|ctc_07f615dc51229a2d016ac1e660aaf087d2aff8a51ce75a8ecb/1\"\n  ],\n  \"configuration\": {\n    \"requested\": {\n      \"crop\": {\n        \"x\": 44,\n        \"y\": 44,\n        \"width\": 281,\n        \"height\": 87,\n        \"maxLongEdge\": 1200,\n        \"scale\": 1\n      }\n    },\n    \"effective\": {\n      \"configuration\": {\n        \"kernel\": \"mks2021\",\n        \"maxLongEdge\": 1200,\n        \"scale\": 1,\n        \"version\": 0\n      },\n      \"cap\": 1200,\n      \"source\": {\n        \"hash\": \"d440d616f57565b423ae6f805944d50554e75df7cffd5a30b80ac997bf06e11a\",\n        \"width\": 1085,\n        \"height\": 706,\n        \"bytes\": 23016\n      },\n      \"output\": {\n        \"hash\": \"2fec177ed209445b55be3a9c07e8731fb9c51dab5866b77b07f0a49d0dbe1c0b\",\n        \"width\": 611,\n        \"height\": 190,\n        \"bytes\": 11086\n      },\n      \"mapping\": {\n        \"offsetX\": 95.08755760368663,\n        \"offsetY\": 95,\n        \"scaleX\": 1.0009216589861751,\n        \"scaleY\": 1\n      },\n      \"timings\": {\n        \"decode_ms\": 15.108026996254921,\n        \"resample_ms\": 5.125906005501747,\n        \"encode_ms\": 4.432229995727539,\n        \"total_ms\": 24.666162997484207\n      },\n      \"sourceCss\": {\n        \"width\": 611.563133640553,\n        \"height\": 190\n      },\n      \"origin\": {\n        \"kind\": \"saved_crop\",\n        \"observation\": \"9903b7ef-99fc-4fb2-8f2e-c56f60ebce05\",\n        \"raster\": {\n          \"x\": 95,\n          \"y\": 95,\n          \"width\": 611,\n          \"height\": 190\n        },\n        \"css\": {\n          \"x\": 95.08755760368663,\n          \"y\": 95,\n          \"width\": 611.563133640553,\n          \"height\": 190\n        },\n        \"inputReady\": true\n      }\n    }\n  },\n  \"finalDelivery\": \"unconfirmed\"\n}\nt-1 · prepared\n\n2026-10-04T05:39:36.715Z · 360×90 · 4970 bytes\n\nRequest request-52 · action call_mkeIVJMbBDPaY4XgCqjantOX|ctc_07f615dc51229a2d016ac1e66c6da087d28e252b51ec9a586c/1\n\nSHA-256 d3b659536626e01d26aa89e07d245cdd0c7722b786c33dbe3efa294d32505b72\n\nRetained source: available. Originals are bounded resources, not extra screenshots.\n\nOpen retained original PNG\n{\n  \"path\": \"$.input[242].output[1]\",\n  \"detail\": \"auto\",\n  \"source\": {\n    \"tab\": 1,\n    \"screenshot\": {\n      \"width\": 1086,\n      \"height\": 706\n    },\n    \"saved_crop\": true,\n    \"origin\": {\n      \"kind\": \"saved_crop\",\n      \"observation\": \"9903b7ef-99fc-4fb2-8f2e-c56f60ebce05\",\n      \"raster\": {\n        \"x\": 110,\n        \"y\": 155,\n        \"width\": 360,\n        \"height\": 90\n      },\n      \"css\": {\n        \"x\": 110.10138248847926,\n        \"y\": 155,\n        \"width\": 360.33179723502303,\n        \"height\": 90\n      },\n      \"inputReady\": true\n    }\n  },\n  \"matchingActionIds\": [\n    \"call_mkeIVJMbBDPaY4XgCqjantOX|ctc_07f615dc51229a2d016ac1e66c6da087d28e252b51ec9a586c/1\"\n  ],\n  \"configuration\": {\n    \"requested\": {\n      \"crop\": {\n        \"x\": 15,\n        \"y\": 60,\n        \"width\": 360,\n        \"height\": 90,\n        \"maxLongEdge\": 1000,\n        \"scale\": 1\n      }\n    },\n    \"effective\": {\n      \"configuration\": {\n        \"kernel\": \"mks2021\",\n        \"maxLongEdge\": 1000,\n        \"scale\": 1,\n        \"version\": 0\n      },\n      \"cap\": 1000,\n      \"source\": {\n        \"hash\": \"d440d616f57565b423ae6f805944d50554e75df7cffd5a30b80ac997bf06e11a\",\n        \"width\": 1085,\n        \"height\": 706,\n        \"bytes\": 23016\n      },\n      \"output\": {\n        \"hash\": \"d3b659536626e01d26aa89e07d245cdd0c7722b786c33dbe3efa294d32505b72\",\n        \"width\": 360,\n        \"height\": 90,\n        \"bytes\": 4970\n      },\n      \"mapping\": {\n        \"offsetX\": 110.10138248847926,\n        \"offsetY\": 155,\n        \"scaleX\": 1.0009216589861751,\n        \"scaleY\": 1\n      },\n      \"timings\": {\n        \"decode_ms\": 5.007649004459381,\n        \"resample_ms\": 0.7999809980392456,\n        \"encode_ms\": 8.22351200133562,\n        \"total_ms\": 14.031142003834248\n      },\n      \"sourceCss\": {\n        \"width\": 360.33179723502303,\n        \"height\": 90\n      },\n      \"origin\": {\n        \"kind\": \"saved_crop\",\n        \"observation\": \"9903b7ef-99fc-4fb2-8f2e-c56f60ebce05\",\n        \"raster\": {\n          \"x\": 110,\n          \"y\": 155,\n          \"width\": 360,\n          \"height\": 90\n        },\n        \"css\": {\n          \"x\": 110.10138248847926,\n          \"y\": 155,\n          \"width\": 360.33179723502303,\n          \"height\": 90\n        },\n        \"inputReady\": true\n      }\n    }\n  },\n  \"finalDelivery\": \"unconfirmed\"\n}\n"
+  }
+}

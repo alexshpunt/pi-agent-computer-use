@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type BrowserContext, type ElementHandle, type JSHandle, type Page } from "playwright-core";
 import { browserLaunchOptions } from "./browser-launch.ts";
-import { BrowserRefusal, type BrowserBackend, type BrowserSnapshot } from "./browser-session.ts";
+import { BrowserRefusal, type BrowserBackend, type BrowserRegion, type BrowserSnapshot } from "./browser-session.ts";
 
 interface Entry {
   page: Page; generation: number; observedGeneration?: number; observedGeometry?: string;
@@ -171,8 +171,28 @@ export class PlaywrightBrowser implements BrowserBackend {
     if (png.length > 12_000_000) throw new BrowserRefusal('Viewport screenshot exceeds the bounded response size.');
     entry.observedGeneration = generation;
     return { url, title, text: text.slice(0, 16_000), elements, png: png.toString('base64'),
-      screenshot: { width: png.readUInt32BE(16), height: png.readUInt32BE(20) },
+      // Full CSS viewport, not the PNG raster's rounded dimensions.
+      screenshot: { width: JSON.parse(geometry).width, height: JSON.parse(geometry).height },
       browser: this.context?.browser()?.version(), truncated: text.length > 16_000 || handles.length === 120 };
+  }
+
+  /** Fresh viewport pixels without DOM target discovery or text extraction. */
+  async capture(id: string, region?: BrowserRegion) {
+    const entry = this.current(id); const page = entry.page;
+    const generation = entry.generation;
+    const documentChanged = entry.observedGeneration !== generation;
+    const started = performance.now();
+    const geometry = await this.geometry(page);
+    const viewport = JSON.parse(geometry) as { width: number; height: number };
+    if (region && (region.x + region.width > viewport.width || region.y + region.height > viewport.height))
+      throw new BrowserRefusal('Viewport changed before region capture; observe again.');
+    const png = await page.screenshot({ type: 'png', scale: 'css', timeout: 10_000, ...(region ? { clip: region } : {}) });
+    if (geometry !== await this.geometry(page)) throw new BrowserRefusal('Viewport changed during capture; observe again.');
+    if (generation !== entry.generation || page.isClosed()) throw new BrowserRefusal('Page navigated during capture; observe again.');
+    if (png.length > 12_000_000) throw new BrowserRefusal('Viewport screenshot exceeds the bounded response size.');
+    entry.observedGeometry = geometry; entry.observedGeneration = generation;
+    return { png: png.toString('base64'), documentChanged, timings: { screenshot_ms: performance.now() - started },
+      screenshot: { width: viewport.width, height: viewport.height } };
   }
 
   private async geometry(page: Page): Promise<string> {
