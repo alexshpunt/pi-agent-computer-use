@@ -1,33 +1,25 @@
-# Last three images in request context
+# Images stay in normal Pi context
 
-LPT-380 limits each model request to the newest **three image payloads in total**. User attachments, tool results, Codemode output, overview and detail all share the limit. Repeating the same pixels still counts as another payload. Text-only turns do not evict an image by themselves.
+The user superseded LPT-380's last-three request limit. This extension no longer removes or replaces older image blocks, rewrites text dumps, or creates a separate image archive. User attachments, tool results, Codemode images, overview and detail follow the same Pi history lifecycle as other messages.
 
-The Pi `context` hook replaces older image blocks with short SHA-256/timestamp references. It also removes exact known encoded image data from ordinary text dumps. It does not rewrite stored messages, thinking signatures, tool calls/results or timestamps. This is not a general detector for obfuscated data in arbitrary text or tool arguments.
+Pi's normal compaction may summarize older context and keep recent messages. It does not erase the original session entries. Reload alone does not remove images. This extension does not change compaction settings or provider cache controls. Other extensions and provider processing can still affect final delivery.
 
-## Private resources and history
+## Debug cards are separate
 
-The latest 12 distinct supported images can be read again from private `.tmp/computer-vision/<session-id>/` files. The store is capped at 48MiB total and 16MiB per image. Unsupported or oversized resources are not archived. Storage failure does not disable the request limit; omitted pixels then have no promised resource.
+Vision debug keeps three recent application-boundary cards and bounded action/request metadata. That is a viewer memory limit, not a model-context limit. Its request summary counts all observed image blocks. There is no image-budget footer or active/omitted projection. Private session history and debug pixels must not be shared.
 
-An explicit image re-read joins the same three-payload budget. It does not authorize native input, desktop reading in Safe, or access to another session. Use the existing read tool and forward its image block, not an encoded-data text dump.
+## Verification
 
-Shutdown/reload removes the session's temporary image store. The next request rebuilds bounded resources from the original current context. Compaction can remove older messages from that context, so not every historical image remains available as a temporary resource. Normal Pi session history and exports still contain their original images; this feature does not impose a disk quota on Pi's persistent history. Do not share private history or pixels.
+- The real-Pi HTTP regression first reproduced the retired behavior: `0,2,3,3,3,3,3`. With the context hook removed, twelve distinct PNG/JPEG images in six Codemode batches arrive as `0,2,4,6,8,10,12`. The oldest bytes and all action labels remain; only three debug cards are retained.
+- The native Codex cached-WebSocket serializer and local peer retain all twelve exact image hashes in effective context. Requests after the first keep the unchanged continuation prefix. A manual serializer checkpoint reconstructs context; it is not a Pi compaction test.
+- The public Pi SDK run verifies twelve user images, actual reload, actual manual compaction with a loopback summarizer, another reload and saved-file reopen. Reload preserves all twelve images. Normal Pi compaction reduces request context while the twelve original image entries stay in session history. No separate archive is created.
 
-Vision debug has separate bounded capture cards and action/request history. Its **Image context budget** section and Pi footer show active and omitted payload counts. Those counts describe the extension's request projection, not a continuous screen recording or remote-provider memory inspection.
-
-## Transport checks
-
-Qualified against Pi coding-agent 0.99.1 and the installed Pi AI 1.0.0 serializer:
-
-- Real Pi with a loopback HTTP provider sends counts `0,2,3,3,3,3,3` for twelve PNG overviews/JPEG fixture crops in six Codemode batches. Old encoded pixels disappear; all twelve action labels remain.
-- The native Codex cached-WebSocket serializer was exercised against a local protocol peer. Its first three image turns can chain. At eviction, the changed serialized prefix makes Pi reset `previous_response_id` and send reconstructed input. All 15 effective requests have at most three images. Explicit re-read, state reset and a compacted checkpoint pass.
-- A separate real public-SDK run calls Pi's actual `reload()`, `compact()` with a loopback summarizer, and file reopen. It checks 17 request states, preserves 13 original user image entries, and verifies private-store removal/rebuild. This is not a hand-written compaction entry.
-- Parent Pi after mandatory reload showed the footer `3/3 · 2 omitted` in the actual Herdr viewport and the private viewer reported matching bounded accounting. The stock collapsed tool renderer did not display inline PNGs.
-
-Loopback usage is synthetic. No paid probe, remote billing measurement, cache-speed result or guarantee for other provider chaining protocols is claimed. Prefix reconstruction can lose cache reuse; LPT-381 owns cache strategy. Other extensions that later alter context/provider payloads are outside this extension's final-wire guarantee.
+After mandatory parent reload, the real private viewer showed the new retention caption and no budget section. Its application-boundary request counted five images while displaying three cards. The actual Herdr viewport (`w3E9:p6`, revision 500, 182×57 cells) showed the normal vision-debug status without the removed image-budget footer. Tool images were collapsed; this is not an inline-PNG claim. The owned viewer closed, and read-only checks found no owned window/browser, Driver or profile.
+These checks use synthetic images and local provider peers. They prove retention/serialization, not remote billing, cache-hit rate, provider vision quality or universal provider compatibility. Keeping a stable prefix can help caching; it does not guarantee a cache hit. See [the cache boundary](research/pi-cache-controls.md).
 
 ## Reproduce
 
-```bash
+```sh
 npm test
 npm run typecheck
 npm run test:integration
@@ -35,4 +27,4 @@ node --experimental-transform-types scripts/verify-image-context-wire.mjs
 node --experimental-transform-types scripts/verify-image-context-lifecycle.mjs
 ```
 
-The two opt-in scripts use only synthetic images and local provider peers, not native screen capture or model credentials. [Redacted evidence](evidence/image-context/run.json) keeps counts, synthetic hashes and lifecycle results, not private parent pixels or viewer URLs.
+[Current synthetic evidence](evidence/image-context/retention.json) records counts, hashes and lifecycle checks. The earlier [last-three evidence](evidence/image-context/run.json) remains historical. That policy was delivered at `6dca15129f68a2e872baa3e76b9b43d553f29a0b` and explicitly reversed by the user; it is not the current contract.

@@ -54,4 +54,4 @@ Production boundary delivery, provider resize/embeddings, clean originals and ef
 
 ## Scope left unchanged
 
-LPT-372 remains paused and its uncommitted browser work was preserved, not included in this delivery. The 1086/1085 region regression remains unresolved in LPT-377. The Neal game was not resumed. Vision controls belong to LPT-374; the effective image-context budget belongs to LPT-380. No package publication or persistent installation was performed.
+LPT-372 remains paused and its uncommitted browser work was preserved, not included in this delivery. The 1086/1085 region regression remains unresolved in LPT-377. The Neal game was not resumed. Vision controls belong to LPT-374; image-context policy belongs to LPT-380. The later last-three request limit was reversed by the user; current images stay until normal Pi compaction. No package publication or persistent installation was performed.

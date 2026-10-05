@@ -63,7 +63,7 @@ CUA makes a **fresh native padded JPEG**, up to 500px wide. It is not a crop of 
 
 The human sees CUA's independent agent cursor in the actual Windows window. The Driver excludes that overlay from perception captures where supported. The cursor is not a generic rectangle/label overlay; hints are text metadata, not painted labels on the page.
 
-Vision debug mirrors exact returned bytes, hashes, native coordinate metadata and nested action outcomes. It polls trace state, not the screen continuously. Its capture cards show the last three application-boundary images. A separate [context budget](image-context.md) keeps the last three image payloads across all sources, and reports active/omitted counts. Later Pi handlers/provider processing remain unobserved by this viewer; its cards alone do not prove final wire delivery.
+Vision debug mirrors exact returned bytes, hashes, native coordinate metadata and nested action outcomes. It polls trace state, not the screen continuously. Its capture cards show the last three application-boundary images. Images remain in [normal Pi context](image-context.md) until Pi compacts it; the viewer's three-card limit does not remove model images. Later Pi handlers/provider processing remain unobserved by this viewer; its cards alone do not prove final wire delivery.
 
 **Observed limit:** native Chrome window PNGs can show an older paint than the live window and semantic snapshot, even after a pause. A successful input or matching text is not proof of current pixels. Inspect pixels and use bounded read-only observations; do not repeat input to force a repaint. The cause remains open.
 

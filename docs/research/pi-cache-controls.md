@@ -28,11 +28,11 @@ The installed public Responses builder also deliberately omits retention/options
 
 [Claude prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) documents `cache_control`, prefix matching, model-specific minimum lengths and TTLs. This pass did not call Claude or qualify that serializer/account. Image/detail/tool changes can affect the reusable prefix; do not copy one provider's cache controls to another.
 
-## Relationship to the three-image budget
+## Relationship to image retention
 
-LPT-380 already verifies the effective image budget on HTTP and native Codex cached-WebSocket serialization, including actual Pi reload/compaction/reopen. Its [report](../image-context.md) is the evidence for that contract. The WebSocket continuation ID is not a cache-hit counter: dropping an older image must reconstruct context when needed instead of silently retaining server-side images. Replacing an early image changes the prefix from that point onward; a cache may reuse the earlier unchanged prefix, not all the removed visual context.
+The user superseded LPT-380's three-image request limit: images now stay in ordinary Pi context until normal compaction. Its [report](../image-context.md) records the current contract and historical checks. The WebSocket continuation ID is not a cache-hit counter. Keeping an unchanged prefix avoids needless reconstruction; compaction or replacing early content can still change that prefix.
 
-Keep the shipped image budget and existing cache defaults unchanged. Do not reorder user/tool history for cache convenience, prewarm automatically or expose guessed provider controls. This is a safe unchanged baseline, not a measured optimal cache strategy.
+Keep normal Pi image retention and existing cache defaults. Do not reorder user/tool history for cache convenience, prewarm automatically or expose guessed provider controls. This is a safe unchanged baseline, not a measured optimal cache strategy.
 
 ## Remaining acceptance
 

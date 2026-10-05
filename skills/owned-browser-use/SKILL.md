@@ -51,7 +51,7 @@ Automatic foreground is the approved covered-window compromise, not a readiness 
 
 CUA shows an independent native agent cursor in the actual Windows browser. Perception images exclude that debug overlay where supported. Ask the human when actual cursor visibility needs verification. Screenshots alone cannot prove it.
 
-`/computer-debug` provides exact captured/application-boundary bytes, metadata and nested outcomes. Its polling follows the trace, not a continuous screen recording. The extension keeps at most three image payloads in request context across all sources, including detail and explicit re-reads. The viewer reports active/omitted counts separately from its capture cards. It is not a final-provider-delivery guarantee. See [the image budget](../../docs/image-context.md).
+`/computer-debug` provides exact captured/application-boundary bytes, metadata and nested outcomes. Its polling follows the trace, not a continuous screen recording. Only the viewer's cards are limited to three. Images across all sources, including detail, stay in normal Pi context until Pi compacts it. This extension does not delete or replace old image blocks. The viewer is not a final-provider-delivery guarantee. See [image retention](../../docs/image-context.md).
 
 No personal tabs/profile or permission grants. Desktop Safe/YOLO does not broaden browser ownership and only the user changes it. Standalone tab create/activate/close, arbitrary keys, coordinate pointer movement, uploads/downloads, generic overlay drawings and OS isolation are not provided here. Refuse unsupported work instead of switching technologies.
 
