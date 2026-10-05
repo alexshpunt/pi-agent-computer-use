@@ -4,18 +4,18 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
-LPT-408: Windows-only whole-window observation frames are verified. Working tree and clean selected tree passed 95 unit tests, typecheck and seven real-Pi contracts. Corrected native helper uses DWM visible bounds. The user confirmed visibility and click/input pass-through. Three installed-helper probes passed capture exclusion, unchanged focus, expiry and cleanup. Parent Pi after reload verified browser/Calculator/zoom through one shared helper. Interrupted owned profiles were recovered only after the exact source window was closed; final helper/driver/profile counts are zero. See [the report](window-overlay-results.md). Deliver this change, then inspect the remaining task contracts before implementing.
+LPT-408: Windows-only whole-window observation frames are verified. Working tree and clean selected tree passed 95 unit tests, typecheck and seven real-Pi contracts. Corrected native helper uses DWM visible bounds. The user confirmed visibility and click/input pass-through. Three installed-helper probes passed capture exclusion, unchanged focus, expiry and cleanup. Parent Pi after reload verified browser/Calculator/zoom through one shared helper. Interrupted owned profiles were recovered only after the exact source window was closed; final helper/driver/profile counts are zero. See [the report](window-overlay-results.md). Delivered as 81019f7fadba17b9971e587c3a221a8c2a461d11; Linear is Done. LPT-380 now enforces the image budget at the actual Pi context hook. Working-tree 99 unit tests/typecheck/eight real-Pi contracts pass; HTTP wire counts, 15 effective native Codex cached-WebSocket requests and 17 real SDK lifecycle states pass. Parent footer/viewer accounting and cleanup are verified. The clean selected tree passed the same checks; LPT-380 is complete in this delivery. See [the image budget report](image-context.md).
 
 ## Queue snapshot
 
 | Task | Capability | State / next check |
 | --- | --- | --- |
-| LPT-408 | Human whole-window observation frame | In progress; complete current E2E |
-| LPT-372 | Focused browser and short hints | Old changes archived during CUA pivot; inspect accepted task against current native contract |
+| LPT-408 | Human whole-window observation frame | Done; native, parent Pi and clean-tree proof shipped |
+| LPT-372 | Focused browser and short hints | Paused game acceptance; do not resume without specific authorization |
 | LPT-374 | Vision debug controls | Inspect overlap with completed LPT-375/396/407 before rebuilding |
 | LPT-378 | Coordinate grounding | Verify native overview/detail coordinate contracts and model limits |
 | LPT-379 | Model-facing visual annotations | Separate from human frames; inspect acceptance and safe adapter design |
-| LPT-380 | Last three screenshots in model context | Inspect actual Pi context hook contract and privacy constraints |
+| LPT-380 | Last three screenshots in model context | Done; HTTP/native wire, reload/compaction/reopen and parent checks pass |
 | LPT-381 | Prompt/KV cache and prewarm | Provider-specific research; no unsupported transport claims |
 | LPT-382 | Existing Pi Codemode only | Inspect current executable contracts and any remaining integration gap |
 | LPT-383 | Physical key sequences and intervals | Inspect CUA capabilities; owned disposable windows only |

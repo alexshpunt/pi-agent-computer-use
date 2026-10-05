@@ -16,7 +16,8 @@ export const visionPanel = `<!doctype html>
 <label>Scale exact <input id="scale-number" type="text" inputmode="decimal" value="1" required></label>
 <button type="submit">Apply to next capture</button>
 </form><p id="settings-status" role="status"></p></section>
-<section><h2>Last three boundary images</h2><p class="muted">Oldest → newest. The viewer does not change the model's image budget.</p><div id="frames" class="frames"></div></section>
+<section><h2>Image context budget</h2><p id="image-context" class="muted">Waiting for a model request.</p></section>
+<section><h2>Last three boundary images</h2><p class="muted">Oldest → newest. The extension limits request context separately; these cards mirror the provider hook, not confirmed transport delivery.</p><div id="frames" class="frames"></div></section>
 <section><h2>Observed request text</h2><p class="muted">Exact bounded text excerpts at the same hook. Adapter structures below are separate, not proof of forwarded content.</p><div id="request"></div></section>
 <section><h2>Computer-use action trace</h2><p class="muted">Includes nested Codemode calls, captured-only images, errors and adapter metadata.</p><div id="actions"></div></section>
 <section><h2>Limits</h2><ul id="limits"></ul></section>
@@ -80,6 +81,8 @@ function renderSettings(settings){
 function render(state){
   renderSettings(state.imageSettings);
   document.getElementById("session").textContent="Session "+state.sessionId+" · revision "+state.revision;
+  const budget=state.imageContext;
+  document.getElementById("image-context").textContent=budget?budget.imageCount+" / "+budget.limit+" active image payloads · "+budget.evictedCount+" older payloads omitted · "+budget.resources.length+" bounded private resources. Stored session history is unchanged.":"Waiting for a model request.";
   const frames=document.getElementById("frames");frames.replaceChildren();
   for(const [i,frame] of state.frames.entries()){
     const card=el("article",undefined,"card");

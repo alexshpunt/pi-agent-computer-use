@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ImageContextReport } from "./image-context.ts";
 
 /** Provider identity at Pi's existing, mutable application-boundary hook. */
 export interface VisionModel { provider: string; api: string; model: string }
@@ -62,6 +63,7 @@ export class VisionTrace {
   private captures: Frame[] = [];
   private actions: Action[] = [];
   private requests: Request[] = [];
+  private imageContext: ImageContextReport | undefined;
   private assets = new Map<string, ImageBytes>();
   private sequence = 0;
   private revision = 0;
@@ -72,6 +74,7 @@ export class VisionTrace {
     this.sessionId = sessionId;
     this.frames = []; this.captures = []; this.actions = []; this.requests = [];
     this.assets.clear(); this.sequence = 0; this.revision++;
+    this.imageContext = undefined;
   }
 
   /** Record a computer-use call, including its Codemode parent when available. */
@@ -121,6 +124,10 @@ export class VisionTrace {
       finalDelivery: "unconfirmed", original: "unavailable" };
   }
 
+  /** Keep actual request-local active/omitted accounting separate from bounded debug cards. */
+  contextImages(report: ImageContextReport): void {
+    this.imageContext = structuredClone(report); this.revision++;
+  }
   /** Snapshot the existing hook payload, not final HTTP bytes or provider embeddings. */
   observePayload(payload: unknown, model: VisionModel): void {
     const request: Request = { ...model, id: `request-${++this.sequence}`, time: new Date().toISOString(), imageCount: 0,
@@ -206,6 +213,6 @@ export class VisionTrace {
   /** JSON-safe viewer state without image base64. Retained UI text can still be sensitive. */
   snapshot() {
     return structuredClone({ sessionId: this.sessionId, revision: this.revision, limitations,
-      frames: this.frames, captures: this.captures, actions: this.actions, requests: this.requests });
+      frames: this.frames, captures: this.captures, actions: this.actions, requests: this.requests, imageContext: this.imageContext });
   }
 }

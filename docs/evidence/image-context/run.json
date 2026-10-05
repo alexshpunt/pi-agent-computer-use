@@ -1,0 +1,415 @@
+{
+  "task": "LPT-380",
+  "runtime": {
+    "pi": "0.99.1",
+    "piAI": "1.0.0",
+    "captureBackend": "CUA 0.33.2 unchanged"
+  },
+  "checks": {
+    "unit": 99,
+    "realPiContracts": 8,
+    "typecheck": true,
+    "diffCheck": true
+  },
+  "http": {
+    "counts": [
+      0,
+      2,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "codemodeBatches": 6,
+    "syntheticPNGAndJPEGCrops": true,
+    "chronologyPreserved": true
+  },
+  "nativeCachedWebSocket": {
+    "success": true,
+    "transport": "native Codex cached WebSocket to local peer",
+    "paidCalls": 0,
+    "records": [
+      {
+        "chained": false,
+        "imageCount": 1,
+        "hashes": [
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "explicitImageCount": 1
+      },
+      {
+        "chained": true,
+        "imageCount": 2,
+        "hashes": [
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd",
+          "cf0b50f412f49cd936078a7afa37273b2d77b70b24525eaa4472ce00d832567f"
+        ],
+        "explicitImageCount": 1
+      },
+      {
+        "chained": true,
+        "imageCount": 3,
+        "hashes": [
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd",
+          "cf0b50f412f49cd936078a7afa37273b2d77b70b24525eaa4472ce00d832567f",
+          "6901cec6f862a173a9c1f89fa2b451d24f414287ad7df5f4dea2ed174d952c24"
+        ],
+        "explicitImageCount": 1
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "cf0b50f412f49cd936078a7afa37273b2d77b70b24525eaa4472ce00d832567f",
+          "6901cec6f862a173a9c1f89fa2b451d24f414287ad7df5f4dea2ed174d952c24",
+          "d3113dae1cf99650ec6ee6f5c9bbac49f664ce4004b727e6863d7b0a75ff13c8"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "6901cec6f862a173a9c1f89fa2b451d24f414287ad7df5f4dea2ed174d952c24",
+          "d3113dae1cf99650ec6ee6f5c9bbac49f664ce4004b727e6863d7b0a75ff13c8",
+          "f9628a458b6ed6a2964747885da3e38b49435aa839d4f06917ce3de510956191"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "d3113dae1cf99650ec6ee6f5c9bbac49f664ce4004b727e6863d7b0a75ff13c8",
+          "f9628a458b6ed6a2964747885da3e38b49435aa839d4f06917ce3de510956191",
+          "7ae780c8bfc8465d82b62691c827de02ee1ee2e0ca13fda804ffc460411e374d"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "f9628a458b6ed6a2964747885da3e38b49435aa839d4f06917ce3de510956191",
+          "7ae780c8bfc8465d82b62691c827de02ee1ee2e0ca13fda804ffc460411e374d",
+          "f3bf884745690b5133b6e2bbfd10ffc30ed31e781fcb1129a32369a4fdc4fd2c"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "7ae780c8bfc8465d82b62691c827de02ee1ee2e0ca13fda804ffc460411e374d",
+          "f3bf884745690b5133b6e2bbfd10ffc30ed31e781fcb1129a32369a4fdc4fd2c",
+          "4ea5130f70f5874906d8ec56b5e1c6c3feb052baa7142b78cb00bb108fb18f17"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "f3bf884745690b5133b6e2bbfd10ffc30ed31e781fcb1129a32369a4fdc4fd2c",
+          "4ea5130f70f5874906d8ec56b5e1c6c3feb052baa7142b78cb00bb108fb18f17",
+          "33efc509b355f704c4e0a06f1397c0bb4af9686ed698485e64ef45ab41980a4c"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "4ea5130f70f5874906d8ec56b5e1c6c3feb052baa7142b78cb00bb108fb18f17",
+          "33efc509b355f704c4e0a06f1397c0bb4af9686ed698485e64ef45ab41980a4c",
+          "c947be2c69c81e05849178f258321dca8bf928442c2e01042db350116b4a407a"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "33efc509b355f704c4e0a06f1397c0bb4af9686ed698485e64ef45ab41980a4c",
+          "c947be2c69c81e05849178f258321dca8bf928442c2e01042db350116b4a407a",
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "c947be2c69c81e05849178f258321dca8bf928442c2e01042db350116b4a407a",
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7",
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "explicitImageCount": 3
+      },
+      {
+        "chained": true,
+        "imageCount": 3,
+        "hashes": [
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7",
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "explicitImageCount": 0
+      },
+      {
+        "chained": false,
+        "imageCount": 3,
+        "hashes": [
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7",
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "explicitImageCount": 3
+      }
+    ],
+    "usage": "synthetic peer usage; not provider billing or cache performance",
+    "checks": [
+      "last-three-effective-context",
+      "eviction-chain-reset",
+      "resource-reread",
+      "state-reset-replay",
+      "compacted-context-reconstruction"
+    ]
+  },
+  "lifecycle": {
+    "success": true,
+    "records": [
+      {
+        "phase": "frame-0",
+        "imageCount": 1,
+        "activeHashes": [
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "evictedCount": 0,
+        "privateResourceCount": 1
+      },
+      {
+        "phase": "frame-1",
+        "imageCount": 2,
+        "activeHashes": [
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd",
+          "cf0b50f412f49cd936078a7afa37273b2d77b70b24525eaa4472ce00d832567f"
+        ],
+        "evictedCount": 0,
+        "privateResourceCount": 2
+      },
+      {
+        "phase": "frame-2",
+        "imageCount": 3,
+        "activeHashes": [
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd",
+          "cf0b50f412f49cd936078a7afa37273b2d77b70b24525eaa4472ce00d832567f",
+          "6901cec6f862a173a9c1f89fa2b451d24f414287ad7df5f4dea2ed174d952c24"
+        ],
+        "evictedCount": 0,
+        "privateResourceCount": 3
+      },
+      {
+        "phase": "frame-3",
+        "imageCount": 3,
+        "activeHashes": [
+          "cf0b50f412f49cd936078a7afa37273b2d77b70b24525eaa4472ce00d832567f",
+          "6901cec6f862a173a9c1f89fa2b451d24f414287ad7df5f4dea2ed174d952c24",
+          "d3113dae1cf99650ec6ee6f5c9bbac49f664ce4004b727e6863d7b0a75ff13c8"
+        ],
+        "evictedCount": 1,
+        "privateResourceCount": 4
+      },
+      {
+        "phase": "frame-4",
+        "imageCount": 3,
+        "activeHashes": [
+          "6901cec6f862a173a9c1f89fa2b451d24f414287ad7df5f4dea2ed174d952c24",
+          "d3113dae1cf99650ec6ee6f5c9bbac49f664ce4004b727e6863d7b0a75ff13c8",
+          "f9628a458b6ed6a2964747885da3e38b49435aa839d4f06917ce3de510956191"
+        ],
+        "evictedCount": 2,
+        "privateResourceCount": 5
+      },
+      {
+        "phase": "frame-5",
+        "imageCount": 3,
+        "activeHashes": [
+          "d3113dae1cf99650ec6ee6f5c9bbac49f664ce4004b727e6863d7b0a75ff13c8",
+          "f9628a458b6ed6a2964747885da3e38b49435aa839d4f06917ce3de510956191",
+          "7ae780c8bfc8465d82b62691c827de02ee1ee2e0ca13fda804ffc460411e374d"
+        ],
+        "evictedCount": 3,
+        "privateResourceCount": 6
+      },
+      {
+        "phase": "frame-6",
+        "imageCount": 3,
+        "activeHashes": [
+          "f9628a458b6ed6a2964747885da3e38b49435aa839d4f06917ce3de510956191",
+          "7ae780c8bfc8465d82b62691c827de02ee1ee2e0ca13fda804ffc460411e374d",
+          "f3bf884745690b5133b6e2bbfd10ffc30ed31e781fcb1129a32369a4fdc4fd2c"
+        ],
+        "evictedCount": 4,
+        "privateResourceCount": 7
+      },
+      {
+        "phase": "frame-7",
+        "imageCount": 3,
+        "activeHashes": [
+          "7ae780c8bfc8465d82b62691c827de02ee1ee2e0ca13fda804ffc460411e374d",
+          "f3bf884745690b5133b6e2bbfd10ffc30ed31e781fcb1129a32369a4fdc4fd2c",
+          "4ea5130f70f5874906d8ec56b5e1c6c3feb052baa7142b78cb00bb108fb18f17"
+        ],
+        "evictedCount": 5,
+        "privateResourceCount": 8
+      },
+      {
+        "phase": "frame-8",
+        "imageCount": 3,
+        "activeHashes": [
+          "f3bf884745690b5133b6e2bbfd10ffc30ed31e781fcb1129a32369a4fdc4fd2c",
+          "4ea5130f70f5874906d8ec56b5e1c6c3feb052baa7142b78cb00bb108fb18f17",
+          "33efc509b355f704c4e0a06f1397c0bb4af9686ed698485e64ef45ab41980a4c"
+        ],
+        "evictedCount": 6,
+        "privateResourceCount": 9
+      },
+      {
+        "phase": "frame-9",
+        "imageCount": 3,
+        "activeHashes": [
+          "4ea5130f70f5874906d8ec56b5e1c6c3feb052baa7142b78cb00bb108fb18f17",
+          "33efc509b355f704c4e0a06f1397c0bb4af9686ed698485e64ef45ab41980a4c",
+          "c947be2c69c81e05849178f258321dca8bf928442c2e01042db350116b4a407a"
+        ],
+        "evictedCount": 7,
+        "privateResourceCount": 10
+      },
+      {
+        "phase": "frame-10",
+        "imageCount": 3,
+        "activeHashes": [
+          "33efc509b355f704c4e0a06f1397c0bb4af9686ed698485e64ef45ab41980a4c",
+          "c947be2c69c81e05849178f258321dca8bf928442c2e01042db350116b4a407a",
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951"
+        ],
+        "evictedCount": 8,
+        "privateResourceCount": 11
+      },
+      {
+        "phase": "frame-11",
+        "imageCount": 3,
+        "activeHashes": [
+          "c947be2c69c81e05849178f258321dca8bf928442c2e01042db350116b4a407a",
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7"
+        ],
+        "evictedCount": 9,
+        "privateResourceCount": 12
+      },
+      {
+        "phase": "reload",
+        "imageCount": 3,
+        "activeHashes": [
+          "c947be2c69c81e05849178f258321dca8bf928442c2e01042db350116b4a407a",
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7"
+        ],
+        "evictedCount": 9,
+        "privateResourceCount": 12
+      },
+      {
+        "phase": "explicit-reread",
+        "imageCount": 3,
+        "activeHashes": [
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7",
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "evictedCount": 10,
+        "privateResourceCount": 12
+      },
+      {
+        "phase": "compact",
+        "imageCount": 3,
+        "activeHashes": [
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7",
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "evictedCount": 2,
+        "privateResourceCount": 5
+      },
+      {
+        "phase": "compact-reload",
+        "imageCount": 3,
+        "activeHashes": [
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7",
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "evictedCount": 2,
+        "privateResourceCount": 5
+      },
+      {
+        "phase": "reopen",
+        "imageCount": 3,
+        "activeHashes": [
+          "82d35cd1532d2bcb2e85c81dd9a4753f6ca341866c89ca2d68aa1d071698e951",
+          "f82b04a94fe22b956a306650ace2f4321cfae91506fdaf902420dbc4a2ed0aa7",
+          "1173b371f003a0178562071bbfbc4acc1d58fe9f20164ee48bf91af18760decd"
+        ],
+        "evictedCount": 2,
+        "privateResourceCount": 5
+      }
+    ],
+    "httpRequests": 18,
+    "actualManualCompactions": 1,
+    "actualReloads": 3,
+    "fileReopens": 1,
+    "originalImagesPreserved": 13,
+    "privateStoreCleared": true,
+    "usage": "Synthetic loopback responses; no billing or cache-speed claims",
+    "paidCalls": 0
+  },
+  "parent": {
+    "mandatoryReload": true,
+    "viewerActive": 3,
+    "viewerOmitted": 3,
+    "applicationBoundaryLastTwoImageCounts": [
+      3,
+      3
+    ],
+    "tui": {
+      "pane": "w3E9:p6",
+      "revision": 171,
+      "footer": "vision images · 3/3 · 2 omitted",
+      "inlinePNGDisplayed": false
+    },
+    "ownedViewerClosed": true,
+    "readOnlyCleanup": {
+      "helpers": 0,
+      "drivers": 0,
+      "profiles": 0
+    }
+  },
+  "privacy": "Only synthetic image hashes and redacted parent counts; no private pixels, window text, URLs or session IDs.",
+  "limitations": [
+    "Local peer usage is synthetic, not provider billing or cache-speed proof.",
+    "No universal remote memory claim for other provider chaining APIs.",
+    "Normal Pi session history remains unchanged and is not given a disk quota.",
+    "Later context/payload extensions can alter this projection."
+  ]
+}

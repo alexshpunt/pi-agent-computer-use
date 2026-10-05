@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { VisionTrace } from "./vision-trace.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
+import { ImageContext } from "./image-context.ts";
 import { startVisionServer, type VisionServer } from "./vision-server.ts";
 
 /** Live debug state for trusted host integrations and verification, never model control. */
@@ -9,6 +10,19 @@ export interface VisionDebug { trace: VisionTrace; url(): string | undefined; cl
 /** Mirror existing Pi hooks and expose session image settings. No provider override or new agent tool. */
 export function registerVisionDebug(pi: ExtensionAPI, images: CuaImageSettings = new CuaImageSettings()): VisionDebug {
   const trace = new VisionTrace("unstarted");
+  let imageContext: ImageContext | undefined;
+  let contextSession: string | undefined;
+  pi.on("context", async (event, ctx) => {
+    const id = ctx.sessionManager.getSessionId();
+    if (contextSession !== id) {
+      await imageContext?.close();
+      imageContext = new ImageContext(ctx.cwd, id); contextSession = id;
+    }
+    const limited = await imageContext!.apply(event.messages);
+    trace.contextImages(limited.report);
+    ctx.ui.setStatus("vision-images", `vision images · ${limited.report.imageCount}/3 · ${limited.report.evictedCount} omitted`);
+    return { messages: limited.messages };
+  });
   let server: VisionServer | undefined;
   let loading: Promise<VisionServer> | undefined;
   let sessionId: string | undefined;
@@ -36,6 +50,8 @@ export function registerVisionDebug(pi: ExtensionAPI, images: CuaImageSettings =
   pi.on("session_start", async (_event, ctx) => { await start(ctx); });
   pi.on("session_shutdown", async (_event, ctx) => {
     await close(); ctx.ui.setStatus("vision-debug", undefined);
+    await imageContext?.close(); imageContext = undefined; contextSession = undefined;
+    ctx.ui.setStatus("vision-images", undefined);
   });
   const tracked = (name: string) => /^(browser_|computer_)/.test(name);
   pi.on("tool_call", (event) => {

@@ -28,6 +28,8 @@ The browser now uses Cua Driver 0.33.2 only: an owned visible Windows browser, s
 
 On Windows, an optional user-local Qt Widgets helper flashes a human-only whole-window frame after observations. It does not change CUA captures/input or the user's keyboard focus. See [the helper contract](docs/window-overlay.md), [verified costs and limits](docs/window-overlay-results.md), and [the computer-use E2E ledger](docs/computer-use-e2e-ledger.md).
 
+The extension keeps the last three image payloads in model request context, including user attachments, tool/Codemode images and detail. Older pixels become bounded private resource references; stored session history is unchanged. Vision debug and the Pi footer show active/omitted counts. See [the contract and transport checks](docs/image-context.md).
+
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
 - [Research references](docs/research-references.md)
