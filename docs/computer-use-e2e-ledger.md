@@ -16,7 +16,7 @@ LPT-408: Windows-only whole-window observation frames are verified. Working tree
 | LPT-378 | Coordinate grounding | Verify native overview/detail coordinate contracts and model limits |
 | LPT-379 | Model-facing visual annotations | Separate from human frames; inspect acceptance and safe adapter design |
 | LPT-380 | Last three screenshots in model context | Done; HTTP/native wire, reload/compaction/reopen and parent checks pass |
-| LPT-381 | Prompt/KV cache and prewarm | Provider-specific research; no unsupported transport claims |
+| LPT-381 | Prompt/KV cache and prewarm | Active serializer controls probed locally; remote cold/warm/cost acceptance remains open ([boundary](research/pi-cache-controls.md)) |
 | LPT-382 | Existing Pi Codemode only | Inspect current executable contracts and any remaining integration gap |
 | LPT-383 | Physical key sequences and intervals | Blocked: qualified Windows/browser CUA has no public raw down/up or hold contract |
 | LPT-384 | Stateful mouse, relative movement and drag | Blocked: complete drags do not expose held-button state across calls |
