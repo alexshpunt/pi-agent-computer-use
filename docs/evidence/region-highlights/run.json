@@ -1,0 +1,160 @@
+{
+  "task": "LPT-415",
+  "driver": "0.33.2",
+  "helper": {
+    "protocol": 2,
+    "qt": "6.11.3",
+    "executable_sha256": "c79a10981ab3e345a10950f90858224fdbad34ad43db5215451cc95586980b01"
+  },
+  "native": {
+    "call_count": 20,
+    "record_count": 210,
+    "styles": [
+      {
+        "kind": "overview",
+        "focus_unchanged": true,
+        "capture_pixels_identical": true
+      },
+      {
+        "kind": "detail",
+        "focus_unchanged": true,
+        "capture_pixels_identical": true
+      },
+      {
+        "kind": "overview",
+        "focus_unchanged": true,
+        "capture_pixels_identical": true
+      },
+      {
+        "kind": "detail",
+        "focus_unchanged": true,
+        "capture_pixels_identical": true
+      },
+      {
+        "kind": "action",
+        "focus_unchanged": true,
+        "capture_pixels_identical": true
+      },
+      {
+        "kind": "action",
+        "focus_unchanged": true,
+        "capture_pixels_identical": true
+      }
+    ],
+    "expiry_hidden": true,
+    "stale_frame_hidden": true,
+    "single_action_counts": [
+      1,
+      2
+    ]
+  },
+  "geometry": [
+    {
+      "case": "baseline",
+      "output": {
+        "width": 500,
+        "height": 334,
+        "bytes": 7148,
+        "mimeType": "image/jpeg",
+        "hash": "42e74ee24cdc40fadd18d0862042a8485c41d99c4bb0188ce1c34c6f11d988e9"
+      },
+      "highlight": {
+        "kind": "detail",
+        "status": "shown",
+        "width": 479,
+        "height": 320
+      }
+    },
+    {
+      "case": "move",
+      "output": {
+        "width": 500,
+        "height": 334,
+        "bytes": 7148,
+        "mimeType": "image/jpeg",
+        "hash": "42e74ee24cdc40fadd18d0862042a8485c41d99c4bb0188ce1c34c6f11d988e9"
+      },
+      "highlight": {
+        "kind": "detail",
+        "status": "shown",
+        "width": 479,
+        "height": 320
+      }
+    },
+    {
+      "case": "shrink",
+      "output": {
+        "width": 358,
+        "height": 325,
+        "bytes": 8312,
+        "mimeType": "image/jpeg",
+        "hash": "3abf76bf3b15742db4b61cdb4ca32ab9f62844033e4cb4d1992fdd4406bc2119"
+      },
+      "highlight": {
+        "kind": "detail",
+        "status": "shown",
+        "width": 263,
+        "height": 262
+      }
+    },
+    {
+      "case": "grow",
+      "output": {
+        "width": 500,
+        "height": 334,
+        "bytes": 7148,
+        "mimeType": "image/jpeg",
+        "hash": "42e74ee24cdc40fadd18d0862042a8485c41d99c4bb0188ce1c34c6f11d988e9"
+      },
+      "highlight": {
+        "kind": "detail",
+        "status": "shown",
+        "width": 479,
+        "height": 320
+      }
+    }
+  ],
+  "parent": {
+    "preview_revision": 16,
+    "captures": [
+      {
+        "mime": "image/png",
+        "width": 500,
+        "height": 357,
+        "bytes": 51817,
+        "hash": "eb54a15b5c9115af314c8c938e48f1af0f3449356fdc42834c18bd7cc7048730",
+        "scope": "native_window",
+        "coordinate_space": "window_image_pixels",
+        "input": "window_observation",
+        "final_delivery": "unconfirmed"
+      },
+      {
+        "mime": "image/jpeg",
+        "width": 500,
+        "height": 113,
+        "bytes": 7533,
+        "hash": "1cd950b1c19dea55f36be2839dcf227f10887e24ff1292b17435c5fbd45a7295",
+        "scope": "native_window_zoom",
+        "coordinate_space": "zoom_image_pixels",
+        "input": "none",
+        "final_delivery": "unconfirmed"
+      }
+    ],
+    "restored_settings": {
+      "maxLongEdge": 1024,
+      "scale": 1,
+      "output": {
+        "width": 1024,
+        "height": 731
+      }
+    }
+  },
+  "cleanup": {
+    "window_gone": true,
+    "browser_gone": true,
+    "drivers": 0,
+    "helpers": 0,
+    "profiles": 0,
+    "checked_at": "2026-10-05T14:10:41.470Z"
+  }
+}

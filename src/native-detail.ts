@@ -1,11 +1,12 @@
 import sharp from "sharp";
 import type { Content } from "./session.ts";
 import { nativeImageCap } from "./cua-image-settings.ts";
+import type { WindowImageMapping } from "./highlight-geometry.ts";
 
 /** A read-only detail rectangle grounded in one returned overview, never in a previous detail. */
 export interface DetailRequest { image_id: string; x: number; y: number; width: number; height: number; maxLongEdge?: number; scale?: number }
 /** Geometry only. No original pixels are retained between observations. */
-export interface DetailContext { id: string; width: number; height: number; originalWidth: number; originalHeight: number; geometry: string }
+export interface DetailContext { id: string; width: number; height: number; originalWidth: number; originalHeight: number; geometry: string; windowMapping?: WindowImageMapping }
 /** Integer native-pixel extraction bounds, covering the requested overview rectangle. */
 export interface NativeRegion { left: number; top: number; width: number; height: number }
 

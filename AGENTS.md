@@ -11,7 +11,7 @@ In YOLO, existing windows do not need session ownership or a browser grant. Safe
 
 Use coordinates local to the returned window image. The window's desktop position is not an input coordinate. Moving a window alone should not invalidate a local point; resizing or changing image scale can change its mapping and layout.
 
-Rely on CUA's native identity, targeting and coordinate guarantees first. Add an adapter check only for a demonstrated missing guarantee, not a hypothetical one. The current lifetime and geometry checks remain unchanged in this first step; inspect the native contract before simplifying them. Do not move the retired browser binding checks into the common window path.
+Rely on CUA's native identity, targeting and coordinate guarantees first. Add an adapter check only for a demonstrated missing guarantee, not a hypothetical one. Window lifetime is not window geometry. Movement, resizing and scale changes must not invalidate read-only window detail: keep the original local rectangle and native scale, use fresh CUA pixels, clip smaller current bounds and never expand on growth. Position the human mark using current bounds. Keep identity, permissions and cancellation separate; inspect the native contract before adding equivalent checks. Do not move the retired browser binding checks into the common window path.
 
 ## Driver-first design
 

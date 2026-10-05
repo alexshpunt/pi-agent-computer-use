@@ -37,7 +37,7 @@ export class NativeOverlayPeer implements OverlayPeer {
           if (!reply || typeof reply !== "object" || typeof reply.status !== "string" || !Number.isSafeInteger(reply.generation))
             throw new Error("Invalid Qt frame reply.");
           if (reply.generation === 0 && !this.ready) {
-            if (reply.status !== "ready" || reply.capture_affinity !== 0x11 || !Number.isSafeInteger(reply.pid) || !Number.isSafeInteger(reply.overlay_hwnd))
+            if (reply.status !== "ready" || reply.protocol_version !== 2 || reply.capture_affinity !== 0x11 || !Number.isSafeInteger(reply.pid) || !Number.isSafeInteger(reply.overlay_hwnd))
               throw new Error("Qt frame capture exclusion is unavailable.");
             this.ready = reply; clearTimeout(timer); resolve();
           } else this.pending.get(reply.generation as number)?.finish(undefined, reply as unknown as OverlayReply);

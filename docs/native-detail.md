@@ -38,13 +38,13 @@ For a desktop window, substitute `window_ref` for `display` and omit `maxLongEdg
 
 ## Fresh pixels, not a saved crop
 
-Window detail calls native `zoom`. Window identity and bounds must still match before and after native work. Its padding and mapping belong to CUA. The current response reports JPEG dimensions, not a native crop origin; unknown origin stays null.
+Window detail calls native `zoom` with the original overview rectangle. Moving, shrinking, growing or changing scale does not invalidate that request. CUA keeps the original screenshot-to-native scale, captures fresh window pixels, and clips its padded crop to the current raster. Growth does not stretch or expand the requested region. The human frame uses the current window origin and clips the original local region to current bounds. Window lifetime, permission and cancellation are separate checks. JPEG padding and mapping belong to CUA; its response does not expose the native crop origin, so that origin stays null.
 
 Display detail maps the overview rectangle to native pixels once, rounding outwards. It requests `get_desktop_state(max_image_dimension:0)`, checks display/raster geometry and extracts only that region. A small Sharp processor optionally downsizes it with Lanczos3. No image is artificially enlarged.
 
 Display detail defaults to long-edge cap 1200 and scale 1. Bounds are 64..4096 and 0.05..1; effective cap is `floor(maxLongEdge * scale)`. These per-request settings do not change the shared 500px overview settings. Full-resolution intermediate display pixels stay local to that call and are not forwarded to the model or Vision debug.
 
-Only geometry metadata is retained between calls. A new overview replaces its source's previous context. A dispatched detail consumes that context, so another detail needs a new overview. Missing/retired IDs, out-of-bounds regions, geometry drift and nested details refuse rather than guessing DPI or capturing a wider fallback.
+Only geometry metadata is retained between calls. A new overview replaces its source's previous context. A dispatched detail consumes that context, so another detail needs a new overview. Missing/retired IDs, rectangles outside the original overview and nested details refuse. Window geometry changes do not retire an overview. Display detail still checks its distinct display/raster mapping; neither route guesses DPI or captures a wider fallback.
 
 ## Read-only boundary
 

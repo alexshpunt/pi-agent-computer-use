@@ -1,42 +1,71 @@
 import type { WindowTarget } from "./session.ts";
+import type { ScreenRect } from "./highlight-geometry.ts";
 
-/** A successfully authorized whole-window observation, in native physical pixels. Never a crop or display. */
+/** An internal human-only primitive in physical screen coordinates. */
+export interface HighlightMark { kind: "overview" | "detail" | "action"; region?: ScreenRect; point?: { x: number; y: number } }
+/** A successfully authorized window lifetime, never a model-supplied drawing target. */
 export interface WindowFrame {
   target: WindowTarget;
   identity: string;
-  bounds: { x: number; y: number; width: number; height: number };
+  bounds: ScreenRect;
+  mark?: HighlightMark;
 }
-/** Private helper messages. The lifetime marker must never become a model-supplied targeting API. */
-export type OverlayCommand = { kind: "flash"; generation: number; duration_ms: 2000 } & WindowFrame
+/** Display marks require an authorized primary-display read; they grant no input. */
+export interface DisplayFrame { display: "primary"; bounds: ScreenRect; mark?: HighlightMark }
+export type HighlightFrame = WindowFrame | DisplayFrame | { clear: true };
+/** Private helper messages. */
+export type OverlayCommand = { kind: "flash"; generation: number; duration_ms: 2000 } & (WindowFrame | DisplayFrame)
   | { kind: "hide"; generation: number };
-/** A helper acknowledgement is not proof of click-through or capture exclusion; those need native checks. */
-export interface OverlayReply { status: string; generation: number }
+/** A reply is not proof of click-through or capture exclusion; those need native checks. */
+export interface OverlayReply { status: string; generation: number; reason?: string }
 /** A single owned rendering peer, with no capture or input operations. */
 export interface OverlayPeer { send(command: OverlayCommand): Promise<OverlayReply>; close(): Promise<void> }
-/** Public observation metadata. A failed visual aid must not change or replay the underlying operation. */
-export interface HighlightResult { status: "shown" | "skipped" | "unavailable"; duration_ms?: number }
-export type WindowObserver = (frame: WindowFrame, signal?: AbortSignal) => Promise<HighlightResult>;
+/** Drawing failure never changes or replays the underlying capture/input. */
+export interface HighlightResult { status: "shown" | "skipped" | "unavailable"; duration_ms?: number; kind?: HighlightMark["kind"]; reason?: string; region?: ScreenRect; point?: { x: number; y: number } }
+export type WindowObserver = (frame: HighlightFrame, signal?: AbortSignal) => Promise<HighlightResult>;
 
-/** Notify a rendering observer without changing capture success or sharing the private lifetime marker in results. */
-export async function notifyWindowObserver(observer: WindowObserver | undefined, target: WindowTarget | undefined,
-  identity: string | undefined, bounds: unknown, signal?: AbortSignal): Promise<HighlightResult | undefined> {
+/** Fail-soft notification. An unavailable target clears the previous mark instead of inventing a frame. */
+export async function notifyHighlight(observer: WindowObserver | undefined, frame: WindowFrame | DisplayFrame | undefined,
+  signal?: AbortSignal): Promise<HighlightResult | undefined> {
   if (!observer) return undefined;
   if (signal?.aborted) return { status: "skipped" };
-  const value = bounds as WindowFrame["bounds"] | undefined;
-  if (!target || !identity || !value || ![value.x, value.y, value.width, value.height].every(Number.isSafeInteger)
-    || value.width <= 0 || value.height <= 0) return { status: "unavailable" };
-  try { return await observer({ target: { ...target }, identity, bounds: { x: value.x, y: value.y, width: value.width, height: value.height } }, signal); }
-  catch { return { status: "unavailable" }; }
+  if (!frame || !valid(frame)) {
+    try { await observer({ clear: true }, signal); } catch { /* Optional visual aid. */ }
+    return { status: "unavailable", reason: "native_geometry_unavailable" };
+  }
+  try {
+    const result = await observer(frame, signal);
+    const mark = frame.mark;
+    return { ...result, kind: mark?.kind ?? "overview", ...(mark?.region ? { region: { ...mark.region } } : {}),
+      ...(mark?.point ? { point: { ...mark.point } } : {}) };
+  } catch { return { status: "unavailable", reason: "renderer_unavailable" }; }
 }
-function valid(frame: WindowFrame): boolean {
-  const { target, bounds } = frame;
-  const identity = /^PiComputerUse\.[a-f0-9]{32}:(\d+):([1-9]\d*)$/i.exec(frame.identity);
-  return !!identity && Number(identity[1]) === target.pid && Number.isSafeInteger(Number(identity[2])) &&
-    Number(identity[2]) > 0 &&
-    [target.pid, target.window_id].every(value => Number.isSafeInteger(value) && value > 0) &&
-    [bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isSafeInteger) &&
-    Math.abs(bounds.x) <= 2_000_000 && Math.abs(bounds.y) <= 2_000_000 &&
-    bounds.width > 0 && bounds.width <= 32768 && bounds.height > 0 && bounds.height <= 32768;
+
+/** Keep the retained browser research adapter's whole-window observer contract. */
+export async function notifyWindowObserver(observer: WindowObserver | undefined, target: WindowTarget | undefined,
+  identity: string | undefined, bounds: unknown, signal?: AbortSignal, mark?: HighlightMark): Promise<HighlightResult | undefined> {
+  return notifyHighlight(observer, target && identity && bounds ? { target: { ...target }, identity, bounds: bounds as ScreenRect, ...(mark ? { mark } : {}) } : undefined, signal);
+}
+function valid(frame: WindowFrame | DisplayFrame): boolean {
+  const { bounds, mark } = frame;
+  const rectangle = (r: ScreenRect) => r && [r.x, r.y, r.width, r.height].every(Number.isSafeInteger) &&
+    Math.abs(r.x) <= 2_000_000 && Math.abs(r.y) <= 2_000_000 && r.width > 0 && r.width <= 32768 && r.height > 0 && r.height <= 32768;
+  if (!rectangle(bounds)) return false;
+  if ("display" in frame) { if (frame.display !== "primary" || "target" in frame || bounds.x !== 0 || bounds.y !== 0) return false; }
+  else {
+    const identity = /^PiComputerUse\.[a-f0-9]{32}:(\d+):([1-9]\d*)$/i.exec(frame.identity);
+    if (!identity || Number(identity[1]) !== frame.target.pid || !Number.isSafeInteger(Number(identity[2])) || Number(identity[2]) <= 0 ||
+      ![frame.target.pid, frame.target.window_id].every(v => Number.isSafeInteger(v) && v > 0)) return false;
+  }
+  if (!mark) return true;
+  if (!["overview", "detail", "action"].includes(mark.kind)) return false;
+  if (mark.kind === "overview") return !mark.region && !mark.point;
+  if (!!mark.region === !!mark.point || (mark.kind === "detail" && !mark.region)) return false;
+  const r = mark.region; const p = mark.point;
+  return r ? rectangle(r) && r.x >= bounds.x && r.y >= bounds.y &&
+    r.x + r.width <= bounds.x + bounds.width && r.y + r.height <= bounds.y + bounds.height :
+    !!p && [p.x, p.y].every(Number.isSafeInteger) && p.x >= bounds.x && p.y >= bounds.y &&
+    p.x < bounds.x + bounds.width && p.y < bounds.y + bounds.height;
 }
 
 /** Lazily own one Qt frame process. Generations prevent late startup, cancellation or old reads repainting a newer frame. */
@@ -48,9 +77,11 @@ export class WindowOverlay {
 
   constructor(private readonly createPeer: () => Promise<OverlayPeer>) {}
 
-  /** Flash only a validated window lifetime. Native helper failure is fail-soft and never retried during this session. */
-  async flash(frame: WindowFrame, signal?: AbortSignal): Promise<HighlightResult> {
-    if (this.closed || signal?.aborted || !valid(frame)) return { status: "skipped" };
+  /** Flash a validated source/primitive. Native failure is fail-soft and never retried during this session. */
+  async flash(frame: HighlightFrame, signal?: AbortSignal): Promise<HighlightResult> {
+    if ("clear" in frame) { await this.clear(); return { status: "skipped" }; }
+    if (this.closed || signal?.aborted) return { status: "skipped" };
+    if (!valid(frame)) { await this.clear(); return { status: "unavailable", reason: "native_geometry_unavailable" }; }
     const generation = ++this.generation;
     this.release?.(); this.release = undefined;
     this.starting ??= Promise.resolve().then(() => this.createPeer());
@@ -64,7 +95,7 @@ export class WindowOverlay {
       this.release = () => { clearTimeout(expiry); signal?.removeEventListener("abort", abort); };
       const reply = await peer.send({ kind: "flash", generation, ...frame, duration_ms: 2000 });
       if (generation !== this.generation || signal?.aborted || this.closed) return { status: "skipped" };
-      return reply.status === "shown" && reply.generation === generation ? { status: "shown", duration_ms: 2000 } : { status: "unavailable" };
+      return reply.status === "shown" && reply.generation === generation ? { status: "shown", duration_ms: 2000 } : { status: "unavailable", reason: reply.reason ?? "renderer_refused" };
     } catch { return { status: "unavailable" }; }
   }
 

@@ -28,7 +28,7 @@ async function fixture() {
     }), identity: vi.fn(async () => "lifetime"), close: vi.fn(async () => {}),
   };
   const session = new ComputerSession(driver, () => mode);
-  return { session, driver, raw, setMode(value: ComputerMode) { mode = value; }, resize() { bounds = { ...bounds, width: 1100 }; } };
+  return { session, driver, raw, setMode(value: ComputerMode) { mode = value; }, setBounds(value: typeof bounds) { bounds = value; } };
 }
 function imageId(view: Awaited<ReturnType<ComputerSession["observeDisplay"]>>) { return view.details.agent_image?.image_id as string; }
 const rect = { x: 100, y: 80, width: 100, height: 80 };
@@ -161,11 +161,35 @@ test("native window zoom consumes overview input and preserves CUA JPEG padding 
   expect(vi.mocked(f.driver.call).mock.calls.some(([name]) => ["bring_to_front", "get_desktop_state", "click"].includes(name))).toBe(false);
 });
 
-test("window resize, lifetime loss and Safe do not expose detail from an old overview", async () => {
-  for (const route of ["resize", "closed", "safe"]) {
+test("window movement, shrinking and growth preserve the original local zoom rectangle", async () => {
+  for (const bounds of [{ x: 200, y: 300, width: 1000, height: 800 },
+    { x: 200, y: 300, width: 300, height: 240 }, { x: 200, y: 300, width: 2000, height: 1600 }]) {
+    const f = await fixture(); const listed = await f.session.windows();
+    const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+    const view = await f.session.observe(ref); f.setBounds(bounds);
+    const result = await f.session.observe(ref, undefined, undefined, { ...rect, image_id: imageId(view) });
+    expect(result.details.status).toBe("observed");
+    expect(f.driver.call).toHaveBeenCalledWith("zoom", { pid: 42, window_id: 91, x1: 100, y1: 80, x2: 200, y2: 160 }, undefined);
+    expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state")).toHaveLength(1);
+  }
+});
+
+test("movement during native zoom does not discard its fresh pixels", async () => {
+  const f = await fixture(); const listed = await f.session.windows();
+  const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+  const view = await f.session.observe(ref); const call = f.driver.call;
+  f.driver.call = vi.fn<Driver["call"]>(async (...args) => {
+    const result = await call(...args);
+    if (args[0] === "zoom") f.setBounds({ x: 500, y: 600, width: 1100, height: 900 });
+    return result;
+  });
+  expect((await f.session.observe(ref, undefined, undefined, { ...rect, image_id: imageId(view) })).details.status).toBe("observed");
+});
+
+test("window lifetime loss and Safe still withhold detail", async () => {
+  for (const route of ["closed", "safe"]) {
     const f = await fixture(); const listed = await f.session.windows(); const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
     const view = await f.session.observe(ref);
-    if (route === "resize") f.resize();
     if (route === "closed") vi.mocked(f.driver.identity).mockResolvedValue(undefined);
     if (route === "safe") f.setMode("safe");
     expect((await f.session.observe(ref, undefined, undefined, { ...rect, image_id: imageId(view) })).details.status).toBe("refused");

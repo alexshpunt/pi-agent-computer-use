@@ -33,7 +33,7 @@ function fixture(observer?: WindowObserver) {
       if (name === "end_session") state = { active: false };
       return { content, structuredContent: state };
     },
-    async identity() { return alive ? "lifetime-1" : undefined; },
+    async identity() { return alive ? `PiComputerUse.${"a".repeat(32)}:111:1` : undefined; },
     async close() { calls.push({ name: "transport_close", args: {} }); },
   };
   const browser = new CuaBrowser(async () => driver, undefined, observer);
@@ -45,7 +45,7 @@ test("only successful returned browser images flash the exact whole source windo
   const f = fixture(observer);
   const opened = await f.browser.call("open", { url: "http://localhost/" });
   expect(opened.details).toMatchObject({ status: "observed", highlight: { status: "shown" } });
-  expect(observer).toHaveBeenCalledWith({ target: { pid: 111, window_id: 22 }, identity: "lifetime-1",
+  expect(observer).toHaveBeenCalledWith({ target: { pid: 111, window_id: 22 }, identity: `PiComputerUse.${"a".repeat(32)}:111:1`,
     bounds: { x: 70, y: 60, width: 1332, height: 932 } }, undefined);
   const hints = (opened.details.elements as { hint: string }[]).map(e => e.hint);
   await f.browser.call("act", { click: hints[0], observe: false });
@@ -54,7 +54,8 @@ test("only successful returned browser images flash the exact whole source windo
   const detail = await f.browser.call("observe", { zoom: { x: 20, y: 40, width: 50, height: 30 } });
   expect(detail.content).toContainEqual(jpeg);
   expect(observer).toHaveBeenCalledTimes(3);
-  expect(observer.mock.calls[2][0].bounds).toEqual({ x: 70, y: 60, width: 1332, height: 932 });
+  expect(observer.mock.calls[2][0]).toHaveProperty("bounds");
+  expect((observer.mock.calls[2][0] as { bounds: unknown }).bounds).toEqual({ x: 70, y: 60, width: 1332, height: 932 });
   await f.browser.call("observe", { zoom: { x: 1, y: 1, width: 10, height: 10 } });
   expect(observer).toHaveBeenCalledTimes(3);
   f.setAlive(false);

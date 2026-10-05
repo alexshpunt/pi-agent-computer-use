@@ -9,7 +9,7 @@ const base = new URL(viewer);
 assert.equal(base.hostname, "127.0.0.1");
 assert.equal(base.protocol, "http:");
 assert.match(base.pathname, /^\/[a-f0-9]{48}\/$/);
-assert.ok(directory?.startsWith(".tmp/cua-pivot/") || directory?.startsWith(".tmp/native-zoom/"));
+assert.ok(directory?.startsWith(".tmp/cua-pivot/") || directory?.startsWith(".tmp/native-zoom/") || directory?.startsWith(".tmp/region-highlights/"));
 const response = await fetch(new URL("state", base));
 assert.ok(response.ok, `Viewer state: ${response.status}`);
 const state = await response.json();

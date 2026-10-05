@@ -25,7 +25,7 @@ export class WindowHighlights {
     this.current = new WindowOverlay(createPeer);
   }
 
-  /** Called only after an authorized whole-window capture; no helper starts at registration. */
+  /** Only authorized observation/action events draw; clearing an unused peer never starts a helper. */
   readonly flash: WindowObserver = (frame, signal) => this.stopping
     ? Promise.resolve({ status: "skipped" }) : this.current.flash(frame, signal);
 

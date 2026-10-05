@@ -4,7 +4,7 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
-The current user-approved step is unified window-first tooling: disable production `browser_*` registration and keep `computer_*` for all apps, including browsers. Native lifetime and geometry checks are unchanged; CUA-first simplification is a separate step. The retained browser profiler remains standalone research.
+The approved unified window-first step disabled production `browser_*` registration and kept `computer_*` for all apps. The retained browser profiler remains standalone research. LPT-415 now adds human overview/detail/action marks and removes redundant geometry invalidation from read-only window detail. Original local regions and scale survive movement/resizing, clip on shrink and never expand on growth; lifetime, permission and input authority remain separate. See [region/action results](region-highlight-results.md). Other epic work and the game remain paused.
 
 Verification: 101 unit tests, typecheck and 9 real-Pi tests passed. The production-loader regression first reproduced six browser registrations, then verified exactly six computer tools and no direct or Codemode browser route. After extension reload, the actual project loadout had six `computer_*` and zero `browser_*`; native read-only Calculator app discovery and runtime close succeeded in unchanged YOLO. The human TUI showed the result and YOLO footer (pane w3E9:p6, revision 2018). No app window, display capture or input was needed. The separately configured global Playwright MCP was neither changed nor used.
 
@@ -15,6 +15,7 @@ The user paused the autonomous epic plan. The approved LPT-380 reversal is compl
 | Task | Capability | State / next check |
 | --- | --- | --- |
 | LPT-408 | Human whole-window observation frame | Done; native, parent Pi and clean-tree proof shipped |
+| LPT-415 | Human region/action marks and window-detail geometry | Verified: 115 unit tests, typecheck, nine real-Pi tests, six native styles, four geometry cases, parent/TUI and owned cleanup; delivery receipt follows in Linear |
 | LPT-372 | Focused browser and short hints | Paused game acceptance; do not resume without specific authorization |
 | LPT-374 | Vision debug controls | Native size controls qualified for atomic/session isolation; extra structural/annotation acceptance remains open ([checks](vision-controls-checks.md)) |
 | LPT-378 | Coordinate grounding | Verify native overview/detail coordinate contracts and model limits |
