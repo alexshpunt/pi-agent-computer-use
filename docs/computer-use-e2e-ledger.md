@@ -4,7 +4,7 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
-The user separately approved only the CUA-supported complete-gesture scope of LPT-383–385. It is now verified with 152 unit tests, typecheck, ten real-Pi tests, native application events, production parent/Codemode results and actual TUI inspection. Keyboard completed 5/5; drawing completed 3/3 with separate releases. Owned window/browser, Driver, helper and profile cleanup passed. Delivery evidence is in [complete input results](complete-input-results.md). The broader epic and game stay paused.
+The user separately approved only the CUA-supported complete-gesture scope of LPT-383–385. It is Done in Linear and shipped in develop at 39b872d3983deb2feedb82df0cb8df19cd2ced3d, verified with 152 unit tests, typecheck, ten real-Pi tests, native application events, production parent/Codemode results and actual TUI inspection. Keyboard completed 5/5; drawing completed 3/3 with separate releases. Owned window/browser, Driver, helper and profile cleanup passed. Delivery evidence is in [complete input results](complete-input-results.md). The broader epic and game stay paused.
 
 The approved unified window-first step disabled production `browser_*` registration and kept `computer_*` for all apps. The retained browser profiler remains standalone research. LPT-415 now adds human overview/detail/action marks and removes redundant geometry invalidation from read-only window detail. Original local regions and scale survive movement/resizing, clip on shrink and never expand on growth; lifetime, permission and input authority remain separate. See [region/action results](region-highlight-results.md). Other epic work and the game remain paused.
 
@@ -25,9 +25,9 @@ The user paused the autonomous epic plan. The approved LPT-380 reversal is compl
 | LPT-380 | Normal Pi image retention | User-approved reversal verified; no separate eviction, HTTP12/native continuation/reload/compaction/parent proof; viewer cards remain bounded |
 | LPT-381 | Prompt/KV cache and prewarm | Canceled; no computer-use cache or prewarm layer. Keep prior [research](research/pi-cache-controls.md) as history only |
 | LPT-382 | Existing Pi Codemode only | Inspect current executable contracts and any remaining integration gap |
-| LPT-383 | Complete keys/chords and measured intervals | Revised scope verified: bounded batch, native key pairs and no replay; see [results](complete-input-results.md) |
-| LPT-384 | Complete native clicks, token scroll and straight drags | Revised scope verified; unsafe resized-image pixel scroll is refused before input |
-| LPT-385 | Computed independent straight strokes | Revised scope verified: three separate native pointer strokes and final triangle pixels |
+| LPT-383 | Complete keys/chords and measured intervals | Done: bounded batch, native key pairs and no replay; see [results](complete-input-results.md) |
+| LPT-384 | Complete native clicks, token scroll and straight drags | Done: approved complete gestures; unsafe resized-image pixel scroll is refused before input |
+| LPT-385 | Computed independent straight strokes | Done: three separate native pointer strokes, triangle pixels and read-only detail |
 | LPT-386 | Shared structural UI resources | Keep IDE unchanged; inspect standalone contract |
 | LPT-387 | Stable short hints across sources | Re-resolution must never silently rebind a stale hint |
 | LPT-388 | Structural navigation and actions | Depends on guarded resources/hints |
@@ -37,7 +37,7 @@ Completed source tasks include LPT-356/363/365/370/373/375/376/377/396/407. Read
 
 ## Native input capability checkpoint
 
-A metadata-only Windows CUA 0.33.2 probe listed all 59 tools, including the legacy page schema, with zero input/capture calls. The pinned source and public platform docs agree: complete keyboard/pointer gestures are available, but raw held-state primitives are not public on this host. Linux-only methods do not repair the Windows route. See [the capability report](research/cua-input-capabilities.md) and [schema evidence](evidence/cua-input-capabilities/run.json). LPT-383–385 remain open; no fork, alternate dispatcher or physical-input substitute was added. Helper/Driver/profile cleanup counts are zero.
+A metadata-only Windows CUA 0.33.2 probe listed all 59 tools, including the legacy page schema, with zero input/capture calls. The pinned source and public platform docs agree: complete keyboard/pointer gestures are available, but raw held-state primitives are not public on this host. Linux-only methods do not repair the Windows route. See [the capability report](research/cua-input-capabilities.md) and [schema evidence](evidence/cua-input-capabilities/run.json). That metadata-only research did not finish LPT-383–385. Their later user-approved complete-gesture scope is now Done; no fork, alternate dispatcher or physical-input substitute was added. Helper/Driver/profile cleanup counts are zero.
 
 ## Evidence rules
 
