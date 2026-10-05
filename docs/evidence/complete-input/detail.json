@@ -1,0 +1,32 @@
+{
+  "overview": {
+    "width": 650,
+    "height": 1023
+  },
+  "requested": {
+    "x": 65,
+    "y": 155,
+    "width": 235,
+    "height": 101
+  },
+  "detail": {
+    "dimensions": {
+      "width": 500,
+      "height": 215
+    },
+    "mimeType": "image/jpeg",
+    "hash": "bec871b581d26649918de756db3a86835994fec7b80f026473e2c3359e25ebdd",
+    "bytes": 10403
+  },
+  "read_only": true,
+  "independent_strokes": 3,
+  "releases_verified": true,
+  "cleanup": {
+    "sourceGone": true,
+    "profileRemoved": true,
+    "DriverCount": 0,
+    "HelperCount": 0,
+    "FixtureProfiles": 0,
+    "DriverProfiles": 0
+  }
+}

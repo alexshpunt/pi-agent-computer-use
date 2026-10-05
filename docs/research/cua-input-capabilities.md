@@ -32,10 +32,10 @@ Even the internal [interactive gesture folder tests](https://github.com/trycua/c
 
 ## Task consequences
 
-LPT-383 remains open: supported text/press helpers can be adapted later, but the accepted down/up, hold, timing and stuck-modifier checks cannot pass through the qualified public Windows/browser route today.
+The original LPT-383–385 scope required held keys/buttons and continuous paths that this public Windows route cannot provide. The user explicitly replaced it with complete gestures:
 
-LPT-384 remains open: complete drags/right/double/scroll can be adapted, but multi-move held-button state and cancellation release cannot be claimed from complete gestures.
+- LPT-383: complete keys/chords and bounded keyboard sequences with requested waits and measured dispatch/completion times.
+- LPT-384: complete clicks, right/double clicks, scroll and straight drags through the existing computer_act.
+- LPT-385: computed shapes made of independent complete straight strokes, with release between segments.
 
-LPT-385 remains open behind LPT-384. Chaining complete drag segments releases the button between segments; it is not one continuous Bézier/polyline stroke. Cursor animation or page-JavaScript drawing is not a substitute.
-
-The safe next route is an upstream public Windows/browser capability, followed by normal compatibility qualification and native event fixtures. A narrower complete-gesture task would need an explicit acceptance change. No driver fork, independent CDP dispatcher, SendInput helper or global release-all was added. Research completion is not feature completion.
+The adapter implements this narrower contract. Native application events/final pixels and the reloaded production parent verified complete keyboard batches, right/double clicks, token scroll and independent straight strokes; see [results](../complete-input-results.md). Pixel scroll is deliberately refused: the pinned foreground route failed resized-image coordinate mapping in the native fixture. No driver fork, independent CDP dispatcher, SendInput helper, held-input state or global release-all was added. Future held-input support still requires an upstream public capability and separate acceptance. Research completion is not feature completion.

@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
 import { observationSource, type ObservationSource } from "./observation-source.ts";
@@ -24,18 +25,12 @@ export interface Driver {
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
 }
-/** One action grounded in the latest observation of its session window reference. */
-export interface Action {
+/** One complete action or bounded known-target sequence, grounded in one window overview. */
+export type Action = {
   window_ref: string;
   observation_id: string;
-  action: "type_text" | "set_value" | "click" | "select_all" | "key";
   delivery_mode?: "background" | "foreground";
-  element_token?: string;
-  x?: number;
-  y?: number;
-  text?: string;
-  key?: string;
-}
+} & (InputCommand | { action: "sequence"; sequence: InputStep[] });
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
 export interface ComputerResult {
   content: Content[];
@@ -454,7 +449,7 @@ export class ComputerSession {
     });
   }
 
-  /** Consume one observation before native input. No automatic replay or rollback. */
+  /** Consume one overview for a complete action or bounded sequence. Never replay a completed prefix. */
   act(action: Action, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before action dispatch.");
@@ -463,66 +458,85 @@ export class ComputerSession {
       const observed = entry?.observation;
       if (!entry || !observed || action.observation_id !== observed.id)
         return this.result("refused", "Stale or missing observation_id/window_ref. Observe again.");
-      const pixel = action.x !== undefined || action.y !== undefined;
-      if (action.element_token && !observed.tokens.has(action.element_token))
-        return this.result("refused", "Element token is not in this window's current observation.");
-      if (pixel && (action.element_token || !Number.isFinite(action.x) || !Number.isFinite(action.y)
-        || action.x! < 0 || action.y! < 0 || !observed.width || !observed.height
-        || action.x! >= observed.width || action.y! >= observed.height))
-        return this.result("refused", "Use an observed element token or coordinates inside the current scoped screenshot.");
-      if (["type_text", "set_value"].includes(action.action) && action.text === undefined)
-        return this.result("refused", "This text action needs text.");
-      if (action.action === "set_value" && !action.element_token)
-        return this.result("refused", "set_value needs an observed element token.");
-      if (action.action === "click" && !action.element_token && !pixel)
-        return this.result("refused", "click needs an observed token or screenshot coordinates.");
-      if (action.action === "key" && !["backspace", "delete", "left", "right", "home", "end", "return", "escape", "tab"].includes(action.key ?? ""))
-        return this.result("refused", "Unsupported key.");
-      let dispatched = false;
+      const { window_ref: _ref, observation_id: _id, delivery_mode, ...command } = action;
+      const batch = command.action === "sequence";
+      let commands: InputStep[];
       try {
-        const current = await this.current(entry.ref, signal);
-        if (!this.allowed(entry)) return this.denied(entry.ref);
-        if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
-        const nativeName = action.action === "select_all" ? "hotkey" : action.action === "key" ? "press_key" : action.action;
-        const args: Record<string, unknown> = {
-          delivery_mode: action.delivery_mode ?? "background",
-          ...(action.action === "set_value" ? { ...entry.target } : { target: { kind: "window", ...entry.target } }),
-          ...(action.element_token ? { element_token: action.element_token } : {}),
-          ...(pixel ? { x: action.x, y: action.y } : {}),
-          ...(action.action === "click" && observed.captureId && pixel ? { capture_id: observed.captureId } : {}),
-          ...(action.action === "type_text" ? { text: action.text } : {}),
-          ...(action.action === "set_value" ? { value: action.text } : {}),
-          ...(action.action === "select_all" ? { keys: ["ctrl", "a"] } : {}),
-          ...(action.action === "key" ? { key: action.key } : {}),
-        };
-        if (signal?.aborted) return this.result("refused", "Cancelled before action dispatch.");
-        if (!this.allowed(entry)) return this.denied(entry.ref);
-        // AX targets are already native physical bounds. Pixel clicks are marked from CUA's
-        // resolved-point receipt after dispatch, not by guessing its unpublished capture_id transform.
-        const mark = { kind: "action" as const, region: action.element_token ? observed.frames.get(action.element_token) : undefined };
-        let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);
-        if (signal?.aborted) return this.result("refused", "Cancelled during action mark; input was not dispatched.");
-        if (!this.allowed(entry)) return this.denied(entry.ref);
-        entry.observation = undefined; entry.detail = undefined;
-        dispatched = true;
-        const native = await this.driver.call(nativeName, args, signal);
-        if (!this.allowed(entry)) return this.result("unknown",
-          "Input was dispatched before Safe was selected. Its outcome is withheld; Safe cannot undo in-flight input. Do not replay blindly.",
-          undefined, { window_ref: entry.ref });
-        const state = native.structuredContent ?? {};
-        const refused = state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
-          "conflicting_element_target", "background_unavailable"].includes(String(state.code));
-        const status = refused ? "refused" : native.isError ? "unknown" : "delivered";
-        if (status === "delivered" && pixel && action.action === "click" && observed.bounds && !signal?.aborted && this.allowed(entry)) {
-          const point = nativeClickPoint(native.content, entry.target.pid, observed.bounds);
-          highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, { kind: "action", point });
+        if (delivery_mode !== undefined && !["background", "foreground"].includes(delivery_mode)) throw new Error("Unsupported delivery mode.");
+        if (batch) {
+          if (Object.keys(command).some(key => !["action", "sequence"].includes(key)) || !Array.isArray(command.sequence) || command.sequence.length < 1 || command.sequence.length > 32)
+            throw new Error("A sequence needs 1..32 steps and no conflicting top-level action fields.");
+          commands = command.sequence;
+        } else commands = [command];
+        for (const step of commands) validateInput(step, observed, batch);
+        if (batch && commands.reduce((ms, step) => ms + requestedInputTime(step), 0) > 30000)
+          throw new Error("A sequence exceeds 30 seconds of requested waits/typing/drags.");
+        commands = commands.map(step => ({ ...step, ...(step.keys ? { keys: [...step.keys] } : {}), ...(step.modifiers ? { modifiers: [...step.modifiers] } : {}) }));
+      } catch (error) { return this.result("refused", (error as Error).message); }
+
+      const started = performance.now();
+      const trace = { total: commands.length, attempted: 0, completed: 0, elapsed_ms: 0,
+        steps: [] as Record<string, unknown>[], stop_reason: "" };
+      let inFlight = false;
+      const finish = (result: ComputerResult, reason = "") => {
+        if (!batch) return result;
+        trace.elapsed_ms = performance.now() - started; trace.stop_reason = reason;
+        const status = result.details.status;
+        return this.result(status, `Sequence ${status}: ${trace.completed}/${trace.total} steps delivered; ${trace.attempted} attempted in ${Math.round(trace.elapsed_ms)}ms. ${reason || "Observe again to verify application state."} Never replay the completed prefix.`,
+          { ...(result.details.state ?? {}), sequence: trace }, { ...this.addressed(entry), ...(result.details.highlight ? { highlight: result.details.highlight } : {}) });
+      };
+      try {
+        for (const [index, step] of commands.entries()) {
+          if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before the next dispatch.");
+          if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
+          if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached; no more steps dispatched.");
+          if (step.wait_ms) await delay(step.wait_ms, undefined, { signal });
+          const current = await this.current(entry.ref, signal);
+          if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
+          if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
+          if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
+          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", observed.captureId);
+          // AX bounds are native. Only native click receipts establish an exact pixel action mark.
+          const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
+          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);
+          if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
+          if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
+          if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached during admission; no more steps dispatched.");
+          entry.observation = undefined; entry.detail = undefined;
+          const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}) };
+          delete requested.text; delete requested.element_token;
+          const row: Record<string, unknown> = { index, action: step.action, native_tool: name, requested,
+            requested_wait_ms: step.wait_ms ?? 0, dispatch_ms: performance.now() - started, status: "unknown" };
+          trace.steps.push(row); trace.attempted++; inFlight = true;
+          const native = await this.driver.call(name, args, signal);
+          row.completion_ms = performance.now() - started;
+          if (!this.allowed(entry) || signal?.aborted) return finish(this.result("unknown",
+            "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),
+            "In-flight outcome withheld after revocation/cancellation.");
+          const state = native.structuredContent ?? {};
+          const refused = state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
+            "conflicting_element_target", "background_unavailable"].includes(String(state.code));
+          const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
+          const status = refused ? "refused" : uncertain ? "unknown" : "delivered";
+          row.status = status; inFlight = false;
+          if (status === "delivered") trace.completed++;
+          if (status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds) {
+            const point = nativeClickPoint(native.content, entry.target.pid, observed.bounds);
+            highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, { kind: "action", point });
+          }
+          if (!this.allowed(entry)) return finish(this.result("unknown", "Input was dispatched before permission was revoked. Do not replay blindly."), "Permission revoked after input.");
+          const result = this.result(status, `Driver returned ${status} for ${name} (requested: ${args.delivery_mode}). Observe again to verify application state.`,
+            { ...state, ...(native.isError || !native.structuredContent ? {
+              native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
+            } : {}) }, { ...this.addressed(entry), ...(highlight ? { highlight } : {}) });
+          if (!batch || status !== "delivered" || index === commands.length - 1)
+            return finish(result, status === "delivered" ? "" : `Stopped after native ${status}; later steps were not dispatched.`);
         }
-        if (!this.allowed(entry)) return this.result("unknown", "Input was dispatched before permission was revoked. Do not replay blindly.", undefined, { window_ref: entry.ref });
-        return this.result(status, `Driver returned ${status} for ${nativeName} (requested: ${args.delivery_mode}). Observe again to verify application state.`,
-          { ...state, ...(native.isError || !native.structuredContent ? {
-            native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
-          } : {}) }, { ...this.addressed(entry), ...(highlight ? { highlight } : {}) });
-      } catch (error) { return this.failed(error, dispatched); }
+        throw new Error("No complete input step.");
+      } catch (error) {
+        if (inFlight && trace.steps.length) trace.steps.at(-1)!.completion_ms = performance.now() - started;
+        return finish(await this.failed(error, inFlight), inFlight ? "Transport/dispatch failed; current step is uncertain." : "Stopped before next dispatch.");
+      }
     });
   }
 

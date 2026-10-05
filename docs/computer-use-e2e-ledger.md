@@ -4,6 +4,8 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
+The user separately approved only the CUA-supported complete-gesture scope of LPT-383–385. It is now verified with 152 unit tests, typecheck, ten real-Pi tests, native application events, production parent/Codemode results and actual TUI inspection. Keyboard completed 5/5; drawing completed 3/3 with separate releases. Owned window/browser, Driver, helper and profile cleanup passed. Delivery evidence is in [complete input results](complete-input-results.md). The broader epic and game stay paused.
+
 The approved unified window-first step disabled production `browser_*` registration and kept `computer_*` for all apps. The retained browser profiler remains standalone research. LPT-415 now adds human overview/detail/action marks and removes redundant geometry invalidation from read-only window detail. Original local regions and scale survive movement/resizing, clip on shrink and never expand on growth; lifetime, permission and input authority remain separate. See [region/action results](region-highlight-results.md). Other epic work and the game remain paused.
 
 Verification: 101 unit tests, typecheck and 9 real-Pi tests passed. The production-loader regression first reproduced six browser registrations, then verified exactly six computer tools and no direct or Codemode browser route. After extension reload, the actual project loadout had six `computer_*` and zero `browser_*`; native read-only Calculator app discovery and runtime close succeeded in unchanged YOLO. The human TUI showed the result and YOLO footer (pane w3E9:p6, revision 2018). No app window, display capture or input was needed. The separately configured global Playwright MCP was neither changed nor used.
@@ -23,9 +25,9 @@ The user paused the autonomous epic plan. The approved LPT-380 reversal is compl
 | LPT-380 | Normal Pi image retention | User-approved reversal verified; no separate eviction, HTTP12/native continuation/reload/compaction/parent proof; viewer cards remain bounded |
 | LPT-381 | Prompt/KV cache and prewarm | Canceled; no computer-use cache or prewarm layer. Keep prior [research](research/pi-cache-controls.md) as history only |
 | LPT-382 | Existing Pi Codemode only | Inspect current executable contracts and any remaining integration gap |
-| LPT-383 | Physical key sequences and intervals | Blocked: qualified Windows/browser CUA has no public raw down/up or hold contract |
-| LPT-384 | Stateful mouse, relative movement and drag | Blocked: complete drags do not expose held-button state across calls |
-| LPT-385 | Pointer trajectories | Blocked behind LPT-384; segmented complete drags are not continuous strokes |
+| LPT-383 | Complete keys/chords and measured intervals | Revised scope verified: bounded batch, native key pairs and no replay; see [results](complete-input-results.md) |
+| LPT-384 | Complete native clicks, token scroll and straight drags | Revised scope verified; unsafe resized-image pixel scroll is refused before input |
+| LPT-385 | Computed independent straight strokes | Revised scope verified: three separate native pointer strokes and final triangle pixels |
 | LPT-386 | Shared structural UI resources | Keep IDE unchanged; inspect standalone contract |
 | LPT-387 | Stable short hints across sources | Re-resolution must never silently rebind a stale hint |
 | LPT-388 | Structural navigation and actions | Depends on guarded resources/hints |

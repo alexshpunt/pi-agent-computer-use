@@ -1,0 +1,301 @@
+{
+  "driver": "0.33.2",
+  "platform": "Windows from WSL",
+  "publication": "redacted metadata only",
+  "native": {
+    "calls": 63,
+    "records": 18,
+    "events": 65,
+    "keyboard": {
+      "status": "delivered",
+      "total": 5,
+      "attempted": 5,
+      "completed": 5,
+      "elapsed_ms": 7897.681431000001,
+      "steps": [
+        {
+          "action": "key",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 2.1512519999996584,
+          "completion_ms": 3107.1035549999997
+        },
+        {
+          "action": "hotkey",
+          "status": "delivered",
+          "requested_wait_ms": 100,
+          "dispatch_ms": 3210.3099569999995,
+          "completion_ms": 4356.964763
+        },
+        {
+          "action": "type_text",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 4360.158577,
+          "completion_ms": 5546.8855459999995
+        },
+        {
+          "action": "key",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 5550.392390999999,
+          "completion_ms": 6667.445664999999
+        },
+        {
+          "action": "key",
+          "status": "delivered",
+          "requested_wait_ms": 100,
+          "dispatch_ms": 6783.035030999999,
+          "completion_ms": 7897.620172999999
+        }
+      ]
+    },
+    "drawing": {
+      "status": "delivered",
+      "total": 3,
+      "attempted": 3,
+      "completed": 3,
+      "elapsed_ms": 1919.6323989999983,
+      "steps": [
+        {
+          "action": "drag",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 1.8972289999983332,
+          "completion_ms": 1339.577008999997
+        },
+        {
+          "action": "drag",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 1340.9440439999998,
+          "completion_ms": 1636.0058789999966
+        },
+        {
+          "action": "drag",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 1637.4230389999975,
+          "completion_ms": 1919.5777739999976
+        }
+      ]
+    },
+    "right_click_verified": true,
+    "double_click_verified": true,
+    "application": {
+      "key_pairs": [
+        {
+          "code": "KeyA",
+          "down": true,
+          "up": true
+        },
+        {
+          "code": "KeyB",
+          "down": true,
+          "up": true
+        },
+        {
+          "code": "ArrowLeft",
+          "down": true,
+          "up": true
+        },
+        {
+          "code": "ArrowRight",
+          "down": true,
+          "up": true
+        }
+      ],
+      "shift_released": true,
+      "literal_suffix_verified": true,
+      "scroll_top": [
+        94.66666412353516
+      ],
+      "strokes": [
+        {
+          "pointer_type": "touch",
+          "duration_ms": 5.300048828125,
+          "released_buttons": 0,
+          "release_before_next": true
+        },
+        {
+          "pointer_type": "touch",
+          "duration_ms": 7.900146484375,
+          "released_buttons": 0,
+          "release_before_next": true
+        },
+        {
+          "pointer_type": "touch",
+          "duration_ms": 8.099853515625,
+          "released_buttons": 0,
+          "release_before_next": true
+        }
+      ]
+    },
+    "final_image": {
+      "hash": "949c3760c918fbea2c747e594c361044357c6a4bff428bbf0b9b02875879743e",
+      "bytes": 21117
+    },
+    "cleanup": {
+      "browser": {
+        "sourceGone": true,
+        "profileRemoved": true
+      },
+      "sourceGone": true,
+      "fixture": true,
+      "session": true
+    }
+  },
+  "parent": {
+    "keyboard": {
+      "status": "delivered",
+      "total": 5,
+      "attempted": 5,
+      "completed": 5,
+      "elapsed_ms": 7924.1525189988315,
+      "steps": [
+        {
+          "action": "key",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 11.49855799973011,
+          "completion_ms": 3105.859929997474
+        },
+        {
+          "action": "hotkey",
+          "status": "delivered",
+          "requested_wait_ms": 100,
+          "dispatch_ms": 3233.284059997648,
+          "completion_ms": 4378.833763998002
+        },
+        {
+          "action": "type_text",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 4385.861334998161,
+          "completion_ms": 5522.746162001044
+        },
+        {
+          "action": "key",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 5539.340117998421,
+          "completion_ms": 6667.479789998382
+        },
+        {
+          "action": "key",
+          "status": "delivered",
+          "requested_wait_ms": 100,
+          "dispatch_ms": 6793.760359998792,
+          "completion_ms": 7923.932347998023
+        }
+      ]
+    },
+    "drawing": {
+      "status": "delivered",
+      "total": 3,
+      "attempted": 3,
+      "completed": 3,
+      "elapsed_ms": 3017.4311470016837,
+      "steps": [
+        {
+          "action": "drag",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 15.206383999437094,
+          "completion_ms": 2396.037064999342
+        },
+        {
+          "action": "drag",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 2418.6400480009615,
+          "completion_ms": 2712.5456480011344
+        },
+        {
+          "action": "drag",
+          "status": "delivered",
+          "requested_wait_ms": 0,
+          "dispatch_ms": 2726.9677609987557,
+          "completion_ms": 3017.3573979996145
+        }
+      ]
+    },
+    "zero_completed_background_refusal": true,
+    "application": {
+      "key_pairs": [
+        {
+          "code": "KeyA",
+          "down": true,
+          "up": true
+        },
+        {
+          "code": "KeyB",
+          "down": true,
+          "up": true
+        },
+        {
+          "code": "ArrowLeft",
+          "down": true,
+          "up": true
+        },
+        {
+          "code": "ArrowRight",
+          "down": true,
+          "up": true
+        }
+      ],
+      "shift_released": true,
+      "literal_suffix_verified": true,
+      "scroll_top": [
+        94.66666412353516
+      ],
+      "strokes": [
+        {
+          "pointer_type": "touch",
+          "duration_ms": 5.60009765625,
+          "released_buttons": 0,
+          "release_before_next": true
+        },
+        {
+          "pointer_type": "touch",
+          "duration_ms": 11.099853515625,
+          "released_buttons": 0,
+          "release_before_next": true
+        },
+        {
+          "pointer_type": "touch",
+          "duration_ms": 9.900146484375,
+          "released_buttons": 0,
+          "release_before_next": true
+        }
+      ]
+    },
+    "final_image": {
+      "width": 318,
+      "height": 500,
+      "bytes": 20250,
+      "mimeType": "image/png",
+      "hash": "5e772472771d93f73f7525e3acb7d0a0e654b134709f1e85c30aa80c97913774"
+    },
+    "restored_overview_settings": {
+      "maxLongEdge": 1024,
+      "scale": 1
+    },
+    "cleanup": {
+      "OwnedWindowPresent": false,
+      "DriverCount": 0,
+      "OwnedBrowserPresent": false,
+      "FixtureProfiles": 0,
+      "DriverProfiles": 0,
+      "HelperCount": 0,
+      "operation": "read_only"
+    }
+  },
+  "limits": {
+    "pixel_scroll": "refused before native input; observed token required",
+    "raw_holds": false,
+    "continuous_path": false,
+    "immediate_in_flight_cancel": false,
+    "requested_timing_guaranteed": false
+  }
+}

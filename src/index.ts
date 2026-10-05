@@ -1,4 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
+import { actionParameters } from "./complete-input.ts";
 import { registerVisionDebug } from "./vision-debug.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -6,7 +7,7 @@ import { loadComputerConfig } from "./config.ts";
 import { McpDriver } from "./driver.ts";
 import { registerComputerMode } from "./mode.ts";
 import { WindowHighlights } from "./window-highlights.ts";
-import { ComputerSession, type ComputerResult } from "./session.ts";
+import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
@@ -20,7 +21,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
   pi.registerTool({
     name: "computer_open", label: "Computer open",
-    description: "Open a genuinely NEW installed Windows app window by exact app name or computer_apps app_id. Returns window_ref plus first accessibility observation and screenshot, ready for one action. No PID/HWND, target config, shell tool, or reload. Opening is attempted once; reuse of an existing window/tab is not success. Unknown means discover before deciding; never blindly relaunch. Safe permits only session-opened windows; YOLO permits desktop-wide UI access. Neither is an OS sandbox. In Codemode, save returned window_ref and current observation_id, element_tokens and agent_image.image_id with store under a short task name; reuse them with load, not copied ID literals. Store only compact references, not images or whole results.",
+    description: "Open a genuinely NEW installed Windows app window by exact app name or computer_apps app_id. Returns window_ref plus first accessibility observation and screenshot, ready for one complete action or bounded keyboard/stroke sequence. No PID/HWND, target config, shell tool, or reload. Opening is attempted once; reuse of an existing window/tab is not success. Unknown means discover before deciding; never blindly relaunch. Safe permits only session-opened windows; YOLO permits desktop-wide UI access. Neither is an OS sandbox. In Codemode, save returned window_ref and current observation_id, element_tokens and agent_image.image_id with store under a short task name; reuse them with load, not copied ID literals. Store only compact references, not images or whole results.",
     parameters: Type.Object({ app: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).open(params.app, signal); },
@@ -38,7 +39,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
       status: Type.String(), text: Type.String(), source: Type.Optional(Type.Unknown()),
       image: Type.Optional(Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() })),
     }, { additionalProperties: true }),
-    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one action. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode. In Codemode, load the stored window_ref and replace stored observation_id, element_tokens and agent_image.image_id after each successful overview. Keep only compact references in store, not screenshots or whole results. Storage does not extend ID lifetime; detail consumes its overview.",
+    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one complete action or bounded keyboard/stroke sequence. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode. In Codemode, load the stored window_ref and replace stored observation_id, element_tokens and agent_image.image_id after each successful overview. Keep only compact references in store, not screenshots or whole results. Storage does not extend ID lifetime; detail consumes its overview.",
     parameters: Type.Object({
       window_ref: Type.Optional(Type.String({ minLength: 1 })),
       display: Type.Optional(Type.String({ description: "Only primary is supported; display reading is YOLO-only and grants no input." })),
@@ -64,19 +65,10 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
   pi.registerTool({
     name: "computer_act", label: "Computer act",
-    description: "Perform one grounded action on window_ref using its latest observation_id. Each dispatch consumes that observation, even on failure. Use its element_token or scoped screenshot x/y. type_text inputs text; set_value replaces an element value; select_all sends Ctrl+A. Background is default. Foreground must be explicit and only after an observed failure/refusal. Unknown may have changed the app: never blindly retry. Observe to verify. Safe denies outside-session windows; YOLO permits them. Mode is a user choice, not a tool argument. Neither is OS isolation. Use only task-authorized windows/documents. In Codemode, load window_ref and current observation/target IDs from store instead of retyping them. Invalidate stored observation_id and element_tokens after every dispatch, even on failure; observe again and store fresh IDs before another action.",
-    parameters: Type.Object({
-      window_ref: Type.String({ minLength: 1 }),
-      observation_id: Type.String({ minLength: 1 }),
-      action: Type.Union(["type_text", "set_value", "click", "select_all", "key"].map(value => Type.Literal(value))),
-      delivery_mode: Type.Optional(Type.Union([Type.Literal("background"), Type.Literal("foreground")])),
-      element_token: Type.Optional(Type.String({ minLength: 1 })),
-      x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
-      text: Type.Optional(Type.String({ maxLength: 2000 })),
-      key: Type.Optional(Type.Union(["backspace", "delete", "left", "right", "home", "end", "return", "escape", "tab"].map(value => Type.Literal(value)))),
-    }, { additionalProperties: false }),
+    description: "Perform a complete grounded window action, or one bounded sequence, using the latest observation_id. Dispatch consumes the observation even on failure. Use its element_token or window-local screenshot x/y. Supports click/right_click/double_click, scroll (observed element_token only; no pixel scroll), straight drag, key/hotkey, type_text (delay_ms), set_value and select_all. Drag endpoints are from_x/from_y/to_x/to_y; duration_ms 0..10000 and steps 1..200. sequence accepts 1..32 known-target key/hotkey/type_text/select_all/drag steps, wait_ms 0..5000 each, up to 30s requested time and 45s elapsed admission budget. Entire list is validated before input; serial execution needs no intermediate overview. Each drag releases the button; no held-input state, hover or continuous curves. Stops on refusal/unknown/cancel/access or target loss, reporting actual attempted/completed prefix and dispatch/completion timings; never replay that prefix. In-flight native input may finish after cancellation. Delivery is not UI verification. Background is default. Foreground must be explicit and only after an observed failure/refusal. Unknown may have changed the app: never blindly retry. Observe to verify. Safe denies outside-session windows; YOLO permits them. Mode is a user choice, not a tool argument. Neither is OS isolation. Use only task-authorized windows/documents. In Codemode, load window_ref and current observation/target IDs from store instead of retyping them. Invalidate stored observation_id and element_tokens after every dispatch, even on failure; observe again and store fresh IDs before another action or sequence.",
+    parameters: actionParameters,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).act(params, signal); },
+    async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).act(params as Action, signal); },
   });
   pi.registerTool({
     name: "computer_close", label: "Computer close",
