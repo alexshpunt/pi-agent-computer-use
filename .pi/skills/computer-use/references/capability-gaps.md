@@ -1,10 +1,10 @@
 # Codex-to-Pi capability gaps
 
-This list records differences from the installed Codex unified Computer Use instructions. These are candidates for the next tasks, not permission to implement them or claims that CUA lacks every underlying primitive. Check the newest upstream docs/source and qualify the public Windows route before adding an adapter. Do not patch the Driver or introduce another capture/input backend.
+This list records current Pi tool limits and possible follow-up capabilities. It is not a verbatim capability list from the Codex plugin skill. These are candidates for the next tasks, not permission to implement them or claims that CUA lacks every underlying primitive. Check the newest upstream docs/source and qualify the public Windows route before adding an adapter. Do not patch the Driver or introduce another capture/input backend.
 
 ## Next-task candidates
 
-| Capability from Codex | Current Pi boundary | Candidate / dependency |
+| Capability candidate | Current Pi boundary | Candidate / dependency |
 | --- | --- | --- |
 | Shared app/tab objects and one structural inventory | Separate `computer_*` window refs and focused `browser_*` hints | LPT-386 and LPT-388 |
 | Stable structural target handles across observations | Browser hints are snapshot-scoped; desktop observation is consumed by one dispatch | LPT-387; never silently rebind stale hints |
@@ -38,4 +38,4 @@ This list records differences from the installed Codex unified Computer Use inst
 
 ## Preservation versus executable instructions
 
-`codex-unified-original.md` is an exact local source copy for review. It is not an executable Pi skill and does not grant access to Codex services, personal tabs or another backend. The adapted `SKILL.md` keeps the original topic order and workflow, but uses actual Pi parameters and clearly labels unavailable operations. No replacement runtime or compatibility object is installed.
+The actual Codex plugin skill is copied unchanged at `codex-plugin-original/skills/computer-use/SKILL.md`, with its linked documents in `codex-plugin-original/docs/`. These are references, not executable Pi instructions, and do not grant access to Codex services or another backend. The parent `SKILL.md` is a separate Pi guide, not the original plugin skill. No replacement runtime or compatibility object is installed.

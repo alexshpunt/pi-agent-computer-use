@@ -3,14 +3,14 @@ name: computer-use
 description: Control permitted Windows apps and the agent-owned browser through Pi Codemode and Cua Driver. Use for reading UI, navigating, clicking, typing, scrolling and inspecting overview or zoom images. Read before computer-use work or declaring a UI capability unavailable.
 compatibility: Pi with pi-agent-computer-use on Windows/WSL and its qualified Cua Driver runtime.
 metadata:
-  source: Installed Codex unified Computer Use instructions, bundle 26.930.31730, @oai/cua 0.2.5
+  source: Pi tool contracts; Codex Computer Use plugin reference, bundle 26.930.31730
 ---
 
 ## Computer Use
 
 Control native apps and browsers on the user's computer by reading or operating UI. Prefer purpose-built connectors, APIs, or CLIs when available, unless the user explicitly requests a visible UI benchmark.
 
-This is the user-requested minimal working adaptation of the full Codex unified instructions. The [complete unchanged source](references/codex-unified-original.md) is preserved for comparison, not execution. Its SHA-256 is `0a08dbe6ce18cadb55215be30ebbba9afd6195a7333023795424ef6aee2ad148`. API names, parameters, output handling and platform claims differ where Pi's actual contract requires it. No `@oai/cua`, `@oai/sky`, `cua_repl` or compatibility runtime is installed here. The inspected bundle had no established redistribution license; do not assume the public Codex repository's license covers these bundled assets or include them in a public release without review.
+This is a Pi-specific guide, not the original Codex skill. The [actual Computer Use plugin SKILL.md](references/codex-plugin-original/skills/computer-use/SKILL.md) and its three linked documents are copied unchanged from the installed Codex plugin, bundle `26.930.31730`. References are for comparison, not execution. API names, parameters, output handling and platform claims differ where Pi's actual contract requires it. No `@oai/cua`, `@oai/sky`, `cua_repl` or compatibility runtime is installed here. The inspected bundle had no established redistribution license; do not assume the public Codex repository's license covers these bundled assets or include them in a public release without review.
 
 Read [the owned-browser skill](../owned-browser-use/SKILL.md) before browser tools and [capability gaps](references/capability-gaps.md) before planning missing operations. Project permissions and safety rules still apply; this skill does not grant new access.
 
