@@ -63,6 +63,12 @@ await tools.browser_act({click:load("fail"),observe:false});text("MUST NOT REPLA
     expect(calls.filter(c => c.name === "browser_click")).toHaveLength(6);
     expect(calls.filter(c => c.name === "end_session")).toHaveLength(1);
     expect(calls.filter(c => c.name === "transport_close")).toHaveLength(1);
+    expect(calls.filter(c => c.name === "overlay_start")).toHaveLength(1);
+    expect(calls.filter(c => c.name === "overlay_flash")).toHaveLength(4);
+    expect(calls.filter(c => c.name === "overlay_close")).toHaveLength(1);
+    expect(getToolExecutionDetails(getToolExecution(result, "open"))).toMatchObject({ highlight: { status: "shown", duration_ms: 2000 } });
+    expect(getToolResultText(result, "sequence")).not.toContain("PiComputerUse.");
+    expect(calls.findIndex(c => c.name === "overlay_start")).toBeGreaterThan(calls.findIndex(c => c.name === "get_window_state"));
     expect(getToolResultText(result, "close")).toContain("released");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

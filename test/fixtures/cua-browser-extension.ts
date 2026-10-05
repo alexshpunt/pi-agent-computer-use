@@ -4,6 +4,7 @@ import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-c
 import { CuaBrowser } from "../../src/cua-browser.ts";
 import { registerCuaBrowserTools } from "../../src/cua-browser-tools.ts";
 import type { Driver, DriverResult } from "../../src/session.ts";
+import { WindowHighlights } from "../../src/window-highlights.ts";
 
 /** Real-Pi contract fixture: scripted native replies, never Windows UI input. */
 export default function fixture(pi: ExtensionAPI): void {
@@ -36,8 +37,15 @@ export default function fixture(pi: ExtensionAPI): void {
       if (name === "end_session") state = { active: false };
       return { structuredContent: state, content: [] };
     },
-    async identity() { return "fixture-window-lifetime"; },
+    async identity() { return `PiComputerUse.${"a".repeat(32)}:111:7`; },
     async close() { await record("transport_close", {}); },
   };
-  registerCuaBrowserTools(pi, new CuaBrowser(async () => driver));
+  const highlights = new WindowHighlights(async () => {
+    await record("overlay_start", {});
+    return { send: async command => {
+      await record(`overlay_${command.kind}`, command);
+      return { generation: command.generation, status: command.kind === "flash" ? "shown" : "hidden" };
+    }, close: () => record("overlay_close", {}) };
+  });
+  registerCuaBrowserTools(pi, new CuaBrowser(async () => driver, undefined, highlights.flash), () => highlights.close());
 }

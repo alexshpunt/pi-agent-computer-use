@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { expect, test, vi } from "vitest";
 import extension from "../src/index.ts";
+import { registerComputerMode } from "../src/mode.ts";
 
 type Command = { handler(args: string, ctx: ExtensionCommandContext): Promise<void> };
 function fixture(branch: unknown[] = []) {
@@ -48,4 +49,16 @@ test("a user-selected Safe mode is restored on reload instead of silently fallin
   await reloaded.events.get("session_start")!({ type: "session_start", reason: "reload" }, reloaded.ctx);
   expect(await reloaded.close()).toMatchObject({ details: { mode: "safe" } });
   expect(reloaded.ctx.ui.setStatus).toHaveBeenLastCalledWith("computer-use", "Computer: SAFE");
+});
+
+test("user policy change and branch restore clear frames without exposing a model command", async () => {
+  const clear = vi.fn(async () => {}); const f = fixture();
+  const getMode = registerComputerMode({ registerCommand: (name: string, command: Command) => f.commands.set(name, command),
+    on: (name: string, handler: (event: unknown, ctx: ExtensionCommandContext) => unknown) => f.events.set(name, handler),
+    appendEntry: f.appendEntry } as unknown as ExtensionAPI, clear);
+  await f.commands.get("computer-mode")!.handler("", f.ctx); expect(clear).not.toHaveBeenCalled();
+  await f.commands.get("computer-mode")!.handler("safe", f.ctx);
+  expect(getMode()).toBe("safe"); expect(clear).toHaveBeenCalledTimes(1);
+  await f.events.get("session_tree")!({}, f.ctx); expect(clear).toHaveBeenCalledTimes(2);
+  await f.commands.get("computer-mode")!.handler("invalid", f.ctx); expect(clear).toHaveBeenCalledTimes(2);
 });

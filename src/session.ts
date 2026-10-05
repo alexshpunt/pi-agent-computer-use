@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { notifyWindowObserver, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { observationSource, type ObservationSource } from "./observation-source.ts";
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -47,6 +48,7 @@ export interface ComputerResult {
     state?: Record<string, unknown>;
     source?: ObservationSource;
     agent_image?: Record<string, unknown>;
+    highlight?: HighlightResult;
   };
   isError?: boolean;
 }
@@ -86,7 +88,8 @@ export class ComputerSession {
   }
 
   constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo",
-    private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" })) {}
+    private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" }),
+    private readonly observer?: WindowObserver) {}
 
   private queue(work: () => Promise<ComputerResult>): Promise<ComputerResult> {
     const result = this.tail.then(work, work);
@@ -368,8 +371,11 @@ export class ComputerSession {
       const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, true);
       source.capabilities.input = "none"; source.semantic_scope = "none";
       const image = images[0] as Extract<Content, { type: "image" }>; const bytes = Buffer.from(image.data, "base64");
+      const [x, y, width, height] = JSON.parse(overview!.geometry) as number[];
+      const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, { x, y, width, height }, signal);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Window detail revoked or cancelled during frame; pixels withheld.");
       return this.result("observed", "Fresh native window zoom. CUA owns JPEG padding and geometry. Read only; take a new overview before input or another detail.",
-        undefined, { ...this.addressed(entry), source, agent_image: { route: "cua_fresh_window_zoom", coordinate_space: "zoom_image_pixels",
+        undefined, { ...this.addressed(entry), ...(highlight ? { highlight } : {}), source, agent_image: { route: "cua_fresh_window_zoom", coordinate_space: "zoom_image_pixels",
           configuration: { padding: "20% each side", maxWidth: 500, route: "cua_native" }, native: state,
           region: { overview: { image_id: overview!.id, dimensions: { width: overview!.width, height: overview!.height }, x: request.x, y: request.y, width: request.width, height: request.height } },
           output: { width: state.width, height: state.height, bytes: bytes.length, mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") }, input: "none" } }, images);
@@ -406,8 +412,11 @@ export class ComputerSession {
       captureId: typeof state.capture_id === "string" ? state.capture_id : undefined };
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during observation; pixels withheld."); }
     const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
+    const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
+    if (!this.allowed(entry)) { entry.observation = undefined; entry.detail = undefined; return this.denied(entry.ref); }
+    if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during window frame; pixels withheld."); }
     return this.result("observed", "Fresh native window observation; paint freshness is unverified. Use observation_id for one action, then read again.",
-      state, { ...this.addressed(entry), observation_id: id, source, agent_image: { ...this.imageMetadata(images, state, settings), image_id: id } }, images);
+      state, { ...this.addressed(entry), ...(highlight ? { highlight } : {}), observation_id: id, source, agent_image: { ...this.imageMetadata(images, state, settings), image_id: id } }, images);
   }
 
   /** Read fresh UI state and a screenshot for an existing session reference. Only this window's earlier observation expires. */

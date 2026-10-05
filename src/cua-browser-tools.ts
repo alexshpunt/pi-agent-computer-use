@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { CuaBrowser, CuaBrowserResult } from "./cua-browser.ts";
 
 /** Focused native browser tools. Pi Codemode remains the only executor. */
-export function registerCuaBrowserTools(pi: ExtensionAPI, browser: CuaBrowser): void {
+export function registerCuaBrowserTools(pi: ExtensionAPI, browser: CuaBrowser, closeFrame: () => Promise<void> = async () => {}): void {
   const hint = Type.String({ minLength: 1, pattern: "^[a-z]+$" });
   const options = { additionalProperties: false };
   const point = Type.Object({ x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }) }, options);
@@ -80,7 +80,14 @@ export function registerCuaBrowserTools(pi: ExtensionAPI, browser: CuaBrowser): 
     name: "browser_close", label: "Browser close", outputSchema,
     description: "End this exact native CUA session, close its isolated browser/profile and release the owned Driver and identity peer. Does not touch personal browsers or the desktop Driver. Unknown cleanup is not success.",
     parameters: Type.Object({}, options), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    async execute() { return expose(await browser.call("close", {})); },
+    async execute() {
+      const result = await browser.call("close", {});
+      try { await closeFrame(); }
+      catch { throw new Error(`${result.details.status}: Qt frame shutdown is unconfirmed.`); }
+      return expose(result);
+    },
   });
-  pi.on("session_shutdown", async () => { await browser.call("close", {}); });
+  pi.on("session_shutdown", async () => {
+    try { await browser.call("close", {}); } finally { await closeFrame(); }
+  });
 }

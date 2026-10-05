@@ -1,0 +1,166 @@
+{
+  "platform": "Windows host from WSL",
+  "cua": "0.33.2",
+  "qt": "6.11.3",
+  "qt_revision": "5a1194b2d368e2d72c230205c464b04a2f23eccd",
+  "runtime": {
+    "binary_files": [
+      {
+        "path": "runtime/Qt6Core.dll",
+        "bytes": 10370872,
+        "sha256": "b20757be279b4e074c89be1f183a40975bf867b9a2a4e0ca4ea34a95fe2bb39e"
+      },
+      {
+        "path": "runtime/Qt6Gui.dll",
+        "bytes": 9576248,
+        "sha256": "695ee5e5a7ac83b7a1f7d397ccb0dda39b84f8369fd2237d90c1229b78af0cd5"
+      },
+      {
+        "path": "runtime/Qt6Widgets.dll",
+        "bytes": 6501176,
+        "sha256": "16e181e86e4084ca26de4daaf9a32ab61c1eed9c4649e6176dbddc7849ea1e06"
+      },
+      {
+        "path": "runtime/pi-window-overlay.exe",
+        "bytes": 40960,
+        "sha256": "9e80de19ad7103f35a50ff13441952948f1f9125e45184c22447a03da81b8aa2"
+      },
+      {
+        "path": "runtime/platforms/qwindows.dll",
+        "bytes": 992056,
+        "sha256": "e8c633f1c5054ec2972ea5dd85062d1078a6b1011cbeb3dd1fb6ed954da78765"
+      },
+      {
+        "path": "runtime/qt.conf",
+        "bytes": 27,
+        "sha256": "d23e982f2910242a2bcdf7dabe68b036de9d2bb8ffad64fa9f86020c3ad118a4"
+      }
+    ],
+    "bytes_with_notices": 31612981,
+    "compressed_bytes": 11495980,
+    "total_bytes_with_corresponding_source": 99390657,
+    "source_supplied": true
+  },
+  "measurements": {
+    "protocol": "Three repeated warm helper starts; one ready, visible and expired memory sample each. Not controlled cold-cache or a steady-state stress test.",
+    "samples": [
+      {
+        "startup_ms": 202.94510100000025,
+        "ready": {
+          "working_set_bytes": 24567808,
+          "private_bytes": 4136960
+        },
+        "active": {
+          "working_set_bytes": 35471360,
+          "private_bytes": 9437184
+        },
+        "expired": {
+          "working_set_bytes": 35500032,
+          "private_bytes": 9478144
+        },
+        "duration_ms": 2000,
+        "focus_unchanged": true,
+        "foreground_unchanged": true,
+        "capture_affinity": 17,
+        "identical_owned_region_pixels": true,
+        "expired_hidden": true,
+        "cleanup_absent": true
+      },
+      {
+        "startup_ms": 86.09973300000001,
+        "ready": {
+          "working_set_bytes": 24535040,
+          "private_bytes": 4120576
+        },
+        "active": {
+          "working_set_bytes": 35471360,
+          "private_bytes": 9457664
+        },
+        "expired": {
+          "working_set_bytes": 35487744,
+          "private_bytes": 9474048
+        },
+        "duration_ms": 2000,
+        "focus_unchanged": true,
+        "foreground_unchanged": true,
+        "capture_affinity": 17,
+        "identical_owned_region_pixels": true,
+        "expired_hidden": true,
+        "cleanup_absent": true
+      },
+      {
+        "startup_ms": 98.00988499999949,
+        "ready": {
+          "working_set_bytes": 24580096,
+          "private_bytes": 4182016
+        },
+        "active": {
+          "working_set_bytes": 35504128,
+          "private_bytes": 9506816
+        },
+        "expired": {
+          "working_set_bytes": 35532800,
+          "private_bytes": 9535488
+        },
+        "duration_ms": 2000,
+        "focus_unchanged": true,
+        "foreground_unchanged": true,
+        "capture_affinity": 17,
+        "identical_owned_region_pixels": true,
+        "expired_hidden": true,
+        "cleanup_absent": true
+      }
+    ]
+  },
+  "parent": [
+    {
+      "operation": "408browser",
+      "source_kind": "browser",
+      "image_scope": "native_window",
+      "dimensions": {
+        "width": 500,
+        "height": 357
+      },
+      "coordinate_space": "window_image_pixels",
+      "mime_type": "image/png",
+      "image_sha256": "728ea90055cb4f710f9c6e2f655a8896c7f91d25ba1c7b0eb7f3f93cc5d8d41d",
+      "highlight": {
+        "status": "shown",
+        "duration_ms": 2000
+      }
+    },
+    {
+      "operation": "408calc",
+      "source_kind": "window",
+      "image_scope": "native_window",
+      "dimensions": {
+        "width": 331,
+        "height": 499
+      },
+      "coordinate_space": "window_image_pixels",
+      "mime_type": "image/png",
+      "image_sha256": "74687ea47678d7f3d127fd9aed578378d24eaee66ac9f9133e140090d39ae496",
+      "highlight": {
+        "status": "shown",
+        "duration_ms": 2000
+      }
+    },
+    {
+      "operation": "408zoom",
+      "source_kind": "browser",
+      "image_scope": "native_window_zoom",
+      "dimensions": {
+        "width": 500,
+        "height": 110
+      },
+      "coordinate_space": "zoom_image_pixels",
+      "mime_type": "image/jpeg",
+      "image_sha256": "b1012470934b962fecc81f6e1705111252b519aa4fe36157de6e06e94a38e33a",
+      "highlight": {
+        "status": "shown",
+        "duration_ms": 2000
+      }
+    }
+  ],
+  "privacy": "No private pixels, source text, native identities, session IDs or viewer URLs exported."
+}

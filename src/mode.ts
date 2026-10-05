@@ -2,18 +2,19 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { ComputerMode } from "./session.ts";
 
 /** Register a user command, not a model tool. Restore user policy on reload; never start a native runtime here. */
-export function registerComputerMode(pi: ExtensionAPI): () => ComputerMode {
+export function registerComputerMode(pi: ExtensionAPI, clearFrame: () => Promise<void> = async () => {}): () => ComputerMode {
   let mode: ComputerMode = "yolo";
   const show = (ctx: ExtensionContext) => {
     if (ctx.hasUI) ctx.ui.setStatus("computer-use", `Computer: ${mode.toUpperCase()}`);
   };
-  const restore = (ctx: ExtensionContext) => {
+  const restore = async (ctx: ExtensionContext) => {
     mode = "yolo";
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type !== "custom" || entry.customType !== "computer-use-mode") continue;
       const data = entry.data as { mode?: unknown } | undefined;
       if (data?.mode === "safe" || data?.mode === "yolo") mode = data.mode;
     }
+    await clearFrame();
     show(ctx);
   };
   pi.on("session_start", (_event, ctx) => restore(ctx));
@@ -31,6 +32,7 @@ export function registerComputerMode(pi: ExtensionAPI): () => ComputerMode {
         // Persist only the user's choice, not window ownership or model-supplied data.
         pi.appendEntry("computer-use-mode", { mode: selected });
         mode = selected;
+        await clearFrame();
       }
       show(ctx);
       ctx.ui.notify(`Computer mode: ${mode.toUpperCase()}. ${mode === "safe" ? "Only session-opened windows are allowed." : "Desktop-wide UI access is allowed."} Not an OS sandbox.`, "info");

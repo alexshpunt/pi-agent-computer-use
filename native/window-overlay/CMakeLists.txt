@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.22)
+project(PiWindowOverlay VERSION 0.1.0 LANGUAGES CXX)
+
+if(NOT WIN32)
+  message(FATAL_ERROR "This helper is qualified only on Windows.")
+endif()
+find_package(Qt6 6.11 REQUIRED COMPONENTS Widgets)
+qt_add_executable(pi-window-overlay WIN32 main.cpp)
+target_compile_features(pi-window-overlay PRIVATE cxx_std_17)
+target_compile_definitions(pi-window-overlay PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(pi-window-overlay PRIVATE Qt6::Widgets user32 dwmapi)
+install(TARGETS pi-window-overlay RUNTIME DESTINATION .)
+install(FILES qt.conf DESTINATION .)

@@ -7,6 +7,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "./config.ts";
 import { McpDriver } from "./driver.ts";
 import { registerComputerMode } from "./mode.ts";
+import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult } from "./session.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
@@ -92,27 +93,34 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
 export default function computerUse(pi: ExtensionAPI): void {
   const images = new CuaImageSettings();
   registerVisionDebug(pi, images);
+  const highlights = new WindowHighlights();
   registerCuaBrowserTools(pi, new CuaBrowser(async () =>
-    new McpDriver(await loadComputerConfig(process.cwd())), () => images.settings()));
-  const getMode = registerComputerMode(pi);
+    new McpDriver(await loadComputerConfig(process.cwd())), () => images.settings(), highlights.flash), () => highlights.close());
+  const getMode = registerComputerMode(pi, () => highlights.clear());
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;
   async function getSession(cwd: string): Promise<ComputerSession> {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(config => {
-      session = new ComputerSession(new McpDriver(config), getMode, () => images.settings());
+      session = new ComputerSession(new McpDriver(config), getMode, () => images.settings(), highlights.flash);
       return session;
     });
     try { return await loading; }
     finally { loading = undefined; }
   }
-  registerComputerTools(pi, getSession, async () => session ? session.close() : {
-    content: [{ type: "text", text: "No owned computer-use runtime is running." }],
-    details: { status: "closed", mode: getMode() },
+  registerComputerTools(pi, getSession, async () => {
+    const result: ComputerResult = session ? await session.close() : {
+      content: [{ type: "text", text: "No owned computer-use runtime is running." }],
+      details: { status: "closed", mode: getMode() },
+    };
+    try { await highlights.close(); }
+    catch { return { content: [{ type: "text", text: "Qt frame shutdown is unconfirmed." }],
+      details: { status: "unknown", mode: getMode() }, isError: true }; }
+    return result;
   });
   pi.on("session_shutdown", async () => {
     if (loading) await loading.catch(() => undefined);
-    await session?.close();
+    try { await session?.close(); } finally { await highlights.close(); }
     session = undefined;
   });
 }

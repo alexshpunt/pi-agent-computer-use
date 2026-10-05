@@ -1,10 +1,11 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+import type { WindowObserver } from "../src/window-overlay.ts";
 import { CuaBrowser } from "../src/cua-browser.ts";
 import type { Driver, DriverResult } from "../src/session.ts";
 
 const png = { type: "image" as const, mimeType: "image/png", data: "native-png-unchanged" };
 const jpeg = { type: "image" as const, mimeType: "image/jpeg", data: "native-jpeg-unchanged" };
-function fixture() {
+function fixture(observer?: WindowObserver) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   let snapshot = 0;
   let alive = true;
@@ -35,9 +36,40 @@ function fixture() {
     async identity() { return alive ? "lifetime-1" : undefined; },
     async close() { calls.push({ name: "transport_close", args: {} }); },
   };
-  const browser = new CuaBrowser(async () => driver);
+  const browser = new CuaBrowser(async () => driver, undefined, observer);
   return { browser, calls, setAlive: (value: boolean) => { alive = value; }, setOverride: (value: typeof override) => { override = value; } };
 }
+
+test("only successful returned browser images flash the exact whole source window, including zoom", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "shown", duration_ms: 2000 }));
+  const f = fixture(observer);
+  const opened = await f.browser.call("open", { url: "http://localhost/" });
+  expect(opened.details).toMatchObject({ status: "observed", highlight: { status: "shown" } });
+  expect(observer).toHaveBeenCalledWith({ target: { pid: 111, window_id: 22 }, identity: "lifetime-1",
+    bounds: { x: 70, y: 60, width: 1332, height: 932 } }, undefined);
+  const hints = (opened.details.elements as { hint: string }[]).map(e => e.hint);
+  await f.browser.call("act", { click: hints[0], observe: false });
+  expect(observer).toHaveBeenCalledTimes(1);
+  await f.browser.call("observe", { image_only: true });
+  const detail = await f.browser.call("observe", { zoom: { x: 20, y: 40, width: 50, height: 30 } });
+  expect(detail.content).toContainEqual(jpeg);
+  expect(observer).toHaveBeenCalledTimes(3);
+  expect(observer.mock.calls[2][0].bounds).toEqual({ x: 70, y: 60, width: 1332, height: 932 });
+  await f.browser.call("observe", { zoom: { x: 1, y: 1, width: 10, height: 10 } });
+  expect(observer).toHaveBeenCalledTimes(3);
+  f.setAlive(false);
+  await f.browser.call("observe", {});
+  expect(observer).toHaveBeenCalledTimes(3);
+});
+
+test("a broken rendering observer cannot replay or corrupt a valid native browser capture", async () => {
+  const observer = vi.fn<WindowObserver>(async () => { throw new Error("helper unavailable"); });
+  const f = fixture(observer); const result = await f.browser.call("open", { url: "http://localhost/" });
+  expect(result.details).toMatchObject({ status: "observed", highlight: { status: "unavailable" } });
+  expect(result.content).toContainEqual(png);
+  expect(f.calls.filter(c => c.name === "get_window_state")).toHaveLength(1);
+  expect(f.calls.some(c => c.name === "end_session")).toBe(false);
+});
 
 test("CUA owns the isolated browser, cursor, exact target and unchanged native 500px image", async () => {
   const f = fixture(); const result = await f.browser.call("open", { url: "http://localhost/" });

@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { notifyWindowObserver, type WindowObserver } from "./window-overlay.ts";
 import { observationSource } from "./observation-source.ts";
 import { nativeImageCap } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -40,7 +41,8 @@ export class CuaBrowser {
   private cleanupUnconfirmed = false;
 
   constructor(private readonly createDriver: () => Promise<Driver>,
-    private readonly settings: () => CuaImageSettings = () => ({ maxLongEdge: 500, scale: 1, version: 0 })) {}
+    private readonly settings: () => CuaImageSettings = () => ({ maxLongEdge: 500, scale: 1, version: 0 }),
+    private readonly observer?: WindowObserver) {}
 
   /** Monotonic alias allocation can be persisted by the Pi registration layer. */
   get allocatedHints(): number { return this.offset; }
@@ -57,11 +59,11 @@ export class CuaBrowser {
       try {
         if (signal?.aborted) throw new Refused("Cancelled before browser input.");
         switch (operation) {
-          case "open": return await this.open(args);
-          case "observe": return await this.observe(args);
-          case "act": return await this.act(args);
+          case "open": return await this.highlight(await this.open(args));
+          case "observe": return await this.highlight(await this.observe(args));
+          case "act": return await this.highlight(await this.act(args));
           case "tabs": return await this.list();
-          case "focus": return await this.focus(args);
+          case "focus": return await this.highlight(await this.focus(args));
           case "close": {
             await this.dispose();
             return this.result("closed", "Owned CUA browser session released.");
@@ -84,6 +86,15 @@ export class CuaBrowser {
     return result;
   }
 
+  private async highlight(result: CuaBrowserResult): Promise<CuaBrowserResult> {
+    if (result.details.status !== "observed" || !this.image) return result;
+    const [x, y, width, height] = JSON.parse(this.image.bounds) as number[];
+    const highlight = await notifyWindowObserver(this.observer, this.owned?.target, this.owned?.identity,
+      { x, y, width, height }, this.signal);
+    if (this.signal?.aborted) throw new Refused("Cancelled during window frame; pixels withheld.");
+    if (highlight) result.details.highlight = highlight;
+    return result;
+  }
   private result(status: CuaBrowserResult["details"]["status"], text: string,
     extra: Record<string, unknown> = {}, images: Content[] = []): CuaBrowserResult {
     return { content: [{ type: "text", text }, ...images], details: { ...extra, status, text, ownership: "driver-owned isolated browser" },
