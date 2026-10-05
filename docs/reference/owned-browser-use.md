@@ -1,11 +1,8 @@
----
-name: owned-browser-use
-description: Use the agent-owned visible Windows CUA browser with image-first observation, snapshot hints, native zoom and existing Pi Codemode. Use for browser interaction through this extension, not personal browsers or arbitrary page scripting.
----
+Retained reference for the disabled browser adapter. This is not an active skill. Use [Computer use](../../.pi/skills/computer-use/SKILL.md) for current UI tools.
 
 # Owned browser use
 
-Read [the current contract](../../../docs/browser.md). The six browser tools use Cua Driver. Do not use Playwright, page JavaScript, raw CDP, OS-global input or another browser as a fallback.
+Read [the current contract](../browser.md). The six browser tools use Cua Driver. Do not use Playwright, page JavaScript, raw CDP, OS-global input or another browser as a fallback.
 
 ## Start and ground
 
@@ -51,7 +48,7 @@ Automatic foreground is the approved covered-window compromise, not a readiness 
 
 CUA shows an independent native agent cursor in the actual Windows browser. Perception images exclude that debug overlay where supported. Ask the human when actual cursor visibility needs verification. Screenshots alone cannot prove it.
 
-`/computer-debug` provides exact captured/application-boundary bytes, metadata and nested outcomes. Its polling follows the trace, not a continuous screen recording. Only the viewer's cards are limited to three. Images across all sources, including detail, stay in normal Pi context until Pi compacts it. This extension does not delete or replace old image blocks. The viewer is not a final-provider-delivery guarantee. See [image retention](../../../docs/image-context.md).
+`/computer-debug` provides exact captured/application-boundary bytes, metadata and nested outcomes. Its polling follows the trace, not a continuous screen recording. Only the viewer's cards are limited to three. Images across all sources, including detail, stay in normal Pi context until Pi compacts it. This extension does not delete or replace old image blocks. The viewer is not a final-provider-delivery guarantee. See [image retention](../image-context.md).
 
 No personal tabs/profile or permission grants. Desktop Safe/YOLO does not broaden browser ownership and only the user changes it. Standalone tab create/activate/close, arbitrary keys, coordinate pointer movement, uploads/downloads, generic overlay drawings and OS isolation are not provided here. Refuse unsupported work instead of switching technologies.
 

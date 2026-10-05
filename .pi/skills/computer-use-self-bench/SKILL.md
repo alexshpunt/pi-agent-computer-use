@@ -9,9 +9,9 @@ Read [Computer Use](../computer-use/SKILL.md). Follow its **observe → inspect 
 
 ## Start the game
 
-Open https://neal.fun/not-a-robot/ in the owned browser. Start at the first level for a new run. If the user asks to resume, observe the existing game and continue from its current state. Do not reset a paused game without a request for a fresh run.
+Open https://neal.fun/not-a-robot/ in a task-authorized browser window using the `computer_*` tools. Start at the first level for a new run. If the user asks to resume, observe the existing game and continue from its current state. Do not reset a paused game without a request for a fresh run.
 
-Use only the visible game UI and the current computer-use tools. Read puzzle answers from the returned images. Accessibility hints can identify controls, not supply hidden answers. Do not read game source, hidden DOM state, scripts, network responses or walkthroughs. Do not use another backend to bypass a missing operation.
+Use only the visible game UI and the current computer-use tools. Read puzzle answers from the returned images. Accessibility elements can identify controls, not supply hidden answers. Do not read game source, hidden DOM state, scripts, network responses or walkthroughs. Do not use another backend to bypass a missing operation.
 
 ## Play until blocked
 
@@ -49,7 +49,7 @@ For each failed attempt:
 - Did it inspect small or uncertain areas before deciding?
 - Were planned observations grouped in one Codemode batch?
 - Were known actions applied sequentially through Codemode?
-- Were hints, image coordinates and app observations fresh and correctly scoped?
+- Were element tokens, image coordinates and app observations fresh and correctly scoped?
 - Did it check the actual result before retrying or advancing?
 - Did it stop a partial batch on failure without replaying completed actions?
 

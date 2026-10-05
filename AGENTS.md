@@ -1,7 +1,17 @@
 # Working on this project
 
 Read [README.md](README.md) for project intent and [docs/research-references.md](docs/research-references.md) for research inputs. The linked Linear task owns accepted scope and acceptance; reference claims are not requirements.
-Read [the owned-browser-use skill](.pi/skills/owned-browser-use/SKILL.md) before operating browser tools. It describes image-first native CUA interaction, snapshot-scoped hints and batching in Pi Codemode.
+Read [the computer-use skill](.pi/skills/computer-use/SKILL.md) before operating UI tools. It describes overview, detail and sequential input through Pi Codemode.
+
+## Unified computer use
+
+Use one window-first `computer_*` tool family for all apps, including browsers. Discover a window, read its native accessibility tree and screenshot, then click or type. Do not create a separate browsing API or bind a browser page, tab or profile to use an ordinary window. `browser_*` tools are temporarily disabled in the production extension; their adapter and standalone profiler remain for research.
+
+In YOLO, existing windows do not need session ownership or a browser grant. Safe still limits access to session-opened windows. Neither mode authorizes unrelated work or bypasses the user's task boundaries.
+
+Use coordinates local to the returned window image. The window's desktop position is not an input coordinate. Moving a window alone should not invalidate a local point; resizing or changing image scale can change its mapping and layout.
+
+Rely on CUA's native identity, targeting and coordinate guarantees first. Add an adapter check only for a demonstrated missing guarantee, not a hypothetical one. The current lifetime and geometry checks remain unchanged in this first step; inspect the native contract before simplifying them. Do not move the retired browser binding checks into the common window path.
 
 ## Driver-first design
 
@@ -19,7 +29,7 @@ Prefer a small Qt helper for on-screen observation and crop frames; Qt is a cand
 
 ## Access and scope
 
-Browser tools may use only their owned session, even under YOLO. Desktop YOLO is the default; only the user can change Safe/YOLO. Safe is a UI policy, not OS isolation. LPT-372 and its game are paused; its unfinished old-backend patch is archived in Linear. [Sandbox work](https://linear.app/alexshpunt/issue/LPT-364) is separate and deferred.
+The retained browser research adapter stays within its owned session, even under YOLO; it is not registered as agent tooling. Desktop YOLO is the default; only the user can change Safe/YOLO. Safe is a UI policy, not OS isolation. LPT-372 and its game are paused; its unfinished old-backend patch is archived in Linear. [Sandbox work](https://linear.app/alexshpunt/issue/LPT-364) is separate and deferred.
 
 Keep Pi Agent IDE unchanged. The final provider API and migration remain open. Any extraction experiment needs an isolated IDE branch/worktree and verification of both extensions together. Read [the external comparison](docs/research/external-implementations.md) before repeating research.
 

@@ -27,7 +27,7 @@ Each distribution states its actual sample count. Open and close have one sample
 
 ## Timing boundary
 
-The timer wraps the production `CuaBrowser.call`. The runner decorates its normal `McpDriver` and window observer, without changing the adapter or removing checks. It records ordered native RPC, window lifetime, transport-close and frame-flash timings. Binding and semantic `get_browser_state` calls have different labels.
+The timer wraps the retained `CuaBrowser.call` adapter. Production `browser_*` registration is temporarily disabled; this standalone runner still calls the adapter directly. The runner decorates its normal `McpDriver` and window observer, without changing the adapter or removing checks. It records ordered native RPC, window lifetime, transport-close and frame-flash timings. Binding and semantic `get_browser_state` calls have different labels.
 
 **A native RPC duration includes IPC, transport and Driver processing.** The first RPC also includes lazy process startup and MCP handshake. It does not measure time inside the Driver's capture function separately. First identity/frame use includes lazy peer/helper startup. A child's `cold` flag means first invocation of that label, not proof that every millisecond was startup.
 

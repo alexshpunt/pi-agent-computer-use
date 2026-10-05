@@ -4,6 +4,10 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
+The current user-approved step is unified window-first tooling: disable production `browser_*` registration and keep `computer_*` for all apps, including browsers. Native lifetime and geometry checks are unchanged; CUA-first simplification is a separate step. The retained browser profiler remains standalone research.
+
+Verification: 101 unit tests, typecheck and 9 real-Pi tests passed. The production-loader regression first reproduced six browser registrations, then verified exactly six computer tools and no direct or Codemode browser route. After extension reload, the actual project loadout had six `computer_*` and zero `browser_*`; native read-only Calculator app discovery and runtime close succeeded in unchanged YOLO. The human TUI showed the result and YOLO footer (pane w3E9:p6, revision 2018). No app window, display capture or input was needed. The separately configured global Playwright MCP was neither changed nor used.
+
 The user paused the autonomous epic plan. The approved LPT-380 reversal is complete at 94eb6c43e4086e8d50c7c888c7120a964287ff5a: images stay in normal Pi context until Pi compaction. LPT-381 is canceled at the user's request; cache and prefill stay with Pi and the provider. Other open tasks stay paused. LPT-408 remains Done at 81019f7fadba17b9971e587c3a221a8c2a461d11; its Windows helper proof is in [the report](window-overlay-results.md). LPT-380's former last-three implementation at 6dca15129f68a2e872baa3e76b9b43d553f29a0b and its evidence remain historical, not the current policy. See [image retention](image-context.md).
 
 ## Queue snapshot

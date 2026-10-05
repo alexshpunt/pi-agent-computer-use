@@ -1,8 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { registerVisionDebug } from "./vision-debug.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
-import { CuaBrowser } from "./cua-browser.ts";
-import { registerCuaBrowserTools } from "./cua-browser-tools.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "./config.ts";
 import { McpDriver } from "./driver.ts";
@@ -94,8 +92,6 @@ export default function computerUse(pi: ExtensionAPI): void {
   const images = new CuaImageSettings();
   registerVisionDebug(pi, images);
   const highlights = new WindowHighlights();
-  registerCuaBrowserTools(pi, new CuaBrowser(async () =>
-    new McpDriver(await loadComputerConfig(process.cwd())), () => images.settings(), highlights.flash), () => highlights.close());
   const getMode = registerComputerMode(pi, () => highlights.clear());
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;
