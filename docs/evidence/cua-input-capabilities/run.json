@@ -1,0 +1,465 @@
+{
+  "server": {
+    "name": "cua-driver",
+    "version": "0.33.2"
+  },
+  "platform": "windows-host-from-wsl",
+  "toolCount": 59,
+  "inputCalls": 0,
+  "screenshotCalls": 0,
+  "sourceCommit": "c82d32e3e1adbc6578a148962002ddf6e3e8a15a",
+  "schemaHash": "a22766624bfb1c86babc751370f3d02fa965165b1f31add347d5822cb2d0260e",
+  "missing": [
+    "key_down",
+    "key_up",
+    "mouse_button_down",
+    "mouse_button_up",
+    "mouse_drag",
+    "parallel_mouse_drag",
+    "browser_key"
+  ],
+  "tools": [
+    {
+      "name": "click",
+      "fields": [
+        "action",
+        "button",
+        "capture_id",
+        "count",
+        "delivery_mode",
+        "element_token",
+        "from_zoom",
+        "modifier",
+        "pid",
+        "scope",
+        "session",
+        "target",
+        "window_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "button": [
+          "left",
+          "right",
+          "middle"
+        ],
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "scope": [
+          "window",
+          "desktop"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "double_click",
+      "fields": [
+        "delivery_mode",
+        "element_token",
+        "from_zoom",
+        "modifier",
+        "pid",
+        "session",
+        "window_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "right_click",
+      "fields": [
+        "delivery_mode",
+        "element_token",
+        "from_zoom",
+        "modifier",
+        "pid",
+        "session",
+        "window_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "drag",
+      "fields": [
+        "button",
+        "delivery_mode",
+        "duration_ms",
+        "from_x",
+        "from_y",
+        "from_zoom",
+        "modifier",
+        "pid",
+        "scope",
+        "session",
+        "steps",
+        "target",
+        "to_x",
+        "to_y",
+        "window_id"
+      ],
+      "choices": {
+        "button": [
+          "left",
+          "right",
+          "middle"
+        ],
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "scope": [
+          "window",
+          "desktop"
+        ]
+      },
+      "timing": {
+        "duration_ms": {
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "steps": {
+          "minimum": 1,
+          "maximum": 200
+        }
+      }
+    },
+    {
+      "name": "type_text",
+      "fields": [
+        "delay_ms",
+        "delivery_mode",
+        "element_token",
+        "pid",
+        "scope",
+        "session",
+        "target",
+        "text",
+        "window_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "scope": [
+          "window",
+          "desktop"
+        ]
+      },
+      "timing": {
+        "delay_ms": {
+          "minimum": 0,
+          "maximum": 200
+        }
+      }
+    },
+    {
+      "name": "press_key",
+      "fields": [
+        "delivery_mode",
+        "element_token",
+        "key",
+        "modifiers",
+        "pid",
+        "scope",
+        "session",
+        "target",
+        "window_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "scope": [
+          "window",
+          "desktop"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "hotkey",
+      "fields": [
+        "delivery_mode",
+        "element_token",
+        "keys",
+        "pid",
+        "scope",
+        "session",
+        "target",
+        "window_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "scope": [
+          "window",
+          "desktop"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "scroll",
+      "fields": [
+        "amount",
+        "by",
+        "delivery_mode",
+        "direction",
+        "element_token",
+        "pid",
+        "scope",
+        "session",
+        "target",
+        "window_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "by": [
+          "line",
+          "page"
+        ],
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "direction": [
+          "up",
+          "down",
+          "left",
+          "right"
+        ],
+        "scope": [
+          "window",
+          "desktop"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "get_cursor_position",
+      "fields": [
+        "session"
+      ],
+      "choices": {},
+      "timing": {}
+    },
+    {
+      "name": "move_cursor",
+      "fields": [
+        "cursor_id",
+        "scope",
+        "session",
+        "target",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "scope": [
+          "window",
+          "desktop"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "set_agent_cursor_enabled",
+      "fields": [
+        "enabled",
+        "session"
+      ],
+      "choices": {},
+      "timing": {}
+    },
+    {
+      "name": "set_agent_cursor_motion",
+      "fields": [
+        "arc_flow",
+        "arc_size",
+        "dwell_after_click_ms",
+        "end_handle",
+        "glide_duration_ms",
+        "idle_hide_ms",
+        "session",
+        "spring",
+        "start_handle",
+        "turn_radius"
+      ],
+      "choices": {},
+      "timing": {}
+    },
+    {
+      "name": "get_agent_cursor_state",
+      "fields": [
+        "session"
+      ],
+      "choices": {},
+      "timing": {}
+    },
+    {
+      "name": "set_agent_cursor_theme",
+      "fields": [
+        "reduced_motion",
+        "session",
+        "theme_id"
+      ],
+      "choices": {
+        "reduced_motion": [
+          "auto",
+          "on",
+          "off"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "page",
+      "fields": [
+        "action",
+        "attributes",
+        "bundle_id",
+        "cdp_port",
+        "css_selector",
+        "javascript",
+        "pid",
+        "selector",
+        "session",
+        "target_url_contains",
+        "text",
+        "user_has_confirmed_enabling",
+        "window_id"
+      ],
+      "choices": {
+        "action": [
+          "execute_javascript",
+          "get_text",
+          "query_dom",
+          "click_element",
+          "insert_text",
+          "type_keystrokes",
+          "enable_javascript_apple_events"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "browser_click",
+      "fields": [
+        "delivery_mode",
+        "input_route",
+        "ref",
+        "session",
+        "tab_id",
+        "target_id",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "input_route": [
+          "trusted",
+          "dom_event"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "browser_type",
+      "fields": [
+        "mode",
+        "ref",
+        "replace",
+        "session",
+        "tab_id",
+        "target_id",
+        "text"
+      ],
+      "choices": {
+        "mode": [
+          "insert_text",
+          "keystrokes"
+        ]
+      },
+      "timing": {}
+    },
+    {
+      "name": "browser_pointer",
+      "fields": [
+        "action",
+        "delivery_mode",
+        "delta_x",
+        "delta_y",
+        "destination_ref",
+        "input_route",
+        "ref",
+        "session",
+        "tab_id",
+        "target_id",
+        "to_x",
+        "to_y",
+        "x",
+        "y"
+      ],
+      "choices": {
+        "action": [
+          "hover",
+          "right_click",
+          "double_click",
+          "scroll",
+          "drag"
+        ],
+        "delivery_mode": [
+          "background",
+          "foreground"
+        ],
+        "input_route": [
+          "trusted",
+          "dom_event"
+        ]
+      },
+      "timing": {}
+    }
+  ],
+  "cleanup": {
+    "helperCount": 0,
+    "driverCount": 0,
+    "ownedProfiles": 0
+  },
+  "limits": [
+    "Read-only catalog, not native event/cancellation qualification.",
+    "Linux-only methods are not a Windows route.",
+    "0.33.3 reviewed, not installed or runtime-qualified."
+  ]
+}
