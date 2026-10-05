@@ -12,7 +12,7 @@ LPT-408: Windows-only whole-window observation frames are verified. Working tree
 | --- | --- | --- |
 | LPT-408 | Human whole-window observation frame | Done; native, parent Pi and clean-tree proof shipped |
 | LPT-372 | Focused browser and short hints | Paused game acceptance; do not resume without specific authorization |
-| LPT-374 | Vision debug controls | Inspect overlap with completed LPT-375/396/407 before rebuilding |
+| LPT-374 | Vision debug controls | Native size controls qualified for atomic/session isolation; extra structural/annotation acceptance remains open ([checks](vision-controls-checks.md)) |
 | LPT-378 | Coordinate grounding | Verify native overview/detail coordinate contracts and model limits |
 | LPT-379 | Model-facing visual annotations | Separate from human frames; inspect acceptance and safe adapter design |
 | LPT-380 | Last three screenshots in model context | Done; HTTP/native wire, reload/compaction/reopen and parent checks pass |
