@@ -1,7 +1,7 @@
 # Working on this project
 
 Read [README.md](README.md) for project intent and [docs/research-references.md](docs/research-references.md) for research inputs. The linked Linear task owns accepted scope and acceptance; reference claims are not requirements.
-Read [the owned-browser-use skill](skills/owned-browser-use/SKILL.md) before operating browser tools. It describes image-first native CUA interaction, snapshot-scoped hints and batching in Pi Codemode.
+Read [the owned-browser-use skill](.pi/skills/owned-browser-use/SKILL.md) before operating browser tools. It describes image-first native CUA interaction, snapshot-scoped hints and batching in Pi Codemode.
 
 ## Driver-first design
 

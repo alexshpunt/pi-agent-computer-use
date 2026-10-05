@@ -69,7 +69,7 @@ Vision debug mirrors exact returned bytes, hashes, native coordinate metadata an
 
 ## Verification and history
 
-Read [the operating skill](../skills/owned-browser-use/SKILL.md) before browser actions. Opt-in scripts use only fresh profiles and synthetic pages:
+Read [the operating skill](../.pi/skills/owned-browser-use/SKILL.md) before browser actions. Opt-in scripts use only fresh profiles and synthetic pages:
 
 - `node --experimental-transform-types scripts/verify-cua-adapter.mjs`: native lifecycle, four hints, refusal, input and navigation.
 - `node scripts/live-cua-browser.mjs`: isolated real-model Pi through the production extension and existing Codemode.
