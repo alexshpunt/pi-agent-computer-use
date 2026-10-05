@@ -4,7 +4,7 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
-The user paused the autonomous epic plan. Only the approved LPT-380 policy reversal is active: remove separate image eviction and leave images in normal Pi context until Pi compaction. Other open tasks stay paused. LPT-408 remains Done at 81019f7fadba17b9971e587c3a221a8c2a461d11; its Windows helper proof is in [the report](window-overlay-results.md). LPT-380's former last-three implementation at 6dca15129f68a2e872baa3e76b9b43d553f29a0b and its evidence remain historical, not the current policy. See [image retention](image-context.md).
+The user paused the autonomous epic plan. The approved LPT-380 reversal is complete at 94eb6c43e4086e8d50c7c888c7120a964287ff5a: images stay in normal Pi context until Pi compaction. LPT-381 is canceled at the user's request; cache and prefill stay with Pi and the provider. Other open tasks stay paused. LPT-408 remains Done at 81019f7fadba17b9971e587c3a221a8c2a461d11; its Windows helper proof is in [the report](window-overlay-results.md). LPT-380's former last-three implementation at 6dca15129f68a2e872baa3e76b9b43d553f29a0b and its evidence remain historical, not the current policy. See [image retention](image-context.md).
 
 ## Queue snapshot
 
@@ -16,7 +16,7 @@ The user paused the autonomous epic plan. Only the approved LPT-380 policy rever
 | LPT-378 | Coordinate grounding | Verify native overview/detail coordinate contracts and model limits |
 | LPT-379 | Model-facing visual annotations | Separate from human frames; inspect acceptance and safe adapter design |
 | LPT-380 | Normal Pi image retention | User-approved reversal verified; no separate eviction, HTTP12/native continuation/reload/compaction/parent proof; viewer cards remain bounded |
-| LPT-381 | Prompt/KV cache and prewarm | Active serializer controls probed locally; remote cold/warm/cost acceptance remains open ([boundary](research/pi-cache-controls.md)) |
+| LPT-381 | Prompt/KV cache and prewarm | Canceled; no computer-use cache or prewarm layer. Keep prior [research](research/pi-cache-controls.md) as history only |
 | LPT-382 | Existing Pi Codemode only | Inspect current executable contracts and any remaining integration gap |
 | LPT-383 | Physical key sequences and intervals | Blocked: qualified Windows/browser CUA has no public raw down/up or hold contract |
 | LPT-384 | Stateful mouse, relative movement and drag | Blocked: complete drags do not expose held-button state across calls |

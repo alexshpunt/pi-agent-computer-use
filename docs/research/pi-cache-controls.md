@@ -1,6 +1,6 @@
 # Pi cache controls: transport boundary
 
-LPT-381 is not complete. This bounded pass checks what the installed serializers send, not remote cache hits, cold/warm speed or billing. No account credentials, paid requests, second agent, prewarm or persistent settings were used.
+LPT-381 is canceled at the user's request. Computer-use leaves cache and prefill to Pi and the provider; no separate cache strategy, prewarm or cache controls will be added. This report preserves earlier research, not remaining work. The bounded pass checked serializer output, not remote cache hits, cold/warm speed or billing. No account credentials, paid requests, second agent, prewarm or persistent settings were used.
 
 ## Actual local probe
 
@@ -34,6 +34,6 @@ The user superseded LPT-380's three-image request limit: images now stay in ordi
 
 Keep normal Pi image retention and existing cache defaults. Do not reorder user/tool history for cache convenience, prewarm automatically or expose guessed provider controls. This is a safe unchanged baseline, not a measured optimal cache strategy.
 
-## Remaining acceptance
+## Canceled work
 
-LPT-381 still needs authorized remote cold/warm repetitions, actual usage and full cost/TTFT/cycle accounting for append, eviction, image/detail change, compaction and model change. A local peer cannot measure these. No paid matrix was started while the user was away. Provider prefill time remains unavailable unless the provider exposes it; TTFT is not prefill. The task remains open, with this runner supplying only the serializer/control boundary.
+Remote cold/warm repetitions, cost/TTFT measurements and a separate cache strategy are no longer part of the computer-use plan. The existing probe remains historical serializer evidence; it does not prove remote cache performance. No paid matrix was started. Provider prefill time remains unavailable unless the provider exposes it; TTFT is not prefill.
