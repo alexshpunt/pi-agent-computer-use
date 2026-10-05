@@ -30,6 +30,8 @@ On Windows, an optional user-local Qt Widgets helper flashes a human-only whole-
 
 Images stay in normal Pi context, including user attachments, tool/Codemode images and detail. This extension does not remove older images or rewrite history. Pi's normal compaction owns context reduction; the debug viewer keeps only three display cards. See [the retention contract and transport checks](docs/image-context.md).
 
+The opt-in [browser profiler](docs/browser-profile.md) times the production adapter and ordered native/identity/frame calls in a separate synthetic run. It does not profile normal tools continuously or touch the paused game.
+
 - [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
 - [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
 - [Research references](docs/research-references.md)

@@ -75,6 +75,7 @@ Read [the operating skill](../.pi/skills/owned-browser-use/SKILL.md) before brow
 - `node scripts/live-cua-browser.mjs`: isolated real-model Pi through the production extension and existing Codemode.
 - `node scripts/cua-browser-fixture.mjs`: disposable parent-session fixture; stop only its owned server.
 - `node scripts/export-cua-preview.mjs <viewer-url> <output-directory>`: export exact retained preview assets without new input/capture.
+- `node --experimental-transform-types scripts/profile-browser.mjs 5`: opt-in [operation timings and ordered native-call breakdown](browser-profile.md), using a separate synthetic browser.
 - `node scripts/probe-cua-browser.mjs`: runtime capability/schema inspection.
 - `node scripts/verify-cua-browser-native.mjs`: raw native qualification with a human-grounded zoom point prompt.
 
