@@ -1,65 +1,91 @@
 ---
 name: computer-use-self-bench
-description: Run an honest live self-benchmark of computer use on Neal's Not a Robot game. Use when the user asks to test the agent's browser skills, replay the game, compare interaction workflows or see how far the agent can get.
+description: Play Neal's Not a Robot game to test computer use. Continue until a level fails after five attempts, then analyze the session for agent mistakes, unclear skill instructions, tool ergonomics and missing or broken tool capabilities.
 ---
 
 # Computer-use self-bench
 
-Use https://neal.fun/not-a-robot/ as the live benchmark. This is a puzzle game that imitates CAPTCHAs, not permission to solve real access-control challenges elsewhere.
+Read [Computer Use](../computer-use/SKILL.md). Follow its **observe → inspect → plan → act → observe** loop throughout the game.
 
-Read [Computer Use](../computer-use/SKILL.md) and [the owned-browser contract](../owned-browser-use/SKILL.md) first. Use the current Pi tools and CUA only. Do not start another agent, another backend or a paid model matrix.
+## Start the game
 
-## Start or resume
+Open https://neal.fun/not-a-robot/ in the owned browser. Start at the first level for a new run. If the user asks to resume, observe the existing game and continue from its current state. Do not reset a paused game without a request for a fresh run.
 
-- Follow the user's requested starting point. For a fresh run, open the game in one new isolated owned browser. If an owned browser already exists, observe it before choosing a reset or close. Do not navigate to the same URL just to refresh.
-- Do not touch personal browsers, profiles, accounts or unrelated windows. YOLO does not broaden browser ownership.
-- Record the model, current tool/runtime version, overview size and whether the run is fresh or resumed. Keep unavailable values unknown.
-- Record the initial visible level before the first input. Old runs do not count as this run's progress.
-- Keep a checkpoint in the ignored `.tmp/` directory while playing. At a pause, interruption or tool failure, record the last visibly passed level, current level and which inputs already ran. Put reusable reports in the repository rather than leaving them only in temporary storage.
+Use only the visible game UI and the current computer-use tools. Read puzzle answers from the returned images. Accessibility hints can identify controls, not supply hidden answers. Do not read game source, hidden DOM state, scripts, network responses or walkthroughs. Do not use another backend to bypass a missing operation.
 
-## Play through the visible UI
+## Play until blocked
 
-1. Read the instruction and actual returned image. Semantic text/hints can identify visible controls, but must not supply a hidden puzzle answer.
-2. If a string or target is too small, use a grounded zoom from the latest overview. Read the returned pixels yourself.
-3. Reason about the puzzle. Enter the most likely reading even when some characters are uncertain; do not leave answers blank merely because they are difficult. Do not invent confidence scores unless the user requests them.
-4. Use current semantic hints for known independent actions. Await them in Pi Codemode with `observe:false`, then observe at the next decision point. A sequence stops at the first refusal or unknown outcome; completed inputs are not replayed.
-5. For coordinate actions, ground each point in the latest returned image. A capture-free pixel click consumes that image context; get a new image before another pixel action. Do not batch guessed coordinates or reuse a zoom after an overview.
-6. Verify the selection or entered value before submitting when the puzzle allows it. After submission, count a pass only when the next level or an explicit success state is visible.
-7. Continue through levels until completion, the user's stop/pause, or a concrete unresolved blocker. Do not stop automatically after each passed level.
+1. Read the level's instruction and small whole-window overview.
+2. Choose the areas needed to solve it and inspect them in one Codemode batch.
+3. Decide on an answer and plan the supported action sequence.
+4. Apply the sequence through Codemode and observe the result.
+5. Count the level as passed only when the next level or an explicit success state is visible. Continue immediately to the next level.
+6. After a failed attempt, inspect what actually happened. Correct the reasoning or interaction approach before trying again.
+7. Stop playing after **five unsuccessful attempts on the same level** and start the reflection loop. Reset the attempt count when a level is passed.
 
-Never inspect game source, scripts, network responses, local storage, hidden DOM state or answer-bearing image metadata. Do not use OCR, walkthroughs, external solutions or remembered answers from earlier runs. Generic accessibility control discovery is allowed. The challenge is the agent reading and operating the UI.
+An attempt is a complete answer submission or a deliberate interaction sequence intended to solve the level. Screenshots, zooms and individual clicks within one sequence are not separate attempts.
 
-## Separate failures
+Make each retry a reasoned attempt, not a blind repeat. Try the most likely reading even when text is uncertain. Do not leave an answer blank merely because it is hard to read.
 
-- **Reasoning:** the input visibly took effect, but the selected answer was wrong. Inspect the puzzle again and try a reasoned correction. This is not automatically a missing tool capability.
-- **Delivery:** the tool refused before input, returned unknown, or the intended change was not observed. Observe before deciding what happened. Do not replay unknown input.
-- **Freshness:** pixels and semantics disagree. Use bounded read-only observations, not repeated clicks to force a repaint. A successful capture, delay or foreground raise does not prove paint readiness.
-- **Capability:** an actually needed operation is absent from the current public tools. Record the operation and evidence. Do not switch to Playwright, raw CDP, page JavaScript, global OS input or a patched Driver to finish the level.
+A refusal is not proof that an answer was wrong. An unknown action may already have taken effect: observe before deciding what happened and never replay it blindly. If a required operation cannot be performed safely with the available tools, stop and analyze that blocker rather than manufacture five unsafe retries.
 
-Do not change the extension in the middle of a scored run and present the result as one unchanged baseline. If the user asks for a fix, checkpoint the run and report the before/after runs separately.
+Keep track of the current level, attempted answers/actions and observed outcomes so the session can be analyzed. Five failures mean the run is blocked at that level, not that the level is universally impossible.
 
-## Timing and evidence
+## Reflection loop
 
-For a timed puzzle, prepare only the visible targets already observed and batch deterministic supported actions where possible. Do not preload hidden future targets or interpret tool latency as model reasoning latency.
+Stop game input. Review the session's actual instructions, observations, chosen targets, Codemode batches, action outcomes and submissions. Read the current Computer Use skill again; do not judge it from memory.
 
-Record per level:
+For each failed attempt:
 
-| Field | Record |
-| --- | --- |
-| Level / puzzle | Actual visible label |
-| Attempts | Submissions and reasoned corrections |
-| Outcome | Passed, failed, paused or blocked |
-| Observation | Overview/zoom used and visible result |
-| Tool calls | Actual calls; separate capture-free actions from observations |
-| Timing | Measured timestamps/elapsed time only; unknown if not captured |
-| Issue | Reasoning, delivery, freshness or missing capability |
+1. Reconstruct what the agent saw, what it decided, which actions ran and what changed.
+2. Find the first point where the observed result diverged from the plan.
+3. Classify the cause using the checks below. More than one cause can apply.
+4. Check the explanation against the session evidence and the actual tool contract. Reject explanations contradicted by the evidence.
+5. Identify a specific correction and how it would be verified. Repeat the analysis until each failure has an evidence-backed explanation or an explicitly unresolved cause.
 
-Do not call a run complete because an action returned success. Do not fabricate token, cost, latency or accuracy numbers. A single game run is not a general model leaderboard or a universal coordinate benchmark.
+### Did the agent follow the skill?
 
-Use `inspect_tui` when judging what the human sees in Pi. Stock collapsed image attachments do not prove inline pixels were visible. The actual Windows browser, agent cursor and human observation frame are separate from model perception images.
+- Did it first establish the current environment from a whole-window overview?
+- Did it inspect small or uncertain areas before deciding?
+- Were planned observations grouped in one Codemode batch?
+- Were known actions applied sequentially through Codemode?
+- Were hints, image coordinates and app observations fresh and correctly scoped?
+- Did it check the actual result before retrying or advancing?
+- Did it stop a partial batch on failure without replaying completed actions?
 
-At a user pause, keep the owned browser as requested and preserve the checkpoint. When ending the run, close only its owned browser/session; verify uncertain cleanup before claiming it is closed.
+If the skill clearly explained a rule and the agent ignored it, record an agent mistake. Do not call that a missing tool capability.
 
-## Report
+### Was the skill unclear or incomplete?
 
-State the last visibly passed level, current level, attempts, concrete blockers and whether the browser is still open. Separate puzzle mistakes from tool defects. Link any durable evidence, and keep private desktop pixels/text out of Git and Linear.
+Find the exact instruction that was ambiguous, misleading or missing. Explain which decision it failed to support. Propose a concrete wording change or a small example, not a general expansion of the skill.
+
+Separate a missing explanation from an instruction the agent simply did not read or follow.
+
+### Was the tool awkward to use?
+
+Identify avoidable round trips, repeated captures, cumbersome target selection, confusing parameters or output that made the next decision harder. Show where the workflow became awkward and what a simpler interaction would preserve.
+
+A supported but inconvenient operation is an ergonomics issue, not an absent capability.
+
+### Did a tool prevent progress or behave incorrectly?
+
+Name the required operation and the public tool that was tried. Compare its documented contract with the actual input, output and UI effect.
+
+Distinguish:
+
+- **Missing capability:** the required operation is not exposed and no supported equivalent solves the task.
+- **Tool defect:** a valid, grounded call behaved contrary to its contract.
+- **Guard or delivery refusal:** the call was rejected because its target, permission or grounding was invalid or unavailable.
+- **Unverified state:** pixels, semantics or action outcomes did not establish what happened.
+
+Do not turn a stale target, wrong coordinate space or uncertain screenshot into a tool-defect claim without evidence.
+
+### Was it a reasoning error?
+
+If the intended input visibly took effect but the puzzle rejected the answer, inspect the interpretation and answer itself. Wrong selections, misread characters and incorrect puzzle logic are agent errors unless evidence shows otherwise.
+
+## Finish the analysis
+
+State the blocked level and the five attempts, or the concrete earlier tool blocker. For each issue, give the evidence, cause, proposed correction and verification step. Keep agent mistakes, skill changes, ergonomics improvements, missing capabilities and tool defects separate.
+
+Do not automatically change the tool contract or implement new capabilities as part of the analysis. If a correction is applied, retry the blocked level with a new five-attempt cycle and check whether that specific problem was resolved. Do not restart an unchanged run without a new explanation or approach.
