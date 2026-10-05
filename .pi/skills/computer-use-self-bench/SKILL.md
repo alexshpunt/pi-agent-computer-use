@@ -7,7 +7,7 @@ description: Run an honest live self-benchmark of computer use on Neal's Not a R
 
 Use https://neal.fun/not-a-robot/ as the live benchmark. This is a puzzle game that imitates CAPTCHAs, not permission to solve real access-control challenges elsewhere.
 
-Read [Computer Use](../computer-use/SKILL.md) and [the owned-browser contract](../owned-browser-use/SKILL.md) first. Use the current Pi tools and CUA only. Do not start another agent, another backend or a paid model matrix.
+Read [Computer Use](../computer-use/SKILL.md) and [the owned-browser contract](../../../skills/owned-browser-use/SKILL.md) first. Use the current Pi tools and CUA only. Do not start another agent, another backend or a paid model matrix.
 
 ## Start or resume
 

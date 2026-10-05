@@ -12,7 +12,7 @@ Control native apps and browsers on the user's computer by reading or operating 
 
 This is the user-requested minimal working adaptation of the full Codex unified instructions. The [complete unchanged source](references/codex-unified-original.md) is preserved for comparison, not execution. Its SHA-256 is `0a08dbe6ce18cadb55215be30ebbba9afd6195a7333023795424ef6aee2ad148`. API names, parameters, output handling and platform claims differ where Pi's actual contract requires it. No `@oai/cua`, `@oai/sky`, `cua_repl` or compatibility runtime is installed here. The inspected bundle had no established redistribution license; do not assume the public Codex repository's license covers these bundled assets or include them in a public release without review.
 
-Read [the owned-browser skill](../owned-browser-use/SKILL.md) before browser tools and [capability gaps](references/capability-gaps.md) before planning missing operations. Project permissions and safety rules still apply; this skill does not grant new access.
+Read [the owned-browser skill](../../../skills/owned-browser-use/SKILL.md) before browser tools and [capability gaps](references/capability-gaps.md) before planning missing operations. Project permissions and safety rules still apply; this skill does not grant new access.
 
 - Use existing Pi `codemode` JavaScript for all UI action sequences.
 - Do not use other technologies for computer interactions: no Playwright, raw CDP, page JavaScript, shell-driven UI, OS-global input or another capture/input backend. CUA is the only backend; missing capabilities belong in the adapter above the unmodified Driver.
