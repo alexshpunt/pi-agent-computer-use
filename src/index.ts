@@ -13,21 +13,21 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   closeSession: () => Promise<ComputerResult>): void {
   pi.registerTool({
     name: "computer_apps", label: "Computer apps",
-    description: "Find installed Windows apps by optional query. Returns exact app names/app_id for computer_open. No app is launched.",
+    description: "Find installed Windows apps by optional query. Returns exact app names/app_id for computer_open. No app is launched. In Codemode, save the chosen app_id with store under a short task name and reuse it with load; do not retype returned IDs.",
     parameters: Type.Object({ query: Type.Optional(Type.String()) }, { additionalProperties: false }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).apps(signal, params.query); },
   });
   pi.registerTool({
     name: "computer_open", label: "Computer open",
-    description: "Open a genuinely NEW installed Windows app window by exact app name or computer_apps app_id. Returns window_ref plus first accessibility observation and screenshot, ready for one action. No PID/HWND, target config, shell tool, or reload. Opening is attempted once; reuse of an existing window/tab is not success. Unknown means discover before deciding; never blindly relaunch. Safe permits only session-opened windows; YOLO permits desktop-wide UI access. Neither is an OS sandbox.",
+    description: "Open a genuinely NEW installed Windows app window by exact app name or computer_apps app_id. Returns window_ref plus first accessibility observation and screenshot, ready for one action. No PID/HWND, target config, shell tool, or reload. Opening is attempted once; reuse of an existing window/tab is not success. Unknown means discover before deciding; never blindly relaunch. Safe permits only session-opened windows; YOLO permits desktop-wide UI access. Neither is an OS sandbox. In Codemode, save returned window_ref and current observation_id, element_tokens and agent_image.image_id with store under a short task name; reuse them with load, not copied ID literals. Store only compact references, not images or whole results.",
     parameters: Type.Object({ app: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).open(params.app, signal); },
   });
   pi.registerTool({
     name: "computer_windows", label: "Computer windows",
-    description: "Discover permitted Windows desktop windows (Safe: only session-opened; YOLO: also already open), optionally filtered by app/title. Returns session window_ref identities and metadata, not UI contents. Use returned refs for observation/actions. A closed/reused HWND cannot keep an old ref. No app is launched.",
+    description: "Discover permitted Windows desktop windows (Safe: only session-opened; YOLO: also already open), optionally filtered by app/title. Returns session window_ref identities and metadata, not UI contents. Use returned refs for observation/actions. A closed/reused HWND cannot keep an old ref. No app is launched. In Codemode, store the chosen window_ref under a short task name and reuse it with load; do not retype returned IDs.",
     parameters: Type.Object({ query: Type.Optional(Type.String()) }, { additionalProperties: false }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).windows(signal, params.query); },
@@ -38,7 +38,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
       status: Type.String(), text: Type.String(), source: Type.Optional(Type.Unknown()),
       image: Type.Optional(Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() })),
     }, { additionalProperties: true }),
-    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one action. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode.",
+    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one action. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode. In Codemode, load the stored window_ref and replace stored observation_id, element_tokens and agent_image.image_id after each successful overview. Keep only compact references in store, not screenshots or whole results. Storage does not extend ID lifetime; detail consumes its overview.",
     parameters: Type.Object({
       window_ref: Type.Optional(Type.String({ minLength: 1 })),
       display: Type.Optional(Type.String({ description: "Only primary is supported; display reading is YOLO-only and grants no input." })),
@@ -64,7 +64,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
   pi.registerTool({
     name: "computer_act", label: "Computer act",
-    description: "Perform one grounded action on window_ref using its latest observation_id. Each dispatch consumes that observation, even on failure. Use its element_token or scoped screenshot x/y. type_text inputs text; set_value replaces an element value; select_all sends Ctrl+A. Background is default. Foreground must be explicit and only after an observed failure/refusal. Unknown may have changed the app: never blindly retry. Observe to verify. Safe denies outside-session windows; YOLO permits them. Mode is a user choice, not a tool argument. Neither is OS isolation. Use only task-authorized windows/documents.",
+    description: "Perform one grounded action on window_ref using its latest observation_id. Each dispatch consumes that observation, even on failure. Use its element_token or scoped screenshot x/y. type_text inputs text; set_value replaces an element value; select_all sends Ctrl+A. Background is default. Foreground must be explicit and only after an observed failure/refusal. Unknown may have changed the app: never blindly retry. Observe to verify. Safe denies outside-session windows; YOLO permits them. Mode is a user choice, not a tool argument. Neither is OS isolation. Use only task-authorized windows/documents. In Codemode, load window_ref and current observation/target IDs from store instead of retyping them. Invalidate stored observation_id and element_tokens after every dispatch, even on failure; observe again and store fresh IDs before another action.",
     parameters: Type.Object({
       window_ref: Type.String({ minLength: 1 }),
       observation_id: Type.String({ minLength: 1 }),
@@ -80,7 +80,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
   pi.registerTool({
     name: "computer_close", label: "Computer close",
-    description: "Release this session's Driver and window-identity peer, invalidate window/observation refs. Does not close application windows or save documents. Clean up task-owned windows through grounded UI actions first.",
+    description: "Release this session's Driver and window-identity peer, invalidate window/observation refs. Does not close application windows or save documents. Clean up task-owned windows through grounded UI actions first. Discard saved window/observation/token/image IDs in Codemode storage after release; rediscover windows before saving new references.",
     parameters: Type.Object({}, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async execute() { return closeSession(); },
