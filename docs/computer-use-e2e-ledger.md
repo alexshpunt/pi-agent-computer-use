@@ -4,6 +4,8 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
+LPT-386–388 passed the approved scope: bounded native resources, snapshot hints in structure and images, local refinement, exact supported hinted actions and private raw/sent comparison. Verification passed 214 unit tests, typecheck, 13 real-Pi tests, owned native/browser effects, production viewer selection/toggle, actual TUI and own cleanup. Native missing ancestry/disabled nodes stay unknown. See [results and limits](ui-resource-results.md). Other epic work stays paused.
+
 LPT-610's approved bounded Windows key holds are verified: one command holds simultaneous keys and optional grounded clicks/straight/curved paths, then releases. Exact separate installation, native interruption/release, existing compatibility, production Codemode, separate Shift-pointer commands and actual TUI passed. Verification: 195 unit tests, typecheck and 12 real-Pi tests. See [key-hold results](windows-key-hold-results.md). Old runtimes and the unsaved Paint picture remain untouched; other epic work stays paused.
 
 LPT-422's approved public CUA fork now supports continuous Windows left-button paths. The unchanged base built first; exact fork bytes passed native release/cancellation, compatibility, production adapter and a new Paint Brush picture with 27 held paths. After the user-approved adoption, this installation selects a separate qualified user-local runtime; 0.33.2 remains available. Verification passed 171 unit tests, typecheck, 11 real-Pi tests, installed cancellation/release and live Paint/TUI. The picture stays open and unsaved. See [Windows drawing results](windows-held-path-results.md). Other epic work stays paused.
@@ -32,9 +34,9 @@ The user paused the autonomous epic plan. The approved LPT-380 reversal is compl
 | LPT-383 | Complete keys/chords and measured intervals | Done: bounded batch, native key pairs and no replay; see [results](complete-input-results.md) |
 | LPT-384 | Complete native clicks, token scroll and straight drags | Done: approved complete gestures; unsafe resized-image pixel scroll is refused before input |
 | LPT-385 | Computed independent straight strokes | Done: three separate native pointer strokes, triangle pixels and read-only detail |
-| LPT-386 | Shared structural UI resources | Keep IDE unchanged; inspect standalone contract |
-| LPT-387 | Stable short hints across sources | Re-resolution must never silently rebind a stale hint |
-| LPT-388 | Structural navigation and actions | Depends on guarded resources/hints |
+| LPT-386 | Shared native structural UI resources | Verified: bounded native/browser snapshots, duplicates, local refinement and explicit partial-tree limits |
+| LPT-387 | Snapshot hints in structure and images | Verified: readable native labels, exact private raw/sent comparison, later-capture toggle and retired aliases |
+| LPT-388 | Read-only inspection and supported hinted input | Verified: exact crop/highlight, native click/value/toggle/scroll effects, no-replay guards and TUI; see [results](ui-resource-results.md) |
 | LPT-275 | Umbrella / platform matrix | Historical scope is broader than the Windows prototype; do not claim untested platform parity |
 
 Completed source tasks include LPT-356/363/365/370/373/375/376/377/396/407. Read their current reports before treating historical Playwright behavior as current. LPT-364 is completed research, not permission to deploy a sandbox. LPT-355 migration remains Ideas.

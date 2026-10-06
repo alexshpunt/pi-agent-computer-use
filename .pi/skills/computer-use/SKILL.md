@@ -29,6 +29,24 @@ For a wider view, use `computer_observe({display:"primary"})` in YOLO when the t
 
 Collect already-chosen source overviews sequentially in one Codemode call. Forward needed images explicitly: Codemode does not forward them automatically.
 
+Use `view.ui` for reported controls and short hints. It keeps exact native tokens, parent hints, reported state/actions and separate `native_screen`/`window_image` bounds. Missing fields are unknown. A hint is unique only to its returned window/observation; save it in `store` and never carry it into a new native snapshot. Label badges can be absent for collisions, disabled controls or unprovable geometry; read `hint_display` rather than guessing.
+
+Refine the current collected tree without a native reread. Batch already-chosen search, scope, inspect and highlight calls sequentially in one Codemode call:
+
+```js
+const found = await tools.computer_observe({window_ref:load("task_window"),
+  ui:{operation:"search",observation_id:load("task_observation"),query:"Observed label",limit:20}});
+text(found.ui); // Duplicate names stay separate. Select using observed parent, role and pixels.
+// Save an actual selected hint as "task_hint" before using it.
+const selected = await tools.computer_observe({window_ref:load("task_window"),
+  ui:{operation:"inspect",observation_id:load("task_observation"),hint:load("task_hint")}});
+text(selected.ui);
+```
+
+`scope` selects a node and collected descendants and returns a marked copy of the original overview. `highlight` marks one exact node on that same image; neither returns fresh pixels nor consumes input authority. `inspect` returns one node without an image. Search/scope accept optional query/role/limit; selected-element operations do not. Partial-tree absence is unknown. Request `capture:{max_elements:500,max_depth:20}` only when a new bounded native walk is needed; it retires old hints. Native `query` is also a reread, not local refinement. Never invent ancestry when `parent_hint` is absent.
+
+For an exact control's native detail, use `ui:{operation:"crop",observation_id:load("task_observation"),hint:load("task_hint")}`. It needs reported screenshot bounds, consumes the overview, and has the same fresh-pixel geometry rules as zoom. Clear stored input/image authority afterward and observe again before input.
+
 ## 2. Inspect relevant areas in one batch
 
 Choose rectangles from the overview you have seen. Inspect only areas needed for the next decision; do not enlarge the whole screenshot to read one small area.
@@ -68,7 +86,7 @@ The first overview and inspection batch are separate decision points. See the en
 
 Read the detail images. Know the target, expected effect and stopping point of every action.
 
-Prefer an observed element token for an identified control. Use pixels for controls visible only in the overview. Points and drag endpoints are local to the returned **window PNG**. Do not add the window's desktop position or mix display, detail, CSS and window-image coordinates.
+Prefer a current short hint or observed element token for an identified control. Pass only one target form. Reported disabled or outside-image elements cannot act. Use pixels for controls visible only in the overview. Points and drag endpoints are local to the returned **window PNG**. Do not add the window's desktop position or mix display, detail, CSS and window-image coordinates.
 
 Batch only steps whose targets and order are already known. Stop at navigation, a new dialog, changed layout or a result needing a new decision. Native accessibility is not browser DOM semantics; do not invent hints or a direct URL-navigation API.
 
@@ -79,12 +97,12 @@ A single action consumes the latest `observation_id` when dispatched, even on fa
 ```js
 const view = await tools.computer_observe({window_ref:load("task_window")});
 if (view.status !== "observed") throw Error(view.text);
-const matches = view.state.elements.filter(e => e.label === "Observed button label");
+const matches = view.ui.elements.filter(e => e.name === "Observed button label" && e.enabled !== false);
 if (matches.length !== 1) throw Error("Target changed or is ambiguous.");
-store("task_observation", view.observation_id); store("task_target", matches[0].element_token);
+store("task_observation", view.observation_id); store("task_target", matches[0].hint);
 try {
   text(await tools.computer_act({window_ref:load("task_window"), observation_id:load("task_observation"),
-    action:"click", element_token:load("task_target")}));
+    action:"click", hint:load("task_target")}));
 } finally { store("task_observation",null); store("task_target",null); }
 const after = await tools.computer_observe({window_ref:load("task_window")});
 if (after.status !== "observed") throw Error(after.text);
@@ -126,6 +144,8 @@ If the task is complete, finish. Otherwise choose the next inspection and action
 | `computer_open({app})` | Open a genuinely new window and return its first observation. |
 | `computer_windows({query?})` | Discover permitted windows and refs. |
 | `computer_observe({window_ref,query?})` | Native tree and whole-window PNG; query filters labels/values and ancestors. |
+| `computer_observe({window_ref,ui})` | Local search/scope/inspect/highlight, or consuming native element crop. |
+| `computer_observe({window_ref,capture})` | Explicit native limits and per-capture hints toggle. |
 | `computer_observe({display:"primary"})` | Read-only primary-display PNG in YOLO. |
 | `computer_observe({window_ref,zoom})` / `({display:"primary",zoom})` | Detail from the latest overview image ID; no query. |
 | `computer_act(...)` | One complete window action or one bounded keyboard/stroke sequence. |

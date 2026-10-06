@@ -5,6 +5,27 @@ import { startVisionServer } from "../src/vision-server.ts";
 import { VisionTrace } from "../src/vision-trace.ts";
 
 // Native controls must not imply that a second image engine still runs.
+test("the private hints toggle is same-origin, session-local and does not rewrite old captures", async () => {
+  const images = new CuaImageSettings(); const trace = new VisionTrace("hints");
+  const frozen = images.settings(); const bytes = await readFile(new URL("./fixtures/cua-zoom.jpg", import.meta.url));
+  trace.startAction("first", "computer_observe", {});
+  trace.finishAction("first", [{ type: "image", data: bytes.toString("base64"), mimeType: "image/jpeg" }],
+    { status: "observed", agent_image: { configuration: frozen } }, false);
+  const before = trace.snapshot().captures; const server = await startVisionServer(trace, images);
+  const url = new URL("hints", server.url); const headers = { Origin: url.origin, "Content-Type": "application/json" };
+  try {
+    for (const body of [{ enabled: "false" }, { enabled: false, mode: "yolo" }]) {
+      expect((await fetch(url, { method: "POST", headers, body: JSON.stringify(body) })).status).toBe(400);
+      expect(images.settings()).toEqual(frozen);
+    }
+    expect((await fetch(url, { method: "POST", headers: { ...headers, Origin: "https://foreign.example" }, body: '{"enabled":false}' })).status).toBe(403);
+    expect(await (await fetch(url, { method: "POST", headers, body: '{"enabled":false}' })).json()).toMatchObject({ hints: false, version: 1 });
+    images.update({ kernel: "lanczos3", maxLongEdge: 800, scale: 1 });
+    expect(images.settings()).toMatchObject({ hints: false, version: 2 });
+    expect(trace.snapshot().captures).toEqual(before); expect(frozen.hints).toBeUndefined();
+    expect(trace.asset(trace.snapshot().captures[0].hash)).toEqual(bytes);
+  } finally { await server.close(); }
+});
 test("native settings freeze captures, reject unsupported kernels and reset without originals", () => {
   const images = new CuaImageSettings(); const first = images.settings();
   expect(first).toMatchObject({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0 });

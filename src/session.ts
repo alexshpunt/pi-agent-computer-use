@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
@@ -49,10 +50,11 @@ export interface ComputerResult {
     source?: ObservationSource;
     agent_image?: Record<string, unknown>;
     highlight?: HighlightResult;
+    ui?: UiResource;
   };
   isError?: boolean;
 }
-interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect> }
+interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
@@ -64,6 +66,8 @@ export class ComputerSession {
 
   private readonly sessionId = randomUUID();
   private displayOverview?: DetailContext;
+  private uiSerial = 0;
+  private uiImages: Observation[] = [];
 
   private geometry(state: Record<string, unknown>, display: boolean): string {
     if (display) return JSON.stringify([state.screen_width, state.screen_height, state.scale_factor]);
@@ -89,7 +93,8 @@ export class ComputerSession {
 
   constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo",
     private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" }),
-    private readonly observer?: WindowObserver) {}
+    private readonly observer?: WindowObserver,
+    private readonly retainRaw?: (image: Content) => void) {}
 
   private queue(work: () => Promise<ComputerResult>): Promise<ComputerResult> {
     const result = this.tail.then(work, work);
@@ -100,8 +105,23 @@ export class ComputerSession {
   private result(status: ComputerResult["details"]["status"], message: string,
     state?: Record<string, unknown>, extra: Partial<ComputerResult["details"]> = {}, images: Content[] = []): ComputerResult {
     const details = { ...extra, status, mode: this.getMode(), ...(state ? { state } : {}) };
-    const json = JSON.stringify(details, null, 2);
-    const visible = json.length > 24_000 ? json.slice(0, 24_000) + "\n[Text truncated; narrow the observation.]" : json;
+    // Codemode gets the full structured resource. Plain tool text is a bounded, valid JSON projection.
+    const visibleUi = extra.ui && { ...extra.ui, elements: extra.ui.elements.slice(0, 30).map(e => ({ ...e,
+      name: e.name?.slice(0, 128) ?? null, value: e.value?.slice(0, 128) ?? null,
+      text_truncated: e.text_truncated || (e.name?.length ?? 0) > 128 || (e.value?.length ?? 0) > 128 })) };
+    const projection = visibleUi && { ui_elements: visibleUi.elements.length, full_ui_elements: extra.ui!.elements.length,
+      note: "Plain text shows at most 30 elements with 128-character names/values. Use structured ui or local search/scope for the rest." };
+    const display = visibleUi ? { ...details, ui: visibleUi, text_projection: projection,
+      state: state && Object.fromEntries(Object.entries(state).filter(([key]) => !["elements", "tree_markdown", "_note"].includes(key))),
+      agent_image: extra.agent_image && { ...extra.agent_image, annotation: extra.agent_image.annotation && {
+        ...(extra.agent_image.annotation as Record<string, unknown>), labels: undefined } } } : details;
+    const json = JSON.stringify(display, null, 2);
+    const visible = json.length <= 24_000 ? json : visibleUi ? JSON.stringify({ status, mode: details.mode,
+      window_ref: extra.window_ref, observation_id: extra.observation_id,
+      agent_image: extra.agent_image && { image_id: extra.agent_image.image_id, output: extra.agent_image.output },
+      ui: { ...visibleUi, elements: visibleUi.elements.slice(0, 5) },
+      text_projection: { ...projection, ui_elements: Math.min(5, visibleUi.elements.length), metadata_omitted: true } })
+      : json.slice(0, 24_000) + "\n[Text truncated; narrow the observation.]";
     const mark = extra.highlight;
     const where = mark?.region ? `; screen region ${mark.region.x},${mark.region.y} ${mark.region.width}x${mark.region.height}`
       : mark?.point ? `; screen point ${mark.point.x},${mark.point.y}` : "";
@@ -124,7 +144,7 @@ export class ComputerSession {
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
-    this.entries.clear(); this.displayOverview = undefined;
+    this.entries.clear(); this.displayOverview = undefined; this.uiImages = [];
     await this.driver.close().catch(() => undefined);
     const reason = error instanceof Error ? error.message : String(error);
     return this.result(dispatched ? "unknown" : "refused", dispatched
@@ -393,15 +413,16 @@ export class ComputerSession {
           output: { width: state.width, height: state.height, bytes: bytes.length, mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") }, input: "none" } }, images);
     } catch { return this.result("refused", "Window detail failed; pixels and diagnostics withheld. Observe again."); }
   }
-  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string): Promise<ComputerResult> {
+  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}): Promise<ComputerResult> {
+    validateUiCapture(options);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined; entry.detail = undefined;
     const current = await this.current(entry.ref, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
-    const settings = { ...this.settings() };
+    const settings = { ...this.settings(), ...(options.hints !== undefined ? { hints: options.hints } : {}) };
     const native = await this.driver.call("get_window_state", {
-      ...entry.target, max_elements: 200, max_depth: 15, timeout_ms: 5000,
+      ...entry.target, max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000,
       max_image_dimension: nativeImageCap(settings), ...(query ? { query } : {}),
     }, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
@@ -414,10 +435,11 @@ export class ComputerSession {
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!await this.current(entry.ref, signal)) return this.result("refused", "Window changed during observation. Discover again.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
-    // Detail geometry is separate from the one-shot input observation; no original image is saved.
+    // Detail always uses fresh CUA pixels; returned PNG retention is only for snapshot annotation.
     const id = randomUUID();
     entry.detail = this.overview(state, id, false, images);
-    entry.observation = { id, width: typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
+    const ui = createUiResource(state, entry.ref, id, ++this.uiSerial);
+    entry.observation = { id, ui, settings, width: typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
       tokens: new Set(state.elements.map(element => (element as { element_token?: unknown }).element_token)
         .filter((token): token is string => typeof token === "string")),
@@ -433,12 +455,27 @@ export class ComputerSession {
     const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
     if (!this.allowed(entry)) { entry.observation = undefined; entry.detail = undefined; return this.denied(entry.ref); }
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during window frame; pixels withheld."); }
-    return this.result("observed", "Fresh native window observation; paint freshness is unverified. Use observation_id for one action, then read again.",
-      state, { ...this.addressed(entry), ...(highlight ? { highlight } : {}), observation_id: id, source, agent_image: { ...this.imageMetadata(images, state, settings), image_id: id } }, images);
+    const observed = entry.observation!;
+    observed.source = source;
+    const raw = images[0];
+    // Keep at most three recent returned PNGs for local annotation, never a saved-original crop backend.
+    if (raw?.type === "image" && Buffer.byteLength(raw.data, "base64") <= 12 * 1024 * 1024) {
+      observed.rawImage = raw;
+      const active = new Set([...this.entries.values()].map(e => e.observation));
+      this.uiImages = [...this.uiImages.filter(old => active.has(old)), observed];
+      for (const old of this.uiImages.splice(0, Math.max(0, this.uiImages.length - 3))) old.rawImage = undefined;
+    }
+    const rendered = await annotateUi(raw, ui, observed.width, observed.height, options.hints ?? settings.hints ?? true);
+    if (!this.allowed(entry) || signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Observation revoked or cancelled during annotation; pixels withheld."); }
+    if (rendered.image !== raw) this.retainRaw?.(raw);
+    const metadata = this.imageMetadata([rendered.image], state, settings);
+    return this.result("observed", `Fresh native window observation: ${ui.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui.complete === true ? "complete" : ui.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`,
+      state, { ...this.addressed(entry), ...(highlight ? { highlight } : {}), observation_id: id, source, ui: structuredClone(ui),
+        agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
   /** Read fresh UI state and a screenshot for an existing session reference. Only this window's earlier observation expires. */
-  observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest): Promise<ComputerResult> {
+  observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
       try {
@@ -446,13 +483,47 @@ export class ComputerSession {
         if (known && !this.allowed(known)) return this.denied(ref);
         const entry = await this.current(ref, signal);
         if (known && !this.allowed(known)) return this.denied(ref);
-        if (zoom && query !== undefined) return this.result("refused", "query and zoom cannot be combined.");
+        if ((ui && (zoom || query !== undefined || options)) || (zoom && (query !== undefined || options))) return this.result("refused", "Choose native overview, zoom, or a local UI operation; do not combine them.");
+        if (options) {
+          try { validateUiCapture(options); }
+          catch (error) { return this.result("refused", (error as Error).message); }
+        }
         if (zoom && !known?.detail) return this.result("refused", "Detail needs a current overview. Observe again.");
-        return entry ? zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        return entry ? ui ? await this.refineUi(entry, ui, signal) : zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query, options) : this.result("refused", "Unknown or closed window_ref. Discover again.");
       } catch (error) { return this.failed(error, false); }
     });
   }
 
+  private async refineUi(entry: WindowEntry, request: UiRequest, signal?: AbortSignal): Promise<ComputerResult> {
+    const observed = entry.observation;
+    if (!observed || observed.id !== request.observation_id) return this.result("refused", "Retired UI observation. Observe again.");
+    let ui: UiResource;
+    try { ui = projectUi(observed.ui, request); }
+    catch (error) { return this.result("refused", (error as Error).message); }
+    if (request.operation === "crop") {
+      const selected = ui.elements[0];
+      const region = selected?.bounds.window_image;
+      if (!region || !observed.width || !observed.height) return this.result("refused", "Element has no proven screenshot-local bounds.");
+      const clipped = { x: Math.max(0, region.x), y: Math.max(0, region.y),
+        width: Math.min(observed.width, region.x + region.width) - Math.max(0, region.x),
+        height: Math.min(observed.height, region.y + region.height) - Math.max(0, region.y) };
+      if (clipped.width <= 0 || clipped.height <= 0) return this.result("refused", "Element is outside the observed image.");
+      return this.windowDetail(entry, { image_id: observed.id, ...clipped }, signal);
+    }
+    if (request.operation === "highlight" || request.operation === "scope") {
+      if (!observed.rawImage) return this.result("refused", "Snapshot image was evicted. Read a new overview; its hints will change.");
+      const rendered = await annotateUi(observed.rawImage, ui, observed.width, observed.height,
+        observed.settings.hints ?? true, request.operation === "highlight" ? request.hint : undefined, observed.ui.elements);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "UI inspection revoked or cancelled; pixels withheld.");
+      if (rendered.image !== observed.rawImage) this.retainRaw?.(observed.rawImage);
+      const metadata = this.imageMetadata([rendered.image], { screenshot_width: observed.width, screenshot_height: observed.height }, observed.settings);
+      return this.result("observed", `Read-only ${request.operation} of the existing UI snapshot: ${ui.elements.length}/${ui.matches} elements. No native reread or input; pixels are from the original observation.`,
+        undefined, { ...this.addressed(entry), observation_id: observed.id, ui, source: observed.source,
+          agent_image: { ...metadata, route: "cua_snapshot_ui_hints", annotation: rendered.annotation, image_id: observed.id } }, [rendered.image]);
+    }
+    return this.result("observed", `Read-only UI ${request.operation}: ${ui.elements.length}/${ui.matches} matches in the collected snapshot. ${ui.complete === true ? "Native collection reported complete." : "Collection may be partial; absence does not prove nonexistence."}`,
+      undefined, { ...this.addressed(entry), observation_id: observed.id, ui });
+  }
   /** Consume one overview for a complete action or bounded sequence. Never replay a completed prefix. */
   act(action: Action, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -472,7 +543,23 @@ export class ComputerSession {
             throw new Error("A sequence needs 1..32 steps and no conflicting top-level action fields.");
           commands = command.sequence;
         } else commands = [command];
-        for (const step of commands) validateInput(step, observed, batch);
+        commands = commands.map(step => {
+          const { hint, ...nativeStep } = step;
+          if (hint !== undefined) {
+            if (typeof hint !== "string" || step.element_token !== undefined || step.x !== undefined || step.y !== undefined)
+              throw Error("Use exactly one current hint or native token/pixel target.");
+            nativeStep.element_token = resolveUi(observed.ui, hint).element_token;
+          }
+          const element = observed.ui.elements.find(e => e.element_token === nativeStep.element_token);
+          if (element?.enabled === false) throw Error("The observed target is disabled. No input was dispatched.");
+          if (element?.bounds.window_image && observed.width && observed.height) {
+            const r = element.bounds.window_image;
+            if (r.x >= observed.width || r.y >= observed.height || r.x + r.width <= 0 || r.y + r.height <= 0)
+              throw Error("The observed target is outside the image. No input was dispatched.");
+          }
+          validateInput(nativeStep, observed, batch);
+          return nativeStep;
+        });
         if (commands.some(step => step.action === "hold") && !this.driver.heldKeys)
           throw new Error("Key holds require the explicitly selected qualified Windows key-hold runtime. No input was dispatched.");
         if (commands.some(step => step.via !== undefined) && !this.driver.heldPaths)
@@ -553,7 +640,7 @@ export class ComputerSession {
   /** Release owned runtime and invalidate references. Application windows and files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
-      this.entries.clear(); this.displayOverview = undefined;
+      this.entries.clear(); this.displayOverview = undefined; this.uiImages = [];
       await this.driver.close();
       return this.result("closed", "Owned computer-use runtime closed. Application windows were not closed.");
     });

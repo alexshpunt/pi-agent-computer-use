@@ -1,0 +1,147 @@
+{
+  "tasks": [
+    "LPT-386",
+    "LPT-387",
+    "LPT-388"
+  ],
+  "backend": {
+    "name": "CUA",
+    "version": "0.34.0",
+    "source": "3b3305044b7b327310615aa99d3307948a63061c",
+    "executable_sha256": "9786ace009b81fb2555f14f64b605ab20c3bfc309493398424be1183532df749",
+    "changed": false
+  },
+  "automated": {
+    "unit": 214,
+    "unit_files": 21,
+    "real_pi": 13,
+    "real_pi_files": 12,
+    "typecheck": "pass",
+    "diff_check": "pass",
+    "selected_tree": "qualified with the same checks"
+  },
+  "native": {
+    "provider": "Windows UIA",
+    "collected": 43,
+    "complete": false,
+    "duplicate_matches": 2,
+    "small_walk": {
+      "max_elements": 3,
+      "max_depth": 2,
+      "collected": 0,
+      "truncated": true
+    },
+    "larger_walk": {
+      "max_elements": 100,
+      "max_depth": 20,
+      "collected": 43,
+      "truncated": false
+    },
+    "verified_actions": [
+      "exact second button increments once",
+      "field value",
+      "toggle true",
+      "token scroll positions 21,42,71",
+      "replace first control"
+    ],
+    "retired_hint": "refused before dispatch",
+    "final_labels": {
+      "collected": 42,
+      "drawn": 29,
+      "width": 500,
+      "height": 426,
+      "sent_sha256": "7244156fd67bc6f2b1bd98b06afa6fb0f1d6ef8ba1f183e18a826dadb0e9402f",
+      "raw_sha256": "fc5300f1f1510430cd92b4548b71a105806b7dccb5cf9947ff15469e5b22220c",
+      "sent_bytes": 66773
+    }
+  },
+  "browser": {
+    "provider": "Windows UIA on owned Chromium",
+    "collected": 46,
+    "complete": false,
+    "duplicate_matches": 2,
+    "dense_scope": {
+      "matches": 24,
+      "returned": 8,
+      "projection_truncated": true
+    },
+    "small_walk": {
+      "max_elements": 5,
+      "max_depth": 10,
+      "collected": 0,
+      "truncated": true
+    },
+    "larger_walk": {
+      "max_elements": 500,
+      "max_depth": 25,
+      "collected": 46,
+      "truncated": false
+    },
+    "verified_actions": [
+      "exact second button increments once",
+      "field value",
+      "toggle true",
+      "replace first control"
+    ],
+    "crop": {
+      "mime": "image/jpeg",
+      "width": 130,
+      "height": 86
+    },
+    "parent": "reported document only; no inferred groups"
+  },
+  "viewer": {
+    "raw_sent_hashes_verified": true,
+    "hints_off_later_capture_raw_sha256": "9e2130830c7b159d1d67f3458e6ee2c6698672018f7de0476ae549a221ac73d3",
+    "hints_off_raw_bytes": 387240,
+    "frozen_earlier_sent_sha256": "f809dc449f57c387d00ee2ba7d5cf53004fcd95e7cb0c51105fa4aea74b24c66",
+    "native_raw_selection": "verified after fresh foreground escalation from background refusal",
+    "selection_survived_readonly_checks": 3,
+    "restored_settings": {
+      "maxLongEdge": 1024,
+      "scale": 1,
+      "hints": true
+    },
+    "final_export": {
+      "revision": 172,
+      "captures": 3,
+      "sent_sha256": "24928608e094e07c493341cd40b7c6120851c7571a27615d958546309b6450be",
+      "raw_sha256": "9f8f300a09aa48a45618bb9f5990e24d3a96ab593b5aebc620f426273a0cf9db",
+      "width": 955,
+      "height": 1024,
+      "sent_bytes": 249016
+    }
+  },
+  "tui": {
+    "pane": "w3E9:p7",
+    "revision": 3022,
+    "columns": 77,
+    "rows": 57,
+    "observed": "readable nested call rows, wrapped delivered receipt and human mark summary; stock image/result details collapsed",
+    "inline_image_claim": false
+  },
+  "cleanup": {
+    "owned_native_sources_gone": true,
+    "owned_browser_source_gone": true,
+    "owned_browser_profile_removed": true,
+    "driver_processes": 0,
+    "helper_processes": 0,
+    "left_down": false,
+    "right_down": false,
+    "middle_down": false,
+    "unrelated_windows_preserved": true
+  },
+  "limitations": [
+    "Native parents and disabled controls were not indexed in these live fixtures; absence stays unknown.",
+    "Disabled/foreign/Safe/cancel/closed/uncertain guards are covered by deterministic unit and real-Pi peer checks, not claimed as live Windows permission changes.",
+    "Tree and pixels are not atomic; delivered input can have no observed application effect.",
+    "Raw comparison stays private and bounded; old cards can be evicted normally.",
+    "No private pixels, UI text, URLs, window references, native IDs or tokens in this evidence."
+  ],
+  "corrected_live_failures": [
+    "DPI-unaware test fixture misaligned native pixels; own fixture thread awareness corrected, not OS settings.",
+    "Annotation connector crossed control interior; nearest-boundary connector regression and fresh native PNG passed.",
+    "Viewer polling recreated comparison selector and lost native focus; stable keyed card DOM regression plus live native selection passed.",
+    "Native combobox set_value receipt delivered without changing selection; not treated as verified effect or replayed."
+  ]
+}

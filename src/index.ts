@@ -39,11 +39,24 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
       status: Type.String(), text: Type.String(), source: Type.Optional(Type.Unknown()),
       image: Type.Optional(Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() })),
     }, { additionalProperties: true }),
-    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one complete action or bounded keyboard/stroke sequence. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode. In Codemode, load the stored window_ref and replace stored observation_id, element_tokens and agent_image.image_id after each successful overview. Keep only compact references in store, not screenshots or whole results. Storage does not extend ID lifetime; detail consumes its overview.",
+    description: "Observe exactly one Windows source: window_ref for its accessibility tree and native window PNG, or display: primary for a read-only full-primary-display PNG in YOLO. Native images use shared Vision settings (default 500px); returned source metadata separates Windows image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one complete action or bounded keyboard/stroke sequence. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode. In Codemode, load the stored window_ref and replace stored observation_id, element_tokens and agent_image.image_id after each successful overview. Keep only compact references in store, not screenshots or whole results. Storage does not extend ID lifetime; detail consumes its overview. ui:{operation,observation_id,hint?,query?,role?,limit?} searches/scopes/inspects the current collected snapshot without native reread; highlight returns its marked overview, crop requests fresh native detail and consumes input authority. Returned ui.elements have snapshot-scoped short hints, native tokens, parent_hint, reported state/actions and separate native_screen/window_image bounds. Partial-tree absence is unknown. capture:{max_elements?,max_depth?,hints?} controls the next native overview. Hints are drawn on a separate annotated PNG; raw bytes stay private and image dimensions do not change.",
     parameters: Type.Object({
       window_ref: Type.Optional(Type.String({ minLength: 1 })),
       display: Type.Optional(Type.String({ description: "Only primary is supported; display reading is YOLO-only and grants no input." })),
-      query: Type.Optional(Type.String({ description: "Project the tree to matching labels/values and ancestors; cannot combine with zoom." })),
+      query: Type.Optional(Type.String({ description: "Native reread projected to matching labels/values and ancestors; replaces old hints. For local search use ui instead." })),
+      capture: Type.Optional(Type.Object({
+        max_elements: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
+        max_depth: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+        hints: Type.Optional(Type.Boolean()),
+      }, { additionalProperties: false })),
+      ui: Type.Optional(Type.Object({
+        operation: Type.Union(["search", "scope", "inspect", "highlight", "crop"].map(value => Type.Literal(value))),
+        observation_id: Type.String({ minLength: 1 }),
+        hint: Type.Optional(Type.String({ minLength: 1 })),
+        query: Type.Optional(Type.String({ maxLength: 256 })),
+        role: Type.Optional(Type.String({ maxLength: 128 })),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
+      }, { additionalProperties: false })),
       zoom: Type.Optional(Type.Object({
         image_id: Type.String({ minLength: 1, description: "agent_image.image_id from the latest overview of this source, not a detail." }),
         x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }),
@@ -54,10 +67,13 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
     }, { additionalProperties: false }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     async execute(_id, params, signal, _update, ctx) {
-      if ((params.window_ref !== undefined) === (params.display !== undefined) || (params.display !== undefined && params.query !== undefined) || (params.zoom !== undefined && params.query !== undefined))
-        return { content: [{ type: "text" as const, text: "Choose exactly one window_ref or display: primary. query is window-only and cannot combine with zoom." }], details: { status: "refused" }, isError: true };
+      if ((params.window_ref !== undefined) === (params.display !== undefined) ||
+        (params.display !== undefined && (params.query !== undefined || params.ui !== undefined || params.capture !== undefined)) ||
+        (params.zoom !== undefined && (params.query !== undefined || params.ui !== undefined || params.capture !== undefined)) ||
+        (params.ui !== undefined && (params.query !== undefined || params.capture !== undefined)))
+        return { content: [{ type: "text" as const, text: "Choose one source and one mode: native window overview (query/capture), local UI operation, or zoom. UI and capture are window-only." }], details: { status: "refused" }, isError: true };
       const current = await getSession(ctx.cwd);
-      const result = await (params.display !== undefined ? current.observeDisplay(params.display, signal, params.zoom) : current.observe(params.window_ref!, signal, params.query, params.zoom));
+      const result = await (params.display !== undefined ? current.observeDisplay(params.display, signal, params.zoom) : current.observe(params.window_ref!, signal, params.query, params.zoom, params.ui, params.capture));
       const image = result.content.find(block => block.type === "image");
       return { ...result, structuredContent: JSON.parse(JSON.stringify({ ...result.details,
         text: result.content.filter(block => block.type === "text").map(block => block.text).join("\n"), ...(image ? { image } : {}) })) };
@@ -65,7 +81,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
   pi.registerTool({
     name: "computer_act", label: "Computer act",
-    description: "Perform a complete grounded window action, or one bounded sequence, using the latest observation_id. Dispatch consumes the observation even on failure. Use its element_token or window-local screenshot x/y. Supports click/right_click/double_click, scroll (observed element_token only; no pixel scroll), drag, key/hotkey, type_text (delay_ms), set_value and select_all. Drag endpoints are from_x/from_y/to_x/to_y; duration_ms 0..10000 and steps 1..200 for straight drags. Optional via has 1..254 intermediate local points for one continuous left-button stroke, only with the explicitly selected qualified Windows fork and foreground; no steps or modifiers with via. sequence accepts 1..32 known-target key/hotkey/type_text/select_all/drag steps, wait_ms 0..5000 each, up to 30s requested time and 45s elapsed admission budget. Entire list is validated before input; serial execution needs no intermediate overview. hold keeps 1..8 keys down for duration_ms 1..10000, optionally performing 1..32 grounded left click/drag actions while held; requested pointer time must fit the interval. Requires the qualified Windows key-hold runtime and explicit foreground after a background refusal. Whole hold validation happens before input. Keys release within this call; interrupted holds preserve the native key/pointer prefix, measured timing and release uncertainty. Hold cannot nest in sequence. Each drag releases the button; no cross-call held-input state or hover. A via path holds only for that single stroke. Interrupted paths report their native point prefix/release receipt; never replay them. Stops on refusal/unknown/cancel/access or target loss, reporting actual attempted/completed prefix and dispatch/completion timings; never replay that prefix. In-flight native input may finish after cancellation. Delivery is not UI verification. Background is default. Foreground must be explicit and only after an observed failure/refusal. Unknown may have changed the app: never blindly retry. Observe to verify. Safe denies outside-session windows; YOLO permits them. Mode is a user choice, not a tool argument. Neither is OS isolation. Use only task-authorized windows/documents. In Codemode, load window_ref and current observation/target IDs from store instead of retyping them. Invalidate stored observation_id and element_tokens after every dispatch, even on failure; observe again and store fresh IDs before another action or sequence.",
+    description: "Perform a complete grounded window action, or one bounded sequence, using the latest observation_id. Dispatch consumes the observation even on failure. Use its short hint, element_token or window-local screenshot x/y, never more than one target form. A hint belongs to the exact returned window/observation and is retired by a native reread; matching labels never rebind it. Reported disabled or outside-image targets refuse before dispatch. Supports click/right_click/double_click, scroll (observed element_token only; no pixel scroll), drag, key/hotkey, type_text (delay_ms), set_value and select_all. Drag endpoints are from_x/from_y/to_x/to_y; duration_ms 0..10000 and steps 1..200 for straight drags. Optional via has 1..254 intermediate local points for one continuous left-button stroke, only with the explicitly selected qualified Windows fork and foreground; no steps or modifiers with via. sequence accepts 1..32 known-target key/hotkey/type_text/select_all/drag steps, wait_ms 0..5000 each, up to 30s requested time and 45s elapsed admission budget. Entire list is validated before input; serial execution needs no intermediate overview. hold keeps 1..8 keys down for duration_ms 1..10000, optionally performing 1..32 grounded left click/drag actions while held; requested pointer time must fit the interval. Requires the qualified Windows key-hold runtime and explicit foreground after a background refusal. Whole hold validation happens before input. Keys release within this call; interrupted holds preserve the native key/pointer prefix, measured timing and release uncertainty. Hold cannot nest in sequence. Each drag releases the button; no cross-call held-input state or hover. A via path holds only for that single stroke. Interrupted paths report their native point prefix/release receipt; never replay them. Stops on refusal/unknown/cancel/access or target loss, reporting actual attempted/completed prefix and dispatch/completion timings; never replay that prefix. In-flight native input may finish after cancellation. Delivery is not UI verification. Background is default. Foreground must be explicit and only after an observed failure/refusal. Unknown may have changed the app: never blindly retry. Observe to verify. Safe denies outside-session windows; YOLO permits them. Mode is a user choice, not a tool argument. Neither is OS isolation. Use only task-authorized windows/documents. In Codemode, load window_ref and current observation/target IDs from store instead of retyping them. Invalidate stored observation_id and element_tokens after every dispatch, even on failure; observe again and store fresh IDs before another action or sequence.",
     parameters: actionParameters,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).act(params as Action, signal); },
@@ -82,7 +98,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
 /** Standalone computer UI extension. The final Pi Agent IDE provider API remains separate. */
 export default function computerUse(pi: ExtensionAPI): void {
   const images = new CuaImageSettings();
-  registerVisionDebug(pi, images);
+  const debug = registerVisionDebug(pi, images);
   const highlights = new WindowHighlights();
   const getMode = registerComputerMode(pi, () => highlights.clear());
   let session: ComputerSession | undefined;
@@ -90,7 +106,7 @@ export default function computerUse(pi: ExtensionAPI): void {
   async function getSession(cwd: string): Promise<ComputerSession> {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(config => {
-      session = new ComputerSession(new McpDriver(config), getMode, () => images.settings(), highlights.flash);
+      session = new ComputerSession(new McpDriver(config), getMode, () => images.settings(), highlights.flash, image => debug.trace.retainOriginal(image));
       return session;
     });
     try { return await loading; }

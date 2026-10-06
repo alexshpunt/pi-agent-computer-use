@@ -113,7 +113,7 @@ test("Safe denial, pre-cancellation and recycled HWNDs never reach the frame obs
 
 test("renderer failure does not corrupt or replay a valid desktop capture", async () => {
   const observer = vi.fn<WindowObserver>(async () => { throw new Error("render failure"); }); const f = await fixture(observer);
-  const read = await f.session.observe(await outside(f.session));
+  const read = await f.session.observe(await outside(f.session), undefined, undefined, undefined, undefined, { hints: false });
   expect(read.details).toMatchObject({ status: "observed", highlight: { status: "unavailable" } });
   expect(read.content).toContainEqual(f.png);
   expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state")).toHaveLength(1);

@@ -4,6 +4,8 @@ import { Type } from "@earendil-works/pi-ai";
 export interface InputCommand {
   action: "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold";
   element_token?: string;
+  /** Snapshot-scoped UI alias; ComputerSession resolves it before native validation. */
+  hint?: string;
   x?: number; y?: number;
   text?: string; key?: string; keys?: string[]; modifiers?: string[];
   delay_ms?: number;
@@ -26,6 +28,7 @@ const names = ["type_text", "set_value", "click", "right_click", "double_click",
 const modifiers = ["ctrl", "shift", "alt", "win"];
 const enumSchema = (values: readonly string[]) => Type.Union(values.map(value => Type.Literal(value)));
 const optional = {
+  hint: Type.Optional(Type.String({ minLength: 1, description: "Short alias from this exact observation; cannot combine with element_token or pixels." })),
   element_token: Type.Optional(Type.String({ minLength: 1 })),
   x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
   text: Type.Optional(Type.String({ maxLength: 2000 })),

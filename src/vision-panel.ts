@@ -8,7 +8,7 @@ export const visionPanel = `<!doctype html>
 <p class="notice"><strong>Final delivery is unconfirmed.</strong> These are exact image bytes at Pi's existing application-boundary hook, not confirmed wire payloads or model embeddings.</p>
 <p id="session"></p>
 <section class="controls"><h2>Agent image size</h2>
-<p class="muted" id="route-note">Native CUA window/display PNG overviews; browser captures include chrome. Lanczos3 is fixed, default long edge 500px. Window detail is fresh padded JPEG; display detail crops fresh full-resolution CUA pixels in the adapter. No retained originals. These controls apply to the next overview, not per-request detail settings.</p>
+<p class="muted" id="route-note">Native CUA window/display PNG overviews; browser captures include chrome. Lanczos3 is fixed, default long edge 500px. Window detail is fresh padded JPEG; display detail crops fresh full-resolution CUA pixels in the adapter. Raw returned PNGs are retained only for private hint comparison; no full-resolution originals. These controls apply to the next overview, not per-request detail settings.</p>
 <form id="image-settings">
 <label>Driver kernel <select id="kernel" disabled><option value="lanczos3" selected>Lanczos3</option></select></label>
 <label>Max long edge (px) <input id="long-edge" type="text" inputmode="numeric" pattern="[0-9]+" value="500" required></label>
@@ -16,6 +16,7 @@ export const visionPanel = `<!doctype html>
 <label>Scale exact <input id="scale-number" type="text" inputmode="decimal" value="1" required></label>
 <button type="submit">Apply to next capture</button>
 </form><p id="settings-status" role="status"></p></section>
+<section class="controls"><h2>UI hints</h2><label><input id="hints" type="checkbox" checked> Draw short UI hints on the next window overview</label><p id="hints-status" role="status">Raw returned PNG and sent annotated PNG stay separate. No extra image is sent.</p></section>
 <section><h2>Last three boundary images</h2><p class="muted">Oldest → newest. Only this viewer is limited to three cards. Images stay in Pi context until normal compaction; these cards mirror the provider hook, not confirmed transport delivery.</p><div id="frames" class="frames"></div></section>
 <section><h2>Observed request text</h2><p class="muted">Exact bounded text excerpts at the same hook. Adapter structures below are separate, not proof of forwarded content.</p><div id="request"></div></section>
 <section><h2>Computer-use action trace</h2><p class="muted">Includes nested Codemode calls, captured-only images, errors and adapter metadata.</p><div id="actions"></div></section>
@@ -40,7 +41,7 @@ details{margin:10px 0}summary{cursor:pointer}.error{border-color:#d56b75}.empty{
 
 export const visionScript = `
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node};
-let revision=-1,session,settingsVersion=-1,settingsDirty=false,settingsBusy=false,controlsReady=false;
+let revision=-1,session,settingsVersion=-1,settingsDirty=false,settingsBusy=false,controlsReady=false,hintsBusy=false;
 function settingsDraft(){
   return {kernel:document.getElementById("kernel").value,maxLongEdge:Number(document.getElementById("long-edge").value),scale:Number(document.getElementById("scale-number").value)};
 }
@@ -50,6 +51,17 @@ function showDraft(){
   document.getElementById("settings-status").textContent="Draft cap: "+Math.floor(draft.maxLongEdge*draft.scale)+" px · apply to the next capture.";
 }
 function setupSettings(){
+  document.getElementById("hints").addEventListener("change",async ()=>{
+    if(hintsBusy)return;hintsBusy=true;
+    try{
+      const response=await fetch("hints",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:document.getElementById("hints").checked})});
+      if(!response.ok)throw Error(await response.text());
+      const applied=await response.json();
+      document.getElementById("hints-status").textContent="Hints "+(applied.hints?"on":"off")+" for the next overview. Earlier images are unchanged.";
+      settingsVersion=-1;
+    }catch(error){document.getElementById("hints-status").textContent="Not applied: "+error.message}
+    finally{hintsBusy=false}
+  });
   for(const id of ["kernel","long-edge"])document.getElementById(id).addEventListener("input",()=>{settingsDirty=true;showDraft()});
   for(const [id,other] of [["scale","scale-number"],["scale-number","scale"]])document.getElementById(id).addEventListener("input",()=>{document.getElementById(other).value=document.getElementById(id).value;settingsDirty=true;showDraft()});
   document.getElementById("image-settings").addEventListener("submit",async event=>{
@@ -68,6 +80,7 @@ function setupSettings(){
 }
 function renderSettings(settings){
   if(!settings)return;
+  if(!hintsBusy)document.getElementById("hints").checked=settings.hints!==false;
   if(!settingsDirty&&!settingsBusy){
     document.getElementById("kernel").value=settings.kernel;
     document.getElementById("long-edge").value=String(settings.maxLongEdge);
@@ -80,19 +93,42 @@ function renderSettings(settings){
 function render(state){
   renderSettings(state.imageSettings);
   document.getElementById("session").textContent="Session "+state.sessionId+" · revision "+state.revision;
-  const frames=document.getElementById("frames");frames.replaceChildren();
+  const frames=document.getElementById("frames");
+  const existingFrames=new Map([...frames.children].map(card=>[card.dataset.imageKey,card]));
+  const frameRows=[],frameCounts=new Map();
   for(const [i,frame] of state.frames.entries()){
-    const card=el("article",undefined,"card");
-    card.append(el("h3","t"+(i-state.frames.length+1)+" · "+frame.stage));
-    if(frame.stage!=="evicted"){const img=el("img");img.src="images/"+frame.hash;img.alt="Application-boundary frame "+frame.id;card.append(img)}
-    card.append(el("p",frame.time+" · "+(frame.width??"?")+"×"+(frame.height??"?")+" · "+frame.bytes+" bytes","meta"));
-    card.append(el("p","Request "+frame.requestId+" · action "+(frame.actionId??"unmatched"),"meta"));
-    card.append(el("p","SHA-256 "+frame.hash,"meta"));
-    card.append(el("p","Native CUA capture or marked adapter output; no full-resolution original is retained.","muted"));
-    card.append(el("pre",JSON.stringify({path:frame.path,detail:frame.detail,source:frame.source,matchingActionIds:frame.matchingActionIds,configuration:frame.configuration,finalDelivery:frame.finalDelivery},null,2)));
-    frames.append(card);
+    const base=frame.hash+":"+(frame.originalHash??"")+":"+frame.stage;
+    const occurrence=frameCounts.get(base)??0;frameCounts.set(base,occurrence+1);
+    const key=base+":"+occurrence;
+    let card=existingFrames.get(key);
+    if(!card){
+      card=el("article",undefined,"card");card.dataset.imageKey=key;
+      card.append(el("h3"));
+      if(frame.stage!=="evicted"){
+        const img=el("img");img.src="images/"+frame.hash;card.append(img);
+        if(frame.original==="available"&&frame.originalHash){
+          const mode=el("select");
+          for(const [value,label] of [[frame.hash,"Sent image"],[frame.originalHash,"Raw returned capture"]]){const option=el("option",label);option.value=value;mode.append(option)}
+          mode.addEventListener("change",()=>{img.src="images/"+mode.value});card.append(mode);
+        }
+      }
+      for(let n=0;n<4;n++)card.append(el("p",undefined,n===3?"muted":"meta"));
+      card.append(el("pre"));
+    }
+    card.querySelector("h3").textContent="t"+(i-state.frames.length+1)+" · "+frame.stage;
+    const img=card.querySelector("img");if(img)img.alt="Application-boundary frame "+frame.id;
+    const mode=card.querySelector("select");if(mode)mode.setAttribute("aria-label","Image comparison "+frame.id);
+    const paragraphs=card.querySelectorAll("p");
+    paragraphs[0].textContent=frame.time+" · "+(frame.width??"?")+"×"+(frame.height??"?")+" · "+frame.bytes+" bytes";
+    paragraphs[1].textContent="Request "+frame.requestId+" · action "+(frame.actionId??"unmatched");
+    paragraphs[2].textContent="SHA-256 "+frame.hash;
+    paragraphs[3].textContent=frame.original==="available"?"Compare the exact raw returned capture with the sent annotation. No full-resolution original is retained.":"Native CUA capture; no separate raw comparison is retained.";
+    card.querySelector("pre").textContent=JSON.stringify({path:frame.path,detail:frame.detail,source:frame.source,matchingActionIds:frame.matchingActionIds,configuration:frame.configuration,originalHash:frame.originalHash,finalDelivery:frame.finalDelivery},null,2);
+    frameRows.push(card);
   }
-  if(!state.frames.length)frames.append(el("p","No boundary images yet. Captured-only frames do not appear here.","empty"));
+  if(!state.frames.length)frameRows.push(el("p","No boundary images yet. Captured-only frames do not appear here.","empty"));
+  for(const child of [...frames.children])if(!frameRows.includes(child))child.remove();
+  for(const [i,card] of frameRows.entries())if(frames.children[i]!==card)frames.insertBefore(card,frames.children[i]??null);
   const request=document.getElementById("request");request.replaceChildren();
   const latest=state.requests.at(-1);
   if(latest){

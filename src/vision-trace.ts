@@ -6,7 +6,7 @@ interface ImageBytes { bytes: Buffer; mime: string; hash: string; width?: number
 interface Frame {
   id: string; hash: string; mime: string; bytes: number; width?: number; height?: number;
   time: string; stage: "captured" | "prepared" | "evicted"; finalDelivery: "unconfirmed";
-  original: "unavailable"; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
+  original: "available" | "unavailable"; originalHash?: string; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
   source?: unknown; configuration?: unknown;
 }
 interface Action {
@@ -63,6 +63,7 @@ export class VisionTrace {
   private actions: Action[] = [];
   private requests: Request[] = [];
   private assets = new Map<string, ImageBytes>();
+  private originals: string[] = [];
   private sequence = 0;
   private revision = 0;
   constructor(private sessionId: string) {}
@@ -71,9 +72,18 @@ export class VisionTrace {
   reset(sessionId: string): void {
     this.sessionId = sessionId;
     this.frames = []; this.captures = []; this.actions = []; this.requests = [];
-    this.assets.clear(); this.sequence = 0; this.revision++;
+    this.assets.clear(); this.originals = []; this.sequence = 0; this.revision++;
   }
 
+  /** Keep recent raw returned captures and visible-card comparisons within the asset budget; never send another image. */
+  retainOriginal(value: { type: string; data?: string; mimeType?: string }): void {
+    if (value.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string") return;
+    const image = imageBytes(value.data, value.mimeType);
+    if (!image) return;
+    this.assets.set(image.hash, image);
+    this.originals = [...this.originals.filter(hash => hash !== image.hash), image.hash].slice(-3);
+    this.prune();
+  }
   /** Record a computer-use call, including its Codemode parent when available. */
   startAction(id: string, tool: string, input: unknown, parentId?: string): void {
     this.actions.push({ id, parentId, tool, input: metadata(input), time: new Date().toISOString(), started: performance.now(), status: "running" });
@@ -94,6 +104,9 @@ export class VisionTrace {
       return value?.type === "text" && typeof value.text === "string" ? value.text : "";
     }).filter(Boolean).join("\n").slice(0, 16_000);
     const reported = state.agent_image as { output?: { hash?: unknown; width?: unknown; height?: unknown }; route?: unknown; coordinate_space?: unknown; native?: unknown; origin?: unknown } | undefined;
+    const annotation = (state.agent_image as { annotation?: { raw?: { hash?: unknown } } } | undefined)?.annotation;
+    const rawHash = annotation?.raw?.hash;
+    const originalHash = typeof rawHash === "string" && this.assets.has(rawHash) ? rawHash : undefined;
     for (const block of content) {
       const value = block as Record<string, unknown>;
       if (value?.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string") continue;
@@ -107,8 +120,8 @@ export class VisionTrace {
         }
       }
       this.assets.set(image.hash, image);
-      this.captures.push({ ...this.frame(image, "captured"), actionId: id,
-        source: metadata({ observation: state.source, tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, origin: reported?.origin, route: reported?.route, coordinate_space: reported?.coordinate_space, native: reported?.native }),
+      this.captures.push({ ...this.frame(image, "captured"), actionId: id, ...(originalHash ? { original: "available", originalHash } : {}),
+        source: metadata({ observation: state.source, tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, origin: reported?.origin, route: reported?.route, coordinate_space: reported?.coordinate_space, native: reported?.native, annotation }),
         configuration: metadata({ requested: action.input, effective: state.agent_image ?? "unreported by current adapter", timings: state.timings }) });
       this.captures = this.captures.slice(-3);
     }
@@ -173,7 +186,7 @@ export class VisionTrace {
       const matches = this.captures.filter(item => item.hash === image.hash);
       const capture = matches.length === 1 ? matches[0] : undefined;
       const frame = { ...this.frame(image, "prepared"), width: image.width ?? capture?.width, height: image.height ?? capture?.height, actionId: capture?.actionId, source: capture?.source,
-        configuration: capture?.configuration, original: capture?.original ?? "unavailable", matchingActionIds: matches.map(item => item.actionId!).filter(Boolean), requestId: request.id, path, detail };
+        configuration: capture?.configuration, original: capture?.original ?? "unavailable", originalHash: capture?.originalHash, matchingActionIds: matches.map(item => item.actionId!).filter(Boolean), requestId: request.id, path, detail };
       this.assets.set(image.hash, image);
       this.frames.push(frame); request.frameIds.push(frame.id);
     }
@@ -189,14 +202,17 @@ export class VisionTrace {
   }
 
   private prune(): void {
-    const retained = new Set([...this.frames, ...this.captures].map(frame => frame.hash));
+    const retained = new Set([...this.originals, ...[...this.frames, ...this.captures].flatMap(frame => [frame.hash, ...(frame.originalHash ? [frame.originalHash] : [])])]);
     for (const hash of this.assets.keys()) if (!retained.has(hash)) this.assets.delete(hash);
     let size = [...this.assets.values()].reduce((sum, image) => sum + image.bytes.length, 0);
     for (const [hash, image] of this.assets) {
       if (size <= maxAssetBytes) break;
       this.assets.delete(hash); size -= image.bytes.length;
     }
-    for (const frame of [...this.frames, ...this.captures]) if (!this.assets.has(frame.hash)) frame.stage = "evicted";
+    for (const frame of [...this.frames, ...this.captures]) {
+      if (!this.assets.has(frame.hash)) frame.stage = "evicted";
+      if (frame.originalHash && !this.assets.has(frame.originalHash)) frame.original = "unavailable";
+    }
   }
 
   /** Return retained bytes only; never download an external image URL. */

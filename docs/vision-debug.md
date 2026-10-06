@@ -24,7 +24,8 @@ The three displayed images are a viewer limit, not the effective image budget tr
 - Browser/Windows tool hooks record adapter images and metadata separately. A capture not forwarded by Codemode stays in the adapter trace and does not become a new boundary-image card.
 - Image hashes link pixels to matching computer-use actions. Identical captures are ambiguous: the panel lists candidate calls rather than assigning a unique source.
 - Adapter structure is labelled separately from observed provider text. Metadata in tool `details` is not automatically model input. Text excerpts are labelled when truncated.
-- The browser capture can already include DOM hints. The resizing path retains the exact pre-resize PNG separately, not a clean pre-overlay capture. Other adapters can still report originals as unavailable. It does not substitute a second screenshot.
+- Native window captures can carry snapshot hints added above the returned PNG. When annotation changes pixels, the private comparison retains the exact raw returned PNG with its hash. This is not a full-resolution original or a second capture. Missing or evicted comparison bytes remain unavailable.
+- The UI hints switch affects later captures only; per-capture overrides are recorded. Stored sent images are not rewritten. A boundary card with available raw bytes can switch between exact marked and raw pixels.
 - Requested settings and known adapter timings are recorded. Effective settings not reported by the adapter remain unknown. The viewer cannot change Safe/YOLO. LPT-375 adds only resizing controls; the broader options in LPT-374 remain separate.
 
 ## Bounds and cleanup

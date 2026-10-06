@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { request } from "node:http";
 import { runInNewContext } from "node:vm";
 import { visionScript } from "../src/vision-panel.ts";
+import { createPanelDom } from "./fixtures/vision-panel-dom.ts";
 import { expect, test } from "vitest";
 import { VisionTrace } from "../src/vision-trace.ts";
 import { startVisionServer } from "../src/vision-server.ts";
@@ -12,22 +13,7 @@ const hash = createHash("sha256").update(Buffer.from(png, "base64")).digest("hex
 const payload = (count = 1) => ({ input: [{ role: "user", content: Array.from({ length: count }, () => ({ type: "input_image", image_url: `data:image/png;base64,${png}`, detail: "high" })) }], instructions: "not a UI tree" });
 
 test("panel polling keeps expanded action rows and their text scroll position", () => {
-  class Node {
-    children: Node[] = [];
-    dataset: Record<string, string> = {};
-    open = false;
-    scrollTop = 0;
-    append(...nodes: Node[]) { this.children.push(...nodes); }
-    replaceChildren(...nodes: Node[]) { this.children = nodes; }
-  }
-  const nodes = new Map<string, Node>();
-  const document = {
-    createElement: () => new Node(),
-    getElementById: (id: string) => {
-      if (!nodes.has(id)) nodes.set(id, new Node());
-      return nodes.get(id)!;
-    },
-  };
+  const { document, nodes } = createPanelDom();
   const trace = new VisionTrace("panel");
   trace.startAction("first", "browser_observe", {});
   trace.finishAction("first", [], { status: "observed" }, false);

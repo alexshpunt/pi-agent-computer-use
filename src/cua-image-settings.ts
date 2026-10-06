@@ -1,6 +1,6 @@
 /** Native CUA window-capture settings. No pixels are transformed by this store. */
 export interface CuaVisionSettings {
-  kernel: "lanczos3"; maxLongEdge: number; scale: number; version: number; route: "cua_native";
+  kernel: "lanczos3"; maxLongEdge: number; scale: number; version: number; route: "cua_native"; hints?: boolean;
 }
 const defaults = (): CuaVisionSettings => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" });
 
@@ -25,7 +25,13 @@ export class CuaImageSettings {
       !Number.isSafeInteger(input.maxLongEdge) || (input.maxLongEdge as number) < 64 || (input.maxLongEdge as number) > 4096 ||
       typeof input.scale !== "number" || !Number.isFinite(input.scale) || input.scale < 0.05 || input.scale > 1)
       throw new Error("Native CUA supports Lanczos3, long edge 64..4096 and scale 0.05..1. Saved crops and other kernels are unavailable.");
-    this.current = { ...defaults(), maxLongEdge: input.maxLongEdge as number, scale: input.scale, version: this.current.version + 1 };
+    this.current = { ...this.current, maxLongEdge: input.maxLongEdge as number, scale: input.scale, version: this.current.version + 1 };
+    return this.settings();
+  }
+  /** Toggle model-facing hints for future captures only; native sizing stays unchanged. */
+  setHints(enabled: boolean): CuaVisionSettings {
+    if (typeof enabled !== "boolean") throw Error("hints must be boolean.");
+    this.current = { ...this.current, hints: enabled, version: this.current.version + 1 };
     return this.settings();
   }
   /** Restore the native defaults on a new session/reload. */
