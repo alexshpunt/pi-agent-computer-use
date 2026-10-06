@@ -6,7 +6,7 @@ A standalone computer-use proof of concept for Pi. The final goal is an extensio
 
 Pi Agent IDE already has vision and other capabilities beyond code work. Its scope has grown. Over time, the IDE should return to code editing, code understanding, debugging, and related development work. This extension should become the computer-use implementation.
 
-We want one window-first computer-use interface for all apps, including browsers: discover a window, read its native UI tree and screenshot, then click or type. Use Cua Driver's capabilities first and add only missing behavior above the unmodified driver. Do not add a separate tool family for each kind of app.
+We want one window-first computer-use interface for all apps, including browsers: discover a window, read its native UI tree and screenshot, then click or type. Use Cua Driver's capabilities first and add missing behavior in the adapter when its public API allows it. A user-approved CUA fork may add missing native capabilities; continuous Windows drawing is the first approved case. This is planned work, not a capability of the current installed driver. Do not add a separate tool family for each kind of app.
 
 The exact implementation is still open. These are project intentions, not capabilities available today.
 
