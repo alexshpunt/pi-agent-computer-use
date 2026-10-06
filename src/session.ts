@@ -23,6 +23,8 @@ export interface DriverResult {
 export interface Driver {
   /** True only for a backend qualified for held paths and graceful in-flight release. */
   heldPaths?: boolean;
+  /** True only for a qualified native runtime with bounded keyboard ownership. */
+  heldKeys?: boolean;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
@@ -471,11 +473,13 @@ export class ComputerSession {
           commands = command.sequence;
         } else commands = [command];
         for (const step of commands) validateInput(step, observed, batch);
+        if (commands.some(step => step.action === "hold") && !this.driver.heldKeys)
+          throw new Error("Key holds require the explicitly selected qualified Windows key-hold runtime. No input was dispatched.");
         if (commands.some(step => step.via !== undefined) && !this.driver.heldPaths)
           throw new Error("Continuous paths require the explicitly selected qualified Windows fork. No batch input was dispatched.");
         if (batch && commands.reduce((ms, step) => ms + requestedInputTime(step), 0) > 30000)
           throw new Error("A sequence exceeds 30 seconds of requested waits/typing/drags.");
-        commands = commands.map(step => ({ ...step, ...(step.keys ? { keys: [...step.keys] } : {}), ...(step.modifiers ? { modifiers: [...step.modifiers] } : {}), ...(step.via ? { via: step.via.map(point => ({ ...point })) } : {}) }));
+        commands = commands.map(step => ({ ...step, ...(step.keys ? { keys: [...step.keys] } : {}), ...(step.modifiers ? { modifiers: [...step.modifiers] } : {}), ...(step.via ? { via: step.via.map(point => ({ ...point })) } : {}), ...(step.actions ? { actions: step.actions.map(pointer => ({ ...pointer, ...(pointer.via ? { via: pointer.via.map(point => ({ ...point })) } : {}) })) } : {}) }));
       } catch (error) { return this.result("refused", (error as Error).message); }
 
       const started = performance.now();
@@ -508,7 +512,7 @@ export class ComputerSession {
           if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached during admission; no more steps dispatched.");
           entry.observation = undefined; entry.detail = undefined;
           const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
-            ...(step.via ? { via_points: step.via.length } : {}) };
+            ...(step.via ? { via_points: step.via.length } : {}), ...(step.actions ? { actions: step.actions.map(pointer => { const { via, ...compact } = pointer; return { ...compact, ...(via ? { via_points: via.length } : {}) }; }) } : {}) };
           delete requested.text; delete requested.element_token;
           delete requested.via;
           const row: Record<string, unknown> = { index, action: step.action, native_tool: name, requested,
@@ -531,7 +535,7 @@ export class ComputerSession {
             highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, { kind: "action", point });
           }
           if (!this.allowed(entry)) return finish(this.result("unknown", "Input was dispatched before permission was revoked. Do not replay blindly."), "Permission revoked after input.");
-          const result = this.result(status, `Driver returned ${status} for ${name} (requested: ${args.delivery_mode}). Observe again to verify application state.`,
+          const result = this.result(status, `Driver returned ${status} for ${name} (requested: ${args.delivery_mode}). Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
             { ...state, ...(native.isError || !native.structuredContent ? {
               native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
             } : {}) }, { ...this.addressed(entry), ...(highlight ? { highlight } : {}) });

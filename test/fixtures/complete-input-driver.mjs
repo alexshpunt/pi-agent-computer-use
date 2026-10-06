@@ -20,6 +20,10 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
   else if (name === "get_window_state") {
     state = { window_bounds: windows[0].bounds, screenshot_width: 500, screenshot_height: 350, capture_id: "once",
       elements: [{ element_token: "field", role: "textbox", label: "Field", actions: ["type_text"] }] }; pixels = image;
+  } else if (name === "fixture_key_hold") { state = {
+    effect: args.keys.includes("escape") ? "partial" : "unverifiable",
+    summary: args.keys.includes("escape") ? "Windows key hold: pressed=[escape], keys_released=false, pointer_prefix=[(1, true, false)]." : "Windows key hold: pressed=[shift,w], keys_released=true, duration_ms=500, held_ms=501.",
+  };
   } else if (name === "fixture_held_path") { state = {
     effect: "partial", delivery: { delivered_count: 2 }, summary: "2/4 points; pressed=true released=true",
   };

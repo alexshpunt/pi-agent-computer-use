@@ -12,8 +12,8 @@ export default function heldPathFixture(pi: ExtensionAPI): void {
     if (!session) {
       const peer = new McpDriver(await loadComputerConfig(cwd));
       const driver: Driver = {
-        heldPaths: true,
-        call: (name, args, signal) => peer.call(name === "drag" && args.via !== undefined ? "fixture_held_path" : name, args, signal),
+        heldPaths: true, heldKeys: true,
+        call: (name, args, signal) => peer.call(name === "hold_keys" ? "fixture_key_hold" : name === "drag" && args.via !== undefined ? "fixture_held_path" : name, args, signal),
         identity: async (target: WindowTarget, _create: boolean, signal?: AbortSignal) =>
           (await peer.call("fixture_identity", { ...target }, signal)).structuredContent?.identity as string | undefined,
         close: () => peer.close(),

@@ -85,7 +85,13 @@ This is trusted user setup, not an agent tool parameter. Selection does not inst
 
 Keep the supplied runtime companions beside the executable. Do not change signing trust, elevation or OS policy to run it. After the user-approved Paint acceptance passed, `scripts/install-cua-held-path.ps1 -Artifact <downloaded-CI-directory>` installed the exact checked artifact into a separate user-local `cua-driver-0.34.0-held-bba07a9` directory. It verifies all three executable hashes, keeps notices/build metadata and refuses to overwrite an existing directory. It changes no PATH, services, registry, autostart or trust settings. On this machine, execute the reviewed installer text with PowerShell `ScriptBlock.Create` if UNC script execution is refused; do not change execution policy or install modules.
 
-The approved local selection now points at that permanent executable with `runtime:"windows-held-paths"`. Close the current computer runtime and reload after a selection change. Remove the local selection to return to installed 0.33.2; no startup update runs. Fresh installations still discover 0.33.2 unless the user explicitly selects this fork. See [the Windows drawing results](windows-held-path-results.md).
+The approved drawing selection used that permanent executable with `runtime:"windows-held-paths"`; the later key-hold selection below replaces only the local choice. Close the current computer runtime and reload after a selection change. Remove the local selection to return to installed 0.33.2; no startup update runs. Fresh installations still discover 0.33.2 unless the user explicitly selects this fork. See [the Windows drawing results](windows-held-path-results.md).
+
+### Qualified key holds
+
+For bounded keys and modifier-held pointer work, explicitly select `runtime:"windows-key-holds"` with the permanent qualified executable. The exact version/source/hash is `KEY_HOLD_RUNTIME` in `src/driver.ts`; both forks use fixed owned MCP arguments and the acknowledged EOF receiver above. The older mouse-path fork cannot hold keys.
+
+After native and production acceptance, `scripts/install-cua-key-hold.ps1 -Artifact <downloaded-CI-directory>` installed checked source 3b330504 into a separate user-local `cua-driver-0.34.0-keys-3b330504` directory. The installer verifies all three EXEs, preserves notices/metadata and refuses overwrite. The old 0.33.2 and mouse-path directories remain available. No automatic installation or OS setting change occurs. Select this trusted local runtime, close the current runtime and reload. See [key-hold results and limits](windows-key-hold-results.md).
 
 ### WSL interop
 

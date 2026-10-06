@@ -76,6 +76,27 @@ A partial path returns `unknown`, preserving native `delivery.delivered_count` a
 
 See [trusted runtime selection](standalone-poc.md#continuous-path-candidate).
 
+## Bounded key holds
+
+With a qualified Windows key-hold runtime selected, `hold` keeps 1..8 unique keys down for `duration_ms`1..10000. Ordinary keys use the same names as `key`; ctrl/shift/alt/win are also allowed on their own or with ordinary keys. Modifiers go down first. The action releases its keys in reverse order before returning success. It does not expose separate key-down/up tools or carry a hold between calls.
+
+Optional `actions` contains 1..32 complete left pixel clicks or drags from the same overview. Each drag may be straight or use `via`. Do not pass element tokens, per-action modifiers, button choices, key steps or nested holds. All requested pointer durations, including 50ms per click, must fit the hold interval. All keys and points are checked before input. Hold cannot nest in `sequence`.
+
+Start with background. After its native refusal, take a new overview and explicitly use foreground. The real keyboard and pointer are in use during the action; do not fight them. Existing held keys/modifiers or mouse buttons cause a preflight refusal, not a release-all.
+
+```js
+// Use actual IDs from a fresh overview and points from its window PNG.
+// Foreground here follows an observed background refusal.
+try {
+  text(await tools.computer_act({window_ref:load("window"),observation_id:load("observation"),
+    action:"hold",keys:["shift","w"],duration_ms:500,delivery_mode:"foreground"}));
+} finally {store("observation",null);store("target",null);}
+```
+
+For Shift + brush, use `keys:["shift"]` and `actions:[{action:"drag",from_x:p.x,from_y:p.y,via:points,to_x:q.x,to_y:q.y,duration_ms:800}]` inside a hold of at least800ms. Points must come from the current overview. The native summary reports requested/measured time, inserted keys, completed pointer actions and press/release prefixes. Scheduling and input delivery add latency; timing is not real-time and OS auto-repeat is not promised.
+
+Cancellation closes the owned EOF-aware transport. Target or foreground loss stops further work and attempts release of action-owned keys/buttons. Partial input returns `unknown`; never replay it or assume a missing release receipt means success. Forced process kill cannot guarantee cleanup. Older runtimes refuse holds before input.
+
 ## Receipts and stopping
 
 `state.sequence` reports total, attempted, completed, elapsed_ms, stop_reason and ordered per-step records. Each record includes requested parameters (text length and via-point count, not text or a full point dump), requested wait, native tool, dispatch/completion offsets and delivered/refused/unknown status.

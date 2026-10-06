@@ -14,6 +14,11 @@ export const HELD_PATH_RUNTIME = {
   sha256: "1ff0625b34fdb2116ebf253455e7eea2b9221fc81450f180ec4dc0ddc26d7224",
 } as const;
 
+/** Exact Windows CI artifact qualified for bounded keys and continuous pointer work. */
+export const KEY_HOLD_RUNTIME = {
+  source: "3b3305044b7b327310615aa99d3307948a63061c", version: "0.34.0",
+  sha256: "9786ace009b81fb2555f14f64b605ab20c3bfc309493398424be1183532df749",
+} as const;
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
   private client?: Client;
@@ -22,8 +27,15 @@ export class McpDriver implements Driver {
 
   private readonly windowIdentity: WindowIdentity;
 
+  private get forkRuntime(): typeof HELD_PATH_RUNTIME | typeof KEY_HOLD_RUNTIME | undefined {
+    return this.config.runtime === "windows-key-holds" ? KEY_HOLD_RUNTIME : this.config.runtime === "windows-held-paths" ? HELD_PATH_RUNTIME : undefined;
+  }
+
   /** A selected fork is checked before the first MCP call; default installed CUA has no held paths. */
-  get heldPaths(): boolean { return this.config.runtime === "windows-held-paths"; }
+  get heldPaths(): boolean { return this.forkRuntime !== undefined; }
+
+  /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
+  get heldKeys(): boolean { return this.config.runtime === "windows-key-holds"; }
 
   /** Window, display and browser routes share the explicitly qualified Windows pin. */
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
@@ -40,7 +52,7 @@ export class McpDriver implements Driver {
     if (this.client) return this.client;
     if (this.heldPaths) {
       const hash = createHash("sha256").update(await readFile(this.config.command)).digest("hex");
-      if (hash !== HELD_PATH_RUNTIME.sha256) throw new Error("Held-path artifact hash mismatch; no Driver process was started.");
+      if (hash !== this.forkRuntime!.sha256) throw new Error("Held-path artifact hash mismatch; no Driver process was started.");
     }
     const interop = this.config.interop ?? process.env.WSL_INTEROP;
     if (process.platform === "linux" && this.config.command.endsWith(".exe")) {
@@ -70,7 +82,7 @@ export class McpDriver implements Driver {
     try {
       await client.connect(transport, { signal, timeout: 15_000 });
       const server = client.getServerVersion();
-      const version = this.heldPaths ? HELD_PATH_RUNTIME.version : this.version;
+      const version = this.forkRuntime?.version ?? this.version;
       if (server?.name !== "cua-driver" || server.version !== version)
         throw new Error(`This backend requires cua-driver ${version}. Requalify before changing the pin.`);
       if (this.heldPaths && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
@@ -86,6 +98,8 @@ export class McpDriver implements Driver {
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
     if (name === "drag" && args.via !== undefined && !this.heldPaths)
       return { content: [], structuredContent: { effect: "refused", code: "held_path_unavailable" }, isError: true };
+    if (name === "hold_keys" && !this.heldKeys)
+      return { content: [], structuredContent: { effect: "refused", code: "key_hold_unavailable" }, isError: true };
     const client = await this.connect(signal);
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout: 15_000 }));
     const content: Content[] = [];

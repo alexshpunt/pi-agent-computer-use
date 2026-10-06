@@ -63,6 +63,8 @@ async function witness(predicate,label) {
 try {
   const root=config.command.replace(/\/cua-driver-[^/]+\/cua-driver\.exe$/,"").replace("/mnt/c/","C:\\").replaceAll("/","\\");
   fixture=await openCompleteInputWindow(driver,site.url,root); target=fixture.target;
+  // Let the owned launch's <=3s asynchronous foreground restoration finish before input.
+  await delay(4500);
   const listed=await session.windows(undefined,"Pi complete input fixture");
   const windows=listed.details.state.windows.filter(w=>w.pid===target.pid&&w.window_id===target.window_id);
   assert.equal(windows.length,1);ref=windows[0].window_ref;

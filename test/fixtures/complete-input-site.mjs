@@ -13,8 +13,9 @@ const board=document.querySelector('#board'),ctx=board.getContext('2d'),message=
 function record(e,extra={}){const r={type:e.type,time:performance.timeOrigin+performance.now(),target:e.target.id,key:e.key,code:e.code,button:e.button,buttons:e.buttons,pointerType:e.pointerType,pointerId:e.pointerId,x:e.offsetX,y:e.offsetY,ctrl:e.ctrlKey,shift:e.shiftKey,alt:e.altKey,meta:e.metaKey,value:message.value,...extra};fetch('/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r)});}
 for(const type of ['keydown','keyup','input','mousedown','mouseup','click','dblclick','contextmenu','wheel'])document.addEventListener(type,e=>{if(type==='contextmenu')e.preventDefault();if(type==='keydown')document.querySelector('#keys').textContent='Keys: '+ ++k;record(e);},{capture:true});
 board.addEventListener('mousedown',()=>board.focus());
+document.querySelector('#pad').addEventListener('click',e=>{if(e.shiftKey)e.target.textContent='Shift selected';});
 board.addEventListener('pointerdown',e=>{stroke={x:e.offsetX,y:e.offsetY};board.setPointerCapture(e.pointerId);ctx.beginPath();ctx.moveTo(stroke.x,stroke.y);record(e);});
-board.addEventListener('pointermove',e=>{if(stroke&&(e.buttons&1)){ctx.lineWidth=4;ctx.strokeStyle='#135';ctx.lineTo(e.offsetX,e.offsetY);ctx.stroke();record(e);}});
+board.addEventListener('pointermove',e=>{if(stroke&&(e.buttons&1)){ctx.lineWidth=4;ctx.strokeStyle=e.shiftKey?'#2a8':'#135';ctx.lineTo(e.offsetX,e.offsetY);ctx.stroke();record(e);}});
 board.addEventListener('pointerup',e=>{if(stroke){document.querySelector('#status').textContent='Strokes: '+ ++n;record(e,{stroke:n});stroke=null;}});
 document.querySelector('#scroll').addEventListener('scroll',e=>record(e,{scrollTop:e.target.scrollTop}));
 </script>`;

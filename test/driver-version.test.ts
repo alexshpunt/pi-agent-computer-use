@@ -3,10 +3,21 @@ import path from "node:path";
 import { expect, test } from "vitest";
 import { McpDriver } from "../src/driver.ts";
 
-test("an unqualified held-path executable cannot start a peer or dispatch input", async () => {
-  const backend = new McpDriver({ command: process.execPath, runtime: "windows-held-paths" });
+test.each(["windows-held-paths", "windows-key-holds"] as const)("an unqualified %s executable cannot start a peer or dispatch input", async runtime => {
+  const backend = new McpDriver({ command: process.execPath, runtime });
   try { await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch"); }
   finally { await backend.close(); }
+});
+test("older runtimes refuse key holds without starting an unqualified peer", async () => {
+  for (const runtime of [undefined, "windows-held-paths"] as const) {
+    const backend = new McpDriver({ command: process.execPath, runtime });
+    try {
+      expect(backend.heldKeys).toBe(false);
+      expect(await backend.call("hold_keys", { keys: ["w"], duration_ms: 500 })).toMatchObject({
+        isError: true, structuredContent: { effect: "refused", code: "key_hold_unavailable" },
+      });
+    } finally { await backend.close(); }
+  }
 });
 test("the qualified pin rejects an older peer before native dispatch", async () => {
   await mkdir(".tmp/native-zoom", {recursive:true});
