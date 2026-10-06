@@ -5,6 +5,21 @@ import { startVisionServer } from "../src/vision-server.ts";
 import { VisionTrace } from "../src/vision-trace.ts";
 
 // Native controls must not imply that a second image engine still runs.
+test("guide writes require a complete same-origin tuple and keep prior settings frozen", async () => {
+  const images = new CuaImageSettings(); const original = images.settings();
+  const server = await startVisionServer(new VisionTrace("guides"), images);
+  const url = new URL("guides", server.url); const headers = { Origin: url.origin, "Content-Type": "application/json" };
+  const guides = { grid: true, region: true, action: true };
+  try {
+    for (const input of [{ grid: true }, { ...guides, mode: "yolo" }, { ...guides, action: 1 }])
+      expect((await fetch(url, { method: "POST", headers, body: JSON.stringify(input) })).status).toBe(400);
+    expect(images.settings()).toEqual(original);
+    expect((await fetch(url, { method: "POST", headers: { ...headers, Origin: "https://foreign.example" }, body: JSON.stringify(guides) })).status).toBe(403);
+    expect(await (await fetch(url, { method: "POST", headers, body: JSON.stringify(guides) })).json()).toMatchObject({ guides, version: 1 });
+    expect(original.guides).toBeUndefined();
+    expect((await (await fetch(new URL("state", server.url))).json()).imageSettings.guides).toEqual(guides);
+  } finally { await server.close(); }
+});
 test("the private hints toggle is same-origin, session-local and does not rewrite old captures", async () => {
   const images = new CuaImageSettings(); const trace = new VisionTrace("hints");
   const frozen = images.settings(); const bytes = await readFile(new URL("./fixtures/cua-zoom.jpg", import.meta.url));

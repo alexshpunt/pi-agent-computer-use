@@ -1,6 +1,7 @@
+import { guideOptions, type GuideOptions } from "./image-guides.ts";
 /** Native CUA window-capture settings. No pixels are transformed by this store. */
 export interface CuaVisionSettings {
-  kernel: "lanczos3"; maxLongEdge: number; scale: number; version: number; route: "cua_native"; hints?: boolean;
+  kernel: "lanczos3"; maxLongEdge: number; scale: number; version: number; route: "cua_native"; hints?: boolean; guides?: GuideOptions;
 }
 const defaults = (): CuaVisionSettings => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" });
 
@@ -16,7 +17,7 @@ export function nativeImageCap(settings: Pick<CuaVisionSettings, "maxLongEdge" |
 export class CuaImageSettings {
   private current = defaults();
   /** In-flight captures keep their own immutable settings copy. */
-  settings(): CuaVisionSettings { return { ...this.current }; }
+  settings(): CuaVisionSettings { return structuredClone(this.current); }
   /** Unsupported kernels or extra fields fail without changing the active tuple. */
   update(value: unknown): CuaVisionSettings {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected native CUA image settings.");
@@ -32,6 +33,12 @@ export class CuaImageSettings {
   setHints(enabled: boolean): CuaVisionSettings {
     if (typeof enabled !== "boolean") throw Error("hints must be boolean.");
     this.current = { ...this.current, hints: enabled, version: this.current.version + 1 };
+    return this.settings();
+  }
+  /** Validate the complete guide tuple and apply only to later annotations. */
+  setGuides(value: unknown): CuaVisionSettings {
+    const guides = guideOptions(value);
+    this.current = { ...this.current, guides, version: this.current.version + 1 };
     return this.settings();
   }
   /** Restore the native defaults on a new session/reload. */

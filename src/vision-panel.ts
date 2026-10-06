@@ -17,6 +17,11 @@ export const visionPanel = `<!doctype html>
 <button type="submit">Apply to next capture</button>
 </form><p id="settings-status" role="status"></p></section>
 <section class="controls"><h2>UI hints</h2><label><input id="hints" type="checkbox" checked> Draw short UI hints on the next window overview</label><p id="hints-status" role="status">Raw returned PNG and sent annotated PNG stay separate. No extra image is sent.</p></section>
+<section class="controls"><h2>Image guides</h2>
+<label><input id="guide-grid" type="checkbox"> Coordinate grid</label>
+<label><input id="guide-region" type="checkbox"> Selected zoom/crop region</label>
+<label><input id="guide-action" type="checkbox"> Last completed pointer target</label>
+<p id="guides-status" role="status">Window overview pixels only. Later captures change; sent images stay frozen. Missing native geometry is not guessed.</p></section>
 <section><h2>Last three boundary images</h2><p class="muted">Oldest → newest. Only this viewer is limited to three cards. Images stay in Pi context until normal compaction; these cards mirror the provider hook, not confirmed transport delivery.</p><div id="frames" class="frames"></div></section>
 <section><h2>Observed request text</h2><p class="muted">Exact bounded text excerpts at the same hook. Adapter structures below are separate, not proof of forwarded content.</p><div id="request"></div></section>
 <section><h2>Computer-use action trace</h2><p class="muted">Includes nested Codemode calls, captured-only images, errors and adapter metadata.</p><div id="actions"></div></section>
@@ -41,7 +46,7 @@ details{margin:10px 0}summary{cursor:pointer}.error{border-color:#d56b75}.empty{
 
 export const visionScript = `
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node};
-let revision=-1,session,settingsVersion=-1,settingsDirty=false,settingsBusy=false,controlsReady=false,hintsBusy=false;
+let revision=-1,session,settingsVersion=-1,settingsDirty=false,settingsBusy=false,controlsReady=false,hintsBusy=false,guidesBusy=false;
 function settingsDraft(){
   return {kernel:document.getElementById("kernel").value,maxLongEdge:Number(document.getElementById("long-edge").value),scale:Number(document.getElementById("scale-number").value)};
 }
@@ -51,6 +56,16 @@ function showDraft(){
   document.getElementById("settings-status").textContent="Draft cap: "+Math.floor(draft.maxLongEdge*draft.scale)+" px · apply to the next capture.";
 }
 function setupSettings(){
+  for(const key of ["grid","region","action"])document.getElementById("guide-"+key).addEventListener("change",async ()=>{
+    if(guidesBusy)return;guidesBusy=true;
+    const guides=Object.fromEntries(["grid","region","action"].map(k=>[k,document.getElementById("guide-"+k).checked]));
+    try{
+      const response=await fetch("guides",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(guides)});
+      if(!response.ok)throw Error(await response.text());await response.json();settingsVersion=-1;
+      document.getElementById("guides-status").textContent="Applied to later window captures. Earlier images stay unchanged.";
+    }catch(error){document.getElementById("guides-status").textContent="Not applied: "+error.message}
+    finally{guidesBusy=false}
+  });
   document.getElementById("hints").addEventListener("change",async ()=>{
     if(hintsBusy)return;hintsBusy=true;
     try{
@@ -81,6 +96,7 @@ function setupSettings(){
 function renderSettings(settings){
   if(!settings)return;
   if(!hintsBusy)document.getElementById("hints").checked=settings.hints!==false;
+  if(!guidesBusy)for(const key of ["grid","region","action"])document.getElementById("guide-"+key).checked=settings.guides?.[key]===true;
   if(!settingsDirty&&!settingsBusy){
     document.getElementById("kernel").value=settings.kernel;
     document.getElementById("long-edge").value=String(settings.maxLongEdge);

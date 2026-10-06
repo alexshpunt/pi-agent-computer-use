@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
@@ -54,8 +55,8 @@ export interface ComputerResult {
   };
   isError?: boolean;
 }
-interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext }
+interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 
@@ -286,6 +287,14 @@ export class ComputerSession {
     });
   }
 
+  /** Reproject proven window-local native geometry onto fresh CUA frames, never DPI guesses. */
+  private actionMark(mark: GuideMark | undefined, mapping: DetailContext["windowMapping"]): GuideMark | undefined {
+    if (!mark?.region) return mark;
+    if (!mapping) return { reason: "Current native-to-image mapping is unavailable.", basis: mark.basis };
+    const r = mark.region;
+    return { basis: mark.basis, region: { x: (r.x - mapping.offsetX) / mapping.scale - 4,
+      y: (r.y - mapping.offsetY) / mapping.scale - 4, width: r.width / mapping.scale + 8, height: r.height / mapping.scale + 8 } };
+  }
   private imageMetadata(images: Content[], state: Record<string, unknown>, settings: CuaVisionSettings): Record<string, unknown> {
     const image = images.find(block => block.type === "image");
     if (!image || image.type !== "image") throw new Error("No native grounding image.");
@@ -420,7 +429,7 @@ export class ComputerSession {
     const current = await this.current(entry.ref, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
-    const settings = { ...this.settings(), ...(options.hints !== undefined ? { hints: options.hints } : {}) };
+    const settings = structuredClone({ ...this.settings(), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
     const native = await this.driver.call("get_window_state", {
       ...entry.target, max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000,
       max_image_dimension: nativeImageCap(settings), ...(query ? { query } : {}),
@@ -465,7 +474,10 @@ export class ComputerSession {
       this.uiImages = [...this.uiImages.filter(old => active.has(old)), observed];
       for (const old of this.uiImages.splice(0, Math.max(0, this.uiImages.length - 3))) old.rawImage = undefined;
     }
-    const rendered = await annotateUi(raw, ui, observed.width, observed.height, options.hints ?? settings.hints ?? true);
+    observed.mapping = entry.detail?.windowMapping;
+    observed.actionMark = this.actionMark(entry.lastAction, observed.mapping);
+    const rendered = await annotateUi(raw, ui, observed.width, observed.height, options.hints ?? settings.hints ?? true, undefined, ui.elements,
+      { options: settings.guides, action: observed.actionMark });
     if (!this.allowed(entry) || signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Observation revoked or cancelled during annotation; pixels withheld."); }
     if (rendered.image !== raw) this.retainRaw?.(raw);
     const metadata = this.imageMetadata([rendered.image], state, settings);
@@ -510,10 +522,17 @@ export class ComputerSession {
       if (clipped.width <= 0 || clipped.height <= 0) return this.result("refused", "Element is outside the observed image.");
       return this.windowDetail(entry, { image_id: observed.id, ...clipped }, signal);
     }
-    if (request.operation === "highlight" || request.operation === "scope") {
+    if (request.operation === "region") {
+      const r = request.region!;
+      if (!observed.width || !observed.height || r.x + r.width > observed.width || r.y + r.height > observed.height)
+        return this.result("refused", "Region must fit within the current overview image.");
+      observed.region = { ...r };
+    }
+    if (["highlight", "scope", "region"].includes(request.operation)) {
       if (!observed.rawImage) return this.result("refused", "Snapshot image was evicted. Read a new overview; its hints will change.");
       const rendered = await annotateUi(observed.rawImage, ui, observed.width, observed.height,
-        observed.settings.hints ?? true, request.operation === "highlight" ? request.hint : undefined, observed.ui.elements);
+        observed.settings.hints ?? true, request.operation === "highlight" ? request.hint : undefined, observed.ui.elements,
+        { options: observed.settings.guides, region: observed.region, action: observed.actionMark });
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "UI inspection revoked or cancelled; pixels withheld.");
       if (rendered.image !== observed.rawImage) this.retainRaw?.(observed.rawImage);
       const metadata = this.imageMetadata([rendered.image], { screenshot_width: observed.width, screenshot_height: observed.height }, observed.settings);
@@ -598,6 +617,8 @@ export class ComputerSession {
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached during admission; no more steps dispatched.");
           entry.observation = undefined; entry.detail = undefined;
+          const pointerAction = ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
+          if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
           const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
             ...(step.via ? { via_points: step.via.length } : {}), ...(step.actions ? { actions: step.actions.map(pointer => { const { via, ...compact } = pointer; return { ...compact, ...(via ? { via_points: via.length } : {}) }; }) } : {}) };
           delete requested.text; delete requested.element_token;
@@ -617,13 +638,33 @@ export class ComputerSession {
           const status = refused ? "refused" : uncertain ? "unknown" : "delivered";
           row.status = status; inFlight = false;
           if (status === "delivered") trace.completed++;
+          const resolvedPoint = status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds
+            ? nativeClickPoint(native.content, entry.target.pid, observed.bounds) : undefined;
+          if (status === "delivered" && pointerAction) {
+            const target = step.element_token ? observed.frames.get(step.element_token) : undefined;
+            const mapping = observed.mapping;
+            const sameMapping = resolvedPoint && observed.bounds && mapping && step.x !== undefined && step.y !== undefined &&
+              Math.abs(resolvedPoint.x - (observed.bounds.x + mapping.offsetX + step.x * mapping.scale)) <= 1 &&
+              Math.abs(resolvedPoint.y - (observed.bounds.y + mapping.offsetY + step.y * mapping.scale)) <= 1;
+            const r = target ?? (sameMapping ? { ...resolvedPoint, width: 1, height: 1 } : undefined);
+            entry.lastAction = r && observed.bounds
+              ? { region: { ...r, x: r.x - observed.bounds.x, y: r.y - observed.bounds.y },
+                basis: target ? "completed_native_token_target" : "completed_native_click_receipt" }
+              : { reason: "Native action did not report usable target geometry." };
+          }
           if (status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds) {
-            const point = nativeClickPoint(native.content, entry.target.pid, observed.bounds);
+            const point = resolvedPoint;
             highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, { kind: "action", point });
           }
-          if (!this.allowed(entry)) return finish(this.result("unknown", "Input was dispatched before permission was revoked. Do not replay blindly."), "Permission revoked after input.");
+          if (!this.allowed(entry) || signal?.aborted) {
+            entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
+            return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
+          }
           const result = this.result(status, `Driver returned ${status} for ${name} (requested: ${args.delivery_mode}). Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
-            { ...state, ...(native.isError || !native.structuredContent ? {
+            { ...state, ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
+              overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
+              resolved_native_screen: resolvedPoint ?? null, native_target_mark: entry.lastAction ?? null } } : {}),
+            ...(native.isError || !native.structuredContent ? {
               native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
             } : {}) }, { ...this.addressed(entry), ...(highlight ? { highlight } : {}) });
           if (!batch || status !== "delivered" || index === commands.length - 1)

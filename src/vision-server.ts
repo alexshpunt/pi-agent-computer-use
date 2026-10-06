@@ -26,7 +26,7 @@ export async function startVisionServer(trace: VisionTrace, images: CuaImageSett
     if (route === "trial" || route.startsWith("trial/") || route === "trial.js" || route === "trial.css") {
       response.writeHead(410).end("The old resampling trial is retired on the native CUA route. Native overview uses Lanczos3; detail uses fresh padded zoom."); return;
     }
-    if (request.method === "POST" && ["settings", "hints"].includes(route)) {
+    if (request.method === "POST" && ["settings", "hints", "guides"].includes(route)) {
       const limit = 1024;
       if (request.headers.origin !== origin || request.headers["content-type"] !== "application/json") {
         response.writeHead(403).end("Settings require same-origin JSON."); request.resume(); return;
@@ -42,7 +42,7 @@ export async function startVisionServer(trace: VisionTrace, images: CuaImageSett
         const input: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         if (route === "hints" && (!input || typeof input !== "object" || Array.isArray(input) ||
           Object.keys(input).join(",") !== "enabled" || typeof (input as { enabled?: unknown }).enabled !== "boolean")) throw Error("Expected only boolean enabled.");
-        const applied = route === "hints" ? images.setHints((input as { enabled: boolean }).enabled) : images.update(input);
+        const applied = route === "hints" ? images.setHints((input as { enabled: boolean }).enabled) : route === "guides" ? images.setGuides(input) : images.update(input);
         response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(applied));
       } catch (error) { response.writeHead(400).end(error instanceof Error ? error.message : String(error)); }
       return;

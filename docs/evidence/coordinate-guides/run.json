@@ -1,0 +1,897 @@
+{
+  "tasks": [
+    "LPT-378",
+    "LPT-379"
+  ],
+  "scope": "Windows native and current agent; no multi-model benchmark",
+  "base_revision": "072801026e1e3ff00b7a86045359ece499266906",
+  "runtime": {
+    "source": "3b3305044b7b327310615aa99d3307948a63061c",
+    "exe_sha256": "9786ace009b81fb2555f14f64b605ab20c3bfc309493398424be1183532df749",
+    "changed": false
+  },
+  "checks": {
+    "unit": 227,
+    "real_pi": 13,
+    "typecheck": "passed",
+    "diff": "passed",
+    "production_tools": 6,
+    "browser_tools": 0
+  },
+  "native_matrix": {
+    "hits": 18,
+    "samples": [
+      {
+        "route": "native",
+        "case": "baseline",
+        "cap": 500,
+        "dimensions": {
+          "width": 500,
+          "height": 376
+        },
+        "domain": "native_screen_pixels",
+        "dx": 1,
+        "dy": 0,
+        "tolerance": 5,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "baseline",
+        "cap": 800,
+        "dimensions": {
+          "width": 800,
+          "height": 602
+        },
+        "domain": "native_screen_pixels",
+        "dx": -1,
+        "dy": 0,
+        "tolerance": 3,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "baseline",
+        "cap": 1024,
+        "dimensions": {
+          "width": 1024,
+          "height": 771
+        },
+        "domain": "native_screen_pixels",
+        "dx": 0,
+        "dy": -1,
+        "tolerance": 3,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "move",
+        "cap": 500,
+        "dimensions": {
+          "width": 500,
+          "height": 376
+        },
+        "domain": "native_screen_pixels",
+        "dx": 1,
+        "dy": 0,
+        "tolerance": 5,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "move",
+        "cap": 800,
+        "dimensions": {
+          "width": 800,
+          "height": 602
+        },
+        "domain": "native_screen_pixels",
+        "dx": -1,
+        "dy": 0,
+        "tolerance": 3,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "move",
+        "cap": 1024,
+        "dimensions": {
+          "width": 1024,
+          "height": 771
+        },
+        "domain": "native_screen_pixels",
+        "dx": 0,
+        "dy": -1,
+        "tolerance": 3,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "resize",
+        "cap": 500,
+        "dimensions": {
+          "width": 500,
+          "height": 376
+        },
+        "domain": "native_screen_pixels",
+        "dx": -1,
+        "dy": 0,
+        "tolerance": 5,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "resize",
+        "cap": 800,
+        "dimensions": {
+          "width": 800,
+          "height": 602
+        },
+        "domain": "native_screen_pixels",
+        "dx": 0,
+        "dy": 0,
+        "tolerance": 4,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "native",
+        "case": "resize",
+        "cap": 1024,
+        "dimensions": {
+          "width": 1024,
+          "height": 770
+        },
+        "domain": "native_screen_pixels",
+        "dx": 0,
+        "dy": 1,
+        "tolerance": 3,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "browser",
+        "case": "baseline",
+        "cap": 500,
+        "dimensions": {
+          "width": 500,
+          "height": 376
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": 0.1041717529296875,
+        "tolerance": 4,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "baseline",
+        "cap": 800,
+        "dimensions": {
+          "width": 800,
+          "height": 602
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": -0.5625,
+        "tolerance": 3,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "baseline",
+        "cap": 1024,
+        "dimensions": {
+          "width": 1024,
+          "height": 771
+        },
+        "domain": "app_client_css_pixels",
+        "dx": 0.6562652587890625,
+        "dy": -0.5625,
+        "tolerance": 3,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "move",
+        "cap": 500,
+        "dimensions": {
+          "width": 500,
+          "height": 376
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": 0.1041717529296875,
+        "tolerance": 4,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "move",
+        "cap": 800,
+        "dimensions": {
+          "width": 800,
+          "height": 602
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": -0.5625,
+        "tolerance": 3,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "move",
+        "cap": 1024,
+        "dimensions": {
+          "width": 1024,
+          "height": 771
+        },
+        "domain": "app_client_css_pixels",
+        "dx": 0.6562652587890625,
+        "dy": -0.5625,
+        "tolerance": 3,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "resize",
+        "cap": 500,
+        "dimensions": {
+          "width": 500,
+          "height": 376
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.6770782470703125,
+        "dy": 0.770843505859375,
+        "tolerance": 4,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "resize",
+        "cap": 800,
+        "dimensions": {
+          "width": 800,
+          "height": 602
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": -0.5625,
+        "tolerance": 3,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "case": "resize",
+        "cap": 1024,
+        "dimensions": {
+          "width": 1024,
+          "height": 770
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": 0.1041717529296875,
+        "tolerance": 3,
+        "dpi": null,
+        "dpr": 1.5
+      }
+    ],
+    "cleanup": [
+      {
+        "mode": "native",
+        "sourceGone": true
+      },
+      {
+        "mode": "browser",
+        "sourceGone": true,
+        "profileRemoved": true
+      }
+    ]
+  },
+  "current_agent": {
+    "hits": 4,
+    "samples": [
+      {
+        "route": "native",
+        "cap": 500,
+        "dimensions": {
+          "width": 500,
+          "height": 426
+        },
+        "domain": "native_screen_pixels",
+        "dx": 0,
+        "dy": 0,
+        "dpi": 96,
+        "dpr": null
+      },
+      {
+        "route": "browser",
+        "cap": 500,
+        "dimensions": {
+          "width": 466,
+          "height": 500
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": -0.5625,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "cap": 800,
+        "dimensions": {
+          "width": 746,
+          "height": 800
+        },
+        "domain": "app_client_css_pixels",
+        "dx": -0.0104217529296875,
+        "dy": 0.770843505859375,
+        "dpi": null,
+        "dpr": 1.5
+      },
+      {
+        "route": "browser",
+        "cap": 1024,
+        "dimensions": {
+          "width": 955,
+          "height": 1024
+        },
+        "domain": "app_client_css_pixels",
+        "dx": 0.6562652587890625,
+        "dy": 0.770843505859375,
+        "dpi": null,
+        "dpr": 1.5
+      }
+    ],
+    "native_cleanup": {
+      "sourceGone": true
+    },
+    "browser_cleanup": {
+      "sourceGone": true,
+      "profileRemoved": true
+    },
+    "input_replayed": false
+  },
+  "guide_cases": [
+    {
+      "case": "native-region",
+      "revision": 28,
+      "image_settings": {
+        "kernel": "lanczos3",
+        "maxLongEdge": 500,
+        "scale": 1,
+        "version": 0,
+        "route": "cua_native"
+      },
+      "frames": [
+        {
+          "hash": "91532c50c039a79a1e3194c1c832beeb66c6d5917f667ddd71b4022312224671",
+          "bytes": 67623,
+          "width": 500,
+          "height": 426,
+          "mime": "image/png",
+          "raw": {
+            "hash": "c822f8ff5d0abd7c5724d7ddfd96d856e824accb257d2781cf9a03fc5750904d",
+            "bytes": 91369,
+            "width": 500,
+            "height": 426
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 3
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            }
+          }
+        },
+        {
+          "hash": "efc16ff34476ea56a04b8925814cc64c1ed9bc4eddaa07a8048c19a4bea253dd",
+          "bytes": 67739,
+          "width": 500,
+          "height": 426,
+          "mime": "image/png",
+          "raw": {
+            "hash": "c822f8ff5d0abd7c5724d7ddfd96d856e824accb257d2781cf9a03fc5750904d",
+            "bytes": 91369,
+            "width": 500,
+            "height": 426
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 3
+            },
+            "region": {
+              "status": "shown",
+              "clipped": false,
+              "occluded": true,
+              "basis": "selected_overview_region"
+            },
+            "action": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            }
+          }
+        },
+        {
+          "hash": "d0c065aaabe04253cde1b3be1481dec63aa793e44300c7363ec9b1dfc2c60f1e",
+          "bytes": 10644,
+          "width": 500,
+          "height": 200,
+          "mime": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "case": "native-action",
+      "revision": 44,
+      "image_settings": {
+        "kernel": "lanczos3",
+        "maxLongEdge": 500,
+        "scale": 1,
+        "version": 0,
+        "route": "cua_native"
+      },
+      "frames": [
+        {
+          "hash": "2cf5704a57f191d43e3f1ce5d89b55a4677f7e1b91e8c1c543167f41c9a868a9",
+          "bytes": 68328,
+          "width": 500,
+          "height": 426,
+          "mime": "image/png",
+          "raw": {
+            "hash": "c822f8ff5d0abd7c5724d7ddfd96d856e824accb257d2781cf9a03fc5750904d",
+            "bytes": 91369,
+            "width": 500,
+            "height": 426
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 3
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            }
+          }
+        },
+        {
+          "hash": "2084fd59bc983d653f3ec0644f9edc0414ef9e2b5e8dac36ef1bc3842d38ed7d",
+          "bytes": 68552,
+          "width": 500,
+          "height": 426,
+          "mime": "image/png",
+          "raw": {
+            "hash": "ef87d19621177beafcd83c77f39894f70fbdc6fc588baf33243d87d50cae249c",
+            "bytes": 91164,
+            "width": 500,
+            "height": 426
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 3
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "shown",
+              "clipped": false,
+              "occluded": true,
+              "basis": "completed_native_token_target"
+            }
+          }
+        },
+        {
+          "hash": "c084dd1d334e7231fbf80bb1dcc40584bd502c45b0977e6b5dbc7c9de6af8a48",
+          "bytes": 67951,
+          "width": 500,
+          "height": 426,
+          "mime": "image/png",
+          "raw": {
+            "hash": "42190ecb232fd3287e9b2f5e595043095030df4546bed2876c735d99db7b1749",
+            "bytes": 91273,
+            "width": 500,
+            "height": 426
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 3
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "unavailable",
+              "reason": "Native action did not report usable target geometry."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "viewer-guides",
+      "revision": 228,
+      "image_settings": {
+        "kernel": "lanczos3",
+        "maxLongEdge": 800,
+        "scale": 1,
+        "version": 4,
+        "route": "cua_native",
+        "guides": {
+          "grid": true,
+          "region": true,
+          "action": true
+        }
+      },
+      "frames": [
+        {
+          "hash": "7fc819b5a134a0f8710570792194871770bcde8b1f87739a783773ccd63fda0e",
+          "bytes": 126073,
+          "width": 746,
+          "height": 800,
+          "mime": "image/png",
+          "raw": {
+            "hash": "1b98edc424175eb027d29b48fd0108dedc877e0d3bd17346c42d1ac88980d529",
+            "bytes": 133946,
+            "width": 746,
+            "height": 800
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 0
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "unavailable",
+              "clipped": false,
+              "occluded": true,
+              "basis": "completed_native_click_receipt",
+              "reason": "Known controls cover the guide border."
+            }
+          }
+        },
+        {
+          "hash": "7fc819b5a134a0f8710570792194871770bcde8b1f87739a783773ccd63fda0e",
+          "bytes": 126073,
+          "width": 746,
+          "height": 800,
+          "mime": "image/png",
+          "raw": {
+            "hash": "1b98edc424175eb027d29b48fd0108dedc877e0d3bd17346c42d1ac88980d529",
+            "bytes": 133946,
+            "width": 746,
+            "height": 800
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 0
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "unavailable",
+              "clipped": false,
+              "occluded": true,
+              "basis": "completed_native_click_receipt",
+              "reason": "Known controls cover the guide border."
+            }
+          }
+        },
+        {
+          "hash": "ffe40ed9c70472a8a522e20b852c413a6346cc147e334301b4e068b909638b42",
+          "bytes": 248272,
+          "width": 746,
+          "height": 800,
+          "mime": "image/png",
+          "raw": {
+            "hash": "5736f7421aca3775c74988074efa124355fec457bb71c6247fd40dac3eaa7d4e",
+            "bytes": 258964,
+            "width": 746,
+            "height": 800
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 5
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "unavailable",
+              "clipped": false,
+              "occluded": true,
+              "basis": "completed_native_click_receipt",
+              "reason": "Known controls cover the guide border."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "browser-final",
+      "revision": 288,
+      "image_settings": {
+        "kernel": "lanczos3",
+        "maxLongEdge": 1024,
+        "scale": 1,
+        "version": 5,
+        "route": "cua_native",
+        "guides": {
+          "grid": true,
+          "region": true,
+          "action": true
+        }
+      },
+      "frames": [
+        {
+          "hash": "4db1e8dff9dedfa7749050652e1c450f085fdaac4d2116a4e2b48b4447808ccc",
+          "bytes": 285848,
+          "width": 955,
+          "height": 1024,
+          "mime": "image/png",
+          "raw": {
+            "hash": "7dcd51d6b06e27e284c999726db4bfce4c48601c204ca8180b082f3d22c8b3b3",
+            "bytes": 388893,
+            "width": 955,
+            "height": 1024
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 1
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "shown",
+              "clipped": false,
+              "occluded": false,
+              "basis": "completed_native_token_target"
+            }
+          }
+        },
+        {
+          "hash": "f8a456191be7a2fa6c0c0a3213ec2f221777e3e0f052140c4d51d58ac395f12e",
+          "bytes": 170126,
+          "width": 955,
+          "height": 1024,
+          "mime": "image/png",
+          "raw": {
+            "hash": "67c85eac92b34ff664cca56b669b5a4344dcfa771a9484be4cb808143dc229a1",
+            "bytes": 179041,
+            "width": 955,
+            "height": 1024
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 0
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "shown",
+              "clipped": false,
+              "occluded": true,
+              "basis": "completed_native_token_target"
+            }
+          }
+        },
+        {
+          "hash": "befbaa7b40b66a3d00f109f62c244397717ba8345d79de4c023025f53be22b8e",
+          "bytes": 169605,
+          "width": 955,
+          "height": 1024,
+          "mime": "image/png",
+          "raw": {
+            "hash": "e5b0f02f6499fff9b6b65eb45c3b1b138aab3bd641245ca483d2aebb68f508bf",
+            "bytes": 178687,
+            "width": 955,
+            "height": 1024
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 0
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "unavailable",
+              "clipped": false,
+              "occluded": true,
+              "basis": "completed_native_click_receipt",
+              "reason": "Known controls cover the guide border."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "viewer-off",
+      "revision": 324,
+      "image_settings": {
+        "kernel": "lanczos3",
+        "maxLongEdge": 1024,
+        "scale": 1,
+        "version": 8,
+        "route": "cua_native",
+        "guides": {
+          "grid": false,
+          "region": false,
+          "action": false
+        }
+      },
+      "frames": [
+        {
+          "hash": "5003e433f46285761f6e5f22afdef73d2d9aa1b40a0c46d72c982ebcbac37cbf",
+          "bytes": 249834,
+          "width": 955,
+          "height": 1024,
+          "mime": "image/png",
+          "raw": {
+            "hash": "b971d12e3ef6765fe2acb0ca7b9fa46272c37013aa5e63e5301ff9e6abc8bb7c",
+            "bytes": 312782,
+            "width": 955,
+            "height": 1024
+          },
+          "guides": {
+            "grid": {
+              "status": "shown",
+              "occluded": true,
+              "omitted_labels": 2
+            },
+            "region": {
+              "status": "unavailable",
+              "reason": "No proven region."
+            },
+            "action": {
+              "status": "shown",
+              "clipped": false,
+              "occluded": true,
+              "basis": "completed_native_token_target"
+            }
+          }
+        },
+        {
+          "hash": "4d8ff358c5aebc356463806079c8b0adb7aa1522412652ac3d44395601092c26",
+          "bytes": 238517,
+          "width": 955,
+          "height": 1024,
+          "mime": "image/png",
+          "raw": {
+            "hash": "f4fa1c51103d67d4f0f4ebdc895594c0d05bbda46dc40ae94fdafc3fa1627d36",
+            "bytes": 312477,
+            "width": 955,
+            "height": 1024
+          },
+          "guides": {
+            "grid": {
+              "status": "off"
+            },
+            "region": {
+              "status": "off"
+            },
+            "action": {
+              "status": "shown",
+              "clipped": false,
+              "occluded": false,
+              "basis": "completed_native_token_target"
+            }
+          }
+        },
+        {
+          "hash": "7531a10ea4f6ee2eee69d7a027679a5f8aa4c6ca9a5eeac40bcbd067832bef78",
+          "bytes": 312159,
+          "width": 955,
+          "height": 1024,
+          "mime": "image/png",
+          "guides": {
+            "grid": {
+              "status": "off"
+            },
+            "region": {
+              "status": "off"
+            },
+            "action": {
+              "status": "off"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "detail_geometry": {
+    "route_changed": false,
+    "reused_report": "docs/region-highlight-results.md",
+    "fresh_parent_jpeg": {
+      "width": 500,
+      "height": 200,
+      "input_authority": false
+    }
+  },
+  "human_tui": {
+    "cells": {
+      "columns": 77,
+      "rows": 57
+    },
+    "revision": 3240,
+    "readable": true,
+    "inline_image_claim": false
+  },
+  "cleanup": {
+    "driver": 0,
+    "overlay_helper": 0,
+    "mouse_buttons_down": false,
+    "ctrl_shift_alt_win_down": false
+  },
+  "limits": [
+    "Native provider omissions cannot be protected by guide clipping.",
+    "A token marker is its collected rectangle, not a cursor measurement.",
+    "Missing native point geometry and covered borders stay unavailable.",
+    "Viewer comparison assets may expire while normal Pi images remain.",
+    "Live dropdown selection was not requalified here; prior UI-resource viewer qualification remains unchanged.",
+    "No cross-DPI, cross-platform or model-performance score is claimed.",
+    "Application-boundary images are not confirmed transport payloads."
+  ]
+}

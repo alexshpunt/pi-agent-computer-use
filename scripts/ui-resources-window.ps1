@@ -49,7 +49,12 @@ $notes = [Windows.Forms.RichTextBox]::new(); $notes.AccessibleName='Scrollable n
 $notes.Text=((1..80 | ForEach-Object {'Note '+$_}) -join "`n"); $form.Controls.Add($notes)
 $notes.add_VScroll({Record-Event 'scroll' $notes.GetCharIndexFromPosition([Drawing.Point]::new(5,5))})
 $canvas = [Windows.Forms.Panel]::new(); $canvas.AccessibleName='Canvas'; $canvas.BackColor=[Drawing.Color]::LightBlue; $canvas.SetBounds(450,525,400,145); $form.Controls.Add($canvas)
-$canvas.add_Paint({param($sender,$e) $e.Graphics.DrawString('Pixels without child controls',$form.Font,[Drawing.Brushes]::Navy,15,50)})
+$target = [Windows.Forms.TextBox]::new(); $target.Text='Coordinate target'; $target.AccessibleName='Coordinate target'; $target.Multiline=$true; $target.ReadOnly=$true; $target.SetBounds(10,10,350,110); $canvas.Controls.Add($target)
+$target.add_MouseUp({param($sender,$e)
+  $p=$sender.PointToScreen([Drawing.Point]::new($e.X,$e.Y)); $r=$sender.RectangleToScreen($sender.ClientRectangle)
+  Record-Event 'pointer' @{label='Coordinate target';x=$p.X;y=$p.Y;center_x=$r.X+$r.Width/2;center_y=$r.Y+$r.Height/2;dpi=$sender.DeviceDpi}
+})
+$target.add_Click({$script:Clicks++; $count.Text='Clicks: '+$script:Clicks; Record-Event 'click' 'coordinate_target'})
 $other = [Windows.Forms.Form]::new(); $other.Text='Pi UI native second fixture'; $other.Size=[Drawing.Size]::new(400,220)
 $otherSave = Button 'Save' 25 40; $other.Controls.Add($otherSave)
 $otherSave.add_Click({Record-Event 'click' 'other'})

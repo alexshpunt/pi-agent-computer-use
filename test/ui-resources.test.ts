@@ -35,6 +35,55 @@ async function fixture() {
   return { session, driver, raw, retained, ref, other: windows[1].window_ref, setMode: (value: "safe" | "yolo") => { mode = value; } };
 }
 function ui(result: Awaited<ReturnType<ComputerSession["observe"]>>) { return result.details.ui!; }
+
+test("a selected overview region is local, bounded, read-only and keeps the input observation", async () => {
+  const f = await fixture();
+  const view = await f.session.observe(f.ref, undefined, undefined, undefined, undefined,
+    { guides: { grid: true, region: true, action: true } });
+  const before = nativeCalls(f.driver);
+  const marked = await f.session.observe(f.ref, undefined, undefined, undefined,
+    { operation: "region", observation_id: view.details.observation_id!, region: { x: 30, y: 40, width: 180, height: 110 } });
+  expect(marked.details.status).toBe("observed");
+  expect(marked.details.observation_id).toBe(view.details.observation_id);
+  expect(marked.content.filter(b => b.type === "image")).toHaveLength(1);
+  expect(marked.details.agent_image).toMatchObject({ annotation: { guides: { region: { status: "shown" } } } });
+  expect(nativeCalls(f.driver)).toEqual(before);
+  const invalid = await f.session.observe(f.ref, undefined, undefined, undefined,
+    { operation: "region", observation_id: view.details.observation_id!, region: { x: 490, y: 30, width: 50, height: 20 } });
+  expect(invalid.details.status).toBe("refused");
+  expect(nativeCalls(f.driver)).toEqual(before);
+  expect((await f.session.act({ window_ref: f.ref, observation_id: view.details.observation_id!, action: "click", hint: ui(view).elements[1].hint })).details.status).toBe("delivered");
+});
+test("completed token target marks follow window movement, while an uncertain pointer never creates a mark", async () => {
+  const f = await fixture(); const call = f.driver.call; let moved = false; let uncertain = false;
+  f.driver.call = vi.fn(async (name, args, signal) => {
+    const result = await call(name, args, signal);
+    if (name === "get_window_state") {
+      const state = result.structuredContent!;
+      const dx = moved ? 300 : 0; const dy = moved ? 200 : 0;
+      state.window_bounds = { x: 80 + dx, y: 90 + dy, width: 1000, height: 640 };
+      const elements = state.elements as Record<string, unknown>[];
+      elements.unshift({ element_index: 0, element_token: "root", frame: { x: 80 + dx, y: 90 + dy, w: 1000, h: 640 },
+        screenshot_frame: { x: -1, y: -1, w: 501, h: 321 } });
+      for (const e of elements.slice(1)) if (e.frame) { const r = e.frame as { x: number; y: number }; r.x += dx; r.y += dy; }
+    }
+    if (name === "click" && uncertain) return { content: [], structuredContent: { status: "unknown" } };
+    return result;
+  });
+  const options = { guides: { grid: false, region: false, action: true } };
+  const first = await f.session.observe(f.ref, undefined, undefined, undefined, undefined, options);
+  const target = ui(first).elements.find(e => e.name === "Save" && e.enabled)!;
+  expect((await f.session.act({ window_ref: f.ref, observation_id: first.details.observation_id!, action: "click", hint: target.hint })).details.status).toBe("delivered");
+  moved = true;
+  const after = await f.session.observe(f.ref, undefined, undefined, undefined, undefined, options);
+  const annotation = after.details.agent_image!.annotation as { guides: { action: { status: string; basis: string; region: { x: number } } } };
+  expect(annotation.guides.action).toMatchObject({ status: "shown", basis: "completed_native_token_target" });
+  expect(annotation.guides.action.region.x).toBeCloseTo(99 / (998 / 500) - 4);
+  uncertain = true;
+  expect((await f.session.act({ window_ref: f.ref, observation_id: after.details.observation_id!, action: "click", hint: ui(after).elements.find(e => e.name === "Save" && e.enabled)!.hint })).details.status).toBe("unknown");
+  const last = await f.session.observe(f.ref, undefined, undefined, undefined, undefined, options);
+  expect(last.details.agent_image).toMatchObject({ annotation: { guides: { action: { status: "unavailable" } } } });
+});
 function nativeCalls(driver: Driver) { return vi.mocked(driver.call).mock.calls.map(([name]) => name); }
 
 test("dense tool text remains valid bounded JSON while structured resources stay complete", async () => {
@@ -148,6 +197,13 @@ test("disabled, foreign, retired and conflicting hints never reach native input"
   expect((await f.session.act(input(selected.hint, latest.details.observation_id!))).details.status).toBe("delivered");
   expect(f.driver.call).toHaveBeenLastCalledWith("click", expect.objectContaining({ element_token: selected.element_token }), undefined);
   expect((await f.session.act(input(selected.hint, latest.details.observation_id!))).details.status).toBe("refused");
+});
+
+test("keyboard-only commands do not claim pixel-coordinate grounding", async () => {
+  const f = await fixture(); const view = await f.session.observe(f.ref);
+  const result = await f.session.act({window_ref:f.ref,observation_id:view.details.observation_id!,action:"key",key:"a"});
+  expect(result.details.status).toBe("delivered");
+  expect(result.details.state?.coordinate_grounding).toBeUndefined();
 });
 
 test("Safe, cancellation and source closure withhold local resources and images", async () => {

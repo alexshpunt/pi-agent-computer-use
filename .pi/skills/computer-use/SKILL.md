@@ -47,6 +47,14 @@ text(selected.ui);
 
 For an exact control's native detail, use `ui:{operation:"crop",observation_id:load("task_observation"),hint:load("task_hint")}`. It needs reported screenshot bounds, consumes the overview, and has the same fresh-pixel geometry rules as zoom. Clear stored input/image authority afterward and observe again before input.
 
+## Optional overview guides
+
+Use `capture:{guides:{grid:true,region:true,action:true}}` when coordinate context helps. All three are optional and off by default. Grid numbers are returned window-PNG pixels; they do not change input coordinates. Read `agent_image.annotation.guides` for hidden labels, clipped borders or unavailable geometry. Known control rectangles remain clear; missing native controls cannot be protected.
+
+To mark a chosen detail rectangle, batch `ui:{operation:"region",observation_id:load("task_observation"),region:{x,y,width,height}}` with other planned local inspections. It marks the same stored overview without a native walk or consuming input. Request zoom/crop separately; detail remains read-only. The pink last-action border requires proven native geometry and never turns uncertain input into success. A token border marks its reported target, not a measured cursor.
+
+Private viewer switches affect later captures only. Capture-level guides override them; do not expect settings to redraw old images or preserve IDs after reload.
+
 ## 2. Inspect relevant areas in one batch
 
 Choose rectangles from the overview you have seen. Inspect only areas needed for the next decision; do not enlarge the whole screenshot to read one small area.

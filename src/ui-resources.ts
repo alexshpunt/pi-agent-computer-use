@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { imageGuides, guideOptions, type GuideOptions, type ImageGuides, type GuideAnnotation } from "./image-guides.ts";
 import { clipRect, screenRect, type ScreenRect } from "./highlight-geometry.ts";
 import type { Content } from "./session.ts";
 
@@ -19,11 +20,11 @@ export interface UiResource {
   elements: UiElement[];
 }
 /** Native walk controls. Local refinement does not use these or take a new snapshot. */
-export interface UiCaptureOptions { max_elements?: number; max_depth?: number; hints?: boolean }
+export interface UiCaptureOptions { max_elements?: number; max_depth?: number; hints?: boolean; guides?: GuideOptions }
 /** Read-only operations on one current snapshot; crop consumes its input authority. */
 export interface UiRequest {
-  operation: "search" | "scope" | "inspect" | "highlight" | "crop";
-  observation_id: string; hint?: string; query?: string; role?: string; limit?: number;
+  operation: "search" | "scope" | "inspect" | "highlight" | "crop" | "region";
+  observation_id: string; hint?: string; query?: string; role?: string; limit?: number; region?: ScreenRect;
 }
 const text = (value: unknown) => typeof value === "string" ? value.slice(0, 1024) : null;
 const index = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null;
@@ -40,10 +41,11 @@ function letters(n: number): string {
 
 /** Validate before a native walk or replacing any active snapshot. */
 export function validateUiCapture(options: UiCaptureOptions): void {
-  if (Object.keys(options).some(k => !["max_elements", "max_depth", "hints"].includes(k)) ||
+  if (Object.keys(options).some(k => !["max_elements", "max_depth", "hints", "guides"].includes(k)) ||
     (options.max_elements !== undefined && (!Number.isSafeInteger(options.max_elements) || options.max_elements < 1 || options.max_elements > 2000)) ||
     (options.max_depth !== undefined && (!Number.isSafeInteger(options.max_depth) || options.max_depth < 1 || options.max_depth > 50)) ||
     (options.hints !== undefined && typeof options.hints !== "boolean")) throw Error("UI capture supports max_elements 1..2000, max_depth 1..50 and boolean hints.");
+  if (options.guides !== undefined) guideOptions(options.guides);
 }
 
 /** Adapt reported properties only. Native bounds are never treated as local image coordinates. */
@@ -77,15 +79,21 @@ export function resolveUi(resource: UiResource, hint: string): UiElement {
 
 /** Search/scope only collected nodes. Parent chains are native indexed relationships, not a guessed full tree. */
 export function projectUi(resource: UiResource, request: UiRequest): UiResource {
-  if (!request || !["search", "scope", "inspect", "highlight", "crop"].includes(request.operation) ||
-    Object.keys(request).some(k => !["operation", "observation_id", "hint", "query", "role", "limit"].includes(k)) ||
+  if (!request || !["search", "scope", "inspect", "highlight", "crop", "region"].includes(request.operation) ||
+    Object.keys(request).some(k => !["operation", "observation_id", "hint", "query", "role", "limit", "region"].includes(k)) ||
     (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 2000))) throw Error("Invalid bounded UI operation.");
   if (request.observation_id !== resource.observation_id) throw Error("Retired observation. Observe again.");
-  if (request.operation !== "search" && !request.hint) throw Error("This UI operation needs a current hint.");
+  if (!["search", "region"].includes(request.operation) && !request.hint) throw Error("This UI operation needs a current hint.");
   if (!["search", "scope"].includes(request.operation) && [request.query, request.role, request.limit].some(v => v !== undefined))
     throw Error("Filters and limits belong to search or scope, not a selected-element operation.");
   if (request.query !== undefined && (typeof request.query !== "string" || request.query.length > 256)) throw Error("UI query must be text up to 256 characters.");
   if (request.role !== undefined && typeof request.role !== "string") throw Error("UI role must be text.");
+  if (request.operation === "region") {
+    const r = request.region;
+    if (request.hint || request.query !== undefined || request.role !== undefined || request.limit !== undefined || !r ||
+      Object.keys(r).sort().join(",") !== "height,width,x,y" || ![r.x, r.y, r.width, r.height].every(Number.isFinite) ||
+      r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0) throw Error("Region needs only a finite positive overview rectangle.");
+  } else if (request.region !== undefined) throw Error("A rectangle belongs only to the region operation.");
   let rows = resource.elements;
   if (request.hint) {
     const selected = resolveUi(resource, request.hint);
@@ -112,21 +120,23 @@ export function projectUi(resource: UiResource, request: UiRequest): UiResource 
 export interface UiAnnotation {
   enabled: boolean; selected_hint?: string; labels: { hint: string; region: ScreenRect; target: ScreenRect }[];
   raw: { hash: string; mime: string; bytes: number }; reason?: string;
+  guides: GuideAnnotation;
 }
 const intersects = (a: ScreenRect, b: ScreenRect) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
 /** Mark returned PNG pixels without resize, external resources or changing the raw native bytes. */
 export async function annotateUi(image: Content, resource: UiResource, width: number | undefined, height: number | undefined,
-  enabled: boolean, selected?: string, obstacles: UiElement[] = resource.elements): Promise<{ image: Content; annotation: UiAnnotation }> {
+  enabled: boolean, selected?: string, obstacles: UiElement[] = resource.elements, guides: ImageGuides = {}): Promise<{ image: Content; annotation: UiAnnotation }> {
   if (image.type !== "image") throw Error("Expected native image.");
   const bytes = Buffer.from(image.data, "base64");
   const annotation: UiAnnotation = { enabled, ...(selected ? { selected_hint: selected } : {}), labels: [],
-    raw: { hash: createHash("sha256").update(bytes).digest("hex"), mime: image.mimeType, bytes: bytes.length } };
+    raw: { hash: createHash("sha256").update(bytes).digest("hex"), mime: image.mimeType, bytes: bytes.length },
+    guides: imageGuides(0, 0, guides, []).metadata };
   const valid = bytes.length <= 12 * 1024 * 1024 && image.mimeType === "image/png" && bytes.length >= 24 &&
     bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
     bytes.readUInt32BE(16) === width && bytes.readUInt32BE(20) === height;
-  if (!enabled || !valid || !width || !height) {
-    annotation.reason = !enabled ? "Hints disabled." : "Native PNG geometry is unavailable.";
+  if (!valid || !width || !height) {
+    annotation.reason = "Native PNG geometry is unavailable.";
     for (const e of resource.elements) e.hint_display = e.enabled === false ? "disabled" : e.bounds.window_image ? "off" : "no_bounds";
     return { image, annotation };
   }
@@ -137,6 +147,7 @@ export async function annotateUi(image: Content, resource: UiResource, width: nu
   });
   const svg: string[] = [];
   for (const e of resource.elements) {
+    if (!enabled) { e.hint_display = e.enabled === false ? "disabled" : e.bounds.window_image ? "off" : "no_bounds"; continue; }
     if (e.enabled === false) { e.hint_display = "disabled"; continue; }
     const target = clipRect(e.bounds.window_image, canvas);
     if (!target) { e.hint_display = e.bounds.window_image ? "outside_image" : "no_bounds"; continue; }
@@ -156,6 +167,8 @@ export async function annotateUi(image: Content, resource: UiResource, width: nu
     const start = { x: clamp(end.x, region.x, region.x + w), y: clamp(end.y, region.y, region.y + h) };
     svg.push(`<path d="M${start.x},${start.y} L${end.x},${end.y}" stroke="#6c5100" stroke-width="1"/><rect x="${region.x}" y="${region.y}" width="${w}" height="${h}" rx="3" fill="#ffe36b" stroke="#3c3000"/><text x="${region.x + 4}" y="${region.y + 13}" font-family="monospace" font-size="13" font-weight="bold" fill="#171400">${e.hint}</text>`);
   }
+  const drawn = imageGuides(width, height, guides, [...protectedRegions, ...annotation.labels.map(label => label.region)]);
+  annotation.guides = drawn.metadata; svg.push(...drawn.svg);
   if (!svg.length) return { image, annotation };
   const marked = await sharp(bytes).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${svg.join("")}</svg>`) }]).png().toBuffer();
   return { image: { type: "image", mimeType: "image/png", data: marked.toString("base64") }, annotation };

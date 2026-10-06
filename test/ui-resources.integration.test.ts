@@ -18,7 +18,10 @@ const observe = async extra => {
  const view = await tools.computer_observe({window_ref:load("uiWindow"),...extra});
  store("uiObservation",view.observation_id); return view;
 };
-const first = await observe({capture:{max_elements:200,max_depth:15}});
+const first = await observe({capture:{max_elements:200,max_depth:15,guides:{grid:true,region:true,action:true}}});
+if(first.agent_image.annotation.guides.grid.status!=="shown")throw Error("Missing output-pixel grid");
+const region = await observe({ui:{operation:"region",observation_id:load("uiObservation"),region:{x:20,y:40,width:200,height:130}}});
+if(region.agent_image.annotation.guides.region.status!=="shown"||region.observation_id!==first.observation_id)throw Error("Region replaced the input snapshot");
 if (first.ui.elements.length !== 200 || first.ui.complete !== false) throw Error("Lost full resource");
 const candidates = await observe({ui:{operation:"search",observation_id:load("uiObservation"),query:"Save",limit:2}});
 if (candidates.ui.matches !== 199 || !candidates.ui.projection_truncated) throw Error("False search completeness");

@@ -4,6 +4,8 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
+LPT-378–379 passed the approved native/current-agent scope: 18 native/browser mapping hits across 500/800/1024 and movement/resizing, four production agent hits, optional grid/region/proven-target guides, exact private raw/sent exports, later-capture viewer controls and actual TUI inspection. Verification passed 227 unit tests, typecheck and 13 real-Pi tests. Owned source/profile/runtime cleanup passed; detail geometry and normal Pi retention/cache stayed unchanged. See [results and limits](coordinate-guide-results.md). No multi-model run, input format, runtime or OS setup change is included. Other epic work stays paused.
+
 LPT-386–388 passed the approved scope: bounded native resources, snapshot hints in structure and images, local refinement, exact supported hinted actions and private raw/sent comparison. Verification passed 214 unit tests, typecheck, 13 real-Pi tests, owned native/browser effects, production viewer selection/toggle, actual TUI and own cleanup. Native missing ancestry/disabled nodes stay unknown. See [results and limits](ui-resource-results.md). Other epic work stays paused.
 
 LPT-610's approved bounded Windows key holds are verified: one command holds simultaneous keys and optional grounded clicks/straight/curved paths, then releases. Exact separate installation, native interruption/release, existing compatibility, production Codemode, separate Shift-pointer commands and actual TUI passed. Verification: 195 unit tests, typecheck and 12 real-Pi tests. See [key-hold results](windows-key-hold-results.md). Old runtimes and the unsaved Paint picture remain untouched; other epic work stays paused.
@@ -26,8 +28,8 @@ The user paused the autonomous epic plan. The approved LPT-380 reversal is compl
 | LPT-415 | Human region/action marks and window-detail geometry | Verified: 115 unit tests, typecheck, nine real-Pi tests, six native styles, four geometry cases, parent/TUI and owned cleanup; delivery receipt follows in Linear |
 | LPT-372 | Focused browser and short hints | Paused game acceptance; do not resume without specific authorization |
 | LPT-374 | Vision debug controls | Native size controls qualified for atomic/session isolation; extra structural/annotation acceptance remains open ([checks](vision-controls-checks.md)) |
-| LPT-378 | Coordinate grounding | Verify native overview/detail coordinate contracts and model limits |
-| LPT-379 | Model-facing visual annotations | Separate from human frames; inspect acceptance and safe adapter design |
+| LPT-378 | Coordinate grounding | Verified: 18 mapping hits and four current-agent hits; explicit native/CSS domains and unchanged read-only detail |
+| LPT-379 | Model-facing visual annotations | Verified: optional grid/region/proven-pointer marks, future-only switches, exact raw/sent exports and TUI; see [results](coordinate-guide-results.md) |
 | LPT-380 | Normal Pi image retention | User-approved reversal verified; no separate eviction, HTTP12/native continuation/reload/compaction/parent proof; viewer cards remain bounded |
 | LPT-381 | Prompt/KV cache and prewarm | Canceled; no computer-use cache or prewarm layer. Keep prior [research](research/pi-cache-controls.md) as history only |
 | LPT-382 | Existing Pi Codemode only | Inspect current executable contracts and any remaining integration gap |
