@@ -3,6 +3,7 @@
 These references came from the user's project pitch. They are inputs for future research, not selected dependencies or verified architecture claims. The complete supplied notes are kept in the research task's Original Request in Linear.
 
 The first [source-backed comparison](research/external-implementations.md) is available. Keep the supplied claims below separate from its verified findings.
+The [read-only mole classifier experiment](research/mole-classifier-experiment.md) compares MobileCLIP2-S0 and S2 on real game screenshots. It measures recognition and capture costs; it does not adopt a classifier dependency.
 
 ## First sources to study
 
