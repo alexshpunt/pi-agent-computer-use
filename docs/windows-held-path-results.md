@@ -11,6 +11,8 @@ Driver SHA-256: `1ff0625b34fdb2116ebf253455e7eea2b9221fc81450f180ec4dc0ddc26d722
 
 The [unchanged Windows build](https://github.com/alexshpunt/cua/actions/runs/37418890622) passed before native changes. The [qualified fork build](https://github.com/alexshpunt/cua/actions/runs/37424342851) passed 826 core, 277 Windows and two protocol tests; one Windows test was ignored. This is not a claim that every upstream desktop test ran.
 
+The qualified CI artifact records rustc/cargo 1.97.1, Rust commit `8bab26f4f68e0e26f0bb7960be334d5b520ea452`, target `x86_64-pc-windows-msvc`, LLVM 22.1.6 and Visual Studio Enterprise 2026 installation version 18.10.12217.157. CI retains build/test logs; the installation keeps source/version/hash and toolchain metadata.
+
 The unsigned artifact includes the UIA/cursor companions and MIT/third-party notices. After Paint passed, the user-approved installer placed those exact bytes in a separate user-local version directory and the trusted local config selected it. Installed hashes match CI. Existing 0.33.2 and Qt remain untouched. No PATH, services, registry, autostart, signing trust or administrator permissions changed. Fresh setups still default to 0.33.2; see [selection and installation](standalone-poc.md#qualified-continuous-paths).
 
 ## Native and Pi checks

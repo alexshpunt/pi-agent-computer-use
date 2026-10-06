@@ -12,6 +12,7 @@
     "cua-cursor-theme.exe": "c2f49b6081be05ae44daa4dd135ac12d0112152f35ae8cbb35e92ddb96d170c4"
   },
   "windows_build": {
+    "compiler": {"rustc": "1.97.1", "rust_commit": "8bab26f4f68e0e26f0bb7960be334d5b520ea452", "cargo": "1.97.1", "target": "x86_64-pc-windows-msvc", "llvm": "22.1.6", "visual_studio": "Visual Studio Enterprise 2026", "visual_studio_installation_version": "18.10.12217.157"},
     "baseline_run": 37418890622,
     "baseline_success": true,
     "candidate_run": 37424342851,
