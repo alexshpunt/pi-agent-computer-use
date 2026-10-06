@@ -1,0 +1,139 @@
+{
+  "task": "LPT-422",
+  "platform": "Windows host / Pi in WSL",
+  "qualified_source": "bba07a9c8ccba117c1057a3a0003e95d3693b2b3",
+  "upstream_base": "b0968e1b12834e485dda68789541a3cc57664a9f",
+  "fork": "https://github.com/alexshpunt/cua",
+  "version": "0.34.0",
+  "unsigned": true,
+  "binaries": {
+    "cua-driver.exe": "1ff0625b34fdb2116ebf253455e7eea2b9221fc81450f180ec4dc0ddc26d7224",
+    "cua-driver-uia.exe": "878a591f541492c8f00689ba57b952a17e0c577c8910edc7ba4648c259a1a665",
+    "cua-cursor-theme.exe": "c2f49b6081be05ae44daa4dd135ac12d0112152f35ae8cbb35e92ddb96d170c4"
+  },
+  "windows_build": {
+    "baseline_run": 37418890622,
+    "baseline_success": true,
+    "candidate_run": 37424342851,
+    "candidate_success": true,
+    "core_tests": 826,
+    "windows_tests": 277,
+    "windows_ignored": 1,
+    "protocol_tests": 2
+  },
+  "transport": {
+    "child_environment": "CUA_DRIVER_MCP_ENVELOPES=1",
+    "capability": "ai.cua.driver.envelopes",
+    "acknowledged_version": 1,
+    "default_serial_eof_qualified": false,
+    "bare_cancel_notification_supported": false
+  },
+  "native": {
+    "success": true,
+    "calls": 25,
+    "records": 15,
+    "curve_points": 9,
+    "app_down": 1,
+    "app_up": 1,
+    "foreground_loss_prefix": 1,
+    "foreground_loss_total": 40,
+    "eof_release_ms": 820,
+    "left_down_after_release": false,
+    "owned_sources_removed": true,
+    "owned_profiles_removed": true
+  },
+  "compatibility": {
+    "success": true,
+    "calls": 36,
+    "records": 22,
+    "events": 50,
+    "keys_chords_text": true,
+    "right_double_click": true,
+    "token_scroll": true,
+    "straight_strokes": 3,
+    "owned_cleanup": true
+  },
+  "installed_adapter": {
+    "success": true,
+    "calls": 8,
+    "records": 9,
+    "curve_points": 25,
+    "actual_abort": true,
+    "outcome": "unknown",
+    "release_ms": 204,
+    "left_down": false,
+    "old_observation_replay_refused": true,
+    "owned_source_removed": true,
+    "owned_profile_removed": true
+  },
+  "paint": {
+    "success": true,
+    "new_window": true,
+    "tooling": "production computer_* through Codemode",
+    "tool": "Brush",
+    "size_pixels": 21,
+    "completed_paths": 27,
+    "subject": "smiling robot, sun, cloud and grass",
+    "line_shapes_imports_used": false,
+    "image": {
+      "width": 500,
+      "height": 267,
+      "bytes": 52164,
+      "sha256": "dc33b713229a14e0adad681f0168c80aea332097d01d7ae58ee480bacc4cf5ce"
+    },
+    "viewer_export": {
+      "revision": 143,
+      "captures": 3,
+      "exact_hash_verified": true
+    },
+    "post_reload": {
+      "picture_present": true,
+      "image_sha256": "16deb5768c8738a86b5c32af11571d7193f3ea33366d376072029b85cd33c0f6"
+    },
+    "detail": {"width": 500, "height": 601, "sha256": "e460b0c6ba194c2e55068c689d6efec823f5bf97fafbcaea00a2f4c194b66e8b", "native_jpeg": true},
+    "left_open_unsaved": true
+  },
+  "busy_incident": {
+    "refused_before_stroke": true,
+    "attempted": 1,
+    "completed": 0,
+    "user_physical_hold": false,
+    "user_noted_remote_connection": true,
+    "cause": "unknown",
+    "task_owned_completed_cua_toolbar_click_released": true,
+    "uncertain_strokes_replayed": false
+  },
+  "regression": {
+    "maximal_sequence_json_truncation_reproduced": true,
+    "compact_requested_via_points_fixed": true,
+    "unit_tests": 171,
+    "typecheck": true,
+    "real_pi_tests": 11
+  },
+  "tui": {
+    "pane": "w3E9:p7",
+    "drawing_revision": 2640,
+    "post_reload_revision": 2658,
+    "readable_results": true,
+    "inline_images_claimed": false
+  },
+  "adoption": {
+    "approved_after_paint": true,
+    "version_directory": "cua-driver-0.34.0-held-bba07a9",
+    "installed_hashes_verified": true,
+    "old_0332_retained": true,
+    "qt_unchanged": true,
+    "path_service_registry_trust_changes": false
+  },
+  "final_cleanup": {
+    "drivers": 0,
+    "helpers": 0,
+    "left_down": false,
+    "right_down": false,
+    "middle_down": false,
+    "picture_present": true
+  },
+  "privacy": {
+    "pixels_text_session_urls_window_refs_not_published": true
+  }
+}

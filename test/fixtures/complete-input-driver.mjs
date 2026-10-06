@@ -20,6 +20,9 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
   else if (name === "get_window_state") {
     state = { window_bounds: windows[0].bounds, screenshot_width: 500, screenshot_height: 350, capture_id: "once",
       elements: [{ element_token: "field", role: "textbox", label: "Field", actions: ["type_text"] }] }; pixels = image;
+  } else if (name === "fixture_held_path") { state = {
+    effect: "partial", delivery: { delivered_count: 2 }, summary: "2/4 points; pressed=true released=true",
+  };
   } else if (["press_key", "hotkey", "type_text", "drag"].includes(name)) state = {
     effect: args.key === "escape" ? "partial" : args.key === "delete" ? "refused" : "unverifiable",
   };

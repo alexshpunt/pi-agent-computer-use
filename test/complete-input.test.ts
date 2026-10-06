@@ -4,7 +4,7 @@ import { ComputerSession, type Action, type ComputerMode, type Driver } from "..
 async function fixture() {
   let mode: ComputerMode = "yolo", lifetime = "alive";
   const driver: Driver = {
-    identity: vi.fn(async () => lifetime), close: vi.fn(async () => {}),
+    heldPaths: true, identity: vi.fn(async () => lifetime), close: vi.fn(async () => {}),
     call: vi.fn<Driver["call"]>(async (name) => {
       if (name === "list_windows") return { content: [], structuredContent: { windows: [{ pid: 42, window_id: 100 }] } };
       if (name === "get_window_state") return { content: [{ type: "image", mimeType: "image/png", data: "cG5n" }], structuredContent: {
@@ -64,6 +64,54 @@ test.each([
   expect((await f.send({ action: "key", key: "return" })).details.status).toBe("delivered");
 });
 
+test("an inactive held-path backend refuses the whole sequence before its first key", async () => {
+  const f = await fixture(); f.driver.heldPaths = false;
+  const result = await f.send({ action: "sequence", sequence: [
+    { action: "key", key: "a" },
+    { action: "drag", from_x: 1, from_y: 1, via: [{ x: 10, y: 20 }], to_x: 30, to_y: 40 },
+  ] });
+  expect(result.details.status).toBe("refused"); expect(f.input()).toHaveLength(0);
+});
+test("a curved drag forwards all local points once and preserves a partial native receipt", async () => {
+  const f = await fixture();
+  f.driver.call = vi.fn(async () => ({ content: [], structuredContent: {
+    effect: "partial", delivery: { delivered_count: 2 }, summary: "2/4 points; pressed=true released=true",
+  } }));
+  const result = await f.send({ action: "sequence", delivery_mode: "foreground", sequence: [
+    { action: "drag", from_x: 20, from_y: 30, via: [{ x: 40, y: 80 }, { x: 90, y: 70 }], to_x: 100, to_y: 30, duration_ms: 800 },
+    { action: "key", key: "a" },
+  ] });
+  expect(f.driver.call).toHaveBeenCalledExactlyOnceWith("drag", {
+    pid: 42, window_id: 100, delivery_mode: "foreground", from_x: 20, from_y: 30,
+    via: [{ x: 40, y: 80 }, { x: 90, y: 70 }], to_x: 100, to_y: 30, duration_ms: 800,
+  }, undefined);
+  expect(result.details.status).toBe("unknown");
+  expect(result.details.state).toMatchObject({ delivery: { delivered_count: 2 }, summary: "2/4 points; pressed=true released=true",
+    sequence: { attempted: 1, completed: 0 } });
+  expect((await f.send({ action: "key", key: "a" })).details.status).toBe("refused");
+  expect(f.driver.call).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  { via: [] }, { via: [{ x: 500, y: 1 }] }, { via: [{ x: NaN, y: 2 }] },
+  { via: [{ x: 2, y: Infinity }] }, { via: [{ x: 2, y: 3, desktop: true }] },
+  { via: Array.from({ length: 255 }, () => ({ x: 2, y: 3 })) },
+  { via: [{ x: 2, y: 3 }], steps: 10 }, { via: [{ x: 2, y: 3 }], modifiers: [] },
+  { via: [{ x: 2, y: 3 }], button: "middle" },
+])("an invalid curved tail prevents every batch input: %j", async tail => {
+  const f = await fixture();
+  const result = await f.send({ action: "sequence", sequence: [{ action: "key", key: "a" },
+    { action: "drag", from_x: 1, from_y: 1, to_x: 10, to_y: 10, ...tail }] });
+  expect(result.details.status).toBe("refused"); expect(f.input()).toHaveLength(0);
+});
+
+test("admission snapshots the entire path before asynchronous native targeting", async () => {
+  const f = await fixture(); const via = [{ x: 40, y: 80 }];
+  f.driver.identity = vi.fn(async () => { via[0].x = 499; via.push({ x: 100, y: 110 }); return "alive"; });
+  const result = await f.send({ action: "drag", from_x: 20, from_y: 30, via, to_x: 100, to_y: 30 });
+  expect(result.details.status).toBe("delivered");
+  expect(f.input()[0][1].via).toEqual([{ x: 40, y: 80 }]);
+});
 test("a bounded sequence dispatches complete steps once, without new captures, and measures waits", async () => {
   const f = await fixture();
   const result = await f.send({ action: "sequence", sequence: [
@@ -98,6 +146,31 @@ test.each(["refused", "partial", "throw"])("sequence stops after %s with a truth
   expect(f.input()).toHaveLength(2);
 });
 
+test("CUA's occlusion refusal stops a sequence without calling it unknown or retrying it", async () => {
+  const f = await fixture();
+  f.driver.call = vi.fn(async () => ({ isError: true, content: [], structuredContent: {
+    code: "background_occluded", cause: "Target point is occluded; no coordinate injection was sent.",
+  } }));
+  const result = await f.send({ action: "sequence", sequence: [{ action: "key", key: "a" }, { action: "key", key: "b" }] });
+  expect(result.details.status).toBe("refused");
+  expect(result.details.state!.sequence).toMatchObject({ attempted: 1, completed: 0 });
+  expect(f.driver.call).toHaveBeenCalledTimes(1);
+  expect((await f.send({ action: "key", key: "a" })).details.status).toBe("refused");
+  expect(f.driver.call).toHaveBeenCalledTimes(1);
+});
+test("maximum held paths return readable counts rather than a truncated point dump", async () => {
+  const f = await fixture();
+  const sequence = Array.from({ length: 32 }, () => ({ action: "drag", from_x: 20, from_y: 30,
+    via: Array.from({ length: 254 }, (_, i) => ({ x: 20 + i / 2, y: 30 + i / 2 })), to_x: 200, to_y: 200, duration_ms: 0 }));
+  const result = await f.send({ action: "sequence", delivery_mode: "foreground", sequence });
+  expect(result.details.status).toBe("delivered");
+  const content = result.content.find(block => block.type === "text")!;
+  if (content.type !== "text") throw Error("Missing receipt");
+  const readable = JSON.parse(content.text.slice(content.text.indexOf("{")));
+  expect(readable.state.sequence.steps).toHaveLength(32);
+  expect(readable.state.sequence.steps.every((step: { requested: { via_points: number; via?: unknown } }) =>
+    step.requested.via_points === 254 && step.requested.via === undefined)).toBe(true);
+});
 test("the maximum stroke sequence returns every measured step as readable JSON", async () => {
   const f = await fixture();
   const sequence = Array.from({length:32}, () => ({action:"drag",from_x:11.123456789123456,from_y:22.98765432198765,

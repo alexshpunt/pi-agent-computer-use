@@ -21,6 +21,18 @@ test("opening has no target-file prerequisite and respects a trusted Driver over
   expect(await loadComputerConfig(cwd)).toEqual({ command: "C:\\Trusted\\cua-driver.exe" });
 });
 
+test.each([{runtime:"windows-held-paths"},{command:"driver",runtime:"latest"},
+  {command:"driver",runtime:"windows-held-paths",args:["mcp","--socket","elsewhere"]}])("held paths cannot silently discover or borrow an unqualified runtime: %j", async config => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(config));
+  await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
+});
+test("held-path selection is explicit trusted config and does not replace driver discovery defaults", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const config = {command:"/owned/candidate/cua-driver.exe",runtime:"windows-held-paths"};
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(config));
+  expect(await loadComputerConfig(cwd)).toEqual(config);
+});
 test("an old target configuration is refused rather than silently changing its permission boundary", async () => {
   const cwd = await workspace();
   await mkdir(path.join(cwd, ".pi"));

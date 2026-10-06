@@ -70,6 +70,23 @@ No `.pi/computer-use.json` is required. For an unusual environment, an ignored l
 
 Optional `args` replace `['mcp', '--direct', '--embedded']`; optional `interop` selects a live WSL interop socket. These are trusted user settings, not agent-callable executable arguments. The old `target` field is rejected rather than silently changing its permission boundary. Remove old single-window PoC configuration before using YOLO. Environment overrides are read when the session is first used; ordinary opening and window selection never need a reload.
 
+### Qualified continuous paths
+
+The default installed pin stays 0.33.2. To qualify or use held paths, explicitly select the Windows fork in the ignored local config:
+
+```json
+{
+  "command": "/absolute/path/to/qualified/artifact/runtime/cua-driver.exe",
+  "runtime": "windows-held-paths"
+}
+```
+
+This is trusted user setup, not an agent tool parameter. Selection does not install or replace a runtime. The executable must match the exact source/version/SHA-256 in `HELD_PATH_RUNTIME` in `src/driver.ts`; different bytes refuse before startup. Fork arguments are fixed to owned direct embedded MCP. The adapter sets child-local `CUA_DRIVER_MCP_ENVELOPES=1` and requires the upstream EOF-aware capability. Default serial MCP cannot cancel a held path safely on EOF.
+
+Keep the supplied runtime companions beside the executable. Do not change signing trust, elevation or OS policy to run it. After the user-approved Paint acceptance passed, `scripts/install-cua-held-path.ps1 -Artifact <downloaded-CI-directory>` installed the exact checked artifact into a separate user-local `cua-driver-0.34.0-held-bba07a9` directory. It verifies all three executable hashes, keeps notices/build metadata and refuses to overwrite an existing directory. It changes no PATH, services, registry, autostart or trust settings. On this machine, execute the reviewed installer text with PowerShell `ScriptBlock.Create` if UNC script execution is refused; do not change execution policy or install modules.
+
+The approved local selection now points at that permanent executable with `runtime:"windows-held-paths"`. Close the current computer runtime and reload after a selection change. Remove the local selection to return to installed 0.33.2; no startup update runs. Fresh installations still discover 0.33.2 unless the user explicitly selects this fork. See [the Windows drawing results](windows-held-path-results.md).
+
 ### WSL interop
 
 Windows processes must run in the interactive desktop session, not service Session 0. A long-lived Linux process may inherit a stale `WSL_INTEROP`. If Windows commands hang, check that its socket exists **and** a simple `cmd.exe /d /c ver` succeeds. A live WSL terminal launched from Windows can provide a current endpoint. Keep its owning session alive; do not persist this machine's ephemeral socket as a default. A Linux Driver does not control the Windows host desktop.

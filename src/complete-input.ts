@@ -12,6 +12,8 @@ export interface InputCommand {
   amount?: number; by?: "line" | "page";
   from_x?: number; from_y?: number; to_x?: number; to_y?: number;
   duration_ms?: number; steps?: number;
+  /** Intermediate local screenshot points in one Windows left-button stroke. */
+  via?: { x: number; y: number }[];
 }
 /** Wait before a complete step, measured from the previous step's completion. */
 export interface InputStep extends InputCommand { wait_ms?: number }
@@ -35,6 +37,9 @@ const optional = {
   to_x: Type.Optional(Type.Number({ minimum: 0 })), to_y: Type.Optional(Type.Number({ minimum: 0 })),
   duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })),
   steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  via: Type.Optional(Type.Array(Type.Object({ x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }) },
+    { additionalProperties: false }), { minItems: 1, maxItems: 254,
+    description: "drag only: intermediate window-local points for one held left-button stroke. Requires the qualified Windows fork and explicit foreground; no steps or modifiers." })),
 };
 /** Schema for the existing computer_act surface; semantic validation also runs before native input. */
 export const actionParameters = Type.Object({
@@ -46,13 +51,13 @@ export const actionParameters = Type.Object({
     action: enumSchema(["key", "hotkey", "type_text", "select_all", "drag"]), ...optional,
     wait_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 5000 })),
   }, { additionalProperties: false }), { minItems: 1, maxItems: 32,
-    description: "Known-target keyboard/straight-stroke steps. Each drag releases the button. Up to 30s requested waits/typing/drags; no nested sequence or pointer clicks." })),
+    description: "Known-target keyboard/stroke steps. Each drag releases the button. Up to 30s requested waits/typing/drags; no nested sequence or pointer clicks." })),
 }, { additionalProperties: false });
 
 const fields: Record<InputCommand["action"], string[]> = {
   key: ["key", "modifiers"], hotkey: ["keys"], type_text: ["text", "delay_ms"], set_value: ["text"],
   click: ["button", "modifiers"], right_click: ["modifiers"], double_click: ["modifiers"],
-  scroll: ["direction", "amount", "by"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers"],
+  scroll: ["direction", "amount", "by"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers", "via"],
   select_all: [],
 };
 const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
@@ -63,7 +68,7 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
   if (!command || !fields[command.action]) throw new Error("Unsupported complete action.");
   const allowed = new Set(["action", ...fields[command.action], ...(command.action === "drag" ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
   if (Object.keys(command).some(key => !allowed.has(key))) throw new Error("This action has unsupported or conflicting fields.");
-  if (sequence && !["key", "hotkey", "type_text", "select_all", "drag"].includes(command.action)) throw new Error("Sequences accept only complete keyboard actions and straight drags.");
+  if (sequence && !["key", "hotkey", "type_text", "select_all", "drag"].includes(command.action)) throw new Error("Sequences accept only complete keyboard actions and drags.");
   if (command.wait_ms !== undefined && !integer(command.wait_ms, 0, 5000)) throw new Error("wait_ms must be 0..5000.");
   const point = (x: unknown, y: unknown) => {
     if (!Number.isFinite(x) || !Number.isFinite(y) || (x as number) < 0 || (y as number) < 0 || !observed.width || !observed.height || (x as number) >= observed.width || (y as number) >= observed.height)
@@ -93,6 +98,14 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
     point(command.from_x, command.from_y); point(command.to_x, command.to_y);
     if (command.duration_ms !== undefined && !integer(command.duration_ms, 0, 10000)) throw new Error("duration_ms must be 0..10000.");
     if (command.steps !== undefined && !integer(command.steps, 1, 200)) throw new Error("steps must be 1..200.");
+    if (command.via !== undefined) {
+      if (!Array.isArray(command.via) || command.via.length < 1 || command.via.length > 254 || command.steps !== undefined || command.modifiers !== undefined || (command.button !== undefined && command.button !== "left"))
+        throw new Error("via needs 1..254 points, left button, and no steps or modifiers.");
+      for (const p of command.via) {
+        if (!p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).some(key => !["x", "y"].includes(key))) throw new Error("Each via point needs only x and y.");
+        point(p.x, p.y);
+      }
+    }
   }
 }
 
@@ -104,7 +117,7 @@ export function requestedInputTime(command: InputStep): number {
 /** Translate supported fields only. Coordinates stay in the original overview's local image domain. */
 export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string): { name: string; args: Record<string, unknown> } {
   const name = command.action === "select_all" ? "hotkey" : command.action === "key" ? "press_key" : command.action;
-  const args: Record<string, unknown> = { delivery_mode: delivery, ...(["set_value", "right_click", "double_click"].includes(command.action) ? target : { target: { kind: "window", ...target } }) };
+  const args: Record<string, unknown> = { delivery_mode: delivery, ...((["set_value", "right_click", "double_click"].includes(command.action) || command.via !== undefined) ? target : { target: { kind: "window", ...target } }) };
   for (const key of ["element_token", "x", "y", ...fields[command.action]]) {
     const value = command[key as keyof InputCommand];
     if (value !== undefined) args[key === "modifiers" ? command.action === "key" ? "modifiers" : "modifier" : key === "text" && command.action === "set_value" ? "value" : key] = value;

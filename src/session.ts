@@ -21,6 +21,8 @@ export interface DriverResult {
 }
 /** Owned backend with window-lifetime checks. Calls are serialized by ComputerSession. */
 export interface Driver {
+  /** True only for a backend qualified for held paths and graceful in-flight release. */
+  heldPaths?: boolean;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
@@ -469,9 +471,11 @@ export class ComputerSession {
           commands = command.sequence;
         } else commands = [command];
         for (const step of commands) validateInput(step, observed, batch);
+        if (commands.some(step => step.via !== undefined) && !this.driver.heldPaths)
+          throw new Error("Continuous paths require the explicitly selected qualified Windows fork. No batch input was dispatched.");
         if (batch && commands.reduce((ms, step) => ms + requestedInputTime(step), 0) > 30000)
           throw new Error("A sequence exceeds 30 seconds of requested waits/typing/drags.");
-        commands = commands.map(step => ({ ...step, ...(step.keys ? { keys: [...step.keys] } : {}), ...(step.modifiers ? { modifiers: [...step.modifiers] } : {}) }));
+        commands = commands.map(step => ({ ...step, ...(step.keys ? { keys: [...step.keys] } : {}), ...(step.modifiers ? { modifiers: [...step.modifiers] } : {}), ...(step.via ? { via: step.via.map(point => ({ ...point })) } : {}) }));
       } catch (error) { return this.result("refused", (error as Error).message); }
 
       const started = performance.now();
@@ -503,8 +507,10 @@ export class ComputerSession {
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached during admission; no more steps dispatched.");
           entry.observation = undefined; entry.detail = undefined;
-          const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}) };
+          const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
+            ...(step.via ? { via_points: step.via.length } : {}) };
           delete requested.text; delete requested.element_token;
+          delete requested.via;
           const row: Record<string, unknown> = { index, action: step.action, native_tool: name, requested,
             requested_wait_ms: step.wait_ms ?? 0, dispatch_ms: performance.now() - started, status: "unknown" };
           trace.steps.push(row); trace.attempted++; inFlight = true;
@@ -515,7 +521,7 @@ export class ComputerSession {
             "In-flight outcome withheld after revocation/cancellation.");
           const state = native.structuredContent ?? {};
           const refused = state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
-            "conflicting_element_target", "background_unavailable"].includes(String(state.code));
+            "conflicting_element_target", "background_unavailable", "background_occluded"].includes(String(state.code));
           const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
           const status = refused ? "refused" : uncertain ? "unknown" : "delivered";
           row.status = status; inFlight = false;

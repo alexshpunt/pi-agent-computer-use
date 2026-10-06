@@ -21,7 +21,7 @@ Background delivery is the default. Explicit foreground is allowed only after an
 
 ## Bounded sequences
 
-One overview may admit one sequence of known-target `key`, `hotkey`, `type_text`, `select_all` or `drag` steps. The entire list is validated before any input. Every drag is a complete straight stroke with release at the end. There are no nested sequences, pointer clicks or scroll steps inside this batch.
+One overview may admit one sequence of known-target `key`, `hotkey`, `type_text`, `select_all` or `drag` steps. The entire list is validated before any input. Every drag is a complete stroke with release at the end. Without `via`, it follows the existing straight route. There are no nested sequences, pointer clicks or scroll steps inside this batch.
 
 Bounds:
 
@@ -56,14 +56,34 @@ try {
 } finally {store("observation",null);}
 ```
 
+## Continuous brush paths
+
+With the qualified Windows fork explicitly selected, `drag` accepts `via`: 1..254 intermediate `{x,y}` points. The endpoints and every intermediate point use the same current window PNG. One call presses the left button, follows all points and releases it. Do not pass `steps`, modifiers, or right/middle button with `via`.
+
+Background refuses before path input. Observe again after that refusal, then explicitly request foreground. It moves the real pointer; do not fight it during the stroke. The default installed driver refuses an entire batch containing `via` before its first step.
+
+```js
+// points must be chosen from the actual overview. Each is a local {x,y}.
+try {
+  text(await tools.computer_act({window_ref:load("window"),observation_id:load("observation"),
+    action:"drag", delivery_mode:"foreground",
+    from_x:points[0].x, from_y:points[0].y, via:points.slice(1,-1),
+    to_x:points.at(-1).x, to_y:points.at(-1).y, duration_ms:800}));
+} finally {store("observation",null);}
+```
+
+A partial path returns `unknown`, preserving native `delivery.delivered_count` and the press/release summary. These count point moves, not completed batch steps. Later steps stop. Never replay the whole stroke or its uncertain remainder. Check the app's actual pixels before choosing another action.
+
+See [trusted runtime selection](standalone-poc.md#continuous-path-candidate).
+
 ## Receipts and stopping
 
-`state.sequence` reports total, attempted, completed, elapsed_ms, stop_reason and ordered per-step records. Each record includes requested parameters (text length, not its contents), requested wait, native tool, dispatch/completion offsets and delivered/refused/unknown status.
+`state.sequence` reports total, attempted, completed, elapsed_ms, stop_reason and ordered per-step records. Each record includes requested parameters (text length and via-point count, not text or a full point dump), requested wait, native tool, dispatch/completion offsets and delivered/refused/unknown status.
 
 These are adapter/native receipt times, not invented application-event timestamps or native path samples. `completed` means the native call returned delivered; verify the application with a fresh observation.
 
 Refusal, unknown/partial outcome, cancellation, access revocation or target lifetime loss stops later steps. Completed steps are not rolled back. Never replay a completed prefix or uncertain in-flight step. Invalid preflight sends nothing and does not consume the overview. Once the first native call is dispatched, the overview is retired for external input, even if the sequence fails.
 
-The native driver owns each gesture's normal key/button release. No separate key-down/up, button hold, application hover, arbitrary continuous path or global release-all is exposed. There is no claim of immediate in-flight cancellation cleanup.
+The native driver owns each gesture's normal key/button release. No separate key-down/up, cross-call button hold, application hover or global release-all is exposed. Held paths use the qualified fork's EOF-aware receiver; adapter cancellation closes its owned transport and attempts native release. A crash or forced process kill cannot guarantee release. Never interpret a timeout as a completed stroke.
 
 See the [operating skill](../.pi/skills/computer-use/SKILL.md) and [native capability research](research/cua-input-capabilities.md).

@@ -2,7 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 /** Optional trusted environment overrides. There is no per-window target or agent-supplied executable. */
-export interface ComputerConfig { command: string; args?: string[]; interop?: string }
+export interface ComputerConfig { command: string; args?: string[]; interop?: string; runtime?: "windows-held-paths" }
 
 /** Find the qualified Windows Driver without changing PATH, services, or machine setup. */
 export async function findDriver(version: "0.33.2" = "0.33.2"): Promise<string> {
@@ -28,11 +28,14 @@ export async function loadComputerConfig(cwd: string, version: "0.33.2" = "0.33.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; use the optional environment-only config in docs/standalone-poc.md.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)
-    || Object.keys(raw).some(key => !["command", "args", "interop"].includes(key))
+    || Object.keys(raw).some(key => !["command", "args", "interop", "runtime"].includes(key))
     || (raw.command !== undefined && (typeof raw.command !== "string" || !raw.command))
     || (raw.args !== undefined && (!Array.isArray(raw.args) || !raw.args.every(arg => typeof arg === "string")))
-    || (raw.interop !== undefined && typeof raw.interop !== "string"))
+    || (raw.interop !== undefined && typeof raw.interop !== "string")
+    || (raw.runtime !== undefined && raw.runtime !== "windows-held-paths")
+    || (raw.runtime !== undefined && (typeof raw.command !== "string" || raw.args !== undefined)))
     throw new Error("Invalid computer-use configuration. Remove the old target field: this extension uses YOLO session window references, not configured PID/HWND.");
   return { command: raw.command as string | undefined ?? await findDriver(version),
-    ...(raw.args ? { args: raw.args as string[] } : {}), ...(raw.interop ? { interop: raw.interop as string } : {}) };
+    ...(raw.args ? { args: raw.args as string[] } : {}), ...(raw.interop ? { interop: raw.interop as string } : {}),
+    ...(raw.runtime ? { runtime: raw.runtime as "windows-held-paths" } : {}) };
 }

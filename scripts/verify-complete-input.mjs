@@ -4,16 +4,29 @@ import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { openCompleteInputWindow } from "./complete-input-window.mjs";
 import { McpDriver } from "../src/driver.ts";
+import { WindowIdentity } from "../src/window-identity.ts";
+import { openForkArtifact } from "./check-cua-fork-artifact.mjs";
 import { loadComputerConfig } from "../src/config.ts";
 import { ComputerSession } from "../src/session.ts";
 import { createCompleteInputSite } from "../test/fixtures/complete-input-site.mjs";
 
 // Opt-in native input, only in this newly created local fixture. No retries or unrelated windows.
 assert.ok(process.argv.includes("--native"), "Pass --native to authorize the disposable input fixture.");
-const directory = `.tmp/cua-gestures/native-${Date.now()}`;
+const forkIndex = process.argv.indexOf("--fork-artifact");
+const forkDirectory = forkIndex < 0 ? undefined : process.argv[forkIndex + 1];
+const forkSource = forkIndex < 0 ? undefined : process.argv[forkIndex + 2];
+if (forkIndex >= 0) { assert.ok(forkDirectory); assert.match(forkSource ?? "", /^[0-9a-f]{40}$/); }
+const directory = forkDirectory ? `.tmp/cua-drag-fork/compat-${Date.now()}` : `.tmp/cua-gestures/native-${Date.now()}`;
 await mkdir(directory, { recursive: true });
 const config = await loadComputerConfig(process.cwd()), site = await createCompleteInputSite();
-const backend = new McpDriver(config); const calls = [], records = [];
+async function createBackend() {
+  if (!forkDirectory) return new McpDriver(config);
+  const artifact = await openForkArtifact(forkDirectory, forkSource);
+  const identity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
+  return { call: artifact.call, identity: (...args) => identity.identify(...args),
+    close: async () => { try { await artifact.close(); } finally { await identity.close(); } } };
+}
+const backend = await createBackend(); const calls = [], records = [];
 const driver = { identity: (...args) => backend.identity(...args), close: () => backend.close(),
   async call(name,args,signal) { calls.push({name,args,time:Date.now()}); return backend.call(name,args,signal); } };
 const session = new ComputerSession(driver); let ref, target, fixture, success = false;
@@ -30,8 +43,18 @@ function point(view, label) {
   assert.equal(rows.length,1,`One native screenshot frame required for ${label}`);
   const r=rows[0].screenshot_frame; return {x:r.x+r.w/2,y:r.y+r.h/2,frame:r,token:rows[0].element_token};
 }
-async function send(label, view, command) {
-  return save(label,await session.act({window_ref:ref,observation_id:view.observation_id,...command}),"delivered");
+async function send(label, view, command, targetLabel) {
+  let result = await session.act({window_ref:ref,observation_id:view.observation_id,...command});
+  if (result.details.status === "refused" && ["background_unavailable", "background_occluded"].includes(result.details.state?.code)) {
+    await save(`${label}-background-refused`, result, "refused");
+    view = await observe(`${label}-before-explicit-foreground`);
+    if (command.x !== undefined) {
+      assert.ok(targetLabel, "Reground a pixel target after a refusal.");
+      const target = point(view, targetLabel); command = { ...command, x: target.x, y: target.y };
+    }
+    result = await session.act({window_ref:ref,observation_id:view.observation_id,...command,delivery_mode:"foreground"});
+  }
+  return save(label,result,"delivered");
 }
 async function witness(predicate,label) {
   for(let n=0;n<12;n++) {const events=site.events();if(predicate(events))return events;await delay(100);}
@@ -48,7 +71,7 @@ try {
     await delay(500);view=await observe(`initial-readonly-${n}`);
   }
   const field=point(view,"Message");
-  await send("focus-field",view,{action:"click",x:field.x,y:field.y});
+  await send("focus-field",view,{action:"click",x:field.x,y:field.y},"Message");
   view=await observe("before-keyboard");
   const keyboardSteps=[
     {action:"key",key:"a"},{action:"hotkey",keys:["shift","b"],wait_ms:100},
@@ -72,7 +95,7 @@ try {
   await observe("after-keyboard");
   for(const action of ["right_click","double_click"]) {
     view=await observe(`before-${action}`);const pad=point(view,"Pointer pad");const before=site.events().length;
-    await send(action,view,{action,x:pad.x,y:pad.y});
+    await send(action,view,{action,x:pad.x,y:pad.y},"Pointer pad");
     await witness(events=>events.slice(before).some(e=>e.type===(action==="right_click"?"contextmenu":"dblclick")),action);
   }
   view=await observe("before-scroll");let scroll=point(view,"Scroll area");
@@ -104,7 +127,7 @@ try {
   success=true;
 } finally {
   const closed=fixture?await fixture.close():undefined; await session.close(); await site.close();
-  const cleanupBackend=new McpDriver(config);let sourceGone;
+  const cleanupBackend=await createBackend();let sourceGone;
   try {const current=await cleanupBackend.call("list_windows",{});sourceGone=!(current.structuredContent?.windows??[]).some(w=>w.pid===target?.pid&&w.window_id===target?.window_id);}
   finally {await cleanupBackend.close();}
   await writeFile(`${directory}/run.json`,JSON.stringify({success,target,calls,records,events:site.events(),cleanup:{browser:closed,sourceGone,fixture:true,session:true},private_pixels:true},null,2));
