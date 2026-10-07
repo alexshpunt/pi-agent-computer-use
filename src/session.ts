@@ -34,7 +34,9 @@ export interface Driver {
   selectedDisplays?: boolean;
   /** True only for a qualified native runtime that admits both straight-drag endpoints against one capture. */
   captureBoundDrag?: boolean;
-  call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
+  /** True when existing native cursor controls can be scoped and restored for one action. */
+  reactiveAnimation?: boolean;
+  call(name: string, args: Record<string, unknown>, signal?: AbortSignal, options?: { animation?: "reactive" }): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
 }
@@ -43,6 +45,8 @@ export type Action = {
   window_ref: string;
   observation_id: string;
   delivery_mode?: "background" | "foreground";
+  /** Explicit opt-in to the trusted local reactive cursor-animation timing. */
+  animation?: "reactive";
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
 export interface ComputerResult {
@@ -721,11 +725,13 @@ export class ComputerSession {
       const observed = entry?.observation;
       if (!entry || !observed || action.observation_id !== observed.id)
         return this.result("refused", "Stale or missing observation_id/window_ref. Observe again.");
-      const { window_ref: _ref, observation_id: _id, delivery_mode, ...command } = action;
+      const { window_ref: _ref, observation_id: _id, delivery_mode, animation, ...command } = action;
       const batch = command.action === "sequence";
       let commands: InputStep[];
       try {
         if (delivery_mode !== undefined && !["background", "foreground"].includes(delivery_mode)) throw new Error("Unsupported delivery mode.");
+        if (animation !== undefined && (animation !== "reactive" || !this.driver.reactiveAnimation))
+          throw Error("Reactive animation requires the scoped native cursor adapter; no input was dispatched.");
         if (batch) {
           if (Object.keys(command).some(key => !["action", "sequence"].includes(key)) || !Array.isArray(command.sequence) || command.sequence.length < 1 || command.sequence.length > 32)
             throw new Error("A sequence needs 1..32 steps and no conflicting top-level action fields.");
@@ -797,7 +803,9 @@ export class ComputerSession {
           const row: Record<string, unknown> = { index, action: step.action, native_tool: name, requested,
             requested_wait_ms: step.wait_ms ?? 0, dispatch_ms: performance.now() - started, status: "unknown" };
           trace.steps.push(row); trace.attempted++; inFlight = true;
-          const native = await this.driver.call(name, args, signal);
+          const native = animation
+            ? await this.driver.call(name, args, signal, { animation })
+            : await this.driver.call(name, args, signal);
           row.completion_ms = performance.now() - started;
           if (!this.allowed(entry) || signal?.aborted) return finish(this.result("unknown",
             "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),

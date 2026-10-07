@@ -13,7 +13,7 @@ import { McpDriver } from "../src/driver.ts";
 const mode = process.argv[2]; assert.ok(["browser", "native"].includes(mode), "Choose browser or native.");
 const directory = `.tmp/ui-resources/${mode}-${Date.now()}`; await mkdir(directory, { recursive: true });
 const config = await loadComputerConfig(process.cwd()); const driver = new McpDriver(config);
-const root = config.command.replace(/\/cua-driver-[^/]+\/cua-driver\.exe$/, "");
+const root = path.dirname(config.command);
 assert.ok(root.startsWith("/mnt/c/"), "Use the installed trusted Windows runtime.");
 const windowsPath = value => value.replace("/mnt/c/", "C:\\").replaceAll("/", "\\");
 let site, fixture, child, nativeDirectory, target;

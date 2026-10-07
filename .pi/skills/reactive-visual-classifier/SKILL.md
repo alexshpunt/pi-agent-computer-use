@@ -56,6 +56,8 @@ For repeated snapshots of a known field, a one-frame `computer_sequence` with `c
 
 Do not insert sleep calls into a reaction loop unless pacing was explicitly requested. Observe and process sequentially as quickly as the bounded program can; keep native captures, classification and input timings separate.
 
+For authorized reactive input, add `animation:"reactive"` to `computer_act` when a short cursor glide helps. The adapter restores the ordinary glide after each native call. This changes animation only, not native click pauses; count profile switching in the action timing. See [local configuration and failure rules](../../../docs/reactive-animation.md).
+
 Classification neither consumes nor renews input authority. If no intervening read/action consumed the overview and its observed target is still valid, use that observation for the action. Otherwise observe again. Set a maximum frame age before dispatch; if analysis takes too long, discard that decision rather than clicking an expired detection.
 
 Measure capture, classification and action separately, plus elapsed time from the native capture receipt to dispatch. The receipt timestamp is not a compositor timestamp, so it cannot prove the pixels' true age. Verification snapshots affect the next reaction's latency; bound them too. Warm-start time is not steady-state latency.

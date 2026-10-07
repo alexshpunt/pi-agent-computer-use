@@ -53,6 +53,7 @@ export const actionParameters = Type.Object({
   window_ref: Type.String({ minLength: 1 }), observation_id: Type.String({ minLength: 1 }),
   action: enumSchema([...names, "sequence"]),
   delivery_mode: Type.Optional(enumSchema(["background", "foreground"])),
+  animation: Type.Optional(Type.Literal("reactive", { description: "Use configured minimal CUA cursor animation for this action only, then restore ordinary animation. Native click pauses stay unchanged." })),
   actions: Type.Optional(Type.Array(Type.Object({
     action: enumSchema(["click", "drag"]),
     ...Object.fromEntries(["x", "y", "from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "via"].map(key => [key, optional[key as keyof typeof optional]])),

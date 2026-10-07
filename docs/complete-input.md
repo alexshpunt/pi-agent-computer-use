@@ -2,6 +2,8 @@
 
 Use the existing `computer_act` with a current window overview. CUA remains the only input backend. A display capture or detail cannot ground input.
 
+For an explicit per-action short cursor glide, use `animation:"reactive"`. Ordinary animation is restored afterward; native click pauses do not change. See [reactive animation and local configuration](reactive-animation.md).
+
 ## Single actions
 
 - `key`: complete press/release of a letter, digit, return/tab/escape/space/backspace/delete, arrow, home/end/pageup/pagedown or f1..f12. Optional `modifiers` are ctrl/shift/alt/win.

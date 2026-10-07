@@ -4,6 +4,8 @@ The user asked for autonomous work across the computer-use epic while away. This
 
 ## Current work
 
+LPT-644's separately approved reactive cursor profile passed production reload,10/10 native fixture counter/pointer witnesses, exact animation restoration and actual TUI inspection. Reactive tool-call median was166.5ms versus520ms for ordinary moving clicks in this small sample; native click pauses and runtime setup stayed unchanged. See [results and limits](reactive-animation-results.md). The game and other epic work were not resumed.
+
 LPT-632 was separately approved in the main develop checkout. One supplied image and one text condition now return typed true/false/unknown with an agent-supplied cosine threshold and optional band. After reload, 13 real-model cases, image-block transfer, error separation, warm caching, actual TUI and owned-worker cleanup passed. Selected-tree verification passed 253 unit tests, typecheck and 15 real-Pi tests. No game input, capture, OS setup or LPT-614 policy work was included. See [the predicate results and limits](visual-classifier-results.md).
 
 LPT-378–379 passed the approved native/current-agent scope: 18 native/browser mapping hits across 500/800/1024 and movement/resizing, four production agent hits, optional grid/region/proven-target guides, exact private raw/sent exports, later-capture viewer controls and actual TUI inspection. Verification passed 227 unit tests, typecheck and 13 real-Pi tests. Owned source/profile/runtime cleanup passed; detail geometry and normal Pi retention/cache stayed unchanged. See [results and limits](coordinate-guide-results.md). No multi-model run, input format, runtime or OS setup change is included. Other epic work stays paused.
