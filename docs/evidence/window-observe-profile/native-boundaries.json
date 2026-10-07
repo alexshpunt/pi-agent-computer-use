@@ -1,0 +1,664 @@
+{
+  "schema": 1,
+  "success": true,
+  "cleanup": {
+    "fixture": true,
+    "native": true,
+    "site": true
+  },
+  "source": "506239da08cfdafa63dac1857f5471752fb70f5e",
+  "runtime_sha256": "0e25c8b83fd48b54be479eb128452a6f6b099b5ff6ce2d20bac024eda07ead16",
+  "boundary": "Native public RPC through the unchanged McpDriver; includes native work, transport, SDK parsing and result projection. No Pi hooks or overlay.",
+  "caveat": "metadata_rejection is the exact late-validation error after lookup/process enumeration/shell membership, not a screenshot. Differences across public calls are comparative evidence, not additive internal timers. file_500 includes file write; image_native skips resize but transports a larger PNG.",
+  "no_input_during_samples": true,
+  "summary": [
+    {
+      "mode": "metadata_rejection",
+      "count": 10,
+      "mean_ms": 28.59831030000014,
+      "median_ms": 22.799936000001253
+    },
+    {
+      "mode": "image_500",
+      "count": 10,
+      "mean_ms": 126.20104470000005,
+      "median_ms": 118.4788965000007
+    },
+    {
+      "mode": "image_native",
+      "count": 10,
+      "mean_ms": 95.98751039999979,
+      "median_ms": 92.4763154999996
+    },
+    {
+      "mode": "file_500",
+      "count": 10,
+      "mean_ms": 118.64737339999957,
+      "median_ms": 112.57128999999941
+    },
+    {
+      "mode": "ui_only",
+      "count": 10,
+      "mean_ms": 75.57473929999996,
+      "median_ms": 67.41907549999996
+    }
+  ],
+  "samples": [
+    {
+      "mode": "metadata_rejection",
+      "phase": "setup",
+      "duration_ms": 32.08197100000007,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "setup",
+      "duration_ms": 130.97299699999985,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 13298
+    },
+    {
+      "mode": "image_native",
+      "phase": "setup",
+      "duration_ms": 111.24662399999943,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 147761
+    },
+    {
+      "mode": "file_500",
+      "phase": "setup",
+      "duration_ms": 135.05606400000033,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 76922
+    },
+    {
+      "mode": "ui_only",
+      "phase": "setup",
+      "duration_ms": 94.63072999999986,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 24.077784000000065,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 122.64362000000074,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 76922
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 98.68207900000016,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 147683
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 108.31015099999968,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 76922
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 67.03903099999934,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 106.98350599999958,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 77951
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 81.89774200000011,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150607
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 106.58115899999939,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78618
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 64.62621399999989,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 20.519059999999627,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 86.71678599999996,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 114.57604099999935,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 66.11657999999989,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 20.853323000000273,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 123.04308899999978,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 109.95656700000018,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 106.07775099999981,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 45.8166199999996,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 161.34828899999957,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 127.67527599999994,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 115.69732399999975,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 34.35239899999942,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 152.35917100000006,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 111.0601200000001,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 176.97137399999974,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 53.60019800000009,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 163.3512579999997,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 104.90622099999928,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 122.97933899999953,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 69.66395700000066,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 114.31417300000066,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 96.04668399999991,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 107.4655789999997,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 64.27331799999956,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 19.674203999999918,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 88.90594699999929,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 113.34543399999984,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 67.79912000000058,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 21.489642999999887,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 101.66796200000044,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 111.79714599999897,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 62.73868500000026,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 22.04216600000109,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 112.91077500000029,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 80.60844700000052,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "ui_only",
+      "phase": "warm",
+      "duration_ms": 71.7154129999999,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "metadata_rejection",
+      "phase": "warm",
+      "duration_ms": 23.557706000001417,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false
+    },
+    {
+      "mode": "image_500",
+      "phase": "warm",
+      "duration_ms": 103.38860399999976,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    },
+    {
+      "mode": "image_native",
+      "phase": "warm",
+      "duration_ms": 83.37580199999866,
+      "verified": true,
+      "image_blocks": 1,
+      "screenshot_error": false,
+      "dimensions": {
+        "width": 1237,
+        "height": 1327
+      },
+      "png_bytes": 150633
+    },
+    {
+      "mode": "file_500",
+      "phase": "warm",
+      "duration_ms": 114.49094399999922,
+      "verified": true,
+      "image_blocks": 0,
+      "screenshot_error": false,
+      "file_path_matches": true,
+      "dimensions": {
+        "width": 466,
+        "height": 500
+      },
+      "png_bytes": 78621
+    }
+  ]
+}

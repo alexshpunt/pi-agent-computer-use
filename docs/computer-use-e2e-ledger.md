@@ -26,6 +26,8 @@ Verification: 101 unit tests, typecheck and 9 real-Pi tests passed. The producti
 
 The user paused the autonomous epic plan. The approved LPT-380 reversal is complete at 94eb6c43e4086e8d50c7c888c7120a964287ff5a: images stay in normal Pi context until Pi compaction. LPT-381 is canceled at the user's request; cache and prefill stay with Pi and the provider. Other open tasks stay paused. LPT-408 remains Done at 81019f7fadba17b9971e587c3a221a8c2a461d11; its Windows helper proof is in [the report](window-overlay-results.md). LPT-380's former last-three implementation at 6dca15129f68a2e872baa3e76b9b43d553f29a0b and its evidence remain historical, not the current policy. See [image retention](image-context.md).
 
+LPT-649 measured observation latency without changing the installed runtime: 50 public boundary probes and 80 paired warm installed/diagnostic calls passed, with zero sample input and owned cleanup. Exact native timers identified PrintWindow, Lanczos3 and two process enumerations as the main image-only costs. Client transport and owner remainders remain explicit; this is not an optimization or a fully split transport trace. See [native profiling](native-observe-profile.md).
+
 ## Queue snapshot
 
 | Task | Capability | State / next check |

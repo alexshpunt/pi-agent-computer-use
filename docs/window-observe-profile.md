@@ -36,5 +36,7 @@ Whole-call medians were178.2ms full,153.0ms image and109.8ms UI. These are a new
 
 About84% of the mean image-only call was native RPC. Identity checks were not the main bottleneck; overlay cost about10%. Removing all adapter remainder would save only about2ms in this run. The next diagnostic boundary is inside native capture/encoding/transport, not blind removal of lifetime checks. These measurements do not authorize a runtime change or promise instant reaction.
 
+The later [native timing profile](native-observe-profile.md) measures internal Windows stages on a separate diagnostic build. It identifies PrintWindow, Lanczos3 and two process enumerations as the largest native costs, with explicit transport and owner remainders.
+
 Syntax checking and the out-of-bound sample-count guard passed. No production extension code was changed, so no extension reload or whole unrelated test suite was needed.
 The live Herdr viewport (pane w3ME:p2, revision1574) showed the compact final timing summary on one readable line. No screenshots or per-frame payloads were printed by the measurement loop.
