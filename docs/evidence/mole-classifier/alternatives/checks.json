@@ -1,0 +1,57 @@
+{
+  "same_dataset": {
+    "source": "../dataset.json",
+    "frames": 23,
+    "unique_image_hashes": 14,
+    "all_pixel_hashes_and_manual_labels_verified": true
+  },
+  "comparison": {
+    "models": 3,
+    "precisions_per_model": 2,
+    "all_six_reports_complete": true,
+    "all_cosine_scores_finite": true,
+    "all_confusions": { "tp": 24, "tn": 344, "fp": 0, "fn": 0 }
+  },
+  "wrong_checkpoint": {
+    "model": "TinyCLIP-8M",
+    "expected_error": "Checkpoint does not match the pinned HF artifact",
+    "refused_before_model_loading": true,
+    "no_scores_generated": true
+  },
+  "cached_encoder_reference": {
+    "frame": "capture-000.jpg",
+    "precision": "fp32",
+    "reference": "Full model forward logits, compared with normalized cached image/text features including model scale and optional bias",
+    "absolute_and_relative_tolerance": 0.0001,
+    "shape": [16, 2],
+    "expected_positive_tiles": [2],
+    "models": [
+      { "model": "TinyCLIP-8M", "passed": true, "max_abs_logit_difference": 0.000003814697265625 },
+      { "model": "TinyCLIP-39M", "passed": true, "max_abs_logit_difference": 0.000003814697265625 },
+      { "model": "SigLIP2-Base", "passed": true, "max_abs_logit_difference": 0.0 }
+    ]
+  },
+  "siglip_text_config": {
+    "configured_vocabulary": 256000,
+    "processor": "GemmaTokenizer",
+    "text_shape": [2, 64],
+    "largest_token_id": 235250,
+    "all_tokens_in_range": true,
+    "default_32k_bos_eos_warnings_observed": true,
+    "library_or_model_patched": false
+  },
+  "legacy_loader_smoke": {
+    "model": "MobileCLIP-S0",
+    "frames": 23,
+    "repeats": 1,
+    "predictions_match_previous_manual_labels": true,
+    "timing_included_in_comparison": false
+  },
+  "scope": {
+    "new_screen_captures": 0,
+    "desktop_input": 0,
+    "remote_model_code": false,
+    "production_integration": false,
+    "existing_mobileclip_environment_modified": false
+  }
+}

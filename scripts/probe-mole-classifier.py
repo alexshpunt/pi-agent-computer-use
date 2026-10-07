@@ -1,4 +1,4 @@
-"""Read-only MobileCLIP tile experiment; never capture or send desktop input.
+"""Read-only image-text tile experiment; never capture or send desktop input.
 
 Use --record-stdin to save exact computer_observe image bytes under .tmp.
 Use --frames and --grid to classify a visually checked 4x4 grid. Scores are
@@ -67,16 +67,49 @@ def summarize(report, labels_path, frames_directory):
 def classify(args):
     import importlib.metadata
     import torch
-    import open_clip
     from PIL import Image, ImageDraw
-    from timm.utils import reparameterize_model
 
     torch.set_num_threads(4)
     if not torch.cuda.is_available():
         raise RuntimeError("This experiment requires the approved local GPU")
     started = time.perf_counter()
     checkpoint_hash = None
-    if args.model.startswith("MobileCLIP2-"):
+    hf_pins = {
+        "TinyCLIP-8M": ("wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M",
+                        "a2a8c6eaa2549ad66eb7c31b85022bf58273a26c",
+                        "9339ee3d736344d0ddcaa6c03edc9f89688f08caaea5401220885233da726fcc"),
+        "TinyCLIP-39M": ("wkcn/TinyCLIP-ViT-39M-16-Text-19M-YFCC15M",
+                         "07a4b0bc751cb64fecd2b661c048c1dd98d69444",
+                         "112bdfb07ebc8994e9afba7a2a314e278493a675033595cf48e54cf8a17ae587"),
+        "SigLIP2-Base": ("google/siglip2-base-patch16-224",
+                        "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2",
+                        "612923381c76ec5a9bed335d1c48827e3f2e506ac31b044b63b2031fadee6a0b"),
+    }
+    if args.model in hf_pins:
+        from transformers import AutoModel, AutoProcessor
+        if not args.snapshot:
+            raise ValueError("HF models require --snapshot with downloaded pinned files")
+        with (args.snapshot / "model.safetensors").open("rb") as weights:
+            checkpoint_hash = hashlib.file_digest(weights, "sha256").hexdigest()
+        if checkpoint_hash != hf_pins[args.model][2]:
+            raise ValueError("Checkpoint does not match the pinned HF artifact")
+        model = AutoModel.from_pretrained(
+            args.snapshot, local_files_only=True, trust_remote_code=False,
+            use_safetensors=True, attn_implementation="sdpa").eval()
+        processor = AutoProcessor.from_pretrained(
+            args.snapshot, local_files_only=True, trust_remote_code=False)
+        def preprocess_batch(tiles):
+            return processor(images=tiles, return_tensors="pt")["pixel_values"]
+        def encode_image(batch):
+            return model.get_image_features(pixel_values=batch, return_dict=True).pooler_output
+        def encode_text(prompts):
+            padding = "max_length" if args.model == "SigLIP2-Base" else True
+            inputs = processor(text=prompts, padding=padding, return_tensors="pt").to("cuda")
+            return model.get_text_features(**inputs, return_dict=True).pooler_output
+        version_names = ["torch", "transformers", "huggingface_hub", "pillow"]
+    elif args.model.startswith("MobileCLIP2-"):
+        import open_clip
+        from timm.utils import reparameterize_model
         model, _, preprocess = open_clip.create_model_and_transforms(args.model, pretrained="dfndr2b")
         model.eval()
         model = reparameterize_model(model)
@@ -98,13 +131,20 @@ def classify(args):
         model, _, preprocess = mobileclip.create_model_and_transforms(
             name, pretrained=str(args.checkpoint), reparameterize=True)
         tokenizer = mobileclip.get_tokenizer(name)
+    if args.model not in hf_pins:
+        encode_image = model.encode_image
+        def encode_text(prompts):
+            return model.encode_text(tokenizer(prompts).to("cuda"))
+        def preprocess_batch(tiles):
+            return torch.stack([preprocess(tile) for tile in tiles])
+        version_names = ["torch", "open_clip_torch", "timm", "pillow"]
     model = model.to("cuda")
     torch.cuda.synchronize()
     load_ms = (time.perf_counter() - started) * 1000
     prompts = ["a cartoon mole animal popping out of green grass", "a patch of green grass with no animal"]
     with torch.inference_mode():
         started = time.perf_counter()
-        text = model.encode_text(tokenizer(prompts).to("cuda"))
+        text = encode_text(prompts)
         text = text / text.norm(dim=-1, keepdim=True)
         torch.cuda.synchronize()
         text_ms = (time.perf_counter() - started) * 1000
@@ -127,7 +167,7 @@ def classify(args):
                 raise ValueError(f"Grid outside {path.name}; inspect capture geometry")
             started = time.perf_counter()
             tiles = [source.crop(box) for box in boxes]
-            batch = torch.stack([preprocess(tile) for tile in tiles])
+            batch = preprocess_batch(tiles)
             preprocess_ms = (time.perf_counter() - started) * 1000
             started = time.perf_counter()
             batch = batch.to("cuda")
@@ -135,13 +175,13 @@ def classify(args):
             transfer_ms = (time.perf_counter() - started) * 1000
             for _ in range(3):
                 with torch.autocast("cuda", enabled=args.precision == "fp16"):
-                    model.encode_image(batch)
+                    encode_image(batch)
             torch.cuda.synchronize()
             samples = []
             for _ in range(args.repeats):
                 started = time.perf_counter()
                 with torch.autocast("cuda", enabled=args.precision == "fp16"):
-                    features = model.encode_image(batch)
+                    features = encode_image(batch)
                 features = features.float()
                 features = features / features.norm(dim=-1, keepdim=True)
                 scores = features @ text.T
@@ -161,9 +201,12 @@ def classify(args):
         report = {
             "model": args.model, "precision": args.precision, "prompts": prompts,
             "checkpoint_sha256": checkpoint_hash,
+            "hf_source": ({"repository": hf_pins[args.model][0], "revision": hf_pins[args.model][1],
+                           "attention_backend": model.config._attn_implementation}
+                          if args.model in hf_pins else None),
             "grid": args.grid, "device": torch.cuda.get_device_name(),
             "versions": {name: importlib.metadata.version(name)
-                         for name in ["torch", "open_clip_torch", "timm", "pillow"]},
+                         for name in version_names},
             "load_ms": load_ms, "text_once_ms": text_ms,
             "batch_16_gpu_ms": {
                 "median": statistics.median(timing),
@@ -186,7 +229,9 @@ if __name__ == "__main__":
     parser.add_argument("--frames", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--model", default="MobileCLIP2-S0",
-                        choices=["MobileCLIP2-S0", "MobileCLIP2-S2", "MobileCLIP-S0", "MobileCLIP-S2"])
+                        choices=["MobileCLIP2-S0", "MobileCLIP2-S2", "MobileCLIP-S0", "MobileCLIP-S2",
+                                 "TinyCLIP-8M", "TinyCLIP-39M", "SigLIP2-Base"])
+    parser.add_argument("--snapshot", type=Path, help="Downloaded pinned HF snapshot; no remote model code")
     parser.add_argument("--legacy-source", type=Path, help="Pinned Apple 2024 source checkout")
     parser.add_argument("--checkpoint", type=Path, help="Exact legacy .pt file; SHA256 is checked")
     parser.add_argument("--grid", nargs=4, type=float, metavar=("X", "Y", "PITCH", "SIZE"))

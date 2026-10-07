@@ -4,6 +4,8 @@
 
 A text-prompted image encoder can distinguish cartoon moles from grass on the actual Level 10 board. This was a local research experiment, not a reactive tool implementation or a game-playing run. No game input was sent.
 
+A later [TinyCLIP and SigLIP2 comparison](permissive-mole-classifiers.md) uses these same saved frames with checkpoints published under MIT or Apache-2.0. It does not adopt a production classifier.
+
 We compared MobileCLIP2-S0 and S2 on the same 23 captured frames (14 distinct image hashes). Each frame provided 16 tiles: 24 visible-mole examples and 344 grass examples. Labels came from inspecting the actual pixels, including enlarged views of two tiny moles. The images contain repeated backgrounds and repeated states; these are not 368 independent examples or a general accuracy benchmark.
 
 | Model / image precision | Moles found | False positives | Median GPU time, all 16 tiles | p95 |
