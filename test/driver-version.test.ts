@@ -19,6 +19,17 @@ test("older runtimes refuse key holds without starting an unqualified peer", asy
     } finally { await backend.close(); }
   }
 });
+test("older profiles refuse capture-bound drag before starting any native peer", async () => {
+  for (const runtime of [undefined, "windows-held-paths", "windows-key-holds", "windows-selected-displays"] as const) {
+    const backend = new McpDriver({ command: process.execPath, runtime });
+    try {
+      expect(backend.captureBoundDrag).toBe(false);
+      expect(await backend.call("drag", { capture_id: "unqualified" })).toMatchObject({
+        isError: true, structuredContent: { effect: "refused", code: "capture_bound_drag_unavailable" },
+      });
+    } finally { await backend.close(); }
+  }
+});
 test("the qualified pin rejects an older peer before native dispatch", async () => {
   await mkdir(".tmp/native-zoom", {recursive:true});
   const cwd = await mkdtemp(path.resolve(".tmp/native-zoom/version-")); const log = path.join(cwd,"calls.jsonl");
@@ -41,6 +52,13 @@ test("older native runtimes refuse selected-display reads before starting any pe
   }
 });
 
+test("the capture-bound drag profile preserves earlier capabilities but rejects wrong bytes before startup", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-capture-drag" });
+  try {
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag]).toEqual([true, true, true, true]);
+    await expect(backend.call("drag", { capture_id: "candidate" })).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
 test("the exact selected-display profile preserves keys and paths but rejects wrong bytes before startup", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-selected-displays" });
   try {

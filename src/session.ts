@@ -32,6 +32,8 @@ export interface Driver {
   heldKeys?: boolean;
   /** True only for a qualified Windows runtime with exact selected-display read contracts. */
   selectedDisplays?: boolean;
+  /** True only for a qualified native runtime that admits both straight-drag endpoints against one capture. */
+  captureBoundDrag?: boolean;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
@@ -746,6 +748,8 @@ export class ComputerSession {
           validateInput(nativeStep, observed, batch);
           return nativeStep;
         });
+        if (this.driver.captureBoundDrag && !observed.captureId && commands.some(step => step.action === "drag" && step.via === undefined))
+          throw new Error("Straight drag requires this overview's native capture. Observe again; no batch input was dispatched.");
         if (commands.some(step => step.action === "hold") && !this.driver.heldKeys)
           throw new Error("Key holds require the explicitly selected qualified Windows key-hold runtime. No input was dispatched.");
         if (commands.some(step => step.via !== undefined) && !this.driver.heldPaths)
@@ -776,7 +780,7 @@ export class ComputerSession {
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
           if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
-          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", observed.captureId);
+          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", observed.captureId, this.driver.captureBoundDrag);
           // AX bounds are native. Only native click receipts establish an exact pixel action mark.
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
           let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);

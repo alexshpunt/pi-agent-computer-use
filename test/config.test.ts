@@ -28,7 +28,7 @@ test.each([{runtime:"windows-held-paths"},{runtime:"windows-key-holds"},{command
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(config));
   await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
 });
-test.each(["windows-held-paths", "windows-key-holds", "windows-selected-displays"])("%s selection is explicit trusted config and does not replace discovery defaults", async runtime => {
+test.each(["windows-held-paths", "windows-key-holds", "windows-selected-displays", "windows-capture-drag"])("%s selection is explicit trusted config and does not replace discovery defaults", async runtime => {
   const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
   const config = {command:"/owned/candidate/cua-driver.exe",runtime};
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(config));

@@ -44,7 +44,7 @@ export async function openForkArtifact(directory, source) {
       "The exact candidate must acknowledge the upstream EOF-aware receiver.");
     const { tools } = await client.listTools(undefined, { timeout: 15000 });
     for (const name of ["list_windows", "get_window_state", "zoom", "click", "drag"]) assert.ok(tools.some(tool => tool.name === name), `Missing native tool: ${name}`);
-    const report = { source, server, binary_sha256: hashes.find(entry => entry.name === "cua-driver.exe").Hash.toLowerCase(), tools: tools.length, transport: "upstream_mcp_envelopes", has_drag_via: !!tools.find(tool => tool.name === "drag")?.inputSchema.properties?.via, has_key_hold: tools.some(tool => tool.name === "hold_keys") };
+    const report = { source, server, binary_sha256: hashes.find(entry => entry.name === "cua-driver.exe").Hash.toLowerCase(), tools: tools.length, transport: "upstream_mcp_envelopes", has_drag_via: !!tools.find(tool => tool.name === "drag")?.inputSchema.properties?.via, has_key_hold: tools.some(tool => tool.name === "hold_keys"), has_capture_bound_drag: tools.find(tool => tool.name === "drag")?.inputSchema.properties?.capture_id?.type === "string" };
     return { report, close, client, transport, diagnostics: () => stderr,
       call: (name, args) => client.callTool({ name, arguments: args }, undefined, { timeout: 15000 }) };
   } catch (error) {

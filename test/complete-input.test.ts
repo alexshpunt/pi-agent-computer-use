@@ -64,6 +64,39 @@ test.each([
   expect((await f.send({ action: "key", key: "return" })).details.status).toBe("delivered");
 });
 
+test("a qualified straight drag keeps both endpoints in the captured window image", async () => {
+  const f = await fixture(); Object.assign(f.driver, { captureBoundDrag: true });
+  const result = await f.send({ action: "drag", from_x: 30, from_y: 40, to_x: 200, to_y: 80, duration_ms: 250, steps: 12 });
+  expect(result.details.status).toBe("delivered");
+  expect(f.input()).toEqual([["drag", { target: { kind: "window", pid: 42, window_id: 100 }, delivery_mode: "background",
+    capture_id: "capture-one", from_x: 30, from_y: 40, to_x: 200, to_y: 80, duration_ms: 250, steps: 12 }, undefined]]);
+});
+
+test("a qualified drag with no native capture refuses the entire batch before its first key", async () => {
+  const f = await fixture(); Object.assign(f.driver, { captureBoundDrag: true }); const call = f.driver.call;
+  f.driver.call = vi.fn(async (name, args, signal) => {
+    const result = await call(name, args, signal);
+    if (name === "get_window_state" && result.structuredContent) delete result.structuredContent.capture_id;
+    return result;
+  });
+  const view = await f.session.observe(f.base.window_ref);
+  const result = await f.session.act({ window_ref: f.base.window_ref, observation_id: view.details.observation_id!, action: "sequence",
+    sequence: [{ action: "key", key: "a" }, { action: "drag", from_x: 10, from_y: 10, to_x: 20, to_y: 20 }] });
+  expect(result.details.status).toBe("refused"); expect(f.input()).toHaveLength(0);
+});
+test("native resize refusal stops a capture-bound drag batch without replay or an unbound fallback", async () => {
+  const f = await fixture(); Object.assign(f.driver, { captureBoundDrag: true }); const call = f.driver.call;
+  f.driver.call = vi.fn(async (name, args, signal) => name === "drag" && args.capture_id === "capture-one"
+    ? { content: [], isError: true, structuredContent: { code: "capture_frame_mismatch", effect: "refused" } }
+    : call(name, args, signal));
+  const command = { action: "sequence", sequence: [{ action: "key", key: "a" },
+    { action: "drag", from_x: 10, from_y: 10, to_x: 20, to_y: 20 }, { action: "key", key: "b" }] };
+  const result = await f.send(command);
+  expect(result.details.status).toBe("refused");
+  expect(result.details.state!.sequence).toMatchObject({ total: 3, attempted: 2, completed: 1 });
+  expect(f.input().map(([name]) => name)).toEqual(["press_key", "drag"]);
+  expect((await f.send(command)).details.status).toBe("refused"); expect(f.input()).toHaveLength(2);
+});
 test("an inactive held-path backend refuses the whole sequence before its first key", async () => {
   const f = await fixture(); f.driver.heldPaths = false;
   const result = await f.send({ action: "sequence", sequence: [
@@ -73,7 +106,7 @@ test("an inactive held-path backend refuses the whole sequence before its first 
   expect(result.details.status).toBe("refused"); expect(f.input()).toHaveLength(0);
 });
 test("a curved drag forwards all local points once and preserves a partial native receipt", async () => {
-  const f = await fixture();
+  const f = await fixture(); Object.assign(f.driver, { captureBoundDrag: true });
   f.driver.call = vi.fn(async () => ({ content: [], structuredContent: {
     effect: "partial", delivery: { delivered_count: 2 }, summary: "2/4 points; pressed=true released=true",
   } }));
@@ -194,7 +227,7 @@ test("sequence stops if admission uses the remaining elapsed budget", async () =
   } finally { clock.mockRestore(); }
 });
 test.each(["cancel", "safe", "recycle"])("sequence stops before another dispatch on %s", async interruption => {
-  const f = await fixture(), abort = new AbortController(); const native = f.driver.call;
+  const f = await fixture(), abort = new AbortController(); Object.assign(f.driver, { captureBoundDrag: true }); const native = f.driver.call;
   f.driver.call = vi.fn<Driver["call"]>(async (...args) => {
     const result = await native(...args);
     if (interruption === "cancel") abort.abort();
@@ -202,7 +235,7 @@ test.each(["cancel", "safe", "recycle"])("sequence stops before another dispatch
     if (interruption === "recycle") f.recycle();
     return result;
   });
-  const result = await f.send({ action: "sequence", sequence: [{ action: "key", key: "a" }, { action: "key", key: "b", wait_ms: 200 }] }, abort.signal);
+  const result = await f.send({ action: "sequence", sequence: [{ action: "key", key: "a" }, { action: "drag", from_x: 10, from_y: 10, to_x: 20, to_y: 20, wait_ms: 200 }] }, abort.signal);
   expect(result.details.status).not.toBe("delivered"); expect(f.input()).toHaveLength(1);
   expect(result.details.state!.sequence).toMatchObject({ total: 2, attempted: 1 });
 });

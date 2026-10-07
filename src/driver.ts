@@ -24,6 +24,17 @@ export const SELECTED_DISPLAY_RUNTIME = {
   source: "38f50121c9cc15938a18330f4c3334a27f898e83", version: "0.34.0",
   sha256: "1dbd499cfd43b98f31dc3fb51c7a001dc72bd116db235c304c0486b32df8a24d",
 } as const;
+/** Exact Windows CI artifact with capture-bound straight drag; live application qualification is separate. */
+export const CAPTURE_DRAG_RUNTIME = {
+  source: "1f884e285d51559a7b8e58f71b15e864f6770be1", version: "0.34.0",
+  sha256: "e71483361f7c7348e43a3ee7e65f374df108b66381087c45e7091d9b5bb4218c",
+} as const;
+const forkRuntimes = {
+  "windows-held-paths": HELD_PATH_RUNTIME,
+  "windows-key-holds": KEY_HOLD_RUNTIME,
+  "windows-selected-displays": SELECTED_DISPLAY_RUNTIME,
+  "windows-capture-drag": CAPTURE_DRAG_RUNTIME,
+};
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
   private client?: Client;
@@ -32,17 +43,17 @@ export class McpDriver implements Driver {
 
   private readonly windowIdentity: WindowIdentity;
 
-  private get forkRuntime(): typeof HELD_PATH_RUNTIME | typeof KEY_HOLD_RUNTIME | typeof SELECTED_DISPLAY_RUNTIME | undefined {
-    return this.config.runtime === "windows-selected-displays" ? SELECTED_DISPLAY_RUNTIME : this.config.runtime === "windows-key-holds" ? KEY_HOLD_RUNTIME : this.config.runtime === "windows-held-paths" ? HELD_PATH_RUNTIME : undefined;
-  }
+  private get forkRuntime() { return this.config.runtime ? forkRuntimes[this.config.runtime] : undefined; }
 
   /** A selected fork is checked before the first MCP call; default installed CUA has no held paths. */
   get heldPaths(): boolean { return this.forkRuntime !== undefined; }
 
   /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
-  get heldKeys(): boolean { return this.config.runtime === "windows-key-holds" || this.config.runtime === "windows-selected-displays"; }
+  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag"].includes(this.config.runtime ?? ""); }
   /** Existing profiles do not expose exact monitor reads; only a separately qualified pin may enable them. */
-  get selectedDisplays(): boolean { return this.config.runtime === "windows-selected-displays"; }
+  get selectedDisplays(): boolean { return this.config.runtime === "windows-selected-displays" || this.config.runtime === "windows-capture-drag"; }
+  /** Older profiles cannot admit a straight drag against an immutable native capture. */
+  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag"; }
 
   /** Window, display and browser routes share the explicitly qualified Windows pin. */
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
@@ -59,7 +70,7 @@ export class McpDriver implements Driver {
     if (this.client) return this.client;
     if (this.heldPaths) {
       const hash = createHash("sha256").update(await readFile(this.config.command)).digest("hex");
-      if (hash !== this.forkRuntime!.sha256) throw new Error("Held-path artifact hash mismatch; no Driver process was started.");
+      if (hash !== this.forkRuntime!.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
     }
     const interop = this.config.interop ?? process.env.WSL_INTEROP;
     if (process.platform === "linux" && this.config.command.endsWith(".exe")) {
@@ -93,7 +104,7 @@ export class McpDriver implements Driver {
       if (server?.name !== "cua-driver" || server.version !== version)
         throw new Error(`This backend requires cua-driver ${version}. Requalify before changing the pin.`);
       if (this.heldPaths && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
-        throw new Error("The held-path runtime did not acknowledge its EOF-aware receiver.");
+        throw new Error("The native fork runtime did not acknowledge its EOF-aware receiver.");
       return client;
     } catch (error) {
       await this.close();
@@ -103,6 +114,8 @@ export class McpDriver implements Driver {
 
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
+    if (name === "drag" && args.capture_id !== undefined && !this.captureBoundDrag)
+      return { content: [], structuredContent: { effect: "refused", code: "capture_bound_drag_unavailable" }, isError: true };
     if (["list_displays", "get_display_state"].includes(name) && !this.selectedDisplays)
       return { content: [], structuredContent: { effect: "refused", code: "selected_display_unavailable" }, isError: true };
     if (name === "drag" && args.via !== undefined && !this.heldPaths)

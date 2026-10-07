@@ -142,8 +142,9 @@ export function requestedInputTime(command: InputStep): number {
   return (command.wait_ms ?? 0) + (command.action === "hold" ? command.duration_ms ?? 0 : command.action === "drag" ? command.duration_ms ?? 500 : command.action === "type_text" ? (command.text?.length ?? 0) * (command.delay_ms ?? 30) : 0);
 }
 
-/** Translate supported fields only. Coordinates stay in the original overview's local image domain. */
-export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string): { name: string; args: Record<string, unknown> } {
+/** Translate supported fields only. Coordinates stay in the original overview's local image domain.
+ * captureBoundDrag enables straight-drag binding only for a separately qualified native runtime. */
+export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string, captureBoundDrag = false): { name: string; args: Record<string, unknown> } {
   const name = command.action === "hold" ? "hold_keys" : command.action === "select_all" ? "hotkey" : command.action === "key" ? "press_key" : command.action;
   const args: Record<string, unknown> = { delivery_mode: delivery, ...((["set_value", "right_click", "double_click", "hold"].includes(command.action) || command.via !== undefined) ? target : { target: { kind: "window", ...target } }) };
   for (const key of ["element_token", "x", "y", ...fields[command.action]]) {
@@ -151,6 +152,6 @@ export function nativeInput(command: InputCommand, target: { pid: number; window
     if (value !== undefined) args[key === "modifiers" ? command.action === "key" ? "modifiers" : "modifier" : key === "text" && command.action === "set_value" ? "value" : key] = value;
   }
   if (command.action === "select_all") args.keys = ["ctrl", "a"];
-  if (command.action === "click" && command.x !== undefined && captureId) args.capture_id = captureId;
+  if (captureId && ((command.action === "click" && command.x !== undefined) || (captureBoundDrag && command.action === "drag" && command.via === undefined))) args.capture_id = captureId;
   return { name, args };
 }
