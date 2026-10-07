@@ -47,6 +47,12 @@ text(selected.ui);
 
 For an exact control's native detail, use `ui:{operation:"crop",observation_id:load("task_observation"),hint:load("task_hint")}`. It needs reported screenshot bounds, consumes the overview, and has the same fresh-pixel geometry rules as zoom. Clear stored input/image authority afterward and observe again before input.
 
+## Choose fresh window parts
+
+Full is the default. Set `capture:{granularity:"image"}` for fresh pixels without a UI walk, or `capture:{granularity:"ui"}` for current UI without pixels. Results state `granularity` and `captured:{image,ui}`; missing parts are not inherited. Every fresh read retires the previous observation.
+
+Image-only grounds pixel input on that image, not old hints or tokens. UI-only grounds current hint/token actions, not pixels or image detail; only local search/inspect are available without images. UI queries and walk limits require UI. Hint labels need full; guides need pixels. See [mode options and limits](../../../docs/observation-granularity.md).
+
 ## Optional overview guides
 
 Use `capture:{guides:{grid:true,region:true,action:true}}` when coordinate context helps. All three are optional and off by default. Grid numbers are returned window-PNG pixels; they do not change input coordinates. Read `agent_image.annotation.guides` for hidden labels, clipped borders or unavailable geometry. Known control rectangles remain clear; missing native controls cannot be protected.

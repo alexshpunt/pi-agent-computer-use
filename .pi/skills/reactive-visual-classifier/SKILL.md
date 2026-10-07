@@ -48,7 +48,7 @@ Set a small `max_output_tokens` on every Codemode chunk. This limits text output
 
 ## Keep the reaction path short
 
-Prefer one current overview and `computer_classify({image:view.image, region, condition, threshold})` for an eligible target. The integer region belongs to that supplied image, not a detail image or native screen coordinates. Crop happens in the warm worker's memory; do not take a second screenshot or start a shell just to crop it.
+After a full planning overview establishes the layout, prefer `computer_observe({window_ref,capture:{granularity:"image"}})` and `computer_classify({image:view.image, region, condition, threshold})` for an eligible target. Image-only skips the UI walk and grounds pixel input on that exact observation; it has no current hints, tokens or selection metadata. Recover completed targets from current visible state, and stop when layout or state is uncertain. Use full when current UI is needed, or UI-only for a separate non-visual control check. Never carry hints across these fresh reads. The integer region belongs to that supplied image, not a detail image or native screen coordinates. Crop happens in the warm worker's memory; do not take a second screenshot or start a shell just to crop it.
 
 When checking several targets in one frame, pass `regions` once and use its ordered `results`. Do not confuse concurrent single-crop calls with a model batch: the worker serializes separate requests. Bound both tool calls and total crops evaluated. Skip empty batches.
 

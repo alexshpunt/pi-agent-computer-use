@@ -65,12 +65,15 @@ export interface ComputerResult {
     agent_image?: Record<string, unknown>;
     highlight?: HighlightResult;
     ui?: UiResource;
+    /** Fresh window capture parts; omitted for non-overview results. */
+    granularity?: "image" | "ui" | "full";
+    captured?: { image: boolean; ui: boolean };
     sequence?: ReturnType<typeof sequenceMetadata>;
     selected_frames?: Omit<SequenceFrame, "image">[];
   };
   isError?: boolean;
 }
-interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
+interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
@@ -598,6 +601,9 @@ export class ComputerSession {
   }
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}): Promise<ComputerResult> {
     validateUiCapture(options);
+    const granularity = options.granularity ?? "full";
+    const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
+    if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined; entry.detail = undefined;
     const current = await this.current(entry.ref, signal);
@@ -605,43 +611,60 @@ export class ComputerSession {
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
     const settings = structuredClone({ ...this.settings(), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
     const native = await this.driver.call("get_window_state", {
-      ...entry.target, max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000,
-      max_image_dimension: nativeImageCap(settings), ...(query ? { query } : {}),
+      ...entry.target,
+      ...(hasUi ? { max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000, ...(query ? { query } : {}) }
+        : { include_accessibility_tree: false }),
+      ...(hasImage ? { max_image_dimension: nativeImageCap(settings) } : { include_screenshot: false }),
     }, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
-    if (signal?.aborted) return this.result("refused", "Cancelled during observation; pixels withheld.");
+    if (signal?.aborted) return this.result("refused", "Cancelled during observation; captured data withheld.");
     if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry, native.structuredContent?.virtual_desktop));
-    const state = native.structuredContent;
-    if (!state || !Array.isArray(state.elements)) throw new Error("Driver returned no structured UI elements.");
-    const images = native.content.filter(block => block.type === "image");
-    if (!images.length) throw new Error("Driver returned no grounding screenshot.");
+    if (!native.structuredContent) throw new Error("Driver returned no structured window state.");
+    const state = { ...native.structuredContent };
+    // Native screenshot-only reads may preserve their old AX snapshot. Never expose it as current.
+    if (!hasUi) for (const key of ["elements", "tree_markdown", "snapshot_id", "invalidated_snapshot_ids", "elements_complete", "truncated", "truncation_reason", "total_element_count", "element_count", "focused_element"]) delete state[key];
+    // Tree-only native receipts can describe an older pixel frame. It gives this observation no image authority.
+    if (!hasImage) for (const key of Object.keys(state)) if (key.startsWith("screenshot_") || ["capture_id", "agent_overlay_capture"].includes(key)) delete state[key];
+    if (hasUi && !Array.isArray(state.elements)) throw new Error("Driver returned no structured UI elements.");
+    if (hasUi && !hasImage) state.elements = (state.elements as Record<string, unknown>[]).map(element => {
+      const { screenshot_frame: _oldPixels, ...current } = element; return current;
+    });
+    const images = hasImage ? native.content.filter(block => block.type === "image") : [];
+    if (hasImage && !images.length) throw new Error("Driver returned no grounding screenshot.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!await this.current(entry.ref, signal)) return this.result("refused", "Window changed during observation. Discover again.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
-    // Detail always uses fresh CUA pixels; returned PNG retention is only for snapshot annotation.
     const id = randomUUID();
-    entry.detail = this.overview(state, id, false, images);
-    const ui = createUiResource(state, entry.ref, id, ++this.uiSerial);
-    entry.observation = { id, ui, settings, width: typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
-      height: typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
-      tokens: new Set(state.elements.map(element => (element as { element_token?: unknown }).element_token)
-        .filter((token): token is string => typeof token === "string")),
-      captureId: typeof state.capture_id === "string" ? state.capture_id : undefined,
+    entry.detail = hasImage ? this.overview(state, id, false, images) : undefined;
+    if (granularity === "image" && !entry.detail) throw Error("Driver returned no proven image-only pixel geometry.");
+    const ui = hasUi ? createUiResource(state, entry.ref, id, ++this.uiSerial) : undefined;
+    if (ui && !hasImage) for (const element of ui.elements) {
+      delete element.bounds.window_image; element.hint_display = "off";
+    }
+    const elements = hasUi ? state.elements as { element_token?: unknown; frame?: unknown }[] : [];
+    entry.observation = { id, ui, settings,
+      width: hasImage && typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
+      height: hasImage && typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
+      tokens: new Set(elements.map(element => element.element_token).filter((token): token is string => typeof token === "string")),
+      captureId: hasImage && typeof state.capture_id === "string" ? state.capture_id : undefined,
       bounds: screenRect(state.window_bounds),
-      frames: new Map(state.elements.flatMap(element => {
-        const e = element as { element_token?: string; frame?: unknown };
-        const bounds = screenRect(state.window_bounds); const region = bounds && elementRegion(e.frame, bounds);
-        return e.element_token && region ? [[e.element_token, region] as [string, ScreenRect]] : [];
+      frames: new Map(elements.flatMap(element => {
+        const bounds = screenRect(state.window_bounds); const region = bounds && elementRegion(element.frame, bounds);
+        return typeof element.element_token === "string" && region ? [[element.element_token, region] as [string, ScreenRect]] : [];
       })) };
-    if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during observation; pixels withheld."); }
+    if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during observation; captured data withheld."); }
     const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
+    if (!hasUi) source.semantic_scope = "none";
+    if (!hasImage) source.capabilities.detail = "unsupported";
     const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
     if (!this.allowed(entry)) { entry.observation = undefined; entry.detail = undefined; return this.denied(entry.ref); }
-    if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during window frame; pixels withheld."); }
+    if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during window frame; captured data withheld."); }
     const observed = entry.observation!;
     observed.source = source;
+    const extra = { ...this.addressed(entry, state.virtual_desktop), ...(highlight ? { highlight } : {}), observation_id: id,
+      source, granularity, captured: { image: hasImage, ui: hasUi } };
+    if (!hasImage) return this.result("observed", `Fresh UI-only window observation: ${ui!.elements.length} UI elements. No pixels or image detail; current hints/tokens only.`, state, { ...extra, ui: structuredClone(ui!) });
     const raw = images[0];
-    // Keep at most three recent returned PNGs for local annotation, never a saved-original crop backend.
     if (raw?.type === "image" && Buffer.byteLength(raw.data, "base64") <= 12 * 1024 * 1024) {
       observed.rawImage = raw;
       const active = new Set([...this.entries.values()].map(e => e.observation));
@@ -650,17 +673,20 @@ export class ComputerSession {
     }
     observed.mapping = entry.detail?.windowMapping;
     observed.actionMark = this.actionMark(entry.lastAction, observed.mapping);
-    const rendered = await annotateUi(raw, ui, observed.width, observed.height, options.hints ?? settings.hints ?? true, undefined, ui.elements,
+    const annotationUi = ui ?? createUiResource({ elements: [] }, entry.ref, id, 0);
+    const rendered = await annotateUi(raw, annotationUi, observed.width, observed.height, hasUi && (options.hints ?? settings.hints ?? true), undefined, annotationUi.elements,
       { options: settings.guides, action: observed.actionMark });
     if (!this.allowed(entry) || signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Observation revoked or cancelled during annotation; pixels withheld."); }
     if (rendered.image !== raw) this.retainRaw?.(raw);
     const metadata = this.imageMetadata([rendered.image], state, settings);
-    return this.result("observed", `Fresh native window observation: ${ui.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui.complete === true ? "complete" : ui.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`,
-      state, { ...this.addressed(entry, state.virtual_desktop), ...(highlight ? { highlight } : {}), observation_id: id, source, ui: structuredClone(ui),
-        agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
+    const message = hasUi
+      ? `Fresh full window observation: ${ui!.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui!.complete === true ? "complete" : ui!.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`
+      : "Fresh image-only window observation. Accessibility was not collected; no current UI hints/tokens. Pixel input uses this window image; paint freshness is unverified.";
+    return this.result("observed", message, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
+      agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
-  /** Read fresh UI state and a screenshot for an existing session reference. Only this window's earlier observation expires. */
+  /** Read fresh window parts for an existing reference. Each mode retires this window's previous observation. */
   observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
@@ -683,6 +709,9 @@ export class ComputerSession {
   private async refineUi(entry: WindowEntry, request: UiRequest, signal?: AbortSignal): Promise<ComputerResult> {
     const observed = entry.observation;
     if (!observed || observed.id !== request.observation_id) return this.result("refused", "Retired UI observation. Observe again.");
+    if (!observed.ui) return this.result("refused", "Image-only observation has no UI resource. Request a UI or full observation.");
+    if (!observed.width && ["highlight", "scope", "crop", "region"].includes(request.operation))
+      return this.result("refused", "This local image operation needs a full observation; UI-only captured no pixels.");
     let ui: UiResource;
     try { ui = projectUi(observed.ui, request); }
     catch (error) { return this.result("refused", (error as Error).message); }
@@ -743,9 +772,10 @@ export class ComputerSession {
           if (hint !== undefined) {
             if (typeof hint !== "string" || step.element_token !== undefined || step.x !== undefined || step.y !== undefined)
               throw Error("Use exactly one current hint or native token/pixel target.");
+            if (!observed.ui) throw Error("Image-only observation has no current hints.");
             nativeStep.element_token = resolveUi(observed.ui, hint).element_token;
           }
-          const element = observed.ui.elements.find(e => e.element_token === nativeStep.element_token);
+          const element = observed.ui?.elements.find(e => e.element_token === nativeStep.element_token);
           if (element?.enabled === false) throw Error("The observed target is disabled. No input was dispatched.");
           if (element?.bounds.window_image && observed.width && observed.height) {
             const r = element.bounds.window_image;
