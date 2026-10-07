@@ -167,9 +167,9 @@ export class ComputerSession {
       undefined, { window_ref: ref });
   }
 
-  private addressed(entry: WindowEntry): Partial<ComputerResult["details"]> {
+  private addressed(entry: WindowEntry, nativeDesktop?: unknown): Partial<ComputerResult["details"]> {
     return { target: entry.target, window_ref: entry.ref,
-      source_identity: sourceIdentity({ session_id: this.sessionId, window_ref: entry.ref, ...entry.target }) };
+      source_identity: sourceIdentity({ session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, null, nativeDesktop) };
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
@@ -237,9 +237,9 @@ export class ComputerSession {
             ? known && await this.current(known.ref, signal)
             : await this.register(native as unknown as WindowTarget, signal);
           if (this.getMode() === "safe" && (!entry || !entry.owned)) continue;
-          windows.push({ ...native, ...(entry ? { ...this.addressed(entry), owned: entry.owned } : { unavailable: "Cannot establish window lifetime identity." }) });
+          windows.push({ ...native, ...(entry ? { ...this.addressed(entry, native.virtual_desktop), owned: entry.owned } : { unavailable: "Cannot establish window lifetime identity." }) });
         }
-        return this.result("listed", "Permitted window discovery. Safe lists session-opened windows only. Use window_ref, not PID/HWND.",
+        return this.result("listed", "Permitted window discovery. Safe lists session-opened windows only. Use window_ref, not PID/HWND. Desktop GUIDs are window-derived and incomplete; discovery does not activate or switch desktops.",
           { windows: this.getMode() === "safe" ? windows.filter(window => "owned" in window && window.owned) : windows });
       } catch (error) { return this.failed(error, false); }
     });
@@ -585,11 +585,12 @@ export class ComputerSession {
       const window = windows.find(w => w.pid === entry.target.pid && w.window_id === entry.target.window_id);
       if (!window) return this.result("refused", "Window closed during detail; pixels withheld.");
       const bounds = screenRect(window.bounds);
+      Object.assign(source, sourceIdentity(source.identity, null, window.virtual_desktop));
       const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
         { kind: "detail", region: bounds ? windowRegion(request, overview!.windowMapping, bounds) : undefined });
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Window detail revoked or cancelled during frame; pixels withheld.");
       return this.result("observed", "Fresh native window zoom. CUA owns JPEG padding and geometry. Read only; take a new overview before input or another detail.",
-        undefined, { ...this.addressed(entry), ...(highlight ? { highlight } : {}), source, agent_image: { route: "cua_fresh_window_zoom", coordinate_space: "zoom_image_pixels",
+        undefined, { ...this.addressed(entry, window.virtual_desktop), ...(highlight ? { highlight } : {}), source, agent_image: { route: "cua_fresh_window_zoom", coordinate_space: "zoom_image_pixels",
           configuration: { padding: "20% each side", maxWidth: 500, route: "cua_native" }, native: state,
           region: { overview: { image_id: overview!.id, dimensions: { width: overview!.width, height: overview!.height }, x: request.x, y: request.y, width: request.width, height: request.height } },
           output: { width: state.width, height: state.height, bytes: bytes.length, mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") }, input: "none" } }, images);
@@ -609,7 +610,7 @@ export class ComputerSession {
     }, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (signal?.aborted) return this.result("refused", "Cancelled during observation; pixels withheld.");
-    if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry));
+    if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry, native.structuredContent?.virtual_desktop));
     const state = native.structuredContent;
     if (!state || !Array.isArray(state.elements)) throw new Error("Driver returned no structured UI elements.");
     const images = native.content.filter(block => block.type === "image");
@@ -655,7 +656,7 @@ export class ComputerSession {
     if (rendered.image !== raw) this.retainRaw?.(raw);
     const metadata = this.imageMetadata([rendered.image], state, settings);
     return this.result("observed", `Fresh native window observation: ${ui.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui.complete === true ? "complete" : ui.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`,
-      state, { ...this.addressed(entry), ...(highlight ? { highlight } : {}), observation_id: id, source, ui: structuredClone(ui),
+      state, { ...this.addressed(entry, state.virtual_desktop), ...(highlight ? { highlight } : {}), observation_id: id, source, ui: structuredClone(ui),
         agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 

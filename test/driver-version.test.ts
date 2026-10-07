@@ -52,6 +52,13 @@ test("older native runtimes refuse selected-display reads before starting any pe
   }
 });
 
+test("the shell-desktop profile preserves earlier qualified capabilities and rejects wrong bytes before any membership read", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-shell-desktops" });
+  try {
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag]).toEqual([true, true, true, true]);
+    await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
 test("the capture-bound drag profile preserves earlier capabilities but rejects wrong bytes before startup", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-capture-drag" });
   try {

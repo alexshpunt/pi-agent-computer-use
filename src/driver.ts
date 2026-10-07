@@ -29,11 +29,17 @@ export const CAPTURE_DRAG_RUNTIME = {
   source: "1f884e285d51559a7b8e58f71b15e864f6770be1", version: "0.34.0",
   sha256: "e71483361f7c7348e43a3ee7e65f374df108b66381087c45e7091d9b5bb4218c",
 } as const;
+/** Exact Windows CI candidate for documented read-only shell membership; live qualification is separate. */
+export const SHELL_DESKTOP_RUNTIME = {
+  source: "506239da08cfdafa63dac1857f5471752fb70f5e", version: "0.34.0",
+  sha256: "0e25c8b83fd48b54be479eb128452a6f6b099b5ff6ce2d20bac024eda07ead16",
+} as const;
 const forkRuntimes = {
   "windows-held-paths": HELD_PATH_RUNTIME,
   "windows-key-holds": KEY_HOLD_RUNTIME,
   "windows-selected-displays": SELECTED_DISPLAY_RUNTIME,
   "windows-capture-drag": CAPTURE_DRAG_RUNTIME,
+  "windows-shell-desktops": SHELL_DESKTOP_RUNTIME,
 };
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
@@ -49,11 +55,11 @@ export class McpDriver implements Driver {
   get heldPaths(): boolean { return this.forkRuntime !== undefined; }
 
   /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
-  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops"].includes(this.config.runtime ?? ""); }
   /** Existing profiles do not expose exact monitor reads; only a separately qualified pin may enable them. */
-  get selectedDisplays(): boolean { return this.config.runtime === "windows-selected-displays" || this.config.runtime === "windows-capture-drag"; }
+  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops"].includes(this.config.runtime ?? ""); }
   /** Older profiles cannot admit a straight drag against an immutable native capture. */
-  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag"; }
+  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops"; }
 
   /** Window, display and browser routes share the explicitly qualified Windows pin. */
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {

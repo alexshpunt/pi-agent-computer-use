@@ -1,14 +1,18 @@
+import { shellDesktop, type ShellDesktop } from "./shell-desktop.ts";
 /** Session-scoped address, not an input grant. session_id is the agent session, not a Windows login session. */
 export interface SourceIdentity {
   domain: "windows-host";
   identity: Record<string, string | number>;
-  membership: { windows_session_id: null; virtual_desktop_id: null; monitor_id: string | null };
+  membership: { windows_session_id: null; virtual_desktop_id: string | null; monitor_id: string | null };
+  virtual_desktop?: ShellDesktop;
 }
 
-/** Report explicit native monitor membership only. Never infer membership from geometry or aliases. */
-export function sourceIdentity(identity: SourceIdentity["identity"], monitorId: string | null = null): SourceIdentity {
+/** Report native sampled membership only. Agent identity, window lifetime and membership are separate. */
+export function sourceIdentity(identity: SourceIdentity["identity"], monitorId: string | null = null, nativeDesktop?: unknown): SourceIdentity {
+  const virtual_desktop = "window_ref" in identity ? shellDesktop(nativeDesktop) : undefined;
   return { domain: "windows-host", identity: { ...identity },
-    membership: { windows_session_id: null, virtual_desktop_id: null, monitor_id: monitorId } };
+    membership: { windows_session_id: null, virtual_desktop_id: virtual_desktop?.status === "sampled" ? virtual_desktop.desktop_id : null, monitor_id: monitorId },
+    ...(virtual_desktop ? { virtual_desktop } : {}) };
 }
 /** Common capture provenance. Unknown native fields stay null; image and semantic scopes are distinct. */
 export interface ObservationSource extends SourceIdentity {
@@ -37,7 +41,7 @@ export function observationSource(kind: ObservationSource["kind"], native: Recor
   const originalWidth = positive(native.screenshot_original_width);
   const originalHeight = positive(native.screenshot_original_height);
   return {
-    kind, ...sourceIdentity(identity), captured_at: new Date().toISOString(), timestamp_boundary: "native_call_completed",
+    kind, ...sourceIdentity(identity, null, native.virtual_desktop), captured_at: new Date().toISOString(), timestamp_boundary: "native_call_completed",
     image: { scope: kind === "display" ? "primary_display" : zoom ? "native_window_zoom" : "native_window",
       coordinate_space: kind === "display" ? "display_image_pixels" : zoom ? "zoom_image_pixels" : "window_image_pixels",
       dimensions: { width: positive(zoom ? native.width : native.screenshot_width), height: positive(zoom ? native.height : native.screenshot_height) },

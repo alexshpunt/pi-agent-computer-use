@@ -5,7 +5,7 @@ Window discovery rows, observations and native action receipts include `source_i
 - `domain: "windows-host"` names the current backend, not a sandbox.
 - `identity.session_id` names this agent's ComputerSession. It is not a Windows login/session ID.
 - `identity.window_ref` is this session's reference to a native window lifetime. PID/HWND describe the native target; models still address the window by its reference.
-- Window `membership.windows_session_id`, `virtual_desktop_id` and `monitor_id` remain null. The qualified native window API does not return them. An exact [selected-display read](selected-displays.md) reports its explicit native monitor ID; this is not evidence about nearby windows. Negative coordinates, desktop position and the `primary` capture alias do not establish membership.
+- Window `membership.windows_session_id` and `monitor_id` remain null. `virtual_desktop_id` is known only from a validated native shell sample; older runtimes leave it unknown. See [shell desktop membership](shell-desktop-membership.md) for timestamps, independent failures and qualification status. An exact [selected-display read](selected-displays.md) reports its explicit native monitor ID; this is not evidence about nearby windows. Negative coordinates, desktop position and the `primary` capture alias do not establish membership.
 - Movement or resizing changes geometry, not lifetime. Closing/reusing a native handle retires the reference. Reload/close retires all session resources.
 
 These fields describe an address. They do not grant input. Input still needs the latest authorized window overview. Display, detail and temporal pixels remain read-only. Foreign-session references or observations cannot authorize another agent's input.
@@ -27,7 +27,7 @@ Pre-dispatch validation failures have no native action capability receipt. Neith
 
 ## Native basis and limits
 
-The qualified Windows fork is `3b3305044b7b327310615aa99d3307948a63061c`. Its public window state carries PID/HWND, screenshot/window bounds, snapshot tokens and UIA pattern names. It does not expose monitor, Windows session or Task View desktop membership. Its primary desktop capture alias does not name a physical monitor. Internal virtual-screen coordinate checks are not Windows virtual-desktop membership.
+The original LPT-617 foundation used Windows fork `3b3305044b7b327310615aa99d3307948a63061c`. Its public window state carries PID/HWND, screenshot/window bounds, snapshot tokens and UIA pattern names. It does not expose monitor, Windows session or Task View desktop membership. Its primary desktop capture alias does not name a physical monitor. Internal virtual-screen coordinate checks are not Windows virtual-desktop membership.
 
 CUA's validated action result publishes route, effect and actual delivery. Background refusal publishes a code and optional foreground escalation. The adapter projects these fields without predicting capabilities from app names or UIA pattern labels.
 
