@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
 import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
@@ -52,6 +53,8 @@ export interface ComputerResult {
     agent_image?: Record<string, unknown>;
     highlight?: HighlightResult;
     ui?: UiResource;
+    sequence?: ReturnType<typeof sequenceMetadata>;
+    selected_frames?: Omit<SequenceFrame, "image">[];
   };
   isError?: boolean;
 }
@@ -67,6 +70,7 @@ export class ComputerSession {
 
   private readonly sessionId = randomUUID();
   private displayOverview?: DetailContext;
+  private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
 
@@ -112,12 +116,20 @@ export class ComputerSession {
       text_truncated: e.text_truncated || (e.name?.length ?? 0) > 128 || (e.value?.length ?? 0) > 128 })) };
     const projection = visibleUi && { ui_elements: visibleUi.elements.length, full_ui_elements: extra.ui!.elements.length,
       note: "Plain text shows at most 30 elements with 128-character names/values. Use structured ui or local search/scope for the rest." };
-    const display = visibleUi ? { ...details, ui: visibleUi, text_projection: projection,
+    const display = extra.sequence ? { ...details, sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source,
+      frames: extra.sequence.frames.map(frameSummary) }, text_projection: { note: "Frame summaries only; full per-frame source metadata is in the structured sequence resource." } }
+      : extra.selected_frames ? { ...details, source: extra.selected_frames[0]?.source, selected_frames: extra.selected_frames.map(frameSummary),
+        text_projection: { note: "Frame summaries only; full per-frame source metadata accompanies each structured frame." } }
+      : visibleUi ? { ...details, ui: visibleUi, text_projection: projection,
       state: state && Object.fromEntries(Object.entries(state).filter(([key]) => !["elements", "tree_markdown", "_note"].includes(key))),
       agent_image: extra.agent_image && { ...extra.agent_image, annotation: extra.agent_image.annotation && {
         ...(extra.agent_image.annotation as Record<string, unknown>), labels: undefined } } } : details;
     const json = JSON.stringify(display, null, 2);
-    const visible = json.length <= 24_000 ? json : visibleUi ? JSON.stringify({ status, mode: details.mode,
+    const visible = json.length <= 24_000 ? json : extra.sequence || extra.selected_frames ? JSON.stringify({ ...details,
+      ...(extra.sequence ? { sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source, frames: extra.sequence.frames.slice(0, 5).map(frameSummary) } } : {}),
+      ...(extra.selected_frames ? { selected_frames: extra.selected_frames.slice(0, 5).map(frameSummary) } : {}),
+      text_projection: { note: "Plain text shows five frame summaries. Full metadata is available in the structured result.", metadata_omitted: true } })
+      : visibleUi ? JSON.stringify({ status, mode: details.mode,
       window_ref: extra.window_ref, observation_id: extra.observation_id,
       agent_image: extra.agent_image && { image_id: extra.agent_image.image_id, output: extra.agent_image.output },
       ui: { ...visibleUi, elements: visibleUi.elements.slice(0, 5) },
@@ -145,7 +157,7 @@ export class ComputerSession {
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
-    this.entries.clear(); this.displayOverview = undefined; this.uiImages = [];
+    this.entries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
     await this.driver.close().catch(() => undefined);
     const reason = error instanceof Error ? error.message : String(error);
     return this.result(dispatched ? "unknown" : "refused", dispatched
@@ -306,6 +318,95 @@ export class ComputerSession {
       native: { capture_id: state.capture_id, agent_overlay_capture: state.agent_overlay_capture } };
   }
 
+  /** Capture one authorized source into a private bounded resource; no frame grants input or detail authority. */
+  captureSequence(target: { window_ref?: string; display?: string }, options: SequenceOptions, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        validateSequence(options);
+        if ((target.window_ref !== undefined) === (target.display !== undefined) || (target.display !== undefined && target.display !== "primary"))
+          return this.result("refused", "Choose exactly one window_ref or display: primary.");
+        const entry = target.window_ref ? this.entries.get(target.window_ref) : undefined;
+        const permitted = () => entry ? this.allowed(entry) : target.display === "primary" && this.getMode() === "yolo";
+        const denied = () => { this.sequences.clear(); return this.result("refused", "Sequence source access denied. Safe permits session-owned windows only; retained pixels withheld."); };
+        if (!permitted()) return denied();
+        const settings = { ...this.settings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
+          ...(options.scale !== undefined ? { scale: options.scale } : {}) };
+        const cap = nativeImageCap(settings);
+        if (entry) { entry.observation = undefined; entry.detail = undefined; }
+        else this.displayOverview = undefined;
+        let first = true;
+        const sequence = await collectSequence(options, async active => {
+          if (!permitted()) throw new SequenceStop("access_revoked");
+          if (entry && !await this.current(entry.ref, active)) throw new SequenceStop("target_lost");
+          if (!permitted()) throw new SequenceStop("access_revoked");
+          const nativeStarted = performance.now();
+          const native = await this.driver.call(entry ? "get_window_state" : "get_desktop_state", entry
+            ? { ...entry.target, include_accessibility_tree: false, max_image_dimension: cap }
+            : { max_image_dimension: cap }, active);
+          const native_completed_at = performance.now();
+          if (!permitted()) throw new SequenceStop("access_revoked");
+          active.throwIfAborted();
+          const state = native.structuredContent;
+          if (native.isError || !state || state.status === "refused" || state.effect === "refused") throw new SequenceStop("capture_failed");
+          if (!entry && (state.display !== "primary" || state.platform !== "windows")) throw new SequenceStop("capture_failed");
+          if (entry && ((state.pid !== undefined && state.pid !== entry.target.pid) ||
+            (state.window_id !== undefined && state.window_id !== entry.target.window_id))) throw new SequenceStop("target_lost");
+          const images = native.content.filter((block): block is SequenceFrame["image"] => block.type === "image");
+          const context = this.overview(state, "sequence-frame", !entry, images);
+          if (!context || Math.max(context.width, context.height) > cap || images[0].data.length > 16 * 1024 * 1024)
+            throw new SequenceStop("capture_failed");
+          let source = observationSource(entry ? "window" : "display", state, entry
+            ? { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }
+            : { session_id: this.sessionId, display_id: "primary" });
+          source.semantic_scope = "none"; source.capabilities = { read: true, input: "none", detail: "unsupported" };
+          let image = images[0];
+          if (options.region) ({ image, source } = await cropSequenceFrame(image, source, options.region, first));
+          first = false;
+          if (entry && !await this.current(entry.ref, active)) throw new SequenceStop("target_lost");
+          if (!permitted()) throw new SequenceStop("access_revoked");
+          return { image, source, native_completed_at, native_latency_ms: native_completed_at - nativeStarted };
+        }, signal);
+        if (!permitted() || sequence.stop_reason === "access_revoked") return denied();
+        sequence.configuration = settings;
+        this.sequences.put(sequence);
+        const metadata = sequenceMetadata(sequence);
+        const complete = ["completed", "frame_limit"].includes(sequence.stop_reason);
+        return this.result(complete ? "observed" : "refused", `Sequence ${sequence.stop_reason}: ${sequence.frames.length} frames, ${sequence.skipped_slots.length} skipped slots. No images forwarded; select frames explicitly. Read only; observe again before input.`,
+          undefined, { sequence: metadata });
+      } catch (error) {
+        return this.result("refused", `Sequence did not start. ${error instanceof Error ? error.message : "Invalid capture request."}`);
+      }
+    });
+  }
+
+  /** Select retained pixels only after rechecking source identity and current access; no native recapture. */
+  sequenceFrames(id: string, selection: FrameSelection, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const sequence = this.sequences.get(id);
+      if (!sequence) return this.result("refused", "Sequence is unavailable or evicted. Capture again; resources do not survive reload/close.");
+      const source = sequence.frames[0]?.source;
+      const entry = source?.kind === "window" ? this.entries.get(String(source.identity.window_ref)) : undefined;
+      const permitted = () => source?.kind === "window" ? !!entry && this.allowed(entry) : source?.kind === "display" && this.getMode() === "yolo";
+      const denied = () => { this.sequences.clear(); return this.result("refused", "Retained sequence source is no longer accessible; pixels and metadata withheld."); };
+      if (!permitted()) return denied();
+      try {
+        if (signal?.aborted) return this.result("refused", "Cancelled before frame selection.");
+        if (entry && !await this.current(entry.ref, signal)) return denied();
+        if (!permitted()) return denied();
+        const frames = selectFrames(sequence, selection);
+        const metadata = frames.map(({ image: _image, ...frame }) => frame);
+        if (signal?.aborted) return this.result("refused", "Cancelled during frame selection; pixels withheld.");
+        // Interleave frame labels with their images so both direct calls and Codemode preserve correspondence.
+        const result = this.result("observed", `Selected ${frames.length} read-only sequence frames. Their indexes and measured timestamps label the image order.`, undefined,
+          { selected_frames: metadata });
+        for (const frame of frames) result.content.push({ type: "text", text: `Sequence ${id} · frame ${frame.index} · ${frame.timestamp_ms.toFixed(1)} ms` }, frame.image);
+        return result;
+      } catch {
+        if (!permitted()) return denied();
+        return this.result("refused", "Frame selection failed. Check captured-frame indexes and the source's current lifetime.");
+      }
+    });
+  }
   /** Read the primary display in YOLO only. This source never grants or grounds desktop input. */
   observeDisplay(display: string, signal?: AbortSignal, zoom?: DetailRequest): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -681,7 +782,7 @@ export class ComputerSession {
   /** Release owned runtime and invalidate references. Application windows and files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
-      this.entries.clear(); this.displayOverview = undefined; this.uiImages = [];
+      this.entries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
       await this.driver.close();
       return this.result("closed", "Owned computer-use runtime closed. Application windows were not closed.");
     });

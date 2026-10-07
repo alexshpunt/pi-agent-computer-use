@@ -2,7 +2,8 @@
 
 Use --record-stdin to save exact computer_observe image bytes under .tmp.
 Use --frames and --grid to classify a visually checked 4x4 grid. Scores are
-similarities, not calibrated probabilities. Model weights are research-only.
+similarities, not calibrated probabilities. MobileCLIP2 weights are research-only;
+check the separate license of any pinned legacy weights.
 """
 import argparse
 import base64
@@ -74,10 +75,30 @@ def classify(args):
     if not torch.cuda.is_available():
         raise RuntimeError("This experiment requires the approved local GPU")
     started = time.perf_counter()
-    model, _, preprocess = open_clip.create_model_and_transforms(args.model, pretrained="dfndr2b")
-    model.eval()
-    model = reparameterize_model(model).to("cuda")
-    tokenizer = open_clip.get_tokenizer(args.model)
+    checkpoint_hash = None
+    if args.model.startswith("MobileCLIP2-"):
+        model, _, preprocess = open_clip.create_model_and_transforms(args.model, pretrained="dfndr2b")
+        model.eval()
+        model = reparameterize_model(model)
+        tokenizer = open_clip.get_tokenizer(args.model)
+    else:
+        expected_hashes = {
+            "MobileCLIP-S0": "809b408eff74f8058843e86a1f92967097d42ba782450e85b8f4867b7f0ca0b7",
+            "MobileCLIP-S2": "063a87b2a846791bcffafa9f7670ec3968d572a3e7f99e5e4b14348006631d6f",
+        }
+        if not args.legacy_source or not args.checkpoint:
+            raise ValueError("Legacy models require --legacy-source and --checkpoint")
+        with args.checkpoint.open("rb") as weights:
+            checkpoint_hash = hashlib.file_digest(weights, "sha256").hexdigest()
+        if checkpoint_hash != expected_hashes[args.model]:
+            raise ValueError("Checkpoint does not match the pinned 2024 artifact")
+        sys.path.insert(0, str(args.legacy_source.resolve()))
+        import mobileclip
+        name = args.model.lower().replace("-", "_")
+        model, _, preprocess = mobileclip.create_model_and_transforms(
+            name, pretrained=str(args.checkpoint), reparameterize=True)
+        tokenizer = mobileclip.get_tokenizer(name)
+    model = model.to("cuda")
     torch.cuda.synchronize()
     load_ms = (time.perf_counter() - started) * 1000
     prompts = ["a cartoon mole animal popping out of green grass", "a patch of green grass with no animal"]
@@ -139,6 +160,7 @@ def classify(args):
             })
         report = {
             "model": args.model, "precision": args.precision, "prompts": prompts,
+            "checkpoint_sha256": checkpoint_hash,
             "grid": args.grid, "device": torch.cuda.get_device_name(),
             "versions": {name: importlib.metadata.version(name)
                          for name in ["torch", "open_clip_torch", "timm", "pillow"]},
@@ -163,7 +185,10 @@ if __name__ == "__main__":
     parser.add_argument("--labels", type=Path, help="Pixel-reviewed positive tile numbers")
     parser.add_argument("--frames", type=Path)
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--model", default="MobileCLIP2-S0", choices=["MobileCLIP2-S0", "MobileCLIP2-S2"])
+    parser.add_argument("--model", default="MobileCLIP2-S0",
+                        choices=["MobileCLIP2-S0", "MobileCLIP2-S2", "MobileCLIP-S0", "MobileCLIP-S2"])
+    parser.add_argument("--legacy-source", type=Path, help="Pinned Apple 2024 source checkout")
+    parser.add_argument("--checkpoint", type=Path, help="Exact legacy .pt file; SHA256 is checked")
     parser.add_argument("--grid", nargs=4, type=float, metavar=("X", "Y", "PITCH", "SIZE"))
     parser.add_argument("--repeats", type=int, default=20)
     parser.add_argument("--precision", choices=["fp32", "fp16"], default="fp32")

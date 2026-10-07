@@ -1,4 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
+import { registerSequenceTool } from "./sequence-tools.ts";
 import { actionParameters } from "./complete-input.ts";
 import { registerVisionDebug } from "./vision-debug.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
@@ -12,6 +13,7 @@ import { ComputerSession, type ComputerResult, type Action } from "./session.ts"
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
   closeSession: () => Promise<ComputerResult>): void {
+  registerSequenceTool(pi, getSession);
   pi.registerTool({
     name: "computer_apps", label: "Computer apps",
     description: "Find installed Windows apps by optional query. Returns exact app names/app_id for computer_open. No app is launched. In Codemode, save the chosen app_id with store under a short task name and reuse it with load; do not retype returned IDs.",

@@ -1,0 +1,39 @@
+{
+  "source_repository": "https://github.com/apple-aiml-research/ml-mobileclip",
+  "source_commit": "341ef058802f0e4e5ab13c02f0cb32a3a94e367b",
+  "source_modified": false,
+  "license_snapshot": "LICENSE-2024.txt",
+  "license_sha256": "18e4e6b95d7272051fabdad125ba0467549c181ef20b7fa0eafbac3825471483",
+  "artifact_acquisition": "Hugging Face downloads with explicit 2024 revisions, followed by SHA256 verification against their Git LFS metadata",
+  "current_license_warning": "The current Hugging Face revisions have research-only licenses with the same weight hashes. Historical licensing is not an Apple confirmation that a new production use is permitted.",
+  "models": [
+    {
+      "model": "MobileCLIP-S0",
+      "repository": "apple/MobileCLIP-S0",
+      "revision": "5e1c3d84ff3c309b922efa9664423354cbc645a7",
+      "revision_date": "2024-07-22T22:41:28.000Z",
+      "file": "mobileclip_s0.pt",
+      "bytes": 215934653,
+      "sha256": "809b408eff74f8058843e86a1f92967097d42ba782450e85b8f4867b7f0ca0b7",
+      "readme_sha256": "bc1a5305448e5a3cfd163b3d3747d76f89400d402050fa2c2f7a752bccaacac3",
+      "config_sha256": "b34a4607bb2bac1f096c05fe2f77b205a9c80a5c528690c9bbfcb6a3b7864d94",
+      "license_change_revision": "0b3995112e0ad01b5cf64dc6093c1ceaaf4576c2",
+      "license_change_date": "2025-02-24T21:34:50.000Z",
+      "amended_metadata_revision": "97cfce8bab0459233841c01dd4ab6ac5c167f543"
+    },
+    {
+      "model": "MobileCLIP-S2",
+      "repository": "apple/MobileCLIP-S2",
+      "revision": "22fec9d0b9b614cb270f3322bbb80bf98a3f9c2f",
+      "revision_date": "2024-07-22T22:41:45.000Z",
+      "file": "mobileclip_s2.pt",
+      "bytes": 398067246,
+      "sha256": "063a87b2a846791bcffafa9f7670ec3968d572a3e7f99e5e4b14348006631d6f",
+      "readme_sha256": "44fe1661a21a5a4a716397d7067d7d75065a540c58217efee053107c106cc3f6",
+      "config_sha256": "ed62da26bb2620104694b04b778d564de481af31fde9fe4ddf33b8f89bc764bd",
+      "license_change_revision": "993166d9d5844ce92bec6009500f30fa9717524f",
+      "license_change_date": "2025-02-24T21:35:11.000Z",
+      "amended_metadata_revision": "6da8f9f1c7fa5ae89385ef86bfdee297d105e6f6"
+    }
+  ]
+}

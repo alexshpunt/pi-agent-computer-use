@@ -23,6 +23,7 @@ export const visionPanel = `<!doctype html>
 <label><input id="guide-action" type="checkbox"> Last completed pointer target</label>
 <p id="guides-status" role="status">Window overview pixels only. Later captures change; sent images stay frozen. Missing native geometry is not guessed.</p></section>
 <section><h2>Last three boundary images</h2><p class="muted">Oldest → newest. Only this viewer is limited to three cards. Images stay in Pi context until normal compaction; these cards mirror the provider hook, not confirmed transport delivery.</p><div id="frames" class="frames"></div></section>
+<section><h2>Temporal frames at the boundary</h2><p class="muted">Up to 40 sequence image blocks from the latest request, in payload order. Selection alone is not forwarding. Matching uses exact image bytes; identical frames can have several possible source timestamps.</p><div id="sequence-images"></div></section>
 <section><h2>Observed request text</h2><p class="muted">Exact bounded text excerpts at the same hook. Adapter structures below are separate, not proof of forwarded content.</p><div id="request"></div></section>
 <section><h2>Computer-use action trace</h2><p class="muted">Includes nested Codemode calls, captured-only images, errors and adapter metadata.</p><div id="actions"></div></section>
 <section><h2>Limits</h2><ul id="limits"></ul></section>
@@ -152,6 +153,24 @@ function render(state){
     request.append(el("p",latest.textTruncated?"Text excerpts are truncated.":"Retained text blocks: "+latest.texts.length,"muted"));
     request.append(el("pre",latest.texts.map(item=>item.path+"\\n"+item.text).join("\\n\\n")));
   }else request.append(el("p","No request observed yet.","empty"));
+  const temporal=document.getElementById("sequence-images");
+  const temporalFrames=latest?.sequenceImages??[];
+  const temporalSignature=JSON.stringify(temporalFrames);
+  if(temporal.dataset.signature!==temporalSignature){
+    const previous=temporal.querySelector("select")?.value;
+    temporal.dataset.signature=temporalSignature;temporal.replaceChildren();
+    if(temporalFrames.length){
+      const card=el("article",undefined,"card"),select=el("select"),img=el("img"),meta=el("pre");
+      select.setAttribute("aria-label","Temporal frame in payload order");
+      for(const [i,frame] of temporalFrames.entries()){
+        const names=frame.matches.map(m=>"frame "+m.index+" @ "+m.timestamp_ms.toFixed(1)+" ms");
+        const option=el("option","Payload "+i+" · "+(names.length===1?names[0]:names.length+" byte-matched sources")+(frame.available?"":" · evicted"));option.value=String(i);select.append(option);
+      }
+      select.value=previous!==undefined&&Number(previous)<temporalFrames.length?previous:"0";
+      const show=()=>{const frame=temporalFrames[Number(select.value)];img.src=frame.available?"images/"+frame.hash:"";img.alt=frame.available?"Exact application-boundary temporal image":"Image bytes evicted";meta.textContent=JSON.stringify(frame,null,2)};
+      select.addEventListener("change",show);show();card.append(select,img,meta);temporal.append(card);
+    }else temporal.append(el("p","No sequence images in the latest request. Capture resources alone send no pixels.","empty"));
+  }
   const actions=document.getElementById("actions");
   const existing=new Map([...actions.children].map(item=>[item.dataset.actionId,item]));
   const rows=[];

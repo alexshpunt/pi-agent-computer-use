@@ -17,6 +17,21 @@ function fixture() {
 }
 const frame = (id: string, hash = "sent") => ({ id, hash, originalHash: "raw", original: "available", stage: "prepared", time: "now", bytes: 10, width: 20, height: 20, requestId: "request-1" });
 
+test("temporal dropdown shows every boundary frame in payload order and selects exact bytes", () => {
+  const { document } = createPanelDom();
+  const context = createContext({ document, fetch: () => new Promise(() => {}), setTimeout: () => {} });
+  runInContext(visionScript, context);
+  context.state = { sessionId: "test", revision: 1, frames: [], actions: [], captures: [], limitations: [], requests: [{ id: "r", texts: [],
+    sequenceImages: [0, 1, 2, 3].map(index => ({ hash: `frame-${index}`, available: true, path: `payload[${index}]`,
+      matches: [{ sequence_id: "seq", index, timestamp_ms: index * 100 }] })) }] };
+  runInContext("render(state)", context);
+  const section = document.getElementById("sequence-images"); const select = section.querySelector("select")!;
+  expect(select.children).toHaveLength(4); expect(select.children[3].textContent).toContain("frame 3 @ 300.0 ms");
+  select.value = "3"; select.handlers.change();
+  expect(section.querySelector("img")!.src).toBe("images/frame-3");
+  expect(section.querySelector("pre")!.textContent).toContain("payload[3]");
+});
+
 test("trace updates preserve the comparison node and selected raw image while metadata updates", () => {
   const f = fixture(); f.render([frame("one")]);
   const card = f.frames.children[0], select = card.querySelector("select")!, image = card.querySelector("img")!;

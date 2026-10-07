@@ -40,6 +40,8 @@ Earlier captures were excluded because their chosen rectangle no longer covered 
 
 ## Weights and license
 
+The later [original MobileCLIP comparison and license-history check](legacy-mobileclip-experiment.md) tests pinned 2024 S0/S2 artifacts on these same frames. It documents an older license without the current research-only restriction; it does not approve production use.
+
 The OpenCLIP weights resolved to these Hugging Face snapshots:
 
 | Model | Repository / revision | Checkpoint SHA256 |

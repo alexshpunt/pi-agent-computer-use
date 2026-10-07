@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 /** Provider identity at Pi's existing, mutable application-boundary hook. */
 export interface VisionModel { provider: string; api: string; model: string }
 interface ImageBytes { bytes: Buffer; mime: string; hash: string; width?: number; height?: number }
+interface SequenceMatch { sequence_id: string; index: number; timestamp_ms: number }
 interface Frame {
   id: string; hash: string; mime: string; bytes: number; width?: number; height?: number;
   time: string; stage: "captured" | "prepared" | "evicted"; finalDelivery: "unconfirmed";
   original: "available" | "unavailable"; originalHash?: string; actionId?: string; matchingActionIds?: string[]; requestId?: string; path?: string; detail?: string;
   source?: unknown; configuration?: unknown;
+  sequenceFrame?: SequenceMatch;
 }
 interface Action {
   id: string; parentId?: string; tool: string; input: unknown; time: string; started: number;
@@ -17,6 +19,7 @@ interface Request extends VisionModel {
   id: string; time: string; imageCount: number; unavailableImages: number;
   texts: { path: string; text: string }[]; textTruncated: boolean;
   frameIds: string[]; finalPayload: "unconfirmed"; responseStatus?: number;
+  sequenceImages: { hash: string; path: string; matches: SequenceMatch[]; available?: boolean }[];
 }
 const limitations = [
   "Final delivery is unconfirmed: later handlers can replace this application-boundary payload.",
@@ -107,10 +110,14 @@ export class VisionTrace {
     const annotation = (state.agent_image as { annotation?: { raw?: { hash?: unknown } } } | undefined)?.annotation;
     const rawHash = annotation?.raw?.hash;
     const originalHash = typeof rawHash === "string" && this.assets.has(rawHash) ? rawHash : undefined;
+    const selectedFrames = Array.isArray(state.selected_frames) ? state.selected_frames as { index: number; timestamp_ms: number; source?: unknown }[] : [];
+    const sequenceId = (action.input as { sequence_id?: string } | undefined)?.sequence_id;
+    let imageIndex = 0;
     for (const block of content) {
       const value = block as Record<string, unknown>;
       if (value?.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string") continue;
       const image = imageBytes(value.data, value.mimeType);
+      const temporal = selectedFrames[imageIndex++];
       if (!image) continue;
       // JPEG geometry comes from matching native output metadata, not a new decoder.
       if (reported?.output?.hash === image.hash) {
@@ -121,9 +128,10 @@ export class VisionTrace {
       }
       this.assets.set(image.hash, image);
       this.captures.push({ ...this.frame(image, "captured"), actionId: id, ...(originalHash ? { original: "available", originalHash } : {}),
-        source: metadata({ observation: state.source, tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, origin: reported?.origin, route: reported?.route, coordinate_space: reported?.coordinate_space, native: reported?.native, annotation }),
+        ...(temporal && sequenceId ? { sequenceFrame: { sequence_id: sequenceId, index: temporal.index, timestamp_ms: temporal.timestamp_ms } } : {}),
+        source: metadata({ observation: temporal?.source ?? state.source, tab: state.tab, window_ref: state.window_ref, observation_id: state.observation_id, screenshot: state.screenshot, origin: reported?.origin, route: reported?.route, coordinate_space: reported?.coordinate_space, native: reported?.native, annotation }),
         configuration: metadata({ requested: action.input, effective: state.agent_image ?? "unreported by current adapter", timings: state.timings }) });
-      this.captures = this.captures.slice(-3);
+      this.captures = [...this.captures.filter(f => f.sequenceFrame).slice(-40), ...this.captures.filter(f => !f.sequenceFrame).slice(-3)];
     }
     this.prune(); this.revision++;
   }
@@ -137,7 +145,7 @@ export class VisionTrace {
   /** Snapshot the existing hook payload, not final HTTP bytes or provider embeddings. */
   observePayload(payload: unknown, model: VisionModel): void {
     const request: Request = { ...model, id: `request-${++this.sequence}`, time: new Date().toISOString(), imageCount: 0,
-      unavailableImages: 0, texts: [], textTruncated: false, frameIds: [], finalPayload: "unconfirmed" };
+      unavailableImages: 0, texts: [], textTruncated: false, frameIds: [], sequenceImages: [], finalPayload: "unconfirmed" };
     const selected: { image: ImageBytes; path: string; detail?: string }[] = [];
     let nodes = 0;
     let textBytes = 0;
@@ -160,6 +168,13 @@ export class VisionTrace {
         else if (typeof node.data === "string" && typeof node.mimeType === "string") image = imageBytes(node.data, node.mimeType);
         if (image) {
           selected.push({ image, path, detail: typeof node.detail === "string" ? node.detail : undefined });
+          const matches = [...new Map(this.captures.filter(f => f.hash === image!.hash && f.sequenceFrame)
+            .map(f => { const frame = f.sequenceFrame!; return [`${frame.sequence_id}:${frame.index}`, frame] as const; })).values()];
+          if (matches.length) {
+            request.sequenceImages.push({ hash: image.hash, path, matches });
+            request.sequenceImages = request.sequenceImages.slice(-40);
+            this.assets.set(image.hash, image);
+          }
           if (selected.length > 3) selected.shift();
         } else request.unavailableImages++;
         seen.delete(value); return;
@@ -202,7 +217,8 @@ export class VisionTrace {
   }
 
   private prune(): void {
-    const retained = new Set([...this.originals, ...[...this.frames, ...this.captures].flatMap(frame => [frame.hash, ...(frame.originalHash ? [frame.originalHash] : [])])]);
+    const retained = new Set([...this.originals, ...(this.requests.at(-1)?.sequenceImages.map(f => f.hash) ?? []),
+      ...[...this.frames, ...this.captures].flatMap(frame => [frame.hash, ...(frame.originalHash ? [frame.originalHash] : [])])]);
     for (const hash of this.assets.keys()) if (!retained.has(hash)) this.assets.delete(hash);
     let size = [...this.assets.values()].reduce((sum, image) => sum + image.bytes.length, 0);
     for (const [hash, image] of this.assets) {
@@ -222,6 +238,7 @@ export class VisionTrace {
   /** JSON-safe viewer state without image base64. Retained UI text can still be sensitive. */
   snapshot() {
     return structuredClone({ sessionId: this.sessionId, revision: this.revision, limitations,
-      frames: this.frames, captures: this.captures, actions: this.actions, requests: this.requests });
+      frames: this.frames, captures: this.captures, actions: this.actions,
+      requests: this.requests.map(request => ({ ...request, sequenceImages: request.sequenceImages.map(f => ({ ...f, available: this.assets.has(f.hash) })) })) });
   }
 }
