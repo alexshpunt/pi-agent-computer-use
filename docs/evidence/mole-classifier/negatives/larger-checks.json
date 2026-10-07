@@ -1,0 +1,31 @@
+{
+  "models": [
+    "TinyCLIP-39M",
+    "SigLIP2-Base"
+  ],
+  "complete_runs": 20,
+  "finite_cosine_scores": 7680,
+  "saved_frame_hashes_verified": true,
+  "synthetic_board_sha256": "770bcc817735379253ec5c89f461b7ae63592e90d29e1b3c861ef0046e1ccaaf",
+  "baseline_regressions": {
+    "TinyCLIP-39M": {
+      "tp": 24,
+      "tn": 344,
+      "fp": 0,
+      "fn": 0
+    },
+    "SigLIP2-Base": {
+      "tp": 24,
+      "tn": 344,
+      "fp": 0,
+      "fn": 0
+    }
+  },
+  "prediction_rule": "positive cosine > negative cosine",
+  "text_pairs": "text-pairs.json",
+  "prompt_tuning": false,
+  "threshold_tuning": false,
+  "new_captures": 0,
+  "desktop_input": 0,
+  "timing": "One timed repetition per frame; not a latency benchmark"
+}

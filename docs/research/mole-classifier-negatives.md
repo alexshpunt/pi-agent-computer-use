@@ -2,6 +2,8 @@
 
 TinyCLIP-8M distinguishes moles from the saved grass background, but it is not a reliable logical yes/no checker. Several negation phrases failed badly. Even the original successful prompts called a synthetic stump and orange ball moles.
 
+A [follow-up with TinyCLIP-39M and SigLIP2 Base](larger-mole-negative-checks.md) fixed these two baseline image errors, but text negation remained unreliable.
+
 ## How the classifier works
 
 The text encoder turns two descriptions into vectors once. Each cropped image goes through the image encoder. We normalize both kinds of vector and compare their cosine similarity. The description with the larger score wins. There is no generated answer, logical negation operator or calibrated probability. This forced choice has no built-in “neither” or “uncertain” outcome.
