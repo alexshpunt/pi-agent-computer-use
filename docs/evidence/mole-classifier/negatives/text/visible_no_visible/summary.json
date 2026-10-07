@@ -1,0 +1,580 @@
+{
+  "model": "TinyCLIP-8M",
+  "precision": "fp16",
+  "prompts": [
+    "a mole is visible",
+    "no mole is visible"
+  ],
+  "checkpoint_sha256": "9339ee3d736344d0ddcaa6c03edc9f89688f08caaea5401220885233da726fcc",
+  "hf_source": {
+    "repository": "wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M",
+    "revision": "a2a8c6eaa2549ad66eb7c31b85022bf58273a26c",
+    "attention_backend": "sdpa"
+  },
+  "grid": [
+    72.0,
+    73.0,
+    89.5,
+    86.0
+  ],
+  "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "versions": {
+    "torch": "2.11.0+cu128",
+    "transformers": "5.9.0",
+    "huggingface_hub": "1.33.0",
+    "pillow": "12.3.0"
+  },
+  "load_ms": 2745.529121000004,
+  "text_once_ms": 489.6439689999852,
+  "batch_16_gpu_ms": {
+    "median": 13.644908000003397,
+    "p95": 26.30644900000334
+  },
+  "frame_count": 23,
+  "unique_image_hashes": 14,
+  "confusion": {
+    "tp": 2,
+    "tn": 0,
+    "fp": 344,
+    "fn": 22
+  },
+  "failures": [
+    {
+      "frame": "capture-000.jpg",
+      "expected": [
+        2
+      ],
+      "predicted": [
+        1,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-001.jpg",
+      "expected": [
+        9,
+        13
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        10,
+        11,
+        12,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-002.jpg",
+      "expected": [
+        9,
+        13
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        10,
+        11,
+        12,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-003.jpg",
+      "expected": [],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-004.jpg",
+      "expected": [
+        3
+      ],
+      "predicted": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-005.jpg",
+      "expected": [
+        2
+      ],
+      "predicted": [
+        1,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-006.jpg",
+      "expected": [],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-007.jpg",
+      "expected": [],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-008.jpg",
+      "expected": [],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-009.jpg",
+      "expected": [
+        2
+      ],
+      "predicted": [
+        1,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-010.jpg",
+      "expected": [],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-011.jpg",
+      "expected": [
+        14,
+        16
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        15
+      ]
+    },
+    {
+      "frame": "capture-012.jpg",
+      "expected": [
+        11,
+        14
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        12,
+        13,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-013.jpg",
+      "expected": [
+        11
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-014.jpg",
+      "expected": [
+        12
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-015.jpg",
+      "expected": [
+        12,
+        16
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        13,
+        14,
+        15
+      ]
+    },
+    {
+      "frame": "capture-016.jpg",
+      "expected": [
+        3,
+        16
+      ],
+      "predicted": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-017.jpg",
+      "expected": [
+        6
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-018.jpg",
+      "expected": [
+        6,
+        14
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-019.jpg",
+      "expected": [
+        14
+      ],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-020.jpg",
+      "expected": [
+        3
+      ],
+      "predicted": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-021.jpg",
+      "expected": [
+        3
+      ],
+      "predicted": [
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "frame": "capture-022.jpg",
+      "expected": [],
+      "predicted": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    }
+  ],
+  "capture_pair_ms": {
+    "median": 884.5,
+    "p95": 1008
+  },
+  "preprocess_ms": {
+    "median": 17.487207999977272,
+    "p95": 25.552833999995528
+  },
+  "transfer_ms": {
+    "median": 6.231925999998111,
+    "p95": 7.921919000011712
+  }
+}

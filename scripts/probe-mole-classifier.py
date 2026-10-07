@@ -141,7 +141,7 @@ def classify(args):
     model = model.to("cuda")
     torch.cuda.synchronize()
     load_ms = (time.perf_counter() - started) * 1000
-    prompts = ["a cartoon mole animal popping out of green grass", "a patch of green grass with no animal"]
+    prompts = args.prompts
     with torch.inference_mode():
         started = time.perf_counter()
         text = encode_text(prompts)
@@ -237,6 +237,9 @@ if __name__ == "__main__":
     parser.add_argument("--grid", nargs=4, type=float, metavar=("X", "Y", "PITCH", "SIZE"))
     parser.add_argument("--repeats", type=int, default=20)
     parser.add_argument("--precision", choices=["fp32", "fp16"], default="fp32")
+    parser.add_argument("--prompts", nargs=2, metavar=("MOLE", "NO_MOLE"),
+                        default=["a cartoon mole animal popping out of green grass", "a patch of green grass with no animal"],
+                        help="Positive mole description, then negative description; not logical predicates")
     args = parser.parse_args()
     if args.record_stdin:
         record(args.record_stdin)

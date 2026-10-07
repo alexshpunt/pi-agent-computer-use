@@ -1,0 +1,7 @@
+{
+  "baseline": ["a cartoon mole animal popping out of green grass", "a patch of green grass with no animal"],
+  "visible_no_visible": ["a mole is visible", "no mole is visible"],
+  "with_without": ["grass with a mole", "grass without a mole"],
+  "containing_not_containing": ["an image containing a mole", "an image not containing a mole"],
+  "shows_does_not_show": ["this image shows a mole", "this image does not show a mole"]
+}

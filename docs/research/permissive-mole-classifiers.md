@@ -4,6 +4,8 @@
 
 TinyCLIP-8M is the first candidate to test on unseen board states. It matched all manual labels and had the lowest warm batch time in this comparison. We have not adopted a production classifier or built a capture-to-click loop.
 
+Follow-up [negative checks](mole-classifier-negatives.md) found failures on text negation and synthetic non-mole objects. The clean saved-grass result below does not establish safe yes/no triggers.
+
 All three models found 24/24 visible moles with zero false positives among 344 grass tiles in both tested image precisions. The input was the exact 23 saved frames from the [first experiment](mole-classifier-experiment.md), with the same pixel-reviewed labels and fixed prompts. Only 14 image hashes are distinct. This is a small paired comparison with repeated backgrounds, not 368 independent examples or a general accuracy benchmark.
 
 | Model / image precision | Moles found | False positives | Median GPU time, 16 tiles | p95 |

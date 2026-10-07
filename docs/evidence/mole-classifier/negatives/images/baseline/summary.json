@@ -1,0 +1,69 @@
+{
+  "model": "TinyCLIP-8M",
+  "precision": "fp16",
+  "prompts": [
+    "a cartoon mole animal popping out of green grass",
+    "a patch of green grass with no animal"
+  ],
+  "checkpoint_sha256": "9339ee3d736344d0ddcaa6c03edc9f89688f08caaea5401220885233da726fcc",
+  "hf_source": {
+    "repository": "wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M",
+    "revision": "a2a8c6eaa2549ad66eb7c31b85022bf58273a26c",
+    "attention_backend": "sdpa"
+  },
+  "grid": [
+    72.0,
+    73.0,
+    89.5,
+    86.0
+  ],
+  "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "versions": {
+    "torch": "2.11.0+cu128",
+    "transformers": "5.9.0",
+    "huggingface_hub": "1.33.0",
+    "pillow": "12.3.0"
+  },
+  "load_ms": 3059.949426000003,
+  "text_once_ms": 512.0199469999989,
+  "batch_16_gpu_ms": {
+    "median": 30.409721000069112,
+    "p95": 30.409721000069112
+  },
+  "frame_count": 1,
+  "unique_image_hashes": 1,
+  "confusion": {
+    "tp": 4,
+    "tn": 10,
+    "fp": 2,
+    "fn": 0
+  },
+  "failures": [
+    {
+      "frame": "capture-000.png",
+      "expected": [
+        13,
+        14,
+        15,
+        16
+      ],
+      "predicted": [
+        6,
+        8,
+        13,
+        14,
+        15,
+        16
+      ]
+    }
+  ],
+  "capture_pair_ms": null,
+  "preprocess_ms": {
+    "median": 25.796330999924066,
+    "p95": 25.796330999924066
+  },
+  "transfer_ms": {
+    "median": 2.2568540000520443,
+    "p95": 2.2568540000520443
+  }
+}
