@@ -12,6 +12,7 @@ export interface ObservationSource {
     original_dimensions: { width: number; height: number } | null;
     origin: { x: number; y: number; relative_to: "primary_display" | "window" } | null;
     native_bounds: unknown;
+    crop?: { requested: { x: number; y: number; width: number; height: number }; applied: { x: number; y: number; width: number; height: number }; coordinate_space: "uncropped_image_pixels" };
   };
   semantic_scope: "none" | "native_window" | "owned_page";
   scale: { native_scale_factor: number | null; screenshot_scale: number | null; dpi: null; device_pixel_ratio: null };

@@ -90,6 +90,28 @@ Display detail crops a fresh full-resolution CUA capture. Pass `display:"primary
 
 The first overview and inspection batch are separate decision points. See the environment before choosing rectangles; do not add model turns between inspections whose regions are already known.
 
+## Temporal observation
+
+For motion, progress or transient UI, use `computer_sequence` on the authorized window (or primary display in YOLO). Capture stores a bounded resource and returns metadata only. It retires that source's previous input/detail authority; clear stored observation/image IDs. Read actual timestamps, FPS, skipped slots and `stop_reason` before selecting frames. Requested FPS is not guaranteed.
+
+```js
+const captured = await tools.computer_sequence({window_ref:load("task_window"), capture:{duration_ms:3000,fps:4}});
+store("task_observation",null); store("task_image",null);
+text(captured.sequence);
+if(captured.status!=="observed") throw Error(captured.text);
+store("task_sequence",captured.sequence.sequence_id);
+```
+
+At the next decision point, choose `all`, `first`, `last`, `endpoints`, `changed`, `{indexes:[0,2]}` or inclusive `{from:1,to:3}`. These are captured-frame indexes, not scheduled slots. `changed` means exact byte/geometry changes, not semantic relevance.
+
+```js
+const selected = await tools.computer_sequence({sequence_id:load("task_sequence"),selection:"endpoints"});
+if(selected.status!=="observed") throw Error(selected.text);
+for(const frame of selected.frames){text({index:frame.index,time_ms:frame.timestamp_ms,source:frame.source});image(frame.image)}
+```
+
+Codemode forwards only the images you explicitly emit. Keep IDs, not frame payloads, in store. Resources retain the newest three sequences within 48 MiB and disappear on close/reload. Safe and window-lifetime checks apply again when selecting. Partial/cancelled capture is not success. Frames are read-only; observe again before acting or zooming. Optional `capture.region` uses first uncropped returned-image pixels at the frozen image cap; resize clips it without expanding. See [bounds and timing](../../../docs/temporal-capture.md).
+
 ## 3. Decide and plan
 
 Read the detail images. Know the target, expected effect and stopping point of every action.
@@ -156,6 +178,8 @@ If the task is complete, finish. Otherwise choose the next inspection and action
 | `computer_observe({window_ref,capture})` | Explicit native limits and per-capture hints toggle. |
 | `computer_observe({display:"primary"})` | Read-only primary-display PNG in YOLO. |
 | `computer_observe({window_ref,zoom})` / `({display:"primary",zoom})` | Detail from the latest overview image ID; no query. |
+| `computer_sequence({window_ref,capture})` / `({display:"primary",capture})` | Bounded timestamped read-only frame resource; no automatic image forwarding. |
+| `computer_sequence({sequence_id,selection})` | Explicit ordered selection from retained frames; no input authority. |
 | `computer_act(...)` | One complete window action or one bounded keyboard/stroke sequence. |
 | `computer_close({})` | Release runtime/refs; does not close windows or save files. |
 
