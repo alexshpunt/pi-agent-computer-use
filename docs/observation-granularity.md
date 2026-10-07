@@ -32,3 +32,5 @@ Use UI-only when current reported labels, values and supported native control ac
 Image-only accepts image guides but rejects UI query, walk limits and enabled hint labels. UI-only accepts UI query/walk limits but rejects hints and guides. Full keeps the existing controls. Invalid combinations fail explicitly rather than silently changing mode.
 
 This avoids unnecessary capture work; it does not guarantee fresh paint, instant input or a fixed speedup. Temporal sequence frames remain read-only. See [live results](observation-granularity-results.md) and [bounded reactive loops](../.pi/skills/reactive-visual-classifier/SKILL.md).
+
+For a stage-by-stage opt-in measurement, use [the window observation profiler](window-observe-profile.md). It keeps lifetime checks and the ordinary human frame enabled, and separates native RPC, identity, overlay and adapter remainder.

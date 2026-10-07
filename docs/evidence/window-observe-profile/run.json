@@ -1,0 +1,1760 @@
+{
+  "schema": 1,
+  "success": true,
+  "cleanup": {
+    "fixture": true,
+    "session": true,
+    "overlay": true,
+    "site": true
+  },
+  "runtime": "windows-shell-desktops",
+  "cap": 500,
+  "scale": 1,
+  "dimensions": {
+    "width": 466,
+    "height": 500
+  },
+  "boundary": "Real registered computer_observe execute + ComputerSession. Native RPC includes Windows capture/encoding and IPC. Pi hooks, Codemode transport, model and TUI are excluded.",
+  "remaining": "Root minus union of identity, native RPC and overlay intervals; adapter/image metadata, annotation, projection and scheduling are not individually timed.",
+  "no_input_during_samples": true,
+  "summary": [
+    {
+      "mode": "full",
+      "count": 10,
+      "median_ms": 178.2332919999999,
+      "stages": {
+        "identity.check": {
+          "calls_per_observation": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "median_sum_ms": 6.247472000000016
+        },
+        "native.get_window_state": {
+          "calls_per_observation": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "median_sum_ms": 151.64079050000055
+        },
+        "overlay.flash": {
+          "calls_per_observation": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "median_sum_ms": 17.35352950000015
+        }
+      },
+      "adapter_remaining_median_ms": 3.3047914999997374
+    },
+    {
+      "mode": "image",
+      "count": 10,
+      "median_ms": 153.03051499999992,
+      "stages": {
+        "identity.check": {
+          "calls_per_observation": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "median_sum_ms": 5.81878499999948
+        },
+        "native.get_window_state": {
+          "calls_per_observation": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "median_sum_ms": 121.2161989999995
+        },
+        "overlay.flash": {
+          "calls_per_observation": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "median_sum_ms": 13.684723500000473
+        }
+      },
+      "adapter_remaining_median_ms": 1.8490375000014865
+    },
+    {
+      "mode": "ui",
+      "count": 10,
+      "median_ms": 109.81694099999913,
+      "stages": {
+        "identity.check": {
+          "calls_per_observation": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "median_sum_ms": 7.533617999999024
+        },
+        "native.get_window_state": {
+          "calls_per_observation": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "median_sum_ms": 80.92393049999919
+        },
+        "overlay.flash": {
+          "calls_per_observation": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "median_sum_ms": 18.07307899999978
+        }
+      },
+      "adapter_remaining_median_ms": 1.9214840000004187
+    }
+  ],
+  "samples": [
+    {
+      "operation": "observe.full",
+      "phase": "cold",
+      "duration_ms": 581.1121430000003,
+      "child_ms": 569.0387130000008,
+      "remaining_ms": 12.073429999999462,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": true,
+          "start_ms": 0.5724449999997887,
+          "duration_ms": 2.449210000000676,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 4.027125999999953,
+          "duration_ms": 2.5815780000002633,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": true,
+          "start_ms": 7.262415000000146,
+          "duration_ms": 280.29286799999954,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 287.7100639999999,
+          "duration_ms": 4.33987900000011,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": true,
+          "start_ms": 295.84542799999963,
+          "duration_ms": 279.37517800000023,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "setup",
+      "duration_ms": 210.67145100000016,
+      "child_ms": 208.05693900000006,
+      "remaining_ms": 2.6145120000001043,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.11190400000032241,
+          "duration_ms": 2.400741999999809,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.6553149999999732,
+          "duration_ms": 2.6444229999997333,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.453577000000223,
+          "duration_ms": 180.41131700000005,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 186.0811249999997,
+          "duration_ms": 2.731767000000218,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 189.3188540000001,
+          "duration_ms": 19.868690000000242,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "setup",
+      "duration_ms": 194.6965049999999,
+      "child_ms": 189.6782630000007,
+      "remaining_ms": 5.018241999999191,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.306999999999789,
+          "duration_ms": 3.2463690000004135,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 3.697522999999819,
+          "duration_ms": 2.648261999999704,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 6.573730999999498,
+          "duration_ms": 153.62688900000012,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 160.6578469999995,
+          "duration_ms": 4.183834000000388,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 166.31879899999967,
+          "duration_ms": 25.972909000000072,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 265.6463939999994,
+      "child_ms": 259.2026139999998,
+      "remaining_ms": 6.443779999999606,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.18412699999953475,
+          "duration_ms": 4.80467200000021,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 5.157342999999855,
+          "duration_ms": 31.339482999999746,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 36.710697999999866,
+          "duration_ms": 198.84185699999944,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 235.62411399999928,
+          "duration_ms": 2.3446450000001278,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 239.62072399999943,
+          "duration_ms": 21.871957000000293,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 172.8530639999999,
+      "child_ms": 170.97467200000028,
+      "remaining_ms": 1.8783919999996215,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.14384599999993952,
+          "duration_ms": 2.787489000000278,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 3.075213999999505,
+          "duration_ms": 2.6527240000004895,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.878483999999844,
+          "duration_ms": 143.99404700000014,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 149.90389700000014,
+          "duration_ms": 1.5682289999995191,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 151.7692509999997,
+          "duration_ms": 19.97218299999986,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 153.56123200000002,
+      "child_ms": 150.326270999999,
+      "remaining_ms": 3.2349610000010216,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.03730600000017148,
+          "duration_ms": 4.510958999999275,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 4.634392999999363,
+          "duration_ms": 2.104718000000503,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 6.986433000000034,
+          "duration_ms": 124.16507999999976,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 131.32394699999986,
+          "duration_ms": 4.293459999999868,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 136.95874600000025,
+          "duration_ms": 15.252053999999589,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 110.1106090000003,
+      "child_ms": 106.54881000000023,
+      "remaining_ms": 3.5617990000000646,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.07205500000054599,
+          "duration_ms": 3.3190450000001874,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 3.476368999999977,
+          "duration_ms": 2.187872000000425,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.764068000000407,
+          "duration_ms": 91.04487499999959,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 97.40273100000013,
+          "duration_ms": 1.694032000000334,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 99.5052110000006,
+          "duration_ms": 8.302985999999692,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 153.48655899999994,
+      "child_ms": 151.48186599999826,
+      "remaining_ms": 2.00469300000168,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.19155599999976403,
+          "duration_ms": 5.653870000000097,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 6.131145000000288,
+          "duration_ms": 2.9809239999995043,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 9.361496000000443,
+          "duration_ms": 122.40171299999929,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 131.79553399999986,
+          "duration_ms": 1.4452459999993152,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 133.47577999999976,
+          "duration_ms": 19.000113000000056,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 178.63337200000024,
+      "child_ms": 174.35135199999786,
+      "remaining_ms": 4.282020000002376,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.03643499999998312,
+          "duration_ms": 2.390622999999323,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.481203999999707,
+          "duration_ms": 1.2471329999989393,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.9468829999987065,
+          "duration_ms": 152.44069800000034,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 156.40464099999917,
+          "duration_ms": 1.7228909999994357,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 158.96601799999917,
+          "duration_ms": 16.550006999999823,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 174.9853230000008,
+      "child_ms": 169.83547800000088,
+      "remaining_ms": 5.149844999999914,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.13038899999992282,
+          "duration_ms": 2.1212279999999737,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.3211370000008174,
+          "duration_ms": 1.2423720000006142,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.624840000000404,
+          "duration_ms": 146.91068900000027,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 150.55257900000106,
+          "duration_ms": 1.4041369999995368,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 152.82800099999986,
+          "duration_ms": 18.157052000000476,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 131.6263400000007,
+      "child_ms": 129.65053499999885,
+      "remaining_ms": 1.9758050000018557,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.07232000000112748,
+          "duration_ms": 2.5526649999992514,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.6931490000006306,
+          "duration_ms": 1.2676210000008723,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 4.069602000001396,
+          "duration_ms": 115.87495499999932,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 119.97088600000097,
+          "duration_ms": 1.409096999999747,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 121.5994980000014,
+          "duration_ms": 8.546196999999665,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 107.19695899999897,
+      "child_ms": 104.26835800000117,
+      "remaining_ms": 2.9286009999977978,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.06569599999966158,
+          "duration_ms": 7.347611999999572,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 7.520971999998437,
+          "duration_ms": 2.0166280000012193,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 9.683538999999655,
+          "duration_ms": 82.82415799999944,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 92.62474999999904,
+          "duration_ms": 2.571082000000388,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 96.0132569999987,
+          "duration_ms": 9.50887800000055,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 110.00908999999956,
+      "child_ms": 108.14429799999743,
+      "remaining_ms": 1.8647920000021259,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.03655600000092818,
+          "duration_ms": 1.8725719999983994,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 1.9276879999997618,
+          "duration_ms": 3.566765999999916,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.576836000000185,
+          "duration_ms": 75.03247600000032,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 80.65845500000069,
+          "duration_ms": 2.4269489999987854,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 83.66770700000052,
+          "duration_ms": 25.245535000000018,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 155.11992800000007,
+      "child_ms": 153.30024499999672,
+      "remaining_ms": 1.8196830000033515,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.023739000000205124,
+          "duration_ms": 2.1996089999993274,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.279268000000229,
+          "duration_ms": 1.2754169999989244,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.6751449999992474,
+          "duration_ms": 141.4766209999998,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 145.1747660000001,
+          "duration_ms": 1.3519689999993716,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 146.75564099999974,
+          "duration_ms": 6.996628999999302,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 175.26735700000063,
+      "child_ms": 172.0739220000014,
+      "remaining_ms": 3.1934349999992264,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.05105999999977939,
+          "duration_ms": 3.9501170000003185,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 4.091878999999608,
+          "duration_ms": 1.637789000000339,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.881338999999571,
+          "duration_ms": 152.17601900000045,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 158.07055000000037,
+          "duration_ms": 1.2667829999991227,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 159.76403199999913,
+          "duration_ms": 13.043214000001171,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 177.83321199999955,
+      "child_ms": 175.05134300000282,
+      "remaining_ms": 2.781868999996732,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.024466999999276595,
+          "duration_ms": 2.1529890000001615,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.242754999999306,
+          "duration_ms": 5.442043000000922,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 7.791822999999567,
+          "duration_ms": 151.10556200000065,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 158.91319999999905,
+          "duration_ms": 3.0581680000013876,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 162.42777999999998,
+          "duration_ms": 13.2925809999997,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 155.68644999999924,
+      "child_ms": 153.98941899999772,
+      "remaining_ms": 1.697031000001516,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.0212599999995291,
+          "duration_ms": 1.9009009999990667,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 1.963963000000149,
+          "duration_ms": 2.1283469999998488,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 4.176223999998911,
+          "duration_ms": 120.03068499999972,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 124.22422299999926,
+          "duration_ms": 1.353650999999445,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 125.70516599999974,
+          "duration_ms": 28.575834999999643,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 105.7459859999999,
+      "child_ms": 103.76781000000119,
+      "remaining_ms": 1.9781759999987116,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.016884000000572996,
+          "duration_ms": 3.767334000000119,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 3.818822999999611,
+          "duration_ms": 1.8154950000007375,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.729562000000442,
+          "duration_ms": 79.02370299999893,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 84.91076599999906,
+          "duration_ms": 2.6764640000001236,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 88.00773499999923,
+          "duration_ms": 16.48481400000128,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 130.5186219999996,
+      "child_ms": 129.28540899999825,
+      "remaining_ms": 1.2332130000013422,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.03115599999910046,
+          "duration_ms": 1.9833980000003066,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.0430319999995845,
+          "duration_ms": 1.1049629999997705,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.2135809999999765,
+          "duration_ms": 105.06556900000032,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 108.32377400000041,
+          "duration_ms": 1.4701349999995728,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 110.10865700000068,
+          "duration_ms": 19.66134399999828,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 134.83599800000047,
+      "child_ms": 133.2120709999981,
+      "remaining_ms": 1.623927000002368,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.019847999999910826,
+          "duration_ms": 2.2196230000008654,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.2848330000015267,
+          "duration_ms": 1.1294069999985368,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.497283000000607,
+          "duration_ms": 115.38035499999933,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 118.90621500000088,
+          "duration_ms": 1.978081999999631,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 121.21749400000044,
+          "duration_ms": 12.504603999999745,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 179.61327600000004,
+      "child_ms": 176.1971279999998,
+      "remaining_ms": 3.4161480000002484,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.02197599999999511,
+          "duration_ms": 2.584960999998657,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.6514619999998104,
+          "duration_ms": 1.122551000000385,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.8447789999991073,
+          "duration_ms": 148.39302700000007,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 152.2537199999988,
+          "duration_ms": 1.3493520000010903,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 153.88347900000008,
+          "duration_ms": 22.747236999999586,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 217.1053860000011,
+      "child_ms": 214.0623660000001,
+      "remaining_ms": 3.043020000000979,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.03870500000084576,
+          "duration_ms": 2.254729000000225,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.3301440000013827,
+          "duration_ms": 9.069047999999384,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 11.503208000000086,
+          "duration_ms": 192.2204330000004,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 203.73792400000093,
+          "duration_ms": 1.3640500000001339,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 205.39259700000002,
+          "duration_ms": 9.154105999999956,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 152.5744709999999,
+      "child_ms": 150.50628700000016,
+      "remaining_ms": 2.0681839999997464,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.06595000000015716,
+          "duration_ms": 4.214912999999797,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 4.582044000000678,
+          "duration_ms": 2.562232000000222,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 7.242340000000695,
+          "duration_ms": 126.9827779999996,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 134.27411700000084,
+          "duration_ms": 2.504183999999441,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 136.98261900000034,
+          "duration_ms": 14.242180000001099,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 108.87284,
+      "child_ms": 107.04345899999862,
+      "remaining_ms": 1.8293810000013764,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.03946600000017497,
+          "duration_ms": 1.9844469999989087,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.0428909999991447,
+          "duration_ms": 0.8797819999999774,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 2.9629540000005363,
+          "duration_ms": 77.66756899999928,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 80.70145400000001,
+          "duration_ms": 2.528528999999253,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 83.58132099999966,
+          "duration_ms": 23.983132000001206,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 113.24949000000015,
+      "child_ms": 111.24978000000192,
+      "remaining_ms": 1.999709999998231,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.038308999999571824,
+          "duration_ms": 2.3339260000011564,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.3944200000005367,
+          "duration_ms": 1.1359080000001995,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.589014999999563,
+          "duration_ms": 83.19506999999976,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 86.83066999999937,
+          "duration_ms": 1.5366940000003524,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 88.53533400000015,
+          "duration_ms": 23.048182000000452,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 127.39478100000088,
+      "child_ms": 125.96190200000092,
+      "remaining_ms": 1.4328789999999572,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.027530000001206645,
+          "duration_ms": 2.9536079999998037,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 3.0684240000009595,
+          "duration_ms": 2.162259000000631,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.34936800000105,
+          "duration_ms": 114.11734199999955,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 119.48292200000105,
+          "duration_ms": 1.1388040000001638,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 120.756754,
+          "duration_ms": 5.589889000000767,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 155.9610730000004,
+      "child_ms": 152.897167000001,
+      "remaining_ms": 3.063905999999406,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.029954999999972642,
+          "duration_ms": 5.451091000000815,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 5.632805000001099,
+          "duration_ms": 2.842559999999139,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 8.616477999999915,
+          "duration_ms": 137.8870569999999,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 146.53422800000044,
+          "duration_ms": 1.7443720000010217,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 148.6339050000006,
+          "duration_ms": 4.972087000000101,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 176.83264600000075,
+      "child_ms": 174.3703770000011,
+      "remaining_ms": 2.462268999999651,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.046056000001044595,
+          "duration_ms": 1.8529149999994843,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 1.9427570000007108,
+          "duration_ms": 1.174059999999372,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 3.1675240000004123,
+          "duration_ms": 145.62578200000098,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 148.80541799999992,
+          "duration_ms": 1.3669930000014574,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 150.4945200000002,
+          "duration_ms": 24.350626999999804,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 131.72893399999884,
+      "child_ms": 128.9646989999983,
+      "remaining_ms": 2.7642350000005536,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.037559000000328524,
+          "duration_ms": 2.2144359999983863,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.307958999999755,
+          "duration_ms": 2.705878999999186,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.106512999998813,
+          "duration_ms": 109.22897499999999,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 114.36028599999918,
+          "duration_ms": 1.6881420000008802,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 116.18343499999901,
+          "duration_ms": 13.127266999999847,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 84.34791299999961,
+      "child_ms": 83.21845199999916,
+      "remaining_ms": 1.1294610000004468,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.045857999999498134,
+          "duration_ms": 2.968402000000424,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 3.0632040000000416,
+          "duration_ms": 1.9444229999990057,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 5.048867999999857,
+          "duration_ms": 70.21582999999919,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 75.30404300000009,
+          "duration_ms": 1.2212770000005548,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 76.69268399999964,
+          "duration_ms": 6.8685199999999895,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.ui",
+      "phase": "warm",
+      "duration_ms": 109.6247919999987,
+      "child_ms": 108.50892999999996,
+      "remaining_ms": 1.1158619999987422,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.017566999998962274,
+          "duration_ms": 2.51954300000034,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.577533999998195,
+          "duration_ms": 7.149449000000459,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 9.796899999999368,
+          "duration_ms": 73.95822699999917,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 83.78857599999901,
+          "duration_ms": 1.5608489999995072,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 85.50161399999888,
+          "duration_ms": 23.32086200000049,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.image",
+      "phase": "warm",
+      "duration_ms": 155.82393199999933,
+      "child_ms": 154.27291799999875,
+      "remaining_ms": 1.5510140000005777,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.08731900000020687,
+          "duration_ms": 1.8149969999994937,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 1.9493419999998878,
+          "duration_ms": 0.8453109999991284,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 2.8331710000002204,
+          "duration_ms": 127.08512100000007,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 129.95306399999936,
+          "duration_ms": 2.2083959999999934,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 132.35326899999927,
+          "duration_ms": 22.319093000000066,
+          "outcome": "shown"
+        }
+      ]
+    },
+    {
+      "operation": "observe.full",
+      "phase": "warm",
+      "duration_ms": 202.32685100000162,
+      "child_ms": 197.55621799999972,
+      "remaining_ms": 4.770633000001908,
+      "status": "observed",
+      "verified": true,
+      "success": true,
+      "children": [
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 0.02964600000086648,
+          "duration_ms": 2.6771260000004986,
+          "outcome": "matched"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 2.7780000000002474,
+          "duration_ms": 1.6761619999997492,
+          "outcome": "matched"
+        },
+        {
+          "name": "native.get_window_state",
+          "cold": false,
+          "start_ms": 4.536444000001211,
+          "duration_ms": 171.90009699999973,
+          "outcome": "returned"
+        },
+        {
+          "name": "identity.check",
+          "cold": false,
+          "start_ms": 176.44989800000076,
+          "duration_ms": 1.2869670000000042,
+          "outcome": "matched"
+        },
+        {
+          "name": "overlay.flash",
+          "cold": false,
+          "start_ms": 178.1078750000015,
+          "duration_ms": 20.015865999999733,
+          "outcome": "shown"
+        }
+      ]
+    }
+  ],
+  "mean_breakdown": [
+    {
+      "mode": "full",
+      "mean_ms": 190.42048900000046,
+      "identity_ms": 10.394201000000157,
+      "native_ms": 159.75012210000023,
+      "overlay_ms": 16.415473400000064,
+      "remaining_ms": 3.8606925000000047
+    },
+    {
+      "mode": "image",
+      "mean_ms": 147.11304569999993,
+      "identity_ms": 6.486803199999121,
+      "native_ms": 123.65725919999969,
+      "overlay_ms": 15.087399000000005,
+      "remaining_ms": 1.8815843000011228
+    },
+    {
+      "mode": "ui",
+      "mean_ms": 113.32375329999968,
+      "identity_ms": 7.849271299999964,
+      "native_ms": 86.21925569999958,
+      "overlay_ms": 17.167630700000153,
+      "remaining_ms": 2.087595599999986
+    }
+  ]
+}
