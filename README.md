@@ -10,6 +10,8 @@ We want one window-first computer-use interface for all apps, including browsers
 
 The exact implementation is still open. These are project intentions, not capabilities available today.
 
+A separate read-only `computer_classify` tool evaluates one visual condition on supplied pixels with local TinyCLIP-39M. The agent supplies the cosine threshold; results are typed true/false/unknown, not calibrated probabilities. See [the predicate API and local setup](docs/visual-classifier.md).
+
 ## Migration boundary
 
 First prove computer use through independent tools, without an IDE dependency. Integration and gradual extraction come later. Do not change the working IDE for the PoC. Any future extraction experiment must use an isolated IDE branch/worktree and check the two extensions together in a separate environment before changes reach the normal installation.
@@ -18,7 +20,7 @@ The ownership of shared infrastructure, including processes, terminals, browser 
 
 ## Current state
 
-The standalone extension uses Cua Driver 0.33.2 to reach the Windows desktop from Pi in WSL. Seven experimental tools find apps, open a new window with its first observation, discover existing windows, read UI state and screenshots, capture/select temporal frames, act, and release the runtime. Opening needs no per-window config, PID/HWND lookup, or reload. Live checks opened separate Notepad windows and Calculator, and edited an authorized disposable window from another session. See [the YOLO results and limits](docs/yolo-windows-results.md) and [setup](docs/standalone-poc.md).
+The standalone extension uses Cua Driver 0.33.2 to reach the Windows desktop from Pi in WSL. Experimental tools find apps, open a new window with its first observation, discover existing windows, read UI state and screenshots, capture/select temporal frames, act, and release the runtime. Opening needs no per-window config, PID/HWND lookup, or reload. Live checks opened separate Notepad windows and Calculator, and edited an authorized disposable window from another session. See [the YOLO results and limits](docs/yolo-windows-results.md) and [setup](docs/standalone-poc.md).
 
 Bounded temporal observations use `computer_sequence`: capture metadata first, then select timestamped read-only frames explicitly in Codemode. The native window/display path reports real timing, missed slots and geometry changes without promising requested FPS. See [temporal capture](docs/temporal-capture.md) and [live results](docs/temporal-capture-results.md).
 

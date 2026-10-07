@@ -1,5 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { registerSequenceTool } from "./sequence-tools.ts";
+import { registerClassifierTool } from "./classifier-tool.ts";
 import { actionParameters } from "./complete-input.ts";
 import { registerVisionDebug } from "./vision-debug.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
@@ -93,7 +94,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
   pi.registerTool({
     name: "computer_close", label: "Computer close",
-    description: "Release this session's Driver and window-identity peer, invalidate window/observation refs. Does not close application windows or save documents. Clean up task-owned windows through grounded UI actions first. Discard saved window/observation/token/image IDs in Codemode storage after release; rediscover windows before saving new references.",
+    description: "Release this session's classifier worker, Driver and window-identity peer, invalidate window/observation refs. Does not close application windows or save documents. Clean up task-owned windows through grounded UI actions first. Discard saved window/observation/token/image IDs in Codemode storage after release; rediscover windows before saving new references.",
     parameters: Type.Object({}, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async execute() { return closeSession(); },
@@ -102,6 +103,7 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
 
 /** Standalone computer UI extension. The final Pi Agent IDE provider API remains separate. */
 export default function computerUse(pi: ExtensionAPI): void {
+  const closeClassifier = registerClassifierTool(pi);
   const images = new CuaImageSettings();
   const debug = registerVisionDebug(pi, images);
   const highlights = new WindowHighlights();
@@ -118,6 +120,7 @@ export default function computerUse(pi: ExtensionAPI): void {
     finally { loading = undefined; }
   }
   registerComputerTools(pi, getSession, async () => {
+    await closeClassifier();
     const result: ComputerResult = session ? await session.close() : {
       content: [{ type: "text", text: "No owned computer-use runtime is running." }],
       details: { status: "closed", mode: getMode() },
@@ -128,6 +131,7 @@ export default function computerUse(pi: ExtensionAPI): void {
     return result;
   });
   pi.on("session_shutdown", async () => {
+    await closeClassifier();
     if (loading) await loading.catch(() => undefined);
     try { await session?.close(); } finally { await highlights.close(); }
     session = undefined;

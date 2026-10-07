@@ -1,3 +1,4 @@
 .tmp/
 node_modules/
 .pi/computer-use.json
+.pi/visual-classifier.json

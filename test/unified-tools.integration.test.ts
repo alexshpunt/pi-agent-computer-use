@@ -30,7 +30,9 @@ test("production Pi exposes only computer tools, with no direct or Codemode brow
       ],
     }).run("Check the production loadout. Only discover apps; never open a window or send input.");
     const expected = ["computer_act", "computer_apps", "computer_close", "computer_observe", "computer_open", "computer_windows"];
-    expect(getToolExecutionDetails(getToolExecution(result, "registry"))).toEqual({ names: expected, callable: expected });
+    expect(getToolExecutionDetails(getToolExecution(result, "registry"))).toEqual({
+      names: [...expected, "computer_classify", "computer_sequence"].sort(), callable: expected,
+    });
     for (const id of ["direct-browser", "nested-browser"]) {
       expect(getToolExecution(result, id).isError).toBe(true);
       expect(getToolResultText(result, id)).toContain(id === "direct-browser" ? "browser_tabs" : "No tool calls were made.");
