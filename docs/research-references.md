@@ -4,6 +4,7 @@ These references came from the user's project pitch. They are inputs for future 
 
 The first [source-backed comparison](research/external-implementations.md) is available. Keep the supplied claims below separate from its verified findings.
 The [read-only mole classifier experiment](research/mole-classifier-experiment.md) compares MobileCLIP2-S0 and S2 on real game screenshots. It measures recognition and capture costs; it does not adopt a classifier dependency.
+The [Decisions subscription probe](research/decisions-subscription-probe.md) records real requests using existing Codex OAuth and a fresh direct-sharing grant. Decisions rejected both; the fresh grant passed public Responses, and Luna worked through Codex Responses.
 
 ## First sources to study
 
