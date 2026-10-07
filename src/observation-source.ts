@@ -2,13 +2,13 @@
 export interface SourceIdentity {
   domain: "windows-host";
   identity: Record<string, string | number>;
-  membership: { windows_session_id: null; virtual_desktop_id: null; monitor_id: null };
+  membership: { windows_session_id: null; virtual_desktop_id: null; monitor_id: string | null };
 }
 
-/** The qualified native API does not expose membership. Never infer it from geometry or display aliases. */
-export function sourceIdentity(identity: SourceIdentity["identity"]): SourceIdentity {
+/** Report explicit native monitor membership only. Never infer membership from geometry or aliases. */
+export function sourceIdentity(identity: SourceIdentity["identity"], monitorId: string | null = null): SourceIdentity {
   return { domain: "windows-host", identity: { ...identity },
-    membership: { windows_session_id: null, virtual_desktop_id: null, monitor_id: null } };
+    membership: { windows_session_id: null, virtual_desktop_id: null, monitor_id: monitorId } };
 }
 /** Common capture provenance. Unknown native fields stay null; image and semantic scopes are distinct. */
 export interface ObservationSource extends SourceIdentity {
@@ -16,11 +16,11 @@ export interface ObservationSource extends SourceIdentity {
   captured_at: string;
   timestamp_boundary: "native_call_completed";
   image: {
-    scope: "primary_display" | "primary_display_region" | "native_window" | "native_window_zoom";
+    scope: "primary_display" | "primary_display_region" | "selected_display" | "selected_display_region" | "native_window" | "native_window_zoom";
     coordinate_space: "display_image_pixels" | "window_image_pixels" | "zoom_image_pixels" | "detail_image_pixels";
     dimensions: { width: number | null; height: number | null };
     original_dimensions: { width: number; height: number } | null;
-    origin: { x: number; y: number; relative_to: "primary_display" | "window" } | null;
+    origin: { x: number; y: number; relative_to: "primary_display" | "display" | "window" } | null;
     native_bounds: unknown;
     crop?: { requested: { x: number; y: number; width: number; height: number }; applied: { x: number; y: number; width: number; height: number }; coordinate_space: "uncropped_image_pixels" };
   };

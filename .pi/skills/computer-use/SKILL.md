@@ -1,6 +1,6 @@
 ---
 name: computer-use
-description: Read and operate Windows app windows and the primary display through computer_* tools. Use for screenshots, inspection, navigation, keys, typing, clicks, scroll and complete brush paths in any app, including browsers. Follow the observe, inspect, plan, act and verify loop through Pi Codemode.
+description: Read and operate Windows app windows and authorized displays through computer_* tools. Use for screenshots, inspection, navigation, keys, typing, clicks, scroll and complete brush paths in any app, including browsers. Follow the observe, inspect, plan, act and verify loop through Pi Codemode.
 ---
 
 # Computer use
@@ -25,7 +25,7 @@ store("task_image", view.agent_image.image_id);
 store("task_pixels", {hash:view.agent_image.output.hash, dimensions:view.source.image.dimensions});
 ```
 
-For a wider view, use `computer_observe({display:"primary"})` in YOLO when the task authorizes it. Forward `view.image` and save its image ID. Display pixels never authorize input.
+For an authorized display read in YOLO, use `computer_displays({})` with a qualified selected-display runtime. Choose a returned monitor and save its compact `display_ref`, then use `computer_observe({display:load("task_display")})`. Native host bounds can be negative; returned image pixels start at zero. Never copy a native ID or add the host offset to crop pixels. Unknown/changed references refuse without primary fallback. `display:"primary"` keeps the older primary-read route. Forward only needed images explicitly and save the overview image ID; display pixels never authorize input. See [selected-display usage and limits](../../../docs/selected-displays.md).
 
 Collect already-chosen source overviews sequentially in one Codemode call. Forward needed images explicitly: Codemode does not forward them automatically.
 
@@ -86,7 +86,7 @@ for (let i = 0; i < regions.length; i++) {
 
 Window detail uses fresh native padded JPEG pixels. It keeps the original local region and native scale through movement, resizing or scale changes; smaller bounds clip the region, growth does not expand it. Window lifetime and access are separate.
 
-Display detail crops a fresh full-resolution CUA capture. Pass `display:"primary"` and `zoom:{image_id:load("display_image"),x,y,width,height,maxLongEdge:1200,scale:1}`. `maxLongEdge` and `scale` apply only to display detail. Both detail routes are read-only: get a new window overview before input.
+Display detail crops a fresh full-resolution CUA capture. Pass the same stored `display_ref` (or `"primary"` for the legacy route) and `zoom:{image_id:load("display_image"),x,y,width,height,maxLongEdge:1200,scale:1}`. `maxLongEdge` and `scale` apply only to display detail. Both detail routes are read-only: get a new window overview before input.
 
 The first overview and inspection batch are separate decision points. See the environment before choosing rectangles; do not add model turns between inspections whose regions are already known.
 
@@ -176,8 +176,9 @@ If the task is complete, finish. Otherwise choose the next inspection and action
 | `computer_observe({window_ref,query?})` | Native tree and whole-window PNG; query filters labels/values and ancestors. |
 | `computer_observe({window_ref,ui})` | Local search/scope/inspect/highlight, or consuming native element crop. |
 | `computer_observe({window_ref,capture})` | Explicit native limits and per-capture hints toggle. |
-| `computer_observe({display:"primary"})` | Read-only primary-display PNG in YOLO. |
-| `computer_observe({window_ref,zoom})` / `({display:"primary",zoom})` | Detail from the latest overview image ID; no query. |
+| `computer_displays({})` | Native connected-monitor metadata and read-only display refs, with a qualified runtime in YOLO. |
+| `computer_observe({display})` | Read-only selected-monitor or legacy primary PNG in YOLO; no input authority. |
+| `computer_observe({window_ref,zoom})` / `({display,zoom})` | Detail from the latest overview image ID; no query. |
 | `computer_sequence({window_ref,capture})` / `({display:"primary",capture})` | Bounded timestamped read-only frame resource; no automatic image forwarding. |
 | `computer_sequence({sequence_id,selection})` | Explicit ordered selection from retained frames; no input authority. |
 | `computer_act(...)` | One complete window action or one bounded keyboard/stroke sequence. |

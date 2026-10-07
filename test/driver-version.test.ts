@@ -28,3 +28,23 @@ test("the qualified pin rejects an older peer before native dispatch", async () 
     expect(await readFile(log,"utf8").catch(()=>"")).toBe("");
   } finally { await backend.close(); await rm(cwd,{recursive:true,force:true}); }
 });
+
+test("older native runtimes refuse selected-display reads before starting any peer", async () => {
+  for (const runtime of [undefined, "windows-held-paths", "windows-key-holds"] as const) {
+    const backend = new McpDriver({ command: process.execPath, runtime });
+    try {
+      expect(backend.selectedDisplays).toBe(false);
+      for (const name of ["list_displays", "get_display_state"]) expect(await backend.call(name, {})).toMatchObject({
+        isError: true, structuredContent: { effect: "refused", code: "selected_display_unavailable" },
+      });
+    } finally { await backend.close(); }
+  }
+});
+
+test("the exact selected-display profile preserves keys and paths but rejects wrong bytes before startup", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-selected-displays" });
+  try {
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays]).toEqual([true, true, true]);
+    await expect(backend.call("list_displays", {})).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});

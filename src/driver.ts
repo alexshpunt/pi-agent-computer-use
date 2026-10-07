@@ -19,6 +19,11 @@ export const KEY_HOLD_RUNTIME = {
   source: "3b3305044b7b327310615aa99d3307948a63061c", version: "0.34.0",
   sha256: "9786ace009b81fb2555f14f64b605ab20c3bfc309493398424be1183532df749",
 } as const;
+/** Exact Windows CI artifact for selected-monitor research; temporary live use still needs owner approval. */
+export const SELECTED_DISPLAY_RUNTIME = {
+  source: "38f50121c9cc15938a18330f4c3334a27f898e83", version: "0.34.0",
+  sha256: "1dbd499cfd43b98f31dc3fb51c7a001dc72bd116db235c304c0486b32df8a24d",
+} as const;
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
   private client?: Client;
@@ -27,15 +32,17 @@ export class McpDriver implements Driver {
 
   private readonly windowIdentity: WindowIdentity;
 
-  private get forkRuntime(): typeof HELD_PATH_RUNTIME | typeof KEY_HOLD_RUNTIME | undefined {
-    return this.config.runtime === "windows-key-holds" ? KEY_HOLD_RUNTIME : this.config.runtime === "windows-held-paths" ? HELD_PATH_RUNTIME : undefined;
+  private get forkRuntime(): typeof HELD_PATH_RUNTIME | typeof KEY_HOLD_RUNTIME | typeof SELECTED_DISPLAY_RUNTIME | undefined {
+    return this.config.runtime === "windows-selected-displays" ? SELECTED_DISPLAY_RUNTIME : this.config.runtime === "windows-key-holds" ? KEY_HOLD_RUNTIME : this.config.runtime === "windows-held-paths" ? HELD_PATH_RUNTIME : undefined;
   }
 
   /** A selected fork is checked before the first MCP call; default installed CUA has no held paths. */
   get heldPaths(): boolean { return this.forkRuntime !== undefined; }
 
   /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
-  get heldKeys(): boolean { return this.config.runtime === "windows-key-holds"; }
+  get heldKeys(): boolean { return this.config.runtime === "windows-key-holds" || this.config.runtime === "windows-selected-displays"; }
+  /** Existing profiles do not expose exact monitor reads; only a separately qualified pin may enable them. */
+  get selectedDisplays(): boolean { return this.config.runtime === "windows-selected-displays"; }
 
   /** Window, display and browser routes share the explicitly qualified Windows pin. */
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
@@ -96,6 +103,8 @@ export class McpDriver implements Driver {
 
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
+    if (["list_displays", "get_display_state"].includes(name) && !this.selectedDisplays)
+      return { content: [], structuredContent: { effect: "refused", code: "selected_display_unavailable" }, isError: true };
     if (name === "drag" && args.via !== undefined && !this.heldPaths)
       return { content: [], structuredContent: { effect: "refused", code: "held_path_unavailable" }, isError: true };
     if (name === "hold_keys" && !this.heldKeys)

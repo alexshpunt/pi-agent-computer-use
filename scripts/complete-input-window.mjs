@@ -5,12 +5,13 @@ import { setTimeout as delay } from "node:timers/promises";
 /** Launch an isolated disposable Chrome through public CUA app tools, with renderer accessibility enabled. */
 export async function openCompleteInputWindow(driver, url, nativeRoot) {
   const listed=await driver.call("list_apps",{});
-  const chrome=listed.structuredContent?.apps.filter(app=>app.name==="Google Chrome"&&app.launch_path);
-  assert.equal(chrome?.length,1,"Find one exact installed Google Chrome app.");
+  // Native discovery may report several running instances of the same executable.
+  const chrome=[...new Set(listed.structuredContent?.apps.filter(app=>app.name==="Google Chrome"&&app.launch_path).map(app=>app.launch_path))];
+  assert.equal(chrome.length,1,"Find one exact installed Google Chrome app.");
   assert.ok(nativeRoot.startsWith("C:\\"),"Use the trusted Windows runtime's parent directory.");
   const profile=`${nativeRoot}\\.tmp\\cua-gestures-${Date.now()}`;
   const before=await driver.call("list_windows",{});const known=new Set(before.structuredContent.windows.map(w=>`${w.pid}:${w.window_id}`));
-  const launched=await driver.call("launch_app",{launch_path:chrome[0].launch_path,additional_arguments:[
+  const launched=await driver.call("launch_app",{launch_path:chrome[0],additional_arguments:[
     `--user-data-dir=${profile}`,"--no-first-run","--no-default-browser-check","--new-window","--force-renderer-accessibility",url,
   ]});
   assert.ok(!launched.isError,JSON.stringify(launched.structuredContent));

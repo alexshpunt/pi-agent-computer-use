@@ -5,7 +5,7 @@ Window discovery rows, observations and native action receipts include `source_i
 - `domain: "windows-host"` names the current backend, not a sandbox.
 - `identity.session_id` names this agent's ComputerSession. It is not a Windows login/session ID.
 - `identity.window_ref` is this session's reference to a native window lifetime. PID/HWND describe the native target; models still address the window by its reference.
-- `membership.windows_session_id`, `virtual_desktop_id` and `monitor_id` are null. The qualified native API does not return them. Negative coordinates, desktop position and the `primary` capture alias do not establish membership.
+- Window `membership.windows_session_id`, `virtual_desktop_id` and `monitor_id` remain null. The qualified native window API does not return them. An exact [selected-display read](selected-displays.md) reports its explicit native monitor ID; this is not evidence about nearby windows. Negative coordinates, desktop position and the `primary` capture alias do not establish membership.
 - Movement or resizing changes geometry, not lifetime. Closing/reusing a native handle retires the reference. Reload/close retires all session resources.
 
 These fields describe an address. They do not grant input. Input still needs the latest authorized window overview. Display, detail and temporal pixels remain read-only. Foreign-session references or observations cannot authorize another agent's input.

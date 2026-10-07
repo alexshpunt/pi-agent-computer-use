@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./selected-displays.ts";
 import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
 import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
@@ -29,6 +30,8 @@ export interface Driver {
   heldPaths?: boolean;
   /** True only for a qualified native runtime with bounded keyboard ownership. */
   heldKeys?: boolean;
+  /** True only for a qualified Windows runtime with exact selected-display read contracts. */
+  selectedDisplays?: boolean;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
@@ -64,6 +67,7 @@ export interface ComputerResult {
 interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
+interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
@@ -73,12 +77,13 @@ export class ComputerSession {
 
   private readonly sessionId = randomUUID();
   private displayOverview?: DetailContext;
+  private readonly displayEntries = new Map<string, DisplayEntry>();
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
 
   private geometry(state: Record<string, unknown>, display: boolean): string {
-    if (display) return JSON.stringify([state.screen_width, state.screen_height, state.scale_factor]);
+    if (display) return JSON.stringify([state.topology_id, state.display, state.screen_width, state.screen_height, state.scale_factor]);
     const bounds = state.window_bounds as Record<string, unknown> | undefined;
     if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(v => typeof v === "number" && Number.isFinite(v)) ||
       (bounds.width as number) <= 0 || (bounds.height as number) <= 0) throw new Error("Window geometry is missing.");
@@ -162,7 +167,7 @@ export class ComputerSession {
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
-    this.entries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
+    this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
     await this.driver.close().catch(() => undefined);
     const reason = error instanceof Error ? error.message : String(error);
     return this.result(dispatched ? "unknown" : "refused", dispatched
@@ -412,61 +417,116 @@ export class ComputerSession {
       }
     });
   }
-  /** Read the primary display in YOLO only. This source never grants or grounds desktop input. */
+  /** Enumerate native Windows monitors in YOLO. References grant read access, never input. */
+  displays(signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const denied = () => { this.displayEntries.clear(); return this.result("refused", "Safe mode forbids display discovery; native metadata withheld."); };
+      if (this.getMode() !== "yolo") return denied();
+      if (!this.driver.selectedDisplays) return this.result("refused", "Selected displays require an explicitly qualified Windows runtime.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before display discovery.");
+      try {
+        const state = await this.state("list_displays", {}, signal);
+        if (this.getMode() !== "yolo") return denied();
+        if (signal?.aborted) return this.result("refused", "Cancelled during display discovery; metadata withheld.");
+        if (state.platform !== "windows" || typeof state.topology_id !== "string" || !state.topology_id || !Array.isArray(state.displays) || !state.displays.length)
+          throw new Error("CUA returned no native Windows display inventory.");
+        const topology = state.topology_id;
+        const displays = state.displays.map(nativeDisplay);
+        if (new Set(displays.map(d => d.display_id)).size !== displays.length) throw new Error("CUA returned duplicate native display identities.");
+        const current = new Set<string>();
+        const addressed = displays.map(d => {
+          let entry = [...this.displayEntries.values()].find(e => e.topology === topology && e.native.display_id === d.display_id);
+          if (!entry) { entry = { ref: "d-" + randomUUID(), topology, native: d }; this.displayEntries.set(entry.ref, entry); }
+          current.add(entry.ref);
+          return { ...d, display_ref: entry.ref, source_identity: sourceIdentity({ session_id: this.sessionId, display_ref: entry.ref, display_id: d.display_id, topology_id: topology }, d.display_id) };
+        });
+        for (const ref of this.displayEntries.keys()) if (!current.has(ref)) this.displayEntries.delete(ref);
+        return this.result("listed", "Native connected Windows displays. Use display_ref with computer_observe. Image pixels start at zero; bounds are host-global. No input authority.",
+          { platform: "windows", topology_id: topology, displays: addressed });
+      } catch (error) {
+        this.displayEntries.clear();
+        if (this.getMode() !== "yolo") return denied();
+        if (signal?.aborted) return this.result("refused", "Cancelled during display discovery; metadata withheld.");
+        return this.result("refused", `Native display discovery failed. ${error instanceof Error ? error.message : error}`);
+      }
+    });
+  }
+
+  private readDisplay(entry: DisplayEntry | undefined, cap: number, signal?: AbortSignal): Promise<DriverResult> {
+    return entry ? this.driver.call("get_display_state", { display_id: entry.native.display_id, topology_id: entry.topology, max_image_dimension: cap }, signal)
+      : this.driver.call("get_desktop_state", { max_image_dimension: cap }, signal);
+  }
+
+  private displayStateMatches(state: Record<string, unknown> | undefined, entry?: DisplayEntry): state is Record<string, unknown> {
+    if (!state || state.platform !== "windows") return false;
+    if (!entry) return state.display === "primary";
+    const d = nativeDisplay(state.display);
+    return state.topology_id === entry.topology && d.display_id === entry.native.display_id &&
+      state.screenshot_original_width === d.bounds.width && state.screenshot_original_height === d.bounds.height;
+  }
+  /** Read primary or a discovered native display in YOLO. Display pixels never ground input. */
   observeDisplay(display: string, signal?: AbortSignal, zoom?: DetailRequest): Promise<ComputerResult> {
     return this.queue(async () => {
       const denied = () => {
-        this.displayOverview = undefined;
+        this.displayOverview = undefined; this.displayEntries.clear();
         return this.result("refused", "Safe mode forbids full-display reading. Only the user can select YOLO with /computer-mode.");
       };
       if (this.getMode() !== "yolo") return denied();
       if (signal?.aborted) return this.result("refused", "Cancelled before display capture.");
-      if (display !== "primary") return this.result("refused", "Only the native primary display is supported.");
-      if (zoom) return this.displayDetail(zoom, signal);
-      this.displayOverview = undefined;
+      const entry = display === "primary" ? undefined : this.displayEntries.get(display);
+      if (display !== "primary" && (!this.driver.selectedDisplays || !entry)) return this.result("refused", "Unknown or unavailable display reference. Discover native displays again; no primary fallback.");
+      if (zoom) return this.displayDetail(zoom, signal, entry);
+      const retire = () => { if (entry) entry.detail = undefined; else this.displayOverview = undefined; };
+      retire();
       try {
         const settings = { ...this.settings() }; const cap = nativeImageCap(settings);
-        const native = await this.driver.call("get_desktop_state", { max_image_dimension: cap }, signal);
+        const native = await this.readDisplay(entry, cap, signal);
         if (this.getMode() !== "yolo") return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display capture; pixels withheld.");
         const state = native.structuredContent;
-        if (native.isError || state?.status === "refused" || state?.effect === "refused")
-          return this.result("refused", "CUA refused primary-display capture.");
+        if (native.isError || state?.status === "refused" || state?.effect === "refused") {
+          if (entry) this.displayEntries.delete(entry.ref);
+          return this.result("refused", "CUA refused exact-display capture. Discover again; no fallback.");
+        }
         const images = native.content.filter(block => block.type === "image" && block.mimeType === "image/png");
-        if (!state || state.display !== "primary" || state.platform !== "windows" || images.length !== 1 ||
-          !Number.isSafeInteger(state.screenshot_width) || !Number.isSafeInteger(state.screenshot_height) ||
-          (state.screenshot_width as number) <= 0 || (state.screenshot_height as number) <= 0 ||
-          Math.max(state.screenshot_width as number, state.screenshot_height as number) > cap)
-          throw new Error("CUA returned no valid scoped primary-display image.");
-        const source = observationSource("display", state, { session_id: this.sessionId, display_id: "primary" });
-        const id = randomUUID(); this.displayOverview = this.overview(state, id, true, images);
-        const context = this.displayOverview;
-        const highlight = await notifyHighlight(this.observer, context ? { display: "primary", bounds: { x: 0, y: 0, width: context.originalWidth, height: context.originalHeight } } : undefined, signal);
+        if (!this.displayStateMatches(state, entry) || images.length !== 1 ||
+          !Number.isSafeInteger(state!.screenshot_width) || !Number.isSafeInteger(state!.screenshot_height) ||
+          (state!.screenshot_width as number) <= 0 || (state!.screenshot_height as number) <= 0 ||
+          Math.max(state!.screenshot_width as number, state!.screenshot_height as number) > cap)
+          throw new Error("CUA returned no valid scoped display image.");
+        const source = entry ? selectedDisplaySource(state!, this.sessionId, entry.ref) : observationSource("display", state!, { session_id: this.sessionId, display_id: "primary" });
+        const id = randomUUID(); const context = this.overview(state!, id, true, images);
+        if (entry) { if (!context) throw new Error("CUA returned invalid selected-display raster geometry."); entry.detail = context; }
+        else this.displayOverview = context;
+        // The installed optional human overlay understands only primary. Clear it for selected monitors rather than drawing on the wrong source.
+        const highlight = await notifyHighlight(this.observer, !entry && context ? { display: "primary", bounds: { x: 0, y: 0, width: context.originalWidth, height: context.originalHeight } } : undefined, signal);
+        if (entry && highlight) highlight.reason = "selected_display_overlay_unsupported";
         if (this.getMode() !== "yolo") return denied();
-        if (signal?.aborted) { this.displayOverview = undefined; return this.result("refused", "Cancelled during display frame; pixels withheld."); }
-        return this.result("observed", "Native primary-display overview. Read only; zoom uses image_id and these pixels. Paint freshness is unverified.",
-          state, { source, ...(highlight ? { highlight } : {}), agent_image: { ...this.imageMetadata(images, state, settings), image_id: id } }, images);
+        if (signal?.aborted) { retire(); return this.result("refused", "Cancelled during display frame; pixels withheld."); }
+        return this.result("observed", `Native display ${entry?.native.display_id ?? "primary"} overview: ${state!.screenshot_width}x${state!.screenshot_height} local pixels. Read only; zoom uses this image_id. Paint freshness is unverified.`,
+          state, { source, ...(highlight ? { highlight } : {}), agent_image: { ...this.imageMetadata(images, state!, settings), image_id: id } }, images);
       } catch (error) {
         if (this.getMode() !== "yolo") return denied();
-        if (signal?.aborted) return this.result("refused", "Cancelled during display capture; diagnostics withheld.");
+        if (signal?.aborted) { retire(); return this.result("refused", "Cancelled during display capture; diagnostics withheld."); }
         return this.failed(error, false);
       }
     });
   }
 
-  private async displayDetail(request: DetailRequest, signal?: AbortSignal): Promise<ComputerResult> {
-    const overview = this.displayOverview;
+  private async displayDetail(request: DetailRequest, signal?: AbortSignal, entry?: DisplayEntry): Promise<ComputerResult> {
+    const overview = entry ? entry.detail : this.displayOverview;
     let cap: number;
     try { cap = validateDetail(request, overview, false); }
     catch (error) { return this.result("refused", (error as Error).message); }
-    this.displayOverview = undefined;
+    if (entry) entry.detail = undefined; else this.displayOverview = undefined;
     try {
       if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail permission or request cancelled.");
-      const native = await this.driver.call("get_desktop_state", { max_image_dimension: 0 }, signal);
+      const native = await this.readDisplay(entry, 0, signal);
       if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled; pixels withheld.");
       const state = native.structuredContent;
       const images = native.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
-      if (native.isError || state?.status === "refused" || state?.effect === "refused" || !state || state.display !== "primary" || state.platform !== "windows" ||
+      if (entry && (native.isError || state?.status === "refused" || state?.effect === "refused")) this.displayEntries.delete(entry.ref);
+      if (native.isError || state?.status === "refused" || state?.effect === "refused" || !this.displayStateMatches(state, entry) ||
         images.length !== 1 || state.screenshot_width !== overview!.originalWidth || state.screenshot_height !== overview!.originalHeight ||
         this.geometry(state, true) !== overview!.geometry)
         return this.result("refused", "Fresh display geometry or capture is incompatible. Take a new overview.");
@@ -474,22 +534,23 @@ export class ComputerSession {
       const region = nativeRegion(request, overview!);
       const detail = await cropDisplay(images[0], overview!, region, cap);
       if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during processing; pixels withheld.");
-      const output = { screenshot_width: detail.width, screenshot_height: detail.height, display: "primary" };
-      const source = observationSource("display", output, { session_id: this.sessionId, display_id: "primary" });
+      const output = { screenshot_width: detail.width, screenshot_height: detail.height, display: entry ? state!.display : "primary", topology_id: entry?.topology };
+      const source = entry ? selectedDisplaySource({ ...state, ...output }, this.sessionId, entry.ref) : observationSource("display", output, { session_id: this.sessionId, display_id: "primary" });
       source.captured_at = capturedAt;
-      source.image.scope = "primary_display_region"; source.image.coordinate_space = "detail_image_pixels"; source.capabilities.detail = "unsupported";
+      source.image.scope = entry ? "selected_display_region" : "primary_display_region"; source.image.coordinate_space = "detail_image_pixels"; source.capabilities.detail = "unsupported";
       source.image.original_dimensions = { width: overview!.originalWidth, height: overview!.originalHeight };
-      source.image.origin = { x: region.left, y: region.top, relative_to: "primary_display" };
+      source.image.origin = { x: region.left, y: region.top, relative_to: entry ? "display" : "primary_display" };
       const configuration = { maxLongEdge: request.maxLongEdge ?? 1200, scale: request.scale ?? 1, kernel: "lanczos3" as const, version: 0, route: "cua_native" as const };
       const agent_image = { ...this.imageMetadata([detail.image], output, configuration), route: "cua_fresh_display_crop",
         coordinate_space: "detail_image_pixels", configuration: { ...configuration, route: "adapter_crop_resize" },
         region: { overview: { image_id: overview!.id, dimensions: { width: overview!.width, height: overview!.height }, x: request.x, y: request.y, width: request.width, height: request.height }, native: region },
         native: { resolution: "full", intermediate_pixels: "withheld" }, input: "none" };
-      const highlight = await notifyHighlight(this.observer, { display: "primary",
+      const highlight = await notifyHighlight(this.observer, entry ? undefined : { display: "primary",
         bounds: { x: 0, y: 0, width: overview!.originalWidth, height: overview!.originalHeight },
         mark: { kind: "detail", region: { x: region.left, y: region.top, width: region.width, height: region.height } } }, signal);
+      if (entry && highlight) highlight.reason = "selected_display_overlay_unsupported";
       if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during frame; pixels withheld.");
-      return this.result("observed", "Fresh native display pixels cropped above CUA. Read only; no nested crop or input. Paint freshness is unverified.",
+      return this.result("observed", `Fresh display ${entry?.native.display_id ?? "primary"} crop: native-local ${region.left},${region.top} ${region.width}x${region.height}, output ${detail.width}x${detail.height}. Read only; no nested crop or input. Paint freshness is unverified.`,
         undefined, { source, agent_image, ...(highlight ? { highlight } : {}) }, [detail.image]);
     } catch { return this.result("refused", "Display detail failed; private intermediate pixels and diagnostics withheld. Take a new overview."); }
   }
@@ -789,7 +850,7 @@ export class ComputerSession {
   /** Release owned runtime and invalidate references. Application windows and files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
-      this.entries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
+      this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
       await this.driver.close();
       return this.result("closed", "Owned computer-use runtime closed. Application windows were not closed.");
     });
