@@ -1,0 +1,49 @@
+{
+  "model": "MobileCLIP-S0",
+  "precision": "fp16",
+  "prompts": [
+    "a cartoon mole animal popping out of green grass",
+    "a patch of green grass with no animal"
+  ],
+  "checkpoint_sha256": "809b408eff74f8058843e86a1f92967097d42ba782450e85b8f4867b7f0ca0b7",
+  "grid": [
+    72.0,
+    73.0,
+    89.5,
+    86.0
+  ],
+  "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "versions": {
+    "torch": "2.11.0+cu128",
+    "open_clip_torch": "3.3.0",
+    "timm": "1.0.30",
+    "pillow": "12.3.0"
+  },
+  "load_ms": 1955.6916349974927,
+  "text_once_ms": 277.0082730057766,
+  "batch_16_gpu_ms": {
+    "median": 44.434367500798544,
+    "p95": 61.21374099893728
+  },
+  "frame_count": 23,
+  "unique_image_hashes": 14,
+  "confusion": {
+    "tp": 24,
+    "tn": 344,
+    "fp": 0,
+    "fn": 0
+  },
+  "failures": [],
+  "capture_pair_ms": {
+    "median": 884.5,
+    "p95": 1008
+  },
+  "preprocess_ms": {
+    "median": 32.49423600209411,
+    "p95": 102.95951799344039
+  },
+  "transfer_ms": {
+    "median": 7.9271750000771135,
+    "p95": 10.90790700254729
+  }
+}
