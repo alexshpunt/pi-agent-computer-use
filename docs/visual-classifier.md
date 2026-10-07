@@ -26,6 +26,8 @@ if (result.value === true) {
 That threshold was checked on 86px saved mole tiles, **not on the whole window in the example and not on other wording or apps**. Choose and verify a cutoff for the actual input region; the example only shows image-block transfer and branching. Classification gives no input authority: a supplied image may be old, cropped or annotated. Follow the normal observation/action contract before acting. If precise classification matters, use suitable crops without distracting annotation.
 
 - `image`: a saved local path (relative to the call's workspace) or an unchanged `{type:"image", data, mimeType}` block. PNG, JPEG or WebP; one frame, at most 10 MiB and 16 million pixels. No URL download or implicit capture. Selected `computer_sequence` frame images also work.
+- `region`: optional `{x,y,width,height}` rectangle in the supplied image’s encoded pixels. All four values are integers; x/y are nonnegative and width/height positive. It must lie fully inside the frame; there is no clipping, padding, resize or implicit capture. EXIF-rotated region input is refused. The warm worker crops in memory before encoding. The returned `image` hash/dimensions still identify the whole supplied frame; returned `region` identifies the evaluated part. Classification does not consume or renew an observation’s input authority.
+- `regions`: alternative to `region`, an ordered array of 1..16 rectangles. One supplied image is decoded once and all crops share one image-encoder batch, one condition and one cutoff. Total crop area must not exceed 16 million pixels. Any invalid region rejects the entire request. Choose `region` or `regions`, never both.
 - `condition`: one nonempty text description or question, up to 2048 characters and the model's token limit. Long text is rejected, never silently truncated. There is no opposite prompt.
 - `threshold`: required finite number in [-1,1], chosen by the agent.
 - `uncertainty`: optional nonnegative band half-width; defaults to 0. Both band edges must lie within [-1,1].
@@ -41,6 +43,10 @@ inside the closed band          -> null (unknown)
 Boundary comparisons allow 1e-12 for floating-point rounding. Even with a zero-width band, an exact tie is unknown. Use `=== true`, `=== false` and `=== null`: do not collapse unknown into false.
 
 The structured result contains `status:"classified"`, `value`, raw `score`, the supplied rule and condition, `model`, `cache_hit`, image SHA256/dimensions and `timing_ms` (full call, inference/preprocessing, model load). Errors throw and do not return false/null. Nothing in this result grants calibrated confidence.
+
+With `regions`, the structured result has `results:[{region,value,score}, ...]` in input order, plus the common source image, rule, cache and timing metadata. It has no aggregate `value` or `score`. Each crop can independently be true, false or unknown. An empty batch is an error; skip the call when no eligible targets remain.
+
+Use one batch request, not concurrent single-crop calls. The worker serializes requests; concurrency does not combine separate requests into a model batch. Exclude selected and pending targets before building the regions, and keep all intermediate results inside the reaction program.
 
 ## Local setup
 
@@ -69,4 +75,4 @@ Up to eight calls are serialized. A request has a 60-second execution timeout. A
 
 Wording, negation, scale and distractors can change similarity. Prior research found overlapping positive/negative scores for “Is a mole visible?” and for a wooden log. Raising the model size did not make arbitrary natural-language predicates reliable. Choose thresholds deliberately; test positives and hard negatives and retain unknown for borderline scores. Unknown is a **numerical band**, not a promise that all semantic uncertainty has been detected.
 
-See [the earlier negative experiments](research/larger-mole-negative-checks.md). See [the production results and limits](visual-classifier-results.md) for actual branching, cold/warm timing and cleanup.
+See [the earlier negative experiments](research/larger-mole-negative-checks.md) and [the production results and limits](visual-classifier-results.md) for branching, cold/warm timing and cleanup. See [the in-memory crop and reactive loop results](reactive-classifier-results.md) for batch consistency, game timings and the bounded live outcome.

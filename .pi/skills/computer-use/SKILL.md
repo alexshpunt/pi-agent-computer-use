@@ -90,6 +90,10 @@ Display detail crops a fresh full-resolution CUA capture. Pass the same stored `
 
 The first overview and inspection batch are separate decision points. See the environment before choosing rectangles; do not add model turns between inspections whose regions are already known.
 
+## Reactive classification
+
+For repeated visual conditions and long-running reaction loops, read [the reactive visual classifier skill](../reactive-visual-classifier/SKILL.md). Keep observations and classifier results inside Codemode, skip confirmed targets, bound time/calls/actions and return only a small final summary.
+
 ## Temporal observation
 
 For motion, progress or transient UI, use `computer_sequence` on the authorized window (or primary display in YOLO). Capture stores a bounded resource and returns metadata only. It retires that source's previous input/detail authority; clear stored observation/image IDs. Read actual timestamps, FPS, skipped slots and `stop_reason` before selecting frames. Requested FPS is not guaranteed.

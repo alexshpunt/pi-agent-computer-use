@@ -70,6 +70,73 @@ test("a missing Python runtime rejects and still closes without a detection", as
   await expect(classifier.classify({image:await image(),condition:"visible",threshold:.3})).rejects.toThrow(/Cannot start/);
   await classifier.close();
 });
+test("a region classifies only its pixels and keeps the source image identity", async () => {
+  const classifier = new VisualClassifier({ python: process.execPath, model: "fixture" }, path.resolve("test/fixtures/visual-classifier-worker.mjs"));
+  try {
+    const red = await sharp({ create: { width: 2, height: 2, channels: 3, background: "red" } }).png().toBuffer();
+    const frame = await sharp({ create: { width: 8, height: 8, channels: 3, background: "green" } })
+      .composite([{ input: red, left: 5, top: 3 }]).png().toBuffer();
+    const input = { type: "image" as const, data: frame.toString("base64"), mimeType: "image/png" };
+    const whole = await classifier.classify({ image: input, condition: "red pixel", threshold: .5 });
+    const region = { x: 5, y: 3, width: 2, height: 2 };
+    const selected = await classifier.classify({ image: input, region, condition: "red pixel", threshold: .5 });
+    expect(whole.value).toBe(false);
+    expect(selected).toMatchObject({ value: true, region, image: whole.image, cache_hit: true });
+    const green = await classifier.classify({ image: input, region: { x: 0, y: 0, width: 2, height: 2 }, condition: "red pixel", threshold: .5 });
+    expect(green.value).toBe(false);
+    const edge = await classifier.classify({ image: input, region: { x: 7, y: 7, width: 1, height: 1 }, condition: "red pixel", threshold: .5 });
+    expect(edge.value).toBe(false);
+    const rotated = await sharp(frame).withMetadata({ orientation: 6 }).jpeg().toBuffer();
+    await expect(classifier.classify({ image: { ...input, data: rotated.toString("base64"), mimeType: "image/jpeg" }, region, condition: "red pixel", threshold: .5 })).rejects.toThrow(/EXIF rotation/);
+  } finally { await classifier.close(); }
+});
+
+test("one batch returns ordered independent decisions for one shared image and condition", async () => {
+  const classifier = new VisualClassifier({ python: process.execPath, model: "fixture" }, path.resolve("test/fixtures/visual-classifier-worker.mjs"));
+  try {
+    const red = await sharp({ create: { width: 2, height: 2, channels: 3, background: "red" } }).png().toBuffer();
+    const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: "green" } })
+      .composite([{ input: red, left: 5, top: 3 }]).png().toBuffer();
+    const input = { type: "image" as const, data: bytes.toString("base64"), mimeType: "image/png" };
+    const regions = [{ x: 5, y: 3, width: 2, height: 2 }, { x: 0, y: 0, width: 2, height: 2 }];
+    const batch = await classifier.classify({ image: input, regions, condition: "red pixel", threshold: .5 });
+    expect(batch.results).toEqual([{ region: regions[0], value: true, score: 1 }, { region: regions[1], value: false, score: 0 }]);
+    const single = await classifier.classify({ image: input, region: regions[0], condition: "red pixel", threshold: .5 });
+    expect(batch.image).toEqual(single.image);
+    expect(single.cache_hit).toBe(true);
+    const boundary = await classifier.classify({ image: input, regions, condition: "red pixel", threshold: 1 });
+    expect(boundary.results.map(result => result.value)).toEqual([null, false]);
+    await expect(classifier.classify({ image: input, regions, condition: "bad batch receipt", threshold: .5 })).rejects.toThrow(/receipt/);
+  } finally { await classifier.close(); }
+});
+
+test("a batch refuses invalid collections and excessive crop area before starting a worker", async () => {
+  const classifier = new VisualClassifier({ python: "/no-such-batch-worker", model: "fixture" });
+  try {
+    const input = await image(), region = { x: 0, y: 0, width: 8, height: 8 };
+    for (const regions of [[], Array.from({ length: 17 }, () => region), [region, { ...region, x: 1 }]]) {
+      await expect(classifier.classify({ image: input, regions, condition: "red pixel", threshold: .5 })).rejects.toThrow(/region/i);
+    }
+    await expect(classifier.classify({ image: input, region, regions: [region], condition: "red pixel", threshold: .5 })).rejects.toThrow(/region/i);
+    const bytes = await sharp({ create: { width: 4000, height: 2000, channels: 3, background: "green" } }).png().toBuffer();
+    const large = { ...input, data: bytes.toString("base64") };
+    const regions = Array.from({ length: 3 }, () => ({ x: 0, y: 0, width: 4000, height: 2000 }));
+    await expect(classifier.classify({ image: large, regions, condition: "red pixel", threshold: .5 })).rejects.toThrow(/area/);
+  } finally { await classifier.close(); }
+});
+test("invalid regions reject before starting the worker, without clipping", async () => {
+  const classifier = new VisualClassifier({ python: "/no-such-region-worker", model: "fixture" });
+  try {
+    const input = await image();
+    for (const region of [
+      { x: -1, y: 0, width: 2, height: 2 }, { x: 0, y: 0, width: 0, height: 2 },
+      { x: 7, y: 7, width: 2, height: 2 }, { x: .5, y: 0, width: 2, height: 2 },
+      { x: 0, y: NaN, width: 2, height: 2 }, { x: 0, y: 0, width: 2, height: Infinity },
+    ]) {
+      await expect(classifier.classify({ image: input, region, condition: "red pixel", threshold: .5 })).rejects.toThrow(/region/i);
+    }
+  } finally { await classifier.close(); }
+});
 test("saved image input is bounded and config is not part of the request", async () => {
   await mkdir(".tmp/classifier-predicate", { recursive: true });
   const dir = await mkdtemp(path.resolve(".tmp/classifier-predicate/contract-"));

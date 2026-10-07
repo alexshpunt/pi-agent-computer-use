@@ -66,7 +66,30 @@ def classify(request):
     with Image.open(io.BytesIO(data)) as source:
         if source.width * source.height > 16_000_000 or getattr(source, "n_frames", 1) != 1:
             raise ValueError("Use one bounded image frame.")
-        image = ImageOps.exif_transpose(source).convert("RGB")
+        batch = "regions" in request
+        if batch and "region" in request:
+            raise ValueError("Choose region or regions, not both.")
+        regions = request.get("regions") if batch else [request["region"]] if "region" in request else []
+        if not isinstance(regions, list) or (batch and not 1 <= len(regions) <= 16):
+            raise ValueError("Use 1..16 image regions.")
+        images = []
+        area = 0
+        for region in regions:
+            if not isinstance(region, dict) or set(region) != {"x", "y", "width", "height"}:
+                raise ValueError("Invalid image region.")
+            x, y, width, height = (region[key] for key in ("x", "y", "width", "height"))
+            if any(type(value) is not int for value in (x, y, width, height)) or \
+                    x < 0 or y < 0 or width < 1 or height < 1 or \
+                    x + width > source.width or y + height > source.height:
+                raise ValueError("Region must lie fully inside the supplied image.")
+            if source.getexif().get(274, 1) != 1:
+                raise ValueError("Region input must have no EXIF rotation.")
+            area += width * height
+            if area > 16_000_000:
+                raise ValueError("Total crop area exceeds 16 million pixels.")
+            images.append(source.crop((x, y, x + width, y + height)).convert("RGB"))
+        if not regions:
+            images = [ImageOps.exif_transpose(source).convert("RGB")]
     start = time.perf_counter()
     hit = condition in cache
     with torch.inference_mode():
@@ -82,13 +105,14 @@ def classify(request):
             cache[condition] = text
             if len(cache) > 128:
                 cache.popitem(last=False)
-        pixels = processor(images=[image], return_tensors="pt")["pixel_values"].to("cuda")
+        pixels = processor(images=images, return_tensors="pt")["pixel_values"].to("cuda")
         with torch.autocast("cuda", dtype=torch.float16):
             features = model.get_image_features(pixel_values=pixels, return_dict=True).pooler_output
         features = features.float()
         features /= features.norm(dim=-1, keepdim=True)
-        score = (features @ text.T).item()
-    return {"score": score, "cache_hit": hit, "load_ms": load_ms,
+        scores = (features @ text.T).squeeze(-1).tolist()
+    return {**({"scores": scores} if batch else {"score": scores[0]}),
+            "cache_hit": hit, "load_ms": load_ms,
             "inference_ms": (time.perf_counter() - start) * 1000}
 
 

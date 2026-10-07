@@ -7,13 +7,28 @@ import { expect, test } from "vitest";
 test("real Pi Codemode independently branches on true, false, unknown and error", async () => {
   await mkdir(".tmp/classifier-predicate", {recursive:true});
   const cwd = await mkdtemp(path.resolve(".tmp/classifier-predicate/pi-"));
-  await sharp({create:{width:8,height:8,channels:3,background:"green"}}).png().toFile(path.join(cwd,"sample.png"));
+  const red = await sharp({create:{width:2,height:2,channels:3,background:"red"}}).png().toBuffer();
+  await sharp({create:{width:8,height:8,channels:3,background:"green"}})
+    .composite([{input:red,left:5,top:3}]).png().toFile(path.join(cwd,"sample.png"));
   const code = `const classify = extra => tools.computer_classify({image:"sample.png",condition:"one condition",threshold:.3,...extra});
 const yes = await classify({});
 const no = await classify({threshold:.5});
 const unknown = await classify({threshold:.4,uncertainty:.02});
 let error = false;
 try { await classify({condition:"worker error"}); } catch { error = true; }
+const region = {x:5,y:3,width:2,height:2};
+const cropped = await classify({condition:"red pixel",threshold:.5,region});
+const whole = await classify({condition:"red pixel",threshold:.5});
+let rejectedRegion = false;
+try { await classify({region:{x:7,y:7,width:2,height:2}}); } catch { rejectedRegion = true; }
+if(cropped.value!==true || whole.value!==false || !rejectedRegion || JSON.stringify(cropped.region)!==JSON.stringify(region)) throw Error("Broken region transfer");
+const regions = [region,{x:0,y:0,width:2,height:2}];
+const batch = await classify({condition:"red pixel",threshold:.5,regions});
+if(batch.results.length!==2 || batch.results[0].value!==true || batch.results[1].value!==false ||
+ JSON.stringify(batch.results.map(r=>r.region))!==JSON.stringify(regions)) throw Error("Broken batch transfer");
+let rejectedBoth = false;
+try { await classify({region,regions}); } catch { rejectedBoth = true; }
+if(!rejectedBoth) throw Error("Conflicting regions were accepted");
 const branches = [];
 for (const result of [yes,no,unknown]) {
  if(result.value === true) branches.push("react");

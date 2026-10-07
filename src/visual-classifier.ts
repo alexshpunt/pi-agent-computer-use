@@ -11,13 +11,18 @@ const workerPath = fileURLToPath(new URL("../scripts/visual-classifier-worker.py
 
 /** Trusted local installation paths; never supplied by a classifier tool request. */
 export interface ClassifierConfig { python: string; model: string }
+/** Integer rectangle in the supplied image's encoded pixel coordinates; never clipped or rescaled. */
+export interface ClassifierRegion { x: number; y: number; width: number; height: number }
 /** A saved image or an unchanged image block from a computer-use result. No URL fetch or capture. */
 export interface PredicateRequest {
   image: string | { type: "image"; data: string; mimeType: string };
+  region?: ClassifierRegion;
   condition: string;
   threshold: number;
   uncertainty?: number;
 }
+/** One image and one condition evaluated over 1..16 ordered regions in one model batch. */
+export interface BatchPredicateRequest extends PredicateRequest { regions: ClassifierRegion[] }
 /** null means a score in the caller's uncertainty band, not a runtime failure. */
 export interface PredicateResult {
   status: "classified";
@@ -28,10 +33,16 @@ export interface PredicateResult {
   condition: string;
   model: "TinyCLIP-39M";
   cache_hit: boolean;
+  /** Identity of the supplied frame, not a separately encoded crop. */
   image: { sha256: string; width: number; height: number };
+  region?: ClassifierRegion;
   timing_ms: { total: number; inference: number; load: number };
 }
 
+/** Each result corresponds to the region at the same input index; there is no aggregate boolean. */
+export interface BatchPredicateResult extends Omit<PredicateResult, "value" | "score" | "region"> {
+  results: { region: ClassifierRegion; value: boolean | null; score: number }[];
+}
 /** Compare a raw cosine score with the agent's cutoff. The closed band is unknown. */
 export function decide(score: number, threshold: number, uncertainty = 0): boolean | null {
   if (![score, threshold, uncertainty].every(Number.isFinite) || Math.abs(score) > 1 || Math.abs(threshold) > 1 ||
@@ -53,7 +64,7 @@ export async function loadClassifierConfig(cwd: string): Promise<ClassifierConfi
   return { python: path.resolve(cwd, config.python), model: path.resolve(cwd, config.model) };
 }
 
-async function pixels(input: PredicateRequest["image"], cwd: string) {
+async function pixels(input: PredicateRequest["image"], cwd: string, regions: ClassifierRegion[] = []) {
   let bytes: Buffer;
   if (typeof input === "string") {
     if (!input.trim()) throw Error("Choose a saved image path.");
@@ -77,6 +88,19 @@ async function pixels(input: PredicateRequest["image"], cwd: string) {
   const metadata = await sharp(bytes, { limitInputPixels: MAX_PIXELS }).metadata();
   if (!metadata.width || !metadata.height || !["png", "jpeg", "webp"].includes(metadata.format ?? "") || (metadata.pages ?? 1) !== 1)
     throw Error("Use one PNG, JPEG or WebP frame.");
+  let area = 0;
+  for (const region of regions) {
+    if (!region || typeof region !== "object" || Array.isArray(region) ||
+      Object.keys(region).some(key => !["x", "y", "width", "height"].includes(key)) ||
+      ![region.x, region.y, region.width, region.height].every(Number.isSafeInteger) ||
+      region.x < 0 || region.y < 0 || region.width < 1 || region.height < 1 ||
+      region.x + region.width > metadata.width || region.y + region.height > metadata.height)
+      throw Error("Use a positive integer region fully inside the supplied image; regions are not clipped.");
+    if (metadata.orientation && metadata.orientation !== 1)
+      throw Error("Region input must have no EXIF rotation; use an already oriented image.");
+    area += region.width * region.height;
+    if (area > MAX_PIXELS) throw Error("Total crop area must not exceed 16 million pixels.");
+  }
   return { bytes, image: { sha256: createHash("sha256").update(bytes).digest("hex"), width: metadata.width, height: metadata.height } };
 }
 
@@ -92,7 +116,9 @@ export class VisualClassifier {
   constructor(private readonly config: ClassifierConfig, private readonly worker = workerPath) {}
 
   /** Evaluate one condition. Aborts/errors reject rather than becoming negative detections. */
-  async classify(request: PredicateRequest, signal?: AbortSignal, cwd = process.cwd()): Promise<PredicateResult> {
+  async classify(request: BatchPredicateRequest, signal?: AbortSignal, cwd?: string): Promise<BatchPredicateResult>;
+  async classify(request: PredicateRequest, signal?: AbortSignal, cwd?: string): Promise<PredicateResult>;
+  async classify(request: PredicateRequest & { regions?: ClassifierRegion[] }, signal?: AbortSignal, cwd = process.cwd()): Promise<PredicateResult | BatchPredicateResult> {
     if (this.closing) throw Error("Classifier is closing.");
     if (this.queued >= 8) throw Error("Classifier queue is full (8 requests).");
     const generation = this.generation;
@@ -105,18 +131,31 @@ export class VisualClassifier {
         throw Error("Provide one nonempty condition of at most 2048 characters.");
       const uncertainty = request.uncertainty ?? 0;
       decide(0, request.threshold, uncertainty);
-      const source = await pixels(request.image, cwd); signal?.throwIfAborted();
+      if (request.region !== undefined && request.regions !== undefined)
+        throw Error("Choose region or regions, not both.");
+      if (request.regions !== undefined && (!Array.isArray(request.regions) || !request.regions.length || request.regions.length > 16))
+        throw Error("Use 1..16 ordered image regions.");
+      const requested = request.regions ?? (request.region !== undefined ? [request.region] : []);
+      const source = await pixels(request.image, cwd, requested); signal?.throwIfAborted();
+      const crops = requested.map(region => ({ x: region.x, y: region.y, width: region.width, height: region.height }));
+      const batch = request.regions !== undefined;
       if (generation !== this.generation) throw Error("Classifier request was closed before execution.");
-      const response = await this.exchange({ condition: request.condition, data: source.bytes.toString("base64") }, signal);
-      const score = response.score;
-      if (typeof score !== "number" || typeof response.cache_hit !== "boolean" ||
+      const response = await this.exchange({ condition: request.condition, data: source.bytes.toString("base64"),
+        ...(batch ? { regions: crops } : crops.length ? { region: crops[0] } : {}) }, signal);
+      const scores = batch ? response.scores : [response.score];
+      if (!Array.isArray(scores) || scores.length !== (batch ? crops.length : 1) || scores.some(score => typeof score !== "number") ||
+        typeof response.cache_hit !== "boolean" ||
         typeof response.inference_ms !== "number" || !Number.isFinite(response.inference_ms) || response.inference_ms < 0 ||
         typeof response.load_ms !== "number" || !Number.isFinite(response.load_ms) || response.load_ms < 0)
         throw Error("Invalid classifier worker receipt.");
-      return { status: "classified" as const, value: decide(score, request.threshold, uncertainty), score,
+      const decisions = scores.map(score => decide(score, request.threshold, uncertainty));
+      const common = { status: "classified" as const,
         threshold: request.threshold, uncertainty, condition: request.condition, model: "TinyCLIP-39M" as const,
         cache_hit: response.cache_hit, image: source.image,
         timing_ms: { total: performance.now() - start, inference: response.inference_ms, load: response.load_ms } };
+      return batch
+        ? { ...common, results: crops.map((region, i) => ({ region, score: scores[i], value: decisions[i] })) }
+        : { ...common, value: decisions[0], score: scores[0], ...(crops.length ? { region: crops[0] } : {}) };
     });
     this.tail = run;
     try { return await run; } finally { this.queued--; }

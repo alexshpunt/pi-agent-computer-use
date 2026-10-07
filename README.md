@@ -10,7 +10,7 @@ We want one window-first computer-use interface for all apps, including browsers
 
 The exact implementation is still open. These are project intentions, not capabilities available today.
 
-A separate read-only `computer_classify` tool evaluates one visual condition on supplied pixels with local TinyCLIP-39M. The agent supplies the cosine threshold; results are typed true/false/unknown, not calibrated probabilities. See [the predicate API and local setup](docs/visual-classifier.md).
+A separate read-only `computer_classify` tool evaluates one visual condition on supplied pixels with local TinyCLIP-39M. The agent supplies the cosine threshold; results are typed true/false/unknown, not calibrated probabilities. See [the predicate API and local setup](docs/visual-classifier.md) and [the skill for bounded reaction loops](.pi/skills/reactive-visual-classifier/SKILL.md).
 
 ## Migration boundary
 
