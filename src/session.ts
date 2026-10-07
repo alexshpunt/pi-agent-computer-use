@@ -5,7 +5,8 @@ import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, 
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
-import { observationSource, type ObservationSource } from "./observation-source.ts";
+import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity } from "./observation-source.ts";
+import { actionCapability, type ActionCapability } from "./action-capability.ts";
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
@@ -50,6 +51,8 @@ export interface ComputerResult {
     opened?: boolean;
     state?: Record<string, unknown>;
     source?: ObservationSource;
+    source_identity?: SourceIdentity;
+    action_capability?: ActionCapability;
     agent_image?: Record<string, unknown>;
     highlight?: HighlightResult;
     ui?: UiResource;
@@ -124,7 +127,8 @@ export class ComputerSession {
       state: state && Object.fromEntries(Object.entries(state).filter(([key]) => !["elements", "tree_markdown", "_note"].includes(key))),
       agent_image: extra.agent_image && { ...extra.agent_image, annotation: extra.agent_image.annotation && {
         ...(extra.agent_image.annotation as Record<string, unknown>), labels: undefined } } } : details;
-    const json = JSON.stringify(display, null, 2);
+    const pretty = JSON.stringify(display, null, 2);
+    const json = pretty.length <= 24_000 ? pretty : JSON.stringify(display);
     const visible = json.length <= 24_000 ? json : extra.sequence || extra.selected_frames ? JSON.stringify({ ...details,
       ...(extra.sequence ? { sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source, frames: extra.sequence.frames.slice(0, 5).map(frameSummary) } } : {}),
       ...(extra.selected_frames ? { selected_frames: extra.selected_frames.slice(0, 5).map(frameSummary) } : {}),
@@ -153,7 +157,8 @@ export class ComputerSession {
   }
 
   private addressed(entry: WindowEntry): Partial<ComputerResult["details"]> {
-    return { target: entry.target, window_ref: entry.ref };
+    return { target: entry.target, window_ref: entry.ref,
+      source_identity: sourceIdentity({ session_id: this.sessionId, window_ref: entry.ref, ...entry.target }) };
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
@@ -221,7 +226,7 @@ export class ComputerSession {
             ? known && await this.current(known.ref, signal)
             : await this.register(native as unknown as WindowTarget, signal);
           if (this.getMode() === "safe" && (!entry || !entry.owned)) continue;
-          windows.push({ ...native, ...(entry ? { window_ref: entry.ref, owned: entry.owned } : { unavailable: "Cannot establish window lifetime identity." }) });
+          windows.push({ ...native, ...(entry ? { ...this.addressed(entry), owned: entry.owned } : { unavailable: "Cannot establish window lifetime identity." }) });
         }
         return this.result("listed", "Permitted window discovery. Safe lists session-opened windows only. Use window_ref, not PID/HWND.",
           { windows: this.getMode() === "safe" ? windows.filter(window => "owned" in window && window.owned) : windows });
@@ -734,10 +739,12 @@ export class ComputerSession {
             "In-flight outcome withheld after revocation/cancellation.");
           const state = native.structuredContent ?? {};
           const refused = state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
-            "conflicting_element_target", "background_unavailable", "background_occluded"].includes(String(state.code));
+            "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
           const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
           const status = refused ? "refused" : uncertain ? "unknown" : "delivered";
           row.status = status; inFlight = false;
+          const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, state);
+          row.action_capability = capability;
           if (status === "delivered") trace.completed++;
           const resolvedPoint = status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds
             ? nativeClickPoint(native.content, entry.target.pid, observed.bounds) : undefined;
@@ -767,7 +774,7 @@ export class ComputerSession {
               resolved_native_screen: resolvedPoint ?? null, native_target_mark: entry.lastAction ?? null } } : {}),
             ...(native.isError || !native.structuredContent ? {
               native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
-            } : {}) }, { ...this.addressed(entry), ...(highlight ? { highlight } : {}) });
+            } : {}) }, { ...this.addressed(entry), action_capability: capability, ...(highlight ? { highlight } : {}) });
           if (!batch || status !== "delivered" || index === commands.length - 1)
             return finish(result, status === "delivered" ? "" : `Stopped after native ${status}; later steps were not dispatched.`);
         }

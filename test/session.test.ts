@@ -55,6 +55,55 @@ test("window observations use the shared cap and keep current host geometry sepa
   bounds = { x: 200, y: 300, width: 1000, height: 700 };
   expect((await f.session.observe(ref)).details.source?.image.native_bounds).toEqual(bounds);
 });
+test("discovery, observation and action share identity; native delivery evidence stays action-scoped", async () => {
+  const f = fixture(); const found = await f.session.windows();
+  const window = (found.details.state!.windows as { window_ref: string; source_identity: unknown }[])[0];
+  const observed = await f.session.observe(window.window_ref);
+  expect(observed.details.source_identity).toEqual(window.source_identity);
+  expect(observed.details.source).toMatchObject(window.source_identity!);
+  vi.mocked(f.driver.call).mockResolvedValueOnce({ content: [], structuredContent: {
+    effect: "confirmed", route: "accessibility", delivery: { mode: "background" } } });
+  const delivered = await f.session.act({ window_ref: window.window_ref, observation_id: observed.details.observation_id!,
+    action: "set_value", element_token: "s1:0", text: "Disposable" });
+  expect(delivered.details.source_identity).toEqual(window.source_identity);
+  expect(delivered.details.action_capability).toMatchObject({ operation: "set_value", background: "delivered", foreground: "unknown" });
+  const next = await f.session.observe(window.window_ref);
+  vi.mocked(f.driver.call).mockResolvedValueOnce({ isError: true, content: [], structuredContent: {
+    code: "background_uipi_blocked", event_kind: "keystroke", escalation: { recommended: "foreground" } } });
+  const refused = await f.session.act({ window_ref: window.window_ref, observation_id: next.details.observation_id!,
+    action: "key", key: "return" });
+  expect(refused.details.status).toBe("refused");
+  expect(refused.details.action_capability).toMatchObject({ background: "unavailable", foreground: "suggested" });
+  expect((await f.session.act({ window_ref: window.window_ref, observation_id: next.details.observation_id!,
+    action: "key", key: "return" })).details.status).toBe("refused");
+});
+
+test("another agent's source and observation cannot authorize native input", async () => {
+  const one = fixture(), two = fixture();
+  const a = await readExisting(one.session), b = await readExisting(two.session);
+  expect(a.observed.details.source!.identity.session_id).not.toBe(b.observed.details.source!.identity.session_id);
+  const before = vi.mocked(two.driver.call).mock.calls.length;
+  for (const window_ref of [a.ref, b.ref]) {
+    expect((await two.session.act({ window_ref, observation_id: a.observed.details.observation_id!,
+      action: "key", key: "return" })).details.status).toBe("refused");
+  }
+  expect(two.driver.call).toHaveBeenCalledTimes(before);
+});
+
+test("batch receipts retain separate capability evidence for each attempted action", async () => {
+  const f = fixture(); const { ref, observed } = await readExisting(f.session);
+  vi.mocked(f.driver.call).mockResolvedValueOnce({ content: [], structuredContent: {
+    effect: "confirmed", route: "accessibility", delivery: { mode: "background" } } })
+    .mockResolvedValueOnce({ content: [], isError: true, structuredContent: {
+      code: "background_unavailable", escalation: { recommended: "foreground" } } });
+  const result = await f.session.act({ window_ref: ref, observation_id: observed.details.observation_id!,
+    action: "sequence", sequence: [{ action: "type_text", element_token: "s1:0", text: "Disposable" }, { action: "key", key: "return" }] });
+  const steps = (result.details.state!.sequence as { steps: { action_capability: unknown }[] }).steps;
+  expect(steps).toHaveLength(2);
+  expect(steps[0].action_capability).toMatchObject({ background: "delivered", foreground: "unknown" });
+  expect(steps[1].action_capability).toMatchObject({ background: "unavailable", foreground: "suggested" });
+  expect(result.details.action_capability).toBeUndefined();
+});
 test("opens a genuinely new window and returns its first observation in the same result", async () => {
   const { session, driver } = fixture();
   const opened = await session.open("Notepad");

@@ -1,8 +1,18 @@
-/** Common capture provenance. Unknown native fields stay null; image and semantic scopes are distinct. */
-export interface ObservationSource {
-  kind: "display" | "window" | "browser";
+/** Session-scoped address, not an input grant. session_id is the agent session, not a Windows login session. */
+export interface SourceIdentity {
   domain: "windows-host";
   identity: Record<string, string | number>;
+  membership: { windows_session_id: null; virtual_desktop_id: null; monitor_id: null };
+}
+
+/** The qualified native API does not expose membership. Never infer it from geometry or display aliases. */
+export function sourceIdentity(identity: SourceIdentity["identity"]): SourceIdentity {
+  return { domain: "windows-host", identity: { ...identity },
+    membership: { windows_session_id: null, virtual_desktop_id: null, monitor_id: null } };
+}
+/** Common capture provenance. Unknown native fields stay null; image and semantic scopes are distinct. */
+export interface ObservationSource extends SourceIdentity {
+  kind: "display" | "window" | "browser";
   captured_at: string;
   timestamp_boundary: "native_call_completed";
   image: {
@@ -27,7 +37,7 @@ export function observationSource(kind: ObservationSource["kind"], native: Recor
   const originalWidth = positive(native.screenshot_original_width);
   const originalHeight = positive(native.screenshot_original_height);
   return {
-    kind, domain: "windows-host", identity: { ...identity }, captured_at: new Date().toISOString(), timestamp_boundary: "native_call_completed",
+    kind, ...sourceIdentity(identity), captured_at: new Date().toISOString(), timestamp_boundary: "native_call_completed",
     image: { scope: kind === "display" ? "primary_display" : zoom ? "native_window_zoom" : "native_window",
       coordinate_space: kind === "display" ? "display_image_pixels" : zoom ? "zoom_image_pixels" : "window_image_pixels",
       dimensions: { width: positive(zoom ? native.width : native.screenshot_width), height: positive(zoom ? native.height : native.screenshot_height) },

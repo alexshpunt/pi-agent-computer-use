@@ -29,6 +29,8 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
   };
   } else if (["press_key", "hotkey", "type_text", "drag"].includes(name)) state = {
     effect: args.key === "escape" ? "partial" : args.key === "delete" ? "refused" : "unverifiable",
+    ...(args.key === "delete" ? { code: "background_unavailable", event_kind: "keystroke", escalation: { recommended: "foreground" } }
+      : { route: "synthetic_events", delivery: { mode: args.delivery_mode } }),
   };
   else throw Error("Unexpected dispatch " + name);
   return { structuredContent: state, content: [{ type: "text", text: JSON.stringify(state) },

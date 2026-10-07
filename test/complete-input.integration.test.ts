@@ -14,6 +14,12 @@ test("real Pi Codemode validates a whole sequence, forwards complete steps and s
   const code = `const opened = await tools.computer_open({app:"Notepad"});
 const first = JSON.parse(opened.slice(opened.indexOf("{")));
 store("window", first.window_ref); store("observation", first.observation_id);
+const listed = await tools.computer_windows({});
+const discovery = JSON.parse(listed.slice(listed.indexOf("{"))).state.windows[0];
+if (JSON.stringify(discovery.source_identity) !== JSON.stringify(first.source_identity)) throw Error("Discovery lost identity");
+if (first.source.identity.session_id !== first.source_identity.identity.session_id || first.source.membership.monitor_id !== null ||
+ first.source.membership.virtual_desktop_id !== null) throw Error("Capture identity or unknown membership lost");
+text(first.source_identity);
 const act = async sequence => {
  try {
   const result = await tools.computer_act({window_ref:load("window"),observation_id:load("observation"),action:"sequence",sequence});
@@ -27,6 +33,8 @@ if (invalid.status !== "refused") throw Error("Invalid tail admitted");
 const success = await act([{action:"key",key:"a"},{action:"hotkey",keys:["shift","b"],wait_ms:10},
  {action:"drag",from_x:30,from_y:40,to_x:100,to_y:80,duration_ms:100,steps:4}]);
 if (success.state.sequence.completed !== 3) throw Error("Missing completed sequence");
+if (success.state.sequence.steps.some(step => step.action_capability.background !== "delivered" ||
+ step.action_capability.scope !== "attempted_action_only")) throw Error("Native delivery metadata lost");
 text(success.state.sequence);
 const retired = await act([{action:"key",key:"c"}]);
 if (retired.status !== "refused") throw Error("Overview still armed");
@@ -35,6 +43,9 @@ for (const key of ["escape","delete"]) {
  const stopped = await act([{action:"key",key:"a"},{action:"key",key},{action:"key",key:"c"}]);
  if (stopped.state.sequence.completed !== 1 || stopped.state.sequence.attempted !== 2 || stopped.status !== (key === "escape" ? "unknown" : "refused")) throw Error("False completed prefix");
  text(stopped.state.sequence);
+ if (key === "delete" && (stopped.state.sequence.steps[1].action_capability.background !== "unavailable" ||
+  stopped.state.sequence.steps[1].action_capability.foreground !== "suggested")) throw Error("Refusal capability lost");
+ if (key === "escape" && stopped.state.sequence.steps[1].action_capability.background !== "unknown") throw Error("Partial input claimed support");
  const stale = await act([{action:"key",key:"c"}]);
  if (stale.status !== "refused") throw Error("Stopped sequence could replay");
 }
@@ -43,7 +54,7 @@ store("observation",null); text("Complete sequence guards passed");`;
     const result = await new PiIntegrationTest({
       testName: "complete-input", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_open", "computer_observe", "computer_act", "computer_close"],
+      tools: ["codemode", "computer_open", "computer_windows", "computer_observe", "computer_act", "computer_close"],
       conversation: [
         assistantMessage([toolCall({ id: "sequence", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "close", name: "computer_close", arguments: {} })], { stopReason: "toolUse" }),
