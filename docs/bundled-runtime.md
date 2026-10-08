@@ -1,6 +1,7 @@
 # Bundled CUA runtime
 
 Computer Use selects a native CUA package installed with the extension. It does not download a driver at first use or search for a separate CUA installation.
+See the [build, installation and Windows/WSL verification results](bundled-runtime-results.md).
 
 The private package installation uses the existing Verdaccio registry:
 
