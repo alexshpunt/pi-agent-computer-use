@@ -107,7 +107,8 @@ try {
   for (const role of roles) variants[role] = await prepare(role);
   site = await createWindowCaptureSite();
   const root = path.dirname(config.command).replace("/mnt/c/", "C:\\").replaceAll("/", "\\");
-  fixture = await openCompleteInputWindow(driver, site.url, root);
+  // Keep the synthetic RGB witness independent of the monitor's color profile.
+  fixture = await openCompleteInputWindow(driver, site.url, root, ["--force-color-profile=srgb"]);
   let appName;
   const observe = async (role, mode, phase) => {
     const args = { ...fixture.target, include_accessibility_tree: mode !== "image", include_screenshot: mode !== "ui", max_image_dimension: 500 };
@@ -137,6 +138,10 @@ try {
         if (expected.color.every((v,i) => Math.abs(decoded.data[p+i]-v) <= 3)) colored++;
       }
       sample.witness = { revision: expected.revision, acknowledged: expected.acknowledged, matching_pixels: colored };
+      if (colored < 40) {
+        await writeFile(path.join(directory, `${role}-${mode}-${phase}-failed.png`), bytes);
+        await writeFile(path.join(directory, "private-failed-sample.json"), JSON.stringify({ ...sample, expected }, null, 2) + "\n");
+      }
       assert.ok(colored >= 40, "Capture did not contain the independently acknowledged current color");
       assert.equal(timing.accounting.calls["image.final_PNG_encode"], 1);
       if (role.startsWith("wgc")) assert.equal(timing.accounting.calls["wgc.total"], 1);

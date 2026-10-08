@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
-/** Launch an isolated disposable Chrome through public CUA app tools, with renderer accessibility enabled. */
-export async function openCompleteInputWindow(driver, url, nativeRoot) {
+/** Launch a disposable Chrome through CUA. Extra arguments affect only its unique profile, not personal Chrome. */
+export async function openCompleteInputWindow(driver, url, nativeRoot, extraArguments = []) {
   const listed=await driver.call("list_apps",{});
   // Native discovery may report several running instances of the same executable.
   const chrome=[...new Set(listed.structuredContent?.apps.filter(app=>app.name==="Google Chrome"&&app.launch_path).map(app=>app.launch_path))];
@@ -12,7 +12,7 @@ export async function openCompleteInputWindow(driver, url, nativeRoot) {
   const profile=`${nativeRoot}\\.tmp\\cua-gestures-${Date.now()}`;
   const before=await driver.call("list_windows",{});const known=new Set(before.structuredContent.windows.map(w=>`${w.pid}:${w.window_id}`));
   const launched=await driver.call("launch_app",{launch_path:chrome[0],additional_arguments:[
-    `--user-data-dir=${profile}`,"--no-first-run","--no-default-browser-check","--new-window","--force-renderer-accessibility",url,
+    `--user-data-dir=${profile}`,"--no-first-run","--no-default-browser-check","--new-window","--force-renderer-accessibility",...extraArguments,url,
   ]});
   assert.ok(!launched.isError,JSON.stringify(launched.structuredContent));
   const pid=launched.structuredContent?.pid;assert.ok(Number.isSafeInteger(pid)&&pid>0,"Launch must return an owned PID.");
