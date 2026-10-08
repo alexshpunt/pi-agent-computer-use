@@ -35,9 +35,13 @@ for (const role of roles) {
   const readState = async () => JSON.parse(await runGh(["api", `repos/alexshpunt/cua/actions/runs/${id}`, "--jq", "{headSha:.head_sha,status,conclusion,attempt:.run_attempt}"]));
   const state = await readState();
   assert.equal(state.headSha, entry.source, "Run must belong to the exact requested diagnostic commit");
+  assert.ok(Number.isSafeInteger(state.attempt) && state.attempt >= 1 && state.attempt <= 2, "At most one queue rerun is admitted");
   if (state.status === "completed") {
     assert.ok(["success", "cancelled"].includes(state.conclusion), "Failed source build needs inspection, not automatic replay");
-    if (state.conclusion === "cancelled") await runGh(["run", "rerun", id, ...args]);
+    if (state.conclusion === "cancelled") {
+      assert.equal(state.attempt, 1, "A cancelled second attempt cannot be replayed");
+      await runGh(["run", "rerun", id, ...args]);
+    }
   }
   // Short gh invocations use the managed credential wrapper each time. A long
   // gh watch can keep one token past its lease. Never bypass the wrapper.
