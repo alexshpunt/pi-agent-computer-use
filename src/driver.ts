@@ -7,6 +7,8 @@ import type { Content, Driver, DriverResult, WindowTarget } from "./session.ts";
 
 import type { ComputerConfig } from "./config.ts";
 import { WindowIdentity } from "./window-identity.ts";
+import { verifyBundledRuntime } from "./native-runtime.ts";
+import type { NativePlatform } from "./observation-source.ts";
 
 /** Exact Windows CI artifact qualified for held paths; selection is trusted config, never a tool argument. */
 export const HELD_PATH_RUNTIME = {
@@ -53,60 +55,88 @@ const forkRuntimes = {
   "windows-single-png": SINGLE_PNG_RUNTIME,
   "windows-semantic-actions": SEMANTIC_RUNTIME,
 };
-/** Owned native Windows MCP process reached through WSL executable interop. */
+/** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
   private client?: Client;
   private transport?: StdioClientTransport;
   private stderr = "";
 
-  private readonly windowIdentity: WindowIdentity;
+  private readonly windowIdentity?: WindowIdentity;
+  private nativeTools?: Set<string>;
 
   private get forkRuntime() { return this.config.runtime ? forkRuntimes[this.config.runtime] : undefined; }
+  private get bundledWindows() { return this.config.bundled?.target === "win32-x64"; }
+  private get envelopes() { return !!this.config.bundled || this.forkRuntime !== undefined; }
 
-  /** A selected fork is checked before the first MCP call; default installed CUA has no held paths. */
-  get heldPaths(): boolean { return this.forkRuntime !== undefined; }
+  /** The native execution platform is independent of the npm host, especially in WSL. */
+  get platform(): NativePlatform {
+    const target = this.config.bundled?.target;
+    if (target) return target.startsWith("win32") ? "windows" : target.startsWith("darwin") ? "macos" : "linux";
+    return this.config.runtime || /\.exe$/i.test(this.config.command) || process.platform === "win32"
+      ? "windows" : process.platform === "darwin" ? "macos" : "linux";
+  }
 
-  /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
-  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
-  /** Existing profiles do not expose exact monitor reads; only a separately qualified pin may enable them. */
-  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
-  /** Older profiles cannot admit a straight drag against an immutable native capture. */
-  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops" || this.config.runtime === "windows-single-png" || this.config.runtime === "windows-semantic-actions"; }
+  /** Linux/macOS window lifetime binding is explicitly deferred, not replaced with pid/window_id. */
+  get windowLifetime(): boolean { return this.platform === "windows"; }
 
-  /** Only the exact semantic profile may invoke native UIA without the physical action ladder. */
-  get semanticActions(): boolean { return this.config.runtime === "windows-semantic-actions"; }
-  /** Window, display and browser routes share the explicitly qualified Windows pin. */
+  /** Custom held paths remain Windows-only and require checked fork bytes or a pinned bundle. */
+  get heldPaths(): boolean { return this.bundledWindows || this.forkRuntime !== undefined; }
+  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
+  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
+
+  /** Experimental strict UIA can change focus; only the checked Windows fork supplies this route. */
+  get semanticActions(): boolean { return this.bundledWindows || this.config.runtime === "windows-semantic-actions"; }
+
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
-    this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
+    if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
   }
 
-  /** Bind or validate a native window lifetime. Normal permissions still apply. */
+  /** Bind a native lifetime only where supported. Unsupported platforms never start a Windows peer. */
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined> {
-    return this.windowIdentity.identify(target, create, signal);
+    signal?.throwIfAborted();
+    return this.windowIdentity?.identify(target, create, signal) ?? Promise.resolve(undefined);
   }
+
+  private connecting?: Promise<Client>;
 
   private async connect(signal?: AbortSignal): Promise<Client> {
+    signal?.throwIfAborted();
+    if (this.client && !this.connecting) return this.client;
+    const pending = this.connecting ??= this.start(signal);
+    try {
+      const client = await pending;
+      signal?.throwIfAborted();
+      return client;
+    } finally { if (this.connecting === pending) this.connecting = undefined; }
+  }
+
+  private async start(signal?: AbortSignal): Promise<Client> {
     if (signal?.aborted) throw new Error("Cancelled before Driver startup.");
-    if (this.client) return this.client;
-    if (this.heldPaths) {
+    if (this.config.bundled) {
+      if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
+      await verifyBundledRuntime(this.config.bundled, signal);
+    } else if (this.forkRuntime) {
       const hash = createHash("sha256").update(await readFile(this.config.command)).digest("hex");
-      if (hash !== this.forkRuntime!.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
+      if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
     }
-    const interop = this.config.interop ?? process.env.WSL_INTEROP;
+    signal?.throwIfAborted();
+    const interop = this.platform === "windows" ? this.config.interop ?? process.env.WSL_INTEROP : undefined;
     if (process.platform === "linux" && this.config.command.endsWith(".exe")) {
       if (!interop || !(await stat(interop).catch(() => undefined))?.isSocket())
         throw new Error("WSL interop endpoint is missing. Configure a live interop socket; do not install a Linux Driver for a Windows desktop.");
     }
     const transport = new StdioClientTransport({
       command: this.config.command,
-      args: this.heldPaths ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"],
+      args: this.envelopes ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"],
       stderr: "pipe",
       env: {
+        ...Object.fromEntries(["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"].flatMap(name => process.env[name] === undefined ? [] : [[name, process.env[name]!]])),
         ...(interop ? { WSL_INTEROP: interop } : {}),
-        WSLENV: [process.env.WSLENV, "CUA_DRIVER_RS_TELEMETRY_ENABLED", "CUA_DRIVER_RS_UPDATE_CHECK", ...(this.heldPaths ? ["CUA_DRIVER_MCP_ENVELOPES"] : []), "DO_NOT_TRACK"].filter(Boolean).join(":"),
+        WSLENV: [process.env.WSLENV, "CUA_DRIVER_RS_TELEMETRY_ENABLED", "CUA_DRIVER_RS_UPDATE_CHECK", ...(this.envelopes ? ["CUA_DRIVER_MCP_ENVELOPES"] : []), "DO_NOT_TRACK"].filter(Boolean).join(":"),
         CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
         CUA_DRIVER_RS_UPDATE_CHECK: "false",
-        ...(this.heldPaths ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}),
+        ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}),
         DO_NOT_TRACK: "1",
       },
     });
@@ -120,11 +150,18 @@ export class McpDriver implements Driver {
     try {
       await client.connect(transport, { signal, timeout: 15_000 });
       const server = client.getServerVersion();
-      const version = this.forkRuntime?.version ?? this.version;
+      const version = this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version;
       if (server?.name !== "cua-driver" || server.version !== version)
         throw new Error(`This backend requires cua-driver ${version}. Requalify before changing the pin.`);
-      if (this.heldPaths && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
+      if (this.envelopes && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
         throw new Error("The native fork runtime did not acknowledge its EOF-aware receiver.");
+      if (this.config.bundled) {
+        const { tools } = await client.listTools({}, { signal, timeout: 15_000 });
+        this.nativeTools = new Set(tools.map(tool => tool.name));
+        for (const name of ["list_apps", "list_windows", "get_window_state", "get_desktop_state"])
+          if (!tools.some(tool => tool.name === name && tool.inputSchema.type === "object"))
+            throw new Error(`native_runtime_schema_missing: ${name}`);
+      }
       return client;
     } catch (error) {
       await this.close();
@@ -145,6 +182,8 @@ export class McpDriver implements Driver {
     if (name === "hold_keys" && !this.heldKeys)
       return { content: [], structuredContent: { effect: "refused", code: "key_hold_unavailable" }, isError: true };
     const client = await this.connect(signal);
+    if (this.nativeTools && !this.nativeTools.has(name))
+      return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout: 15_000 }));
     const content: Content[] = [];
     for (const block of result.content) {
@@ -160,10 +199,11 @@ export class McpDriver implements Driver {
     const transport = this.transport;
     this.client = undefined;
     this.transport = undefined;
+    this.nativeTools = undefined;
     try { await client?.close(); }
     finally {
       try { await transport?.close(); }
-      finally { await this.windowIdentity.close(); }
+      finally { await this.windowIdentity?.close(); }
     }
   }
 }
