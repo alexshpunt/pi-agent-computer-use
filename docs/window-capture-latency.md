@@ -1,6 +1,6 @@
 # Window observation latency experiment
 
-LPT-673 covers two costs separately: looking up the name of an already known Windows PID, and obtaining the target window's pixels. This branch is an experiment. It does not change the installed runtime.
+LPT-673 covers two costs separately: looking up the name of an already known Windows PID, and obtaining the target window's pixels. The isolated comparison finished without changing the installed runtime. The user then explicitly approved switching to the checked direct-lookup production artifact. Capture stays on the existing guarded PrintWindow route; WGC is not adopted.
 
 ## Process lookup
 
@@ -65,7 +65,7 @@ Four saved fixture overviews were reviewed: the heading, marker and Save control
 
 Two earlier runs admitted no samples. The first stopped on the current-color assertion; a diagnostic rerun saved a readable Frame 1 whose expected RGB60/170/80 appeared as RGB93/168/90. The successful run forced sRGB only in the new browser's unique disposable profile, using Chromium's documented `--force-color-profile` switch. The assertion and tolerance were not weakened; neither the monitor profile nor personal Chrome was changed. A JavaScript acknowledgement is still not a compositor timestamp, and the ten-color witness is not a universal stale-frame detector.
 
-**Recommendation:** qualify direct PID lookup for a later adoption decision, retain the current capture route, and reject these per-call WGC variants as latency replacements. Reusing native capture resources would be a separate experiment with its own freshness, lifetime and geometry checks. Nothing is merged or selected by this report.
+**Recommendation:** qualify direct PID lookup for a later adoption decision, retain the current capture route, and reject these per-call WGC variants as latency replacements. Reusing native capture resources would be a separate experiment with its own freshness, lifetime and geometry checks. The later explicit adoption decision is recorded below; the comparison itself did not select a runtime.
 
 This speed comparison alone was not a complete adoption qualification. The targeted follow-up below adds metadata, ownership and closed-target checks for direct PID lookup. No capture route or geometry changed; a proposed capture replacement would still need the applicable covered/moved/resized/minimized and coordinate-click matrix.
 
@@ -80,8 +80,15 @@ The user approved targeted checks after reviewing the comparison. `verify-direct
 
 The current-color witness passed; the saved overview was reviewed. No fixture-content input was sent. All owned resources were cleaned up and installed config/bytes stayed unchanged. See [the bounded live evidence](evidence/window-capture-latency/lookup.json). Closing a window is not a controlled reproduction of a process exiting precisely between two native API calls, and no actual PID reuse was forced.
 
-A first permission test incorrectly assumed that querying Windows System PID4 must fail. The CI host allowed it; build37838369449 failed on that test assumption, not on the candidate's normal lookup behavior. The replacement reads through a real handle to the test process with synchronization rights only. It changes no DACL or token privileges and checks the native image-query access-denied error. Candidate33e264ff extracts the borrowed-handle query as a normal internal function; the public lookup still closes its handle and maps either native error to an absent name. Exact Windows build37839341392 passed68contract,839core and298Windows owner tests (one pre-existing ignored), including the real-handle permission check, plus2protocol and4schema tests. All three executable hashes matched; final driver SHA256a3219d246f3b951965c07a13b0ffd0509ab2f66861f0087fd337d7e3084de674 passed the repeated11request live check. The direct lookup's native errors remain best-effort absent metadata, not proof that a process is alive. No merge or runtime switch has occurred.
+A first permission test incorrectly assumed that querying Windows System PID4 must fail. The CI host allowed it; build37838369449 failed on that test assumption, not on the candidate's normal lookup behavior. The replacement reads through a real handle to the test process with synchronization rights only. It changes no DACL or token privileges and checks the native image-query access-denied error. Candidate33e264ff extracts the borrowed-handle query as a normal internal function; the public lookup still closes its handle and maps either native error to an absent name. Exact Windows build37839341392 passed68contract,839core and298Windows owner tests (one pre-existing ignored), including the real-handle permission check, plus2protocol and4schema tests. All three executable hashes matched; final driver SHA256a3219d246f3b951965c07a13b0ffd0509ab2f66861f0087fd337d7e3084de674 passed the repeated11request live check. The direct lookup's native errors remain best-effort absent metadata, not proof that a process is alive. These checks ran before the user's later runtime-switch approval.
 
+## Approved runtime selection
+
+The user explicitly requested the runtime switch after the final lookup checks. Trusted profile `windows-direct-process` pins source `33e264ffe6310151450020945d2398072c446c49`, version0.34.0 and driver SHA256 `a3219d246f3b951965c07a13b0ffd0509ab2f66861f0087fd337d7e3084de674`. All three verified production executables and their license/notices are copied to a separate source-specific directory; no trace build is selected. Capability checks preserve Bilinear and the earlier input/display routes. Changed driver bytes refuse before startup.
+
+The previous `windows-fast-bilinear` directory and trusted config are retained for rollback. Bundled package defaults stay unchanged. Native PR17 merged at `19761b651c73f6fe53f6a21d13e3e5cb1963ee90`; the selected bytes remain the tested33e264ff artifact, not a rebuilt merge artifact. Production tool/TUI verification after reload is pending; it must pass before calling selection complete. This change does not claim a faster PrintWindow call, WGC adoption or new capture-geometry certification.
+
+Rollback: restore the saved `previous-computer-use.json` from the new source-specific directory to the checkout's ignored `.pi/computer-use.json`, then reload Pi. Do not overwrite either runtime directory.
 ## Reproduce
 
 Use exact source commits and ignored output directories:

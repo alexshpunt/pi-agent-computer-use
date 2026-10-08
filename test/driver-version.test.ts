@@ -80,6 +80,14 @@ test("Bilinear qualification preserves semantic/input capabilities and refuses w
     await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
 });
+test("direct lookup keeps Bilinear and native capabilities but refuses changed artifact bytes", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-direct-process" });
+  try {
+    expect(backend.overviewKernel).toBe("bilinear");
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual([true, true, true, true, true]);
+    await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
 test("existing profiles keep Lanczos3 overview metadata", () => {
   for (const runtime of [undefined, "windows-semantic-actions", "windows-single-png"] as const)
     expect(new McpDriver({ command: process.execPath, runtime }).overviewKernel).toBe("lanczos3");
