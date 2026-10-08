@@ -41,6 +41,12 @@ Prepare a private JSON plan containing `config`, `installed_sha256`, optional li
 node --experimental-transform-types scripts/qualify-native-window-capture.mjs .tmp/window-capture-latency/plan.json --owned-fixture
 ```
 
+For already dispatched builds, `run-native-window-capture-comparison.mjs` can finish the same work serially. Its private input replaces `variants` with `runs`, where each role has an exact `source` and GitHub run `id`. It allows one rerun for a cancelled queue entry, stops on source failures, verifies all downloaded executable hashes, and then invokes the supporting runner once. Each build wait is limited to 70 minutes and the fixture runner to 10 minutes.
+
+```sh
+node scripts/run-native-window-capture-comparison.mjs .tmp/window-capture-latency/build-plan.json --owned-fixture
+```
+
 The supporting runner stages separate verified bytes, opens one new private Chrome fixture through CUA, performs only read-only timing probes, and then cleans up its fixture, profile and clients. It verifies that installed bytes and config are unchanged. It never captures a display or sends timing input. Private pixels and errors stay in the ignored run directory; only bounded summaries are printed.
 
 This supporting experiment is not the canonical CUA desktop matrix. Any proposed production capture change still needs geometry, refusal, isolation, cleanup and applicable regression evidence at its exact source. Report a slower or incorrect route as a rejected alternative, rather than weakening the contract to adopt it.

@@ -108,17 +108,21 @@ try {
   site = await createWindowCaptureSite();
   const root = path.dirname(config.command).replace("/mnt/c/", "C:\\").replaceAll("/", "\\");
   fixture = await openCompleteInputWindow(driver, site.url, root);
+  let appName;
   const observe = async (role, mode, phase) => {
     const args = { ...fixture.target, include_accessibility_tree: mode !== "image", include_screenshot: mode !== "ui", max_image_dimension: 500 };
     const row = await variants[role].observe(args);
     const { result, ...timing } = row;
     const state = result.structuredContent;
-    assert.equal(timing.accounting.calls[role === "baseline" ? "metadata.process_snapshot" : "metadata.direct_process_name"], role === "baseline" && mode !== "ui" ? 2 : 1);
+    assert.equal(timing.accounting.calls[role === "baseline" ? "metadata.process_snapshot" : "metadata.direct_process_name"], role === "baseline" ? 2 : 1);
     if (role !== "baseline") assert.equal(timing.accounting.calls["metadata.process_snapshot"] ?? 0, 0);
     if (result.isError || state?.screenshot_error || (mode !== "ui" && !result.content.some(c => c.type === "image"))) {
       assert.ok(role === "wgc" || role === "wgcPoll5", "Required default-route capture failed");
       unavailable.push({ role, mode, phase, rpc_ms: timing.rpc_ms, trace: timing.trace }); return false;
     }
+    if (role === "baseline" && phase === "setup" && mode === "image") appName = state?.app_name;
+    assert.ok(typeof appName === "string" && appName.length > 0, "Fixture must have known executable metadata");
+    assert.equal(state?.app_name, appName, "Direct lookup must keep the baseline executable basename");
     assert.equal(Array.isArray(state?.elements), mode !== "image");
     const images = result.content.filter(c => c.type === "image"); assert.equal(images.length, mode === "ui" ? 0 : 1);
     const sample = { role, mode, phase, ...timing };
@@ -152,7 +156,9 @@ try {
   for (const role of roles) if (await observe(role, "image", "setup")) enabled.push(role);
   for (let i = 0; i < 10; i++) {
     await nextFrame();
-    for (const role of i % 2 ? [...enabled].reverse() : enabled) await observe(role, "image", "warm");
+    for (const role of i % 2 ? [...enabled].reverse() : [...enabled]) {
+      if (!await observe(role, "image", "warm")) enabled.splice(enabled.indexOf(role), 1);
+    }
   }
   for (const mode of ["full", "ui"]) {
     for (const role of ["baseline", "direct"]) await observe(role, mode, "setup");
