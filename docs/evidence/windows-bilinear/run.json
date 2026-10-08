@@ -544,7 +544,7 @@
   },
   "schema": 2,
   "task": "LPT-663",
-  "status": "isolated qualification and actual window/display fixture review passed; merge consent and production tool/TUI verification remain open",
+  "status": "approved merge and explicit runtime adoption passed; production tools, actual TUI and owned cleanup verified",
   "build_runs": {
     "production": 37781719030,
     "trace_baseline": 37782216800,
@@ -632,5 +632,36 @@
     "real_pi_integration": 24,
     "typecheck": true
   },
-  "production_tool_and_tui_verification": "pending after approved merge and reload"
+  "production_tool_and_tui_verification": {
+    "user_approved_merge_adoption_reload": true,
+    "native_merge": "bbd0c3e987ad546866e1e23a93911b0433a0b491",
+    "extension_merge": "e4b99d680f2d1bb0f71920069034328e8105d3d1",
+    "integrated_tests": { "unit": 363, "real_pi": 25, "typecheck": true, "diff_check": true },
+    "mandatory_reload": true,
+    "profile": "windows-fast-bilinear",
+    "kernel": "bilinear",
+    "old_runtime_preserved": true,
+    "bundled_default_packages_and_pins_unchanged": true,
+    "owned_window_dimensions": [318, 500],
+    "granularities": ["full", "image", "ui"],
+    "image_only_ui_absent": true,
+    "ui_only_image_and_pixel_bounds_absent": true,
+    "current_pixel_save_click": "delivered",
+    "current_ui_hint_second_save_click": "delivered",
+    "application_counter": 2,
+    "application_click_events": ["first", "second"],
+    "application_pointer_events": 2,
+    "display_routes": ["primary", "selected"],
+    "display_dimensions": [499, 333],
+    "display_input_authority": "none",
+    "display_images_forwarded_or_saved": 0,
+    "tui": { "pane": "w3MD:pK", "revision": 66, "columns": 280, "rows": 108, "live_bottom": true,
+      "result_readable": true, "normal_image_placeholders": true, "inline_screenshot_pixels_claimed": false },
+    "agent_script_error": "One read-only display discovery parse assumed string instead of object; corrected before any display capture or input.",
+    "fixture_exit_code": 0,
+    "source_gone": true,
+    "profile_removed": true,
+    "optional_os_process_count_probe": "Stopped after no output; not passing evidence and no OS-wide process-absence claim.",
+    "computer_close_status": "closed"
+  }
 }

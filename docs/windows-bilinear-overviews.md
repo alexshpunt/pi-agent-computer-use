@@ -1,10 +1,10 @@
 # Windows Bilinear overviews
 
-[LPT-663](https://linear.app/alexshpunt/issue/LPT-663) replaces only the resize filter for capped Windows window, primary-display and selected-display overviews. PNG encoding, capture and input do not change. This candidate passed isolated Windows qualification, but is not merged or selected by the normal installation yet. The user requires a final review before merge.
+[LPT-663](https://linear.app/alexshpunt/issue/LPT-663) replaces only the resize filter for capped Windows window, primary-display and selected-display overviews. PNG encoding, capture and input do not change. After isolated qualification and the user's final review, the native fork and extension changes were merged. This installation explicitly selects the exact qualified Bilinear runtime and passed production tool/TUI checks. The previous runtime is retained.
 
 ## Native change
 
-The CUA candidate is `4825375a7d7827cd5dcf0f34924aa45611533853`, based on semantic-actions source `ab86b25cba1cb9c6f5025f25fdd7a8cb3cd21a44`. [Draft PR 15](https://github.com/alexshpunt/cua/pull/15) contains the native change.
+The CUA candidate is `4825375a7d7827cd5dcf0f34924aa45611533853`, based on semantic-actions source `ab86b25cba1cb9c6f5025f25fdd7a8cb3cd21a44`. [Merged PR 15](https://github.com/alexshpunt/cua/pull/15) contains the native change. Its merge commit is `bbd0c3e987ad546866e1e23a93911b0433a0b491`; the qualified executable remains the exact candidate-source artifact above.
 
 It pins `fast_image_resize` 6.1.0 with `std` and no default features. Bilinear uses automatic SIMD selection without Rayon. We use its MIT license option; the Windows bundle includes the copyright notice and MIT text in `THIRD_PARTY_NOTICES.md`.
 
@@ -38,7 +38,7 @@ All three downloaded bytes match the CI manifest. This is an unsigned research b
 
 The exact native Bilinear/reference regression first failed against Lanczos3. Seven focused tests then passed. A final explicit Rust 1.97.1 run passed all 852 core tests. The first red/focused runs used the root Rust 1.98.0 toolchain; they are not evidence for the pinned Windows toolchain.
 
-The overview metadata/viewer regression first failed against the old hardcoded filter. All 341 extension unit tests, typecheck and 24 real-Pi integration tests passed. They cover captured settings, old profiles, wrong-artifact rejection and the fixed viewer selector. The isolated Windows qualifier passed 116 window samples, 24 display samples, three application-witnessed clicks, five read-only details and Safe display denial. Production tools and their TUI still need verification after approved merge and reload.
+The overview metadata/viewer regression first failed against the old hardcoded filter. All 341 extension unit tests, typecheck and 24 real-Pi integration tests passed. They cover captured settings, old profiles, wrong-artifact rejection and the fixed viewer selector. The isolated Windows qualifier passed 116 window samples, 24 display samples, three application-witnessed clicks, five read-only details and Safe display denial. After preserving the concurrent runtime-bundling changes, the integrated tree passed 363 unit tests, typecheck and 25 real-Pi tests. Approved runtime selection, reload and production tool/TUI verification then passed.
 
 ## Live results
 
@@ -62,6 +62,18 @@ The initial monitor crops showed other applications, not the occluded fixture, a
 
 The owned fixture/profile, clients, site and temporary candidate copies all cleaned up. Baseline config bytes and the installed baseline executable hash were unchanged. The original WSL endpoint had disappeared, so the experiment used a live endpoint override without writing config. [Redacted samples and checks](evidence/windows-bilinear/run.json) retain timing and geometry evidence without screenshots, native IDs or window titles.
 
+## Adoption and production check
+
+The user approved merge, runtime selection and reload after seeing the results. Extension merge `e4b99d680f2d1bb0f71920069034328e8105d3d1` was pushed to develop. The three config/driver/index conflicts were resolved without removing bundled runtime discovery, hash/schema checks, platform lifetime limits or the Bilinear profile. The bundled default packages and pins remain unchanged; this installation uses the trusted explicit `windows-fast-bilinear` override. Updating or releasing those packages is not part of this task.
+
+The exact production bundle was copied to a new source-named user-local directory. Its driver, UIA and cursor hashes were rechecked; the previous semantic-actions directory was retained. The ignored config selects the new executable and profile with a live WSL endpoint. The previous config was saved privately. To roll back, select the retained old command/profile with a currently live endpoint; do not use a timing-only diagnostic executable.
+
+After mandatory Pi reload, production `computer_*` calls found one new owned synthetic browser fixture. Full/image/UI observations retained their missing-part contracts. A current image-only 318×500 PNG reported `bilinear` and grounded the first Save pixel click; a fresh UI-only hint grounded the second Save click without inherited pixels. The final native UI and PNG showed `Clicks: 2`. Independent application readback recorded exactly two click and two pointer events, one for each intended Save button. Primary and exact selected-display overviews privately reported Bilinear, 499×333 pixels and no input authority; their images were not forwarded or saved.
+
+Actual `inspect_tui` captured Herdr pane `w3MD:pK`, revision 66, 280×108 cells at the live bottom. The Bilinear/granularity/Clicks: 2 result was readable, with no base64 dump or broken layout. The terminal used its normal image placeholders; this is not a claim that it rendered inline screenshot pixels. Actual owned PNGs were reviewed separately. A read-only Codemode display-discovery parse failed once because that tool returned an object, not a string; correcting the script passed without input replay or runtime changes.
+
+The held fixture finished with exit 0, `sourceGone` and `profileRemoved`; production `computer_close` returned `closed`. No game, Paint or personal-window input was sent. Old runtime files and foreign work were preserved. An optional read-only Windows process-count probe produced no output and was stopped; no OS-wide process-absence claim is made.
+
 ## Reproduce the isolated qualification
 
 `node --experimental-transform-types scripts/qualify-native-bilinear.mjs PLAN.json --owned-input --private-displays`
@@ -76,4 +88,4 @@ For a separately approved foreground-only display check:
 
 This stages only the exact production candidate, creates one owned fixture, foregrounds and positions only that window, and saves its private crops from four sequential display reads. It does not send control input, save complete monitor images, modify config or select a runtime. Actual crop review is separate from its technical success report.
 
-A completed test run does not prove compositor frame age, universal performance or game reaction speed. Actual readability and production/TUI checks must be reported separately before calling adoption complete.
+These checks prove this installation's qualified paths, not compositor frame age, universal performance or game reaction speed.
