@@ -208,7 +208,10 @@ try {
       assert.deepEqual(pair[0], pair[1]);
     }
   }
-  const adapter = { call: (...args) => candidate.call(...args), identity: (...args) => baseline.identity(...args), close: () => candidate.close(), heldPaths: true, heldKeys: true, selectedDisplays: true, captureBoundDrag: true, semanticActions: true, overviewKernel: "bilinear" };
+  const qualified = new McpDriver({ ...config, command: path.join(staged[0], "cua-driver.exe"), runtime: "windows-fast-bilinear" });
+  clients.push(qualified);
+  assert.equal(qualified.overviewKernel, "bilinear");
+  const adapter = { call: (...args) => qualified.call(...args), identity: (...args) => qualified.identity(...args), close: () => qualified.close(), heldPaths: qualified.heldPaths, heldKeys: qualified.heldKeys, selectedDisplays: qualified.selectedDisplays, captureBoundDrag: qualified.captureBoundDrag, semanticActions: qualified.semanticActions, overviewKernel: qualified.overviewKernel };
   session = new ComputerSession(adapter, undefined, () => ({ maxLongEdge: 500, scale: 1, hints: false }));
   const listed = await session.windows(); const found = listed.details.state.windows.filter(w => w.pid === fixture.target.pid && w.window_id === fixture.target.window_id);
   assert.equal(found.length, 1); const ref = found[0].window_ref;

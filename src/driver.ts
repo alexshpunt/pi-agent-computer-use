@@ -44,6 +44,11 @@ export const SEMANTIC_RUNTIME = {
   source: "ab86b25cba1cb9c6f5025f25fdd7a8cb3cd21a44", version: "0.34.0",
   sha256: "17cf450b3e202b9f4b4153133dfb8f4bc3d8121c5f2d0246a6c3ec78e3f49185",
 } as const;
+/** Exact Windows artifact for SIMD Bilinear window and display overviews; PNG and input stay unchanged. */
+export const FAST_BILINEAR_RUNTIME = {
+  source: "4825375a7d7827cd5dcf0f34924aa45611533853", version: "0.34.0",
+  sha256: "237cf3f4d32f3dd92a9f99041452e2d755e0d837c92ef76eba2f03e6a36df58c",
+} as const;
 const forkRuntimes = {
   "windows-held-paths": HELD_PATH_RUNTIME,
   "windows-key-holds": KEY_HOLD_RUNTIME,
@@ -52,6 +57,7 @@ const forkRuntimes = {
   "windows-shell-desktops": SHELL_DESKTOP_RUNTIME,
   "windows-single-png": SINGLE_PNG_RUNTIME,
   "windows-semantic-actions": SEMANTIC_RUNTIME,
+  "windows-fast-bilinear": FAST_BILINEAR_RUNTIME,
 };
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
@@ -67,14 +73,16 @@ export class McpDriver implements Driver {
   get heldPaths(): boolean { return this.forkRuntime !== undefined; }
 
   /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
-  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear"].includes(this.config.runtime ?? ""); }
   /** Existing profiles do not expose exact monitor reads; only a separately qualified pin may enable them. */
-  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear"].includes(this.config.runtime ?? ""); }
   /** Older profiles cannot admit a straight drag against an immutable native capture. */
-  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops" || this.config.runtime === "windows-single-png" || this.config.runtime === "windows-semantic-actions"; }
+  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops" || this.config.runtime === "windows-single-png" || this.config.runtime === "windows-semantic-actions" || this.config.runtime === "windows-fast-bilinear"; }
 
-  /** Only the exact semantic profile may invoke native UIA without the physical action ladder. */
-  get semanticActions(): boolean { return this.config.runtime === "windows-semantic-actions"; }
+  /** Only qualified semantic-capable profiles may invoke UIA without the physical action ladder. */
+  get semanticActions(): boolean { return this.config.runtime === "windows-semantic-actions" || this.config.runtime === "windows-fast-bilinear"; }
+  /** Overview metadata follows the native implementation, not an agent-chosen filter. */
+  get overviewKernel(): "bilinear" | "lanczos3" { return this.config.runtime === "windows-fast-bilinear" ? "bilinear" : "lanczos3"; }
   /** Window, display and browser routes share the explicitly qualified Windows pin. */
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);

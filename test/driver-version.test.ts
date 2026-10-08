@@ -59,6 +59,18 @@ test.each(["windows-shell-desktops", "windows-single-png"] as const)("the %s pro
     await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
 });
+test("Bilinear qualification preserves semantic/input capabilities and refuses wrong bytes before startup", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-fast-bilinear" });
+  try {
+    expect(backend.overviewKernel).toBe("bilinear");
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual([true, true, true, true, true]);
+    await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
+test("existing profiles keep Lanczos3 overview metadata", () => {
+  for (const runtime of [undefined, "windows-semantic-actions", "windows-single-png"] as const)
+    expect(new McpDriver({ command: process.execPath, runtime }).overviewKernel).toBe("lanczos3");
+});
 test("strict semantic qualification preserves earlier capabilities and rejects wrong bytes before UIA dispatch", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-semantic-actions" });
   try {
