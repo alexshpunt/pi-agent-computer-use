@@ -7,6 +7,7 @@ import { ComputerSession } from "../../src/session.ts";
 
 // Substitute only runtime qualification for a deterministic MCP peer. Production runtimes still require exact bytes.
 class FixtureDriver extends McpDriver {
+  override get platform() { return "windows" as const; }
   override get selectedDisplays(): boolean { return true; }
 }
 export default function selectedDisplayFixture(pi: ExtensionAPI): void {

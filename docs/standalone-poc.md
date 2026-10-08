@@ -35,7 +35,17 @@ Background is the default. Foreground is explicit and only follows an observed b
 
 For disposable single-tab Notepad cleanup, clear only your text, verify blank/unmodified state, then use the observed **Close Tab** control. Its background UIA Invoke worked in qualification. Titlebar Close is different: background synthetic clicks were no-ops. Clear/close only task-owned or explicitly authorized documents. `computer_close` does not do this for you.
 
-## Install the Driver once
+## Install the extension
+
+```sh
+pi install npm:@alexshp/pi-agent-computer-use
+```
+
+The native package is part of this private installation. Keep optional dependencies enabled. No manual CUA download or executable config is needed. WSL selects the bundled Windows-host runtime, not a Linux desktop. See [package selection, system requirements and the Linux/macOS boundary](bundled-runtime.md).
+
+The following separate-driver setup is retained only for trusted legacy overrides. It is not the default installation.
+
+## Optional legacy Driver setup
 
 The pin is **Cua Driver 0.33.2**, official release `cua-driver-rs-v0.33.2`. Window, display and browser routes share this qualified pin. GitHub marks the monorepo release as prerelease; the archive uses a plain stable version. Later binaries need fresh qualification, not automatic startup upgrades.
 
@@ -58,7 +68,7 @@ Expect `Valid`, publisher `Cua AI, Inc.`. No admin, PATH changes, scheduled task
 
 ## No per-window setup
 
-The extension finds the above install automatically under Windows user profiles mounted at `/mnt/c/Users` (or `%LOCALAPPDATA%` in native Windows). If zero or several installs match, set `CUA_DRIVER_PATH` to the intended executable. It does not install or update the Driver automatically.
+The extension selects the installed native package automatically. To use a separate legacy executable instead, set `CUA_DRIVER_PATH` or a trusted local `command`. It does not scan user profiles for legacy installs or update CUA at startup.
 
 No `.pi/computer-use.json` is required. For an unusual environment, an ignored local file can override the trusted executable or transport:
 
@@ -72,7 +82,7 @@ Optional `args` replace `['mcp', '--direct', '--embedded']`; optional `interop` 
 
 ### Qualified continuous paths
 
-The default installed pin stays 0.33.2. To qualify or use held paths, explicitly select the Windows fork in the ignored local config:
+The bundle includes the pinned Windows fork routes. To use the older separately qualified held-path artifact instead, select it in the ignored local config:
 
 ```json
 {
@@ -85,7 +95,7 @@ This is trusted user setup, not an agent tool parameter. Selection does not inst
 
 Keep the supplied runtime companions beside the executable. Do not change signing trust, elevation or OS policy to run it. After the user-approved Paint acceptance passed, `scripts/install-cua-held-path.ps1 -Artifact <downloaded-CI-directory>` installed the exact checked artifact into a separate user-local `cua-driver-0.34.0-held-bba07a9` directory. It verifies all three executable hashes, keeps notices/build metadata and refuses to overwrite an existing directory. It changes no PATH, services, registry, autostart or trust settings. On this machine, execute the reviewed installer text with PowerShell `ScriptBlock.Create` if UNC script execution is refused; do not change execution policy or install modules.
 
-The approved drawing selection used that permanent executable with `runtime:"windows-held-paths"`; the later key-hold selection below replaces only the local choice. Close the current computer runtime and reload after a selection change. Remove the local selection to return to installed 0.33.2; no startup update runs. Fresh installations still discover 0.33.2 unless the user explicitly selects this fork. See [the Windows drawing results](windows-held-path-results.md).
+The approved drawing selection used that permanent executable with `runtime:"windows-held-paths"`; the later key-hold selection below replaces only the local choice. Close the current computer runtime and reload after a selection change. Remove the local selection to return to the bundled runtime; no startup update runs. See [the Windows drawing results](windows-held-path-results.md).
 
 ### Qualified key holds
 

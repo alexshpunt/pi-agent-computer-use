@@ -6,6 +6,7 @@ import { ComputerSession, type WindowTarget } from "../../src/session.ts";
 
 // Only the capability and identity peer are simulated. Native app behavior is not tested here.
 class FixtureDriver extends McpDriver {
+  override get platform() { return "windows" as const; }
   override get semanticActions(): boolean { return true; }
   override async identity(target: WindowTarget, _create: boolean, signal?: AbortSignal) {
     const result = await this.call("fixture_identity", target as unknown as Record<string, unknown>, signal);

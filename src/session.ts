@@ -7,7 +7,7 @@ import { isSemanticAction, semanticReceipt } from "./semantic-actions.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
-import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity } from "./observation-source.ts";
+import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -27,6 +27,10 @@ export interface DriverResult {
 }
 /** Owned backend with window-lifetime checks. Calls are serialized by ComputerSession. */
 export interface Driver {
+  /** Native execution platform. Omitted by older in-process fixtures, which model Windows. */
+  platform?: NativePlatform;
+  /** False where native lifetime binding is not implemented; never substitute reusable IDs. */
+  windowLifetime?: boolean;
   /** True only for a backend qualified for held paths and graceful in-flight release. */
   heldPaths?: boolean;
   /** True only for a qualified native runtime with bounded keyboard ownership. */
@@ -96,6 +100,11 @@ export class ComputerSession {
   private uiSerial = 0;
   private uiImages: Observation[] = [];
 
+  private get platform(): NativePlatform { return this.driver.platform ?? "windows"; }
+
+  private source(kind: ObservationSource["kind"], native: Record<string, unknown>, identity: ObservationSource["identity"], zoom = false): ObservationSource {
+    return observationSource(kind, native, identity, zoom, this.platform);
+  }
   private geometry(state: Record<string, unknown>, display: boolean): string {
     if (display) return JSON.stringify([state.topology_id, state.display, state.screen_width, state.screen_height, state.scale_factor]);
     const bounds = state.window_bounds as Record<string, unknown> | undefined;
@@ -181,7 +190,7 @@ export class ComputerSession {
 
   private addressed(entry: WindowEntry, nativeDesktop?: unknown): Partial<ComputerResult["details"]> {
     return { target: entry.target, window_ref: entry.ref,
-      source_identity: sourceIdentity({ session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, null, nativeDesktop) };
+      source_identity: sourceIdentity({ session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, null, nativeDesktop, this.platform) };
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
@@ -208,6 +217,7 @@ export class ComputerSession {
   }
 
   private async register(target: WindowTarget, signal?: AbortSignal): Promise<WindowEntry | undefined> {
+    if (this.driver.windowLifetime === false) return undefined;
     if (!Number.isSafeInteger(target.pid) || target.pid <= 0 || !Number.isSafeInteger(target.window_id) || target.window_id <= 0)
       return undefined;
     const identity = await this.driver.identity(target, true, signal);
@@ -249,9 +259,10 @@ export class ComputerSession {
             ? known && await this.current(known.ref, signal)
             : await this.register(native as unknown as WindowTarget, signal);
           if (this.getMode() === "safe" && (!entry || !entry.owned)) continue;
-          windows.push({ ...native, ...(entry ? { ...this.addressed(entry, native.virtual_desktop), owned: entry.owned } : { unavailable: "Cannot establish window lifetime identity." }) });
+          windows.push({ ...native, ...(entry ? { ...this.addressed(entry, native.virtual_desktop), owned: entry.owned } : { unavailable: this.driver.windowLifetime === false ? `window_lifetime_unavailable: ${this.platform}. Window control is deferred; no reusable-ID substitute.` : "Cannot establish window lifetime identity.",
+            source_identity: sourceIdentity({ session_id: this.sessionId, pid: native.pid as number, window_id: native.window_id as number }, null, undefined, this.platform) }) });
         }
-        return this.result("listed", "Permitted window discovery. Safe lists session-opened windows only. Use window_ref, not PID/HWND. Desktop GUIDs are window-derived and incomplete; discovery does not activate or switch desktops.",
+        return this.result("listed", "Permitted window discovery. Safe lists session-opened windows only. Use window_ref only where native lifetime is supported; Linux/macOS currently expose metadata without control. Native desktop membership is sampled and incomplete; discovery does not activate or switch desktops.",
           { windows: this.getMode() === "safe" ? windows.filter(window => "owned" in window && window.owned) : windows });
       } catch (error) { return this.failed(error, false); }
     });
@@ -264,9 +275,9 @@ export class ComputerSession {
       try {
         const state = await this.state("list_apps", {}, signal);
         if (!Array.isArray(state.apps)) throw new Error("Driver returned no app list.");
-        const apps = (state.apps as App[]).filter(app => app.launch_path && (!query || app.name.toLowerCase().includes(query.toLowerCase())))
-          .map(app => ({ ...app, app_id: app.launch_path }));
-        return this.result("listed", "Installed Windows apps. Open by exact name or app_id.", { apps });
+        const apps = (state.apps as App[]).filter(app => (app.launch_path || app.bundle_id) && (!query || app.name.toLowerCase().includes(query.toLowerCase())))
+          .map(app => ({ ...app, app_id: app.launch_path ?? app.bundle_id }));
+        return this.result("listed", "Installed native apps. Open by exact name or app_id when window lifetime is supported.", { platform: this.platform, apps });
       } catch (error) { return this.failed(error, false); }
     });
   }
@@ -275,6 +286,8 @@ export class ComputerSession {
   open(app: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before app opening.");
+      if (this.driver.windowLifetime === false) return this.result("refused",
+        `window_lifetime_unavailable: ${this.platform}. Window opening/control is deferred; no application was launched.`);
       let dispatched = false;
       try {
         const state = await this.state("list_apps", {}, signal);
@@ -383,7 +396,7 @@ export class ComputerSession {
           const context = this.overview(state, "sequence-frame", !entry, images);
           if (!context || Math.max(context.width, context.height) > cap || images[0].data.length > 16 * 1024 * 1024)
             throw new SequenceStop("capture_failed");
-          let source = observationSource(entry ? "window" : "display", state, entry
+          let source = this.source(entry ? "window" : "display", state, entry
             ? { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }
             : { session_id: this.sessionId, display_id: "primary" });
           source.semantic_scope = "none"; source.capabilities = { read: true, input: "none", detail: "unsupported" };
@@ -512,7 +525,7 @@ export class ComputerSession {
           (state!.screenshot_width as number) <= 0 || (state!.screenshot_height as number) <= 0 ||
           Math.max(state!.screenshot_width as number, state!.screenshot_height as number) > cap)
           throw new Error("CUA returned no valid scoped display image.");
-        const source = entry ? selectedDisplaySource(state!, this.sessionId, entry.ref) : observationSource("display", state!, { session_id: this.sessionId, display_id: "primary" });
+        const source = entry ? selectedDisplaySource(state!, this.sessionId, entry.ref) : this.source("display", state!, { session_id: this.sessionId, display_id: "primary" });
         const id = randomUUID(); const context = this.overview(state!, id, true, images);
         if (entry) { if (!context) throw new Error("CUA returned invalid selected-display raster geometry."); entry.detail = context; }
         else this.displayOverview = context;
@@ -553,7 +566,7 @@ export class ComputerSession {
       const detail = await cropDisplay(images[0], overview!, region, cap);
       if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during processing; pixels withheld.");
       const output = { screenshot_width: detail.width, screenshot_height: detail.height, display: entry ? state!.display : "primary", topology_id: entry?.topology };
-      const source = entry ? selectedDisplaySource({ ...state, ...output }, this.sessionId, entry.ref) : observationSource("display", output, { session_id: this.sessionId, display_id: "primary" });
+      const source = entry ? selectedDisplaySource({ ...state, ...output }, this.sessionId, entry.ref) : this.source("display", output, { session_id: this.sessionId, display_id: "primary" });
       source.captured_at = capturedAt;
       source.image.scope = entry ? "selected_display_region" : "primary_display_region"; source.image.coordinate_space = "detail_image_pixels"; source.capabilities.detail = "unsupported";
       source.image.original_dimensions = { width: overview!.originalWidth, height: overview!.originalHeight };
@@ -589,7 +602,7 @@ export class ComputerSession {
       if (native.isError || state?.status === "refused" || state?.effect === "refused" || !state || images.length !== 1 ||
         !Number.isSafeInteger(state.width) || !Number.isSafeInteger(state.height) || (state.width as number) <= 0 || (state.width as number) > 500 || (state.height as number) <= 0)
         return this.result("refused", "CUA refused or returned invalid window zoom.");
-      const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, true);
+      const source = this.source("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, true);
       source.capabilities.input = "none"; source.semantic_scope = "none";
       const image = images[0] as Extract<Content, { type: "image" }>; const bytes = Buffer.from(image.data, "base64");
       const windows = await this.list(signal);
@@ -597,7 +610,7 @@ export class ComputerSession {
       const window = windows.find(w => w.pid === entry.target.pid && w.window_id === entry.target.window_id);
       if (!window) return this.result("refused", "Window closed during detail; pixels withheld.");
       const bounds = screenRect(window.bounds);
-      Object.assign(source, sourceIdentity(source.identity, null, window.virtual_desktop));
+      Object.assign(source, sourceIdentity(source.identity, null, window.virtual_desktop, this.platform));
       const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
         { kind: "detail", region: bounds ? windowRegion(request, overview!.windowMapping, bounds) : undefined });
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Window detail revoked or cancelled during frame; pixels withheld.");
@@ -670,7 +683,7 @@ export class ComputerSession {
         return typeof element.element_token === "string" && region ? [[element.element_token, region] as [string, ScreenRect]] : [];
       })) };
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during observation; captured data withheld."); }
-    const source = observationSource("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
+    const source = this.source("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
     if (!hasUi) source.semantic_scope = "none";
     if (!hasImage) source.capabilities.detail = "unsupported";
     const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);

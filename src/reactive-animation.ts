@@ -29,6 +29,8 @@ export class ReactiveAnimationDriver implements Driver {
   private uncertain = false;
   private generation = 0;
   constructor(private readonly base: Driver, private readonly config: ReactiveAnimationConfig) {}
+  get platform() { return this.base.platform; }
+  get windowLifetime() { return this.base.windowLifetime; }
   get heldPaths() { return this.base.heldPaths; }
   get heldKeys() { return this.base.heldKeys; }
   get selectedDisplays() { return this.base.selectedDisplays; }

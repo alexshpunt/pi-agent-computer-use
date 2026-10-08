@@ -7,6 +7,7 @@ import { ComputerSession, type WindowTarget } from "../../src/session.ts";
 
 // Simulate the qualified drag capability and Windows identity only. No native application evidence.
 class FixtureDriver extends McpDriver {
+  override get platform() { return "windows" as const; }
   override get captureBoundDrag(): boolean { return true; }
   override async identity(target: WindowTarget, _create: boolean, signal?: AbortSignal): Promise<string | undefined> {
     const state = await this.call("fixture_identity", target as unknown as Record<string, unknown>, signal);

@@ -2,7 +2,7 @@
   "name": "pi-agent-computer-use",
   "version": "0.0.0",
   "private": true,
-  "description": "Standalone Windows computer-use proof of concept for Pi running in WSL.",
+  "description": "Window-first computer use for Pi with bundled platform-native CUA runtimes.",
   "type": "module",
   "pi": {
     "extensions": [
@@ -35,5 +35,18 @@
     "pi-coding-agent-test": "0.1.3",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    ".pi/skills/",
+    "docs/",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@alexshp/cua-runtime-win32-x64": "0.34.0-dev.819fa500b8bc",
+    "@alexshp/cua-runtime-linux-x64": "0.34.0-dev.819fa500b8bc",
+    "@alexshp/cua-runtime-darwin-x64": "0.34.0-dev.819fa500b8bc",
+    "@alexshp/cua-runtime-darwin-arm64": "0.34.0-dev.819fa500b8bc"
   }
 }
