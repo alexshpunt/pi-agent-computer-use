@@ -66,11 +66,29 @@ edit(`${windows}tools/impl_.rs`, s => section(s, "impl Tool for GetWindowStateTo
   t = replace(t, "                                geometry,\n                            ) {", "                                geometry,\n                            )) {");
   return t;
 }));
-edit(`${windows}win32/apps.rs`, s => section(s, "pub fn list_processes()", "fn decode_wstr", t => {
-  t = replace(t, "    let mut result = Vec::new();", `    let _processes = ${span("metadata.process_enumeration")};\n    let mut result = Vec::new();`);
-  t = replace(t, "CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)", timed("metadata.process_snapshot", "CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)"));
-  return t;
-}));
+edit(`${windows}win32/apps.rs`, s => {
+  if (s.includes("pub(crate) fn process_name(pid: u32)")) {
+    s = section(s, "pub(crate) fn process_name(pid: u32)", "/// Return all running processes", t =>
+      replace(t, "    use windows::core::PWSTR;", `    let _lookup = ${span("metadata.direct_process_name")};\n    use windows::core::PWSTR;`));
+  }
+  return section(s, "pub fn list_processes()", "fn decode_wstr", t => {
+    t = replace(t, "    let mut result = Vec::new();", `    let _processes = ${span("metadata.process_enumeration")};\n    let mut result = Vec::new();`);
+    return replace(t, "CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)", timed("metadata.process_snapshot", "CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)"));
+  });
+});
+edit(`${windows}wgc.rs`, s => {
+  s = replace(s, "unsafe fn wgc_capture_impl(hwnd: HWND) -> Result<(Vec<u8>, u32, u32)> {", `unsafe fn wgc_capture_impl(hwnd: HWND) -> Result<(Vec<u8>, u32, u32)> {\n    let _capture = ${span("wgc.total")};`);
+  s = replace(s, "    let mut d3d_device: Option<ID3D11Device> = None;", `    let device = ${span("wgc.device_setup")};\n    let mut d3d_device: Option<ID3D11Device> = None;`);
+  s = replace(s, "    let item_size = item.Size().context(\"GraphicsCaptureItem::Size\")?;", "    let item_size = item.Size().context(\"GraphicsCaptureItem::Size\")?;\n    drop(device);");
+  s = replace(s, "    let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(", `    let setup = ${span("wgc.pool_session_setup")};\n    let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(`);
+  s = replace(s, "    let deadline = std::time::Instant::now() + Duration::from_millis(1500);", `    drop(setup);\n    let wait = ${span("wgc.first_frame_wait")};\n    let deadline = std::time::Instant::now() + Duration::from_millis(1500);`);
+  s = replace(s, "    let surface = frame.Surface().context(\"frame.Surface\")?;", `    drop(wait);\n    let staging_setup = ${span("wgc.staging_setup")};\n    let surface = frame.Surface().context(\"frame.Surface\")?;`);
+  s = replace(s, "    d3d_context.CopyResource(&staging, &frame_texture);", `    drop(staging_setup);\n    let readback = ${span("wgc.copy_and_map")};\n    d3d_context.CopyResource(&staging, &frame_texture);`);
+  s = replace(s, "    let width = desc.Width as usize;", `    drop(readback);\n    let copy = ${span("wgc.rows_to_bgra")};\n    let width = desc.Width as usize;`);
+  s = replace(s, "    d3d_context.Unmap(&staging, 0);", "    d3d_context.Unmap(&staging, 0);\n    drop(copy);");
+  s = replace(s, "    let _ = session.Close();", `    let _cleanup = ${span("wgc.cleanup")};\n    let _ = session.Close();`);
+  return s;
+});
 edit(`${windows}shell_desktop.rs`, s => {
   s = replace(s, "CoInitializeEx(None, COINIT_MULTITHREADED)", timed("shell.COM_initialize", "CoInitializeEx(None, COINIT_MULTITHREADED)"));
   s = replace(s, "CoUninitialize()", timed("shell.COM_uninitialize", "CoUninitialize()"));

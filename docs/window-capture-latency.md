@@ -1,0 +1,46 @@
+# Window observation latency experiment
+
+LPT-673 covers two costs separately: looking up the name of an already known Windows PID, and obtaining the target window's pixels. This branch is an experiment. It does not change the installed runtime.
+
+## Process lookup
+
+The baseline gets a process-table snapshot for `app_name`, then another for Chromium coverage metadata. The candidate queries the known PID with `QueryFullProcessImageNameW`, closes its limited-information handle, and reuses the optional basename. Exact PID/HWND ownership and lifetime checks remain separate. An unreadable name stays absent; there is no identity cache.
+
+Two Windows owner tests check the current executable's basename and the absence of a fabricated name for PID 0. The first checkpoint failed compilation because the helper was missing. The implementation's Windows build and native latency evidence are still pending.
+
+## Capture comparison
+
+Keep Bilinear resize, final PNG encoding and the observation API unchanged. Compare four isolated timing builds:
+
+- Qualified baseline with its existing guarded capture route.
+- Direct process lookup with that same capture route.
+- Direct lookup with forced existing WGC, including its 50ms polling interval.
+- The same read-only WGC experiment with a 5ms polling interval.
+
+Forced WGC is diagnostic only. It does not fall back to a desktop region or invent frame geometry. Its pixels do not qualify window-local input mapping. No diagnostic executable can become the production runtime.
+
+Native timers distinguish device/item setup, pool/session setup, first-frame wait, staging allocation, GPU copy/map, row copying and cleanup. Parent timings are not added to their children. Cold setup samples stay separate from paired warm samples.
+
+The disposable fixture changes a large colored canvas between rounds. Each returned image must contain the newly acknowledged color. The acknowledgement proves a JavaScript drawing call, not a compositor timestamp; image verification is a separate check. This does not establish maximum frame age for arbitrary applications.
+
+## Reproduce
+
+Use exact source commits and ignored output directories:
+
+```sh
+node scripts/prepare-native-window-capture-comparison.mjs NATIVE_REPO SHA .tmp/window-capture-latency/generated-default default
+node scripts/prepare-native-window-capture-comparison.mjs NATIVE_REPO SHA .tmp/window-capture-latency/generated-wgc wgc
+node scripts/prepare-native-window-capture-comparison.mjs NATIVE_REPO SHA .tmp/window-capture-latency/generated-wgc5 wgc-poll5
+```
+
+`commit-native-diagnostic.mjs` creates separate `diagnostic/*` child commits without touching the native checkout or its normal index. The Windows fork workflow accepts an exact SHA and builds the three runtime executables. It uses a shared concurrency group: dispatch diagnostic builds sequentially, because a later pending run can cancel an earlier pending run.
+
+Prepare a private JSON plan containing `config`, `installed_sha256`, optional live `interop`, and `variants` entries named `baseline`, `direct`, `wgc`, `wgcPoll5`. Each entry needs its diagnostic `source`, extracted artifact `directory`, and driver `sha256`. Artifacts must be under `.tmp/window-capture-latency/` and keep their `source-sha.txt`, `hashes.json` and `runtime/` files.
+
+```sh
+node --experimental-transform-types scripts/qualify-native-window-capture.mjs .tmp/window-capture-latency/plan.json --owned-fixture
+```
+
+The supporting runner stages separate verified bytes, opens one new private Chrome fixture through CUA, performs only read-only timing probes, and then cleans up its fixture, profile and clients. It verifies that installed bytes and config are unchanged. It never captures a display or sends timing input. Private pixels and errors stay in the ignored run directory; only bounded summaries are printed.
+
+This supporting experiment is not the canonical CUA desktop matrix. Any proposed production capture change still needs geometry, refusal, isolation, cleanup and applicable regression evidence at its exact source. Report a slower or incorrect route as a rejected alternative, rather than weakening the contract to adopt it.
