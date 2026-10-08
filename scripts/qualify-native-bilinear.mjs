@@ -25,7 +25,10 @@ assert.equal(plan.traceBaseline.source, "3c78d8c36a3cd22be1dd12f0323a18a280f4b1d
 assert.equal(plan.diagnostic.source, "21887ef112b500d7e60aa12fbe366c59e0c3de38");
 const configFile = path.resolve(plan.baselineConfig);
 const configBytes = await readFile(configFile);
-const config = await loadComputerConfig(path.dirname(path.dirname(configFile)));
+const baselineConfig = await loadComputerConfig(path.dirname(path.dirname(configFile)));
+assert.ok(plan.interop === undefined || (typeof plan.interop === "string" && plan.interop.startsWith("/run/WSL/")));
+// A live endpoint may be supplied for this experiment without rewriting installed config.
+const config = { ...baselineConfig, ...(plan.interop ? { interop: plan.interop } : {}) };
 assert.equal(config.runtime, "windows-semantic-actions");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const baselineHash = sha(await readFile(config.command));

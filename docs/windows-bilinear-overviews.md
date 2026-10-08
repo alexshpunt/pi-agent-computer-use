@@ -1,6 +1,6 @@
 # Windows Bilinear overviews
 
-[LPT-663](https://linear.app/alexshpunt/issue/LPT-663) replaces only the resize filter for capped Windows window, primary-display and selected-display overviews. PNG encoding, capture and input do not change. This isolated candidate is not merged or selected by the normal installation yet. The user requires a final review before merge.
+[LPT-663](https://linear.app/alexshpunt/issue/LPT-663) replaces only the resize filter for capped Windows window, primary-display and selected-display overviews. PNG encoding, capture and input do not change. This candidate passed isolated Windows qualification, but is not merged or selected by the normal installation yet. The user requires a final review before merge.
 
 ## Native change
 
@@ -38,13 +38,33 @@ All three downloaded bytes match the CI manifest. This is an unsigned research b
 
 The exact native Bilinear/reference regression first failed against Lanczos3. Seven focused tests then passed. A final explicit Rust 1.97.1 run passed all 852 core tests. The first red/focused runs used the root Rust 1.98.0 toolchain; they are not evidence for the pinned Windows toolchain.
 
-The overview metadata/viewer regression first failed against the old hardcoded filter. All 341 extension unit tests, typecheck and 24 real-Pi integration tests passed. They cover captured settings, old profiles, wrong-artifact rejection and the fixed viewer selector. Live Windows image, timing, coordinate, display and TUI qualification is still pending.
+The overview metadata/viewer regression first failed against the old hardcoded filter. All 341 extension unit tests, typecheck and 24 real-Pi integration tests passed. They cover captured settings, old profiles, wrong-artifact rejection and the fixed viewer selector. The isolated Windows qualifier passed 116 window samples, 24 display samples, three application-witnessed clicks, five read-only details and Safe display denial. Production tools and their TUI still need verification after approved merge and reload.
+
+## Live results
+
+The same new synthetic window used a 1600×1200 host rectangle and a 500px image cap. Ten warm samples per runtime/mode alternated baseline and candidate; two diagnostic builds separately measured native resize including destination allocation, excluding capture and PNG.
+
+| Measurement | Lanczos3 | Bilinear |
+| --- | ---: | ---: |
+| Native resize median | 50.30 ms | 4.00 ms |
+| Image-only capped call mean | 125.48 ms | 86.47 ms |
+| Full capped call mean | 155.68 ms | 133.05 ms |
+| Native-size call mean | 93.63 ms | 92.27 ms |
+| UI-only call mean | 89.11 ms | 81.36 ms |
+
+Resize was about 12.6× faster in this run. Native-size and UI-only calls do not resize, so their differences are timing variation, not evidence of a resize benefit. Full-call times are SDK receipt times, not compositor frame age or a game latency guarantee.
+
+All 24 capped window traces kept one final PNG encode and no intermediate PNG encode/decode. File delivery without an embedded image or UI tree also passed. The actual 500px window PNG had readable title, canvas text, Save buttons and item labels. Three clicks before/after movement and resize had independent click/pointer witnesses; the largest coordinate error was 0.77 CSS pixels per axis.
+
+Primary and selected-display paths returned matching capped/native dimensions. Only one physical 2560×1440 monitor was connected, so selected addressing used that same primary monitor. This is not a multi-monitor claim. Private crops showed recognizable UI/code panes, but tiny text was not fully legible at a 500px monitor cap. The fixture was occluded in those display crops; they do not prove fixture readability. Use fresh read-only detail for small text. No whole-monitor image is published; private monitor files and crops were removed.
+
+The owned fixture/profile, clients, site and temporary candidate copies all cleaned up. Baseline config bytes and the installed baseline executable hash were unchanged. The original WSL endpoint had disappeared, so the experiment used a live endpoint override without writing config. [Redacted samples and checks](evidence/windows-bilinear/run.json) retain timing and geometry evidence without screenshots, native IDs or window titles.
 
 ## Reproduce the isolated qualification
 
 `node --experimental-transform-types scripts/qualify-native-bilinear.mjs PLAN.json --owned-input --private-displays`
 
-The plan supplies the baseline config path and source, artifact directory and exact driver hash for the production candidate and both diagnostic builds. Artifact directories must be inside ignored `.tmp/fast-bilinear/`. The script checks all three binary hashes before staging temporary runtime copies. It does not change the baseline config or installed binary.
+The plan supplies the baseline config path and source, artifact directory and exact driver hash for the production candidate and both diagnostic builds. Artifact directories must be inside ignored `.tmp/fast-bilinear/`. An optional `interop` field supplies a live WSL socket for this experiment without rewriting installed config. The script checks all three binary hashes before staging temporary runtime copies. It does not change the baseline config or installed binary.
 
 The qualifier alternates baseline and candidate calls on one new owned fixture, separates native resize timing from full-call receipt timing, checks three application-witnessed pixel clicks and fresh read-only move/resize detail, and compares authorized primary/selected display reads. Full monitor images stay private and must be removed after review. Display pixels never authorize input. Cleanup closes only the owned fixture and removes its profile and temporary candidate files.
 
