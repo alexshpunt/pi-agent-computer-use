@@ -51,6 +51,11 @@ export const FAST_BILINEAR_RUNTIME = {
   source: "4825375a7d7827cd5dcf0f34924aa45611533853", version: "0.34.0",
   sha256: "237cf3f4d32f3dd92a9f99041452e2d755e0d837c92ef76eba2f03e6a36df58c",
 } as const;
+/** Exact Windows artifact for one best-effort process-name query; capture and input stay unchanged. */
+export const DIRECT_PROCESS_RUNTIME = {
+  source: "33e264ffe6310151450020945d2398072c446c49", version: "0.34.0",
+  sha256: "a3219d246f3b951965c07a13b0ffd0509ab2f66861f0087fd337d7e3084de674",
+} as const;
 const forkRuntimes = {
   "windows-held-paths": HELD_PATH_RUNTIME,
   "windows-key-holds": KEY_HOLD_RUNTIME,
@@ -60,6 +65,7 @@ const forkRuntimes = {
   "windows-single-png": SINGLE_PNG_RUNTIME,
   "windows-semantic-actions": SEMANTIC_RUNTIME,
   "windows-fast-bilinear": FAST_BILINEAR_RUNTIME,
+  "windows-direct-process": DIRECT_PROCESS_RUNTIME,
 };
 /** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
@@ -87,14 +93,14 @@ export class McpDriver implements Driver {
 
   /** Custom held paths remain Windows-only and require checked fork bytes or a pinned bundle. */
   get heldPaths(): boolean { return this.bundledWindows || this.forkRuntime !== undefined; }
-  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear"].includes(this.config.runtime ?? ""); }
-  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear"].includes(this.config.runtime ?? ""); }
-  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process"].includes(this.config.runtime ?? ""); }
+  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process"].includes(this.config.runtime ?? ""); }
 
   /** Experimental strict UIA can change focus; only the checked Windows fork supplies this route. */
-  get semanticActions(): boolean { return this.bundledWindows || this.config.runtime === "windows-semantic-actions" || this.config.runtime === "windows-fast-bilinear"; }
+  get semanticActions(): boolean { return this.bundledWindows || ["windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process"].includes(this.config.runtime ?? ""); }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
-  get overviewKernel(): "bilinear" | "lanczos3" { return this.config.runtime === "windows-fast-bilinear" ? "bilinear" : "lanczos3"; }
+  get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
   }

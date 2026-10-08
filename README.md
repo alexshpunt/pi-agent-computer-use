@@ -27,6 +27,7 @@ Fresh window observations can choose `capture.granularity`: `image` skips the UI
 This installation selects a separately qualified Windows fork that resizes captured pixels before encoding one final overview PNG. The format, native capture route and input/detail contracts stay unchanged; the previous runtime remains available. See [single-PNG qualification and measured latency](docs/single-png-overviews.md).
 
 This installation explicitly selects a qualified runtime using pinned fast_image_resize Bilinear for capped Windows window and display overviews. Approved merge, isolated qualification and production tool/TUI checks passed; the previous runtime and bundled default packages are retained. See [the exact artifact and qualification contract](docs/windows-bilinear-overviews.md).
+The approved direct-process profile replaces two process-name scans with one best-effort known-PID query. It keeps Bilinear, PNG, the guarded PrintWindow route and input/identity rules unchanged. The earlier runtime remains available for rollback. See [comparison, checks and adoption status](docs/window-capture-latency.md).
 
 Bounded temporal observations use `computer_sequence`: capture metadata first, then select timestamped read-only frames explicitly in Codemode. The native window/display path reports real timing, missed slots and geometry changes without promising requested FPS. See [temporal capture](docs/temporal-capture.md) and [live results](docs/temporal-capture-results.md).
 

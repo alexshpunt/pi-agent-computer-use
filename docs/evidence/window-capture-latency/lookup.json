@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "success": true,
+  "candidate": {
+    "source": "33e264ffe6310151450020945d2398072c446c49",
+    "sha256": "a3219d246f3b951965c07a13b0ffd0509ab2f66861f0087fd337d7e3084de674"
+  },
+  "checks": [
+    {
+      "check": "baseline_metadata_equal",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "wrong_pid_refused_without_pixels_or_name",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "valid_target_survives_refusal",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "baseline_metadata_equal",
+      "mode": "ui",
+      "passed": true
+    },
+    {
+      "check": "wrong_pid_refused_without_pixels_or_name",
+      "mode": "ui",
+      "passed": true
+    },
+    {
+      "check": "valid_target_survives_refusal",
+      "mode": "ui",
+      "passed": true
+    },
+    {
+      "check": "baseline_metadata_equal",
+      "mode": "full",
+      "passed": true
+    },
+    {
+      "check": "wrong_pid_refused_without_pixels_or_name",
+      "mode": "full",
+      "passed": true
+    },
+    {
+      "check": "valid_target_survives_refusal",
+      "mode": "full",
+      "passed": true
+    },
+    {
+      "check": "closed_owned_window_refused_without_pixels_or_name",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "closed_owned_window_refused_without_pixels_or_name",
+      "mode": "ui",
+      "passed": true
+    }
+  ],
+  "native_requests": 11,
+  "installed_unchanged": true,
+  "no_fixture_content_input": true,
+  "cleanup": {
+    "fixture": true,
+    "clients": true,
+    "site": true,
+    "candidate_files": true
+  },
+  "windows_build": {
+    "run": 37839341392,
+    "source": "33e264ffe6310151450020945d2398072c446c49",
+    "contract_tests": 68,
+    "core_tests": 839,
+    "windows_tests": 298,
+    "pre_existing_ignored": 1,
+    "protocol_tests": 2,
+    "schema_tests": 4,
+    "all_three_executable_hashes_match": true
+  },
+  "permission_check": {
+    "test": "process_image_path_preserves_access_denied_without_query_rights",
+    "passed": true,
+    "hresult": "0x80070005",
+    "fixture": "Real self-process handle opened with synchronization-only rights; no DACL or privilege changes",
+    "public_lookup_native_errors": "map to absent name"
+  },
+  "visual_review": {
+    "owned_overview_readable": true,
+    "current_color_witness_passed": true,
+    "tui": {
+      "pane": "w3QQ:p4",
+      "revision": 61,
+      "results_and_limits_readable": true
+    }
+  },
+  "limits": [
+    "No actual PID reuse forced",
+    "No controlled process-exit interleaving between native API calls",
+    "No new capture geometry or foreground matrix",
+    "No installed runtime change"
+  ],
+  "initial_live_source": "db93a1db5935deca52f119d0acd9c2e265623a4c"
+}
