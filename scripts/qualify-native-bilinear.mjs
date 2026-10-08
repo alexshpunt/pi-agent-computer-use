@@ -98,7 +98,8 @@ async function prepare(entry, traced) {
   const client = new CandidateClient(path.join(target, "cua-driver.exe"), traced); clients.push(client); await client.connect(); return client;
 }
 
-// Physical positioning only for the exact owned fixture; no global desktop input.
+// Position only the exact owned fixture and request top z-order without activation.
+// This does not guarantee visible or painted content; inspect the returned pixels.
 function position(target, x, y, w, h) {
   const code = `Add-Type 'using System;using System.Runtime.InteropServices;public class OwnedSinglePng {
 [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
@@ -106,7 +107,7 @@ function position(target, x, y, w, h) {
 [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr a,int x,int y,int w,int t,uint f); }';
 if([OwnedSinglePng]::SetThreadDpiAwarenessContext([IntPtr](-4))-eq[IntPtr]::Zero){throw 'Physical coordinates required'};
 [uint32]$p=0;[void][OwnedSinglePng]::GetWindowThreadProcessId([IntPtr]${target.window_id},[ref]$p);if($p-ne${target.pid}){throw 'Owned identity changed'};
-if(-not[OwnedSinglePng]::SetWindowPos([IntPtr]${target.window_id},[IntPtr]::Zero,${x},${y},${w},${h},20)){throw 'Owned positioning failed'};`;
+if(-not[OwnedSinglePng]::SetWindowPos([IntPtr]${target.window_id},[IntPtr]::Zero,${x},${y},${w},${h},16)){throw 'Owned positioning failed'};`;
   execFileSync("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(code, "utf16le").toString("base64")], { timeout: 10000, stdio: ["ignore", "pipe", "pipe"] });
 }
 const median = list => { const sorted = [...list].sort((a, b) => a - b); return sorted.length ? (sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2 : null; };
@@ -134,7 +135,7 @@ try {
     if (images.length) {
       const bytes = Buffer.from(images[0].data, "base64"); assert.equal(bytes.subarray(1, 4).toString(), "PNG");
       row.dimensions = { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }; row.png_bytes = bytes.length;
-      if (mode !== "image_native") assert.equal(Math.max(row.dimensions.width, row.dimensions.height), 500);
+      if (mode !== "image_native") assert.ok(Math.min(row.dimensions.width, row.dimensions.height) > 0 && Math.max(row.dimensions.width, row.dimensions.height) <= 500);
       if (runtime === "candidate" && mode === "full_500" && phase === "setup") await writeFile(`${directory}/overview.png`, bytes);
     }
     if (runtime === "diagnostic" || runtime === "traceBaseline") {
@@ -160,7 +161,14 @@ try {
   assert.ok(!disk.isError && !disk.structuredContent?.screenshot_error);
   assert.equal(disk.content.filter(c => c.type === "image").length, 0);
   const diskPng = await readFile(file); assert.equal(diskPng.subarray(1, 4).toString(), "PNG");
-  assert.equal(Math.max(diskPng.readUInt32BE(16), diskPng.readUInt32BE(20)), 500);
+  // The retained two-step aspect rounding may undershoot the cap by one pixel.
+  const diskWidth = diskPng.readUInt32BE(16), diskHeight = diskPng.readUInt32BE(20);
+  assert.ok(Math.min(diskWidth, diskHeight) > 0 && Math.max(diskWidth, diskHeight) <= 500);
+  const baselineFile = path.join(staged[1], "owned-baseline-file.png");
+  const baselineDisk = await baseline.call("get_window_state", { ...fixture.target, include_accessibility_tree: false, include_screenshot: false, screenshot_out_file: baselineFile.replace("/mnt/c/", "C:\\").replaceAll("/", "\\"), max_image_dimension: 500 });
+  assert.ok(!baselineDisk.isError && !baselineDisk.structuredContent?.screenshot_error);
+  const baselinePng = await readFile(baselineFile);
+  assert.deepEqual([diskWidth, diskHeight], [baselinePng.readUInt32BE(16), baselinePng.readUInt32BE(20)], "File delivery must preserve baseline dimensions.");
   delivery.push({ mode: "file_forced_without_tree_or_embedded_image", width: diskPng.readUInt32BE(16), height: diskPng.readUInt32BE(20), verified: true });
   // Read only explicitly authorized monitors. Full pixels stay in this private
   // directory; the report contains dimensions and hashed source identities only.
@@ -200,7 +208,7 @@ try {
         const width = bytes.readUInt32BE(16), height = bytes.readUInt32BE(20);
         assert.equal(state.screenshot_width, width); assert.equal(state.screenshot_height, height);
         if (cap === 0) assert.deepEqual([width, height], [bounds.width, bounds.height]);
-        else assert.equal(Math.max(width, height), 500);
+        else assert.ok(Math.min(width, height) > 0 && Math.max(width, height) <= 500);
         if (runtime === "candidate" && cap === 500 && round === 0)
           await writeFile(`${directory}/private-display-${source.kind}.png`, bytes);
         pair.push([width, height]);
@@ -270,7 +278,7 @@ try {
   assert.ok(median(resizeRows("diagnostic").map(s => s.accounting.inclusive_us["image.Bilinear"])) <
     median(resizeRows("traceBaseline").map(s => s.accounting.inclusive_us["image.Lanczos3"])), "Native resize median did not improve.");
   assert.equal(hits.length, 3); assert.equal(details.length, 5); assert.equal(displays.length, 24); completed = true;
-} catch (error) { await writeFile(`${directory}/private-failure.txt`, String(error)); console.error("Bilinear qualification stopped; no input replay."); }
+} catch (error) { await writeFile(`${directory}/private-failure.txt`, error instanceof Error ? error.stack ?? error.message : String(error)); console.error("Bilinear qualification stopped; no input replay."); }
 finally {
   cleanup = await finishProfile(completed, { fixture: async () => { assert.ok(fixture); const c = await fixture.close(); assert.ok(c.sourceGone && c.profileRemoved); }, session: async () => { await session?.close(); }, clients: async () => { for (const c of clients) await c.close(); await baseline.close(); }, site: async () => { await site?.close(); }, candidate_files: async () => { for (const d of staged) await rm(d, { recursive: true, force: true }); } });
   assert.deepEqual(await readFile(configFile), configBytes); assert.equal(sha(await readFile(config.command)), baselineHash);

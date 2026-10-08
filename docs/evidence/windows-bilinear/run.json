@@ -21,23 +21,23 @@
   "summary": [
     {
       "mode": "image_500",
-      "baseline_mean_ms": 125.48080059999975,
-      "candidate_mean_ms": 86.47219699999951
+      "baseline_mean_ms": 86.76512970000113,
+      "candidate_mean_ms": 70.46043030000001
     },
     {
       "mode": "image_native",
-      "baseline_mean_ms": 93.62820950000022,
-      "candidate_mean_ms": 92.26979560000036
+      "baseline_mean_ms": 70.76535299999978,
+      "candidate_mean_ms": 73.9096494000003
     },
     {
       "mode": "full_500",
-      "baseline_mean_ms": 155.67946379999975,
-      "candidate_mean_ms": 133.05336529999914
+      "baseline_mean_ms": 109.67160060000023,
+      "candidate_mean_ms": 92.2829855
     },
     {
       "mode": "ui_only",
-      "baseline_mean_ms": 89.1077639999994,
-      "candidate_mean_ms": 81.36264620000074
+      "baseline_mean_ms": 57.33306749999993,
+      "candidate_mean_ms": 55.80469049999938
     }
   ],
   "resize_summary": [
@@ -45,1243 +45,307 @@
       "runtime": "traceBaseline",
       "label": "image.Lanczos3",
       "count": 10,
-      "median_ms": 50.3005,
-      "mean_ms": 52.193999999999996,
+      "median_ms": 15.812999999999999,
+      "mean_ms": 16.0092,
       "boundary": "native resize, including destination allocation; excludes PNG and capture"
     },
     {
       "runtime": "diagnostic",
       "label": "image.Bilinear",
       "count": 10,
-      "median_ms": 3.9965,
-      "mean_ms": 4.0068,
+      "median_ms": 1.637,
+      "mean_ms": 1.6496,
       "boundary": "native resize, including destination allocation; excludes PNG and capture"
     }
   ],
   "warm_samples": [
     {
       "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 89.43008799999916,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
+      "mode": "full_500",
+      "wall_ms": [
+        111.3485899999996,
+        118.32346999999936,
+        136.13290700000107,
+        98.62937800000145,
+        111.65876600000047,
+        96.77957799999785,
+        94.75273200000083,
+        113.724381,
+        118.12353900000016,
+        97.24266500000158
+      ],
+      "dimensions": [
+        {
+          "width": 500,
+          "height": 376
+        }
+      ],
+      "png_bytes": [
+        63869,
+        63873
+      ]
     },
     {
-      "runtime": "candidate",
+      "runtime": "baseline",
       "mode": "image_500",
-      "wall_ms": 75.02465800000027,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
+      "wall_ms": [
+        110.60717300000033,
+        107.99597100000028,
+        89.08097500000076,
+        96.53467600000113,
+        72.76223200000095,
+        77.61193100000128,
+        73.3192990000025,
+        72.80059099999926,
+        86.94069000000309,
+        79.99775900000168
+      ],
+      "dimensions": [
+        {
+          "width": 500,
+          "height": 376
+        }
+      ],
+      "png_bytes": [
+        63869,
+        63873
+      ]
     },
     {
       "runtime": "baseline",
       "mode": "image_native",
-      "wall_ms": 76.35486500000115,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 75.62167899999986,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 145.50587799999994,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 118.54038199999923,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
+      "wall_ms": [
+        89.71795399999974,
+        80.83404900000096,
+        78.52767199999835,
+        59.47521400000005,
+        62.08353199999874,
+        76.04559000000154,
+        69.70728799999779,
+        61.32443400000193,
+        62.95063200000004,
+        66.98716499999864
+      ],
+      "dimensions": [
+        {
+          "width": 1580,
+          "height": 1189
+        }
+      ],
+      "png_bytes": [
+        154744,
+        154750
+      ]
     },
     {
       "runtime": "baseline",
       "mode": "ui_only",
-      "wall_ms": 84.26808100000017,
-      "dimensions": null,
-      "png_bytes": null
+      "wall_ms": [
+        59.59163999999873,
+        59.07379100000071,
+        57.38859000000048,
+        56.171135000000504,
+        55.45329200000015,
+        52.31023400000049,
+        56.40945699999793,
+        57.95045300000129,
+        57.30704100000003,
+        61.67504199999894
+      ],
+      "dimensions": [
+        null
+      ],
+      "png_bytes": [
+        null
+      ]
     },
     {
       "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 81.38415400000122,
-      "dimensions": null,
-      "png_bytes": null
+      "mode": "full_500",
+      "wall_ms": [
+        107.54448699999921,
+        98.758828,
+        95.48611100000016,
+        77.27448600000025,
+        87.44494400000076,
+        94.70210999999836,
+        83.35454000000027,
+        104.03011600000173,
+        80.31115800000043,
+        93.92307499999879
+      ],
+      "dimensions": [
+        {
+          "width": 500,
+          "height": 376
+        }
+      ],
+      "png_bytes": [
+        45841,
+        45843
+      ]
     },
     {
       "runtime": "candidate",
       "mode": "image_500",
-      "wall_ms": 84.00726700000087,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 118.38283299999966,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 104.87277900000117,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 83.56928599999992,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 112.99410100000023,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 109.68177800000012,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 73.79816000000028,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 71.05175500000041,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 82.42583100000047,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 77.89087299999846,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 93.21519699999953,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
+      "wall_ms": [
+        70.09828799999923,
+        65.46324599999934,
+        80.96995400000014,
+        67.78893100000096,
+        69.74854500000038,
+        71.35746100000142,
+        64.35339400000157,
+        75.5071339999995,
+        68.73763999999937,
+        70.57970999999816
+      ],
+      "dimensions": [
+        {
+          "width": 500,
+          "height": 376
+        }
+      ],
+      "png_bytes": [
+        45841,
+        45843
+      ]
     },
     {
       "runtime": "candidate",
       "mode": "image_native",
-      "wall_ms": 75.49026199999935,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 178.9463770000002,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 122.39582199999859,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 87.95472199999858,
-      "dimensions": null,
-      "png_bytes": null
+      "wall_ms": [
+        84.09931300000062,
+        78.04917600000044,
+        92.29105299999901,
+        64.36515299999883,
+        63.506148000000394,
+        78.14092300000084,
+        77.97575499999948,
+        74.73419000000285,
+        59.88783499999772,
+        66.04694800000289
+      ],
+      "dimensions": [
+        {
+          "width": 1580,
+          "height": 1189
+        }
+      ],
+      "png_bytes": [
+        154744,
+        154750
+      ]
     },
     {
       "runtime": "candidate",
       "mode": "ui_only",
-      "wall_ms": 79.77722999999969,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 86.488734999999,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 111.52552999999898,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 89.16437399999995,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 91.75436600000103,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 110.68254899999738,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 123.70420999999988,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 69.63386700000046,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 84.23010900000008,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 124.87311300000147,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 74.2779640000008,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 89.140030999999,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 79.60647800000152,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 114.73637699999745,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 101.66144899999927,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 79.90643799999816,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 67.11102500000197,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 99.28936600000088,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 162.27853600000162,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 110.23506800000177,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 104.94454400000177,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 172.90164599999844,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 191.55848200000037,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 81.73574899999949,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 96.521724000002,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 124.93757499999992,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 80.49576799999704,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 92.36596500000087,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 104.84364999999889,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 200.47382500000094,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 162.52977299999839,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 107.26786699999866,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 81.42679100000169,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 93.09788299999855,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 127.4921179999983,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 93.41055400000187,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 95.16360899999927,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 164.69414300000062,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 152.3220050000018,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 77.47653900000296,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 81.511768999997,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 182.39257599999837,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 105.75121099999888,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 111.7739419999998,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 97.41846200000145,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 150.48222899999746,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 118.35939599999983,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 72.89142099999663,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 70.11314599999969,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_500",
-      "wall_ms": 88.39824500000032,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_500",
-      "wall_ms": 131.06980599999952,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "image_native",
-      "wall_ms": 92.03464999999778,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "baseline",
-      "mode": "image_native",
-      "wall_ms": 98.00028999999995,
-      "dimensions": {
-        "width": 1580,
-        "height": 1189
-      },
-      "png_bytes": 154672
-    },
-    {
-      "runtime": "candidate",
-      "mode": "full_500",
-      "wall_ms": 145.77439199999935,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "baseline",
-      "mode": "full_500",
-      "wall_ms": 189.3834769999994,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "candidate",
-      "mode": "ui_only",
-      "wall_ms": 131.169801,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "baseline",
-      "mode": "ui_only",
-      "wall_ms": 125.47375400000237,
-      "dimensions": null,
-      "png_bytes": null
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 245.58539699999892,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
+      "wall_ms": [
+        56.56397199999992,
+        62.23574899999949,
+        58.48540800000046,
+        52.078426000000036,
+        55.470767000000706,
+        56.06532700000025,
+        51.71275799999785,
+        56.658502999998746,
+        54.28857199999766,
+        54.48742299999867
+      ],
+      "dimensions": [
+        null
+      ],
+      "png_bytes": [
+        null
+      ]
     },
     {
       "runtime": "diagnostic",
       "mode": "image_500",
-      "wall_ms": 142.8177910000013,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 125.36607400000139,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 161.6491780000033,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
+      "wall_ms": [
+        67.68961499999932,
+        57.24836299999879,
+        67.11783600000126,
+        70.33132699999987,
+        59.97156199999881,
+        64.36570399999982,
+        60.54350300000078,
+        58.36393600000156,
+        66.46544200000062,
+        60.35362000000168
+      ],
+      "dimensions": [
+        {
+          "width": 500,
+          "height": 376
+        }
+      ],
+      "png_bytes": [
+        45843
+      ]
     },
     {
       "runtime": "traceBaseline",
       "mode": "image_500",
-      "wall_ms": 185.34153399999923,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 134.89632800000254,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 129.08401199999935,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 189.5704209999967,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 191.61798999999883,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 145.93105399999695,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 128.44577800000116,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 170.70523500000127,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 173.92967900000076,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 122.47893600000316,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 121.92110500000126,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 189.47711899999922,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 162.80055100000027,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 119.60756699999911,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "wall_ms": 109.6242659999989,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 45799
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "wall_ms": 146.42908499999976,
-      "dimensions": {
-        "width": 500,
-        "height": 376
-      },
-      "png_bytes": 63838
+      "wall_ms": [
+        86.58999100000074,
+        76.40565300000162,
+        81.70377899999949,
+        80.66331100000025,
+        80.91228799999953,
+        76.66874100000132,
+        83.89642100000128,
+        77.34923799999888,
+        80.52226899999732,
+        75.05826700000034
+      ],
+      "dimensions": [
+        {
+          "width": 500,
+          "height": 376
+        }
+      ],
+      "png_bytes": [
+        63873
+      ]
     }
   ],
-  "trace_checks": [
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "setup",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 42.239
-    },
+  "resize_samples": [
     {
       "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "setup",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 3.222,
-      "lanczos3_ms": 0
+      "milliseconds": [
+        1.768,
+        1.638,
+        1.636,
+        1.96,
+        1.453,
+        1.664,
+        1.737,
+        1.534,
+        1.568,
+        1.538
+      ]
     },
     {
       "runtime": "traceBaseline",
-      "mode": "image_native",
-      "phase": "setup",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_native",
-      "phase": "setup",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "full_500",
-      "phase": "setup",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 25.015
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "full_500",
-      "phase": "setup",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 2.806,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "ui_only",
-      "phase": "setup",
-      "final_png_encodes": 0,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "ui_only",
-      "phase": "setup",
-      "final_png_encodes": 0,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 75.812
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 4.438,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 4.879,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 49.347
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 54.149
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 5.086,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 4.295,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 50.261
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 46.828
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 3.698,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 4.371,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 50.34
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 54.119
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 3.38,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 3.469,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 52.928
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 45.597
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 3.198,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "diagnostic",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 3.254,
-      "lanczos3_ms": 0
-    },
-    {
-      "runtime": "traceBaseline",
-      "mode": "image_500",
-      "phase": "warm",
-      "final_png_encodes": 1,
-      "intermediate_png_encodes": 0,
-      "intermediate_png_decodes": 0,
-      "bilinear_ms": 0,
-      "lanczos3_ms": 42.559
+      "milliseconds": [
+        16.163,
+        15.499,
+        16.277,
+        15.692,
+        15.555,
+        16.063,
+        17.445,
+        15.772,
+        15.806,
+        15.82
+      ]
     }
   ],
+  "png_checks": {
+    "capped_traces": 24,
+    "one_final_png_and_no_intermediate": true
+  },
   "hits": [
     {
       "case": "baseline",
@@ -1349,269 +413,125 @@
       "verified": true
     }
   ],
-  "displays": [
+  "display_samples": [
     {
       "source": "primary",
-      "selected_is_primary": false,
       "runtime": "baseline",
-      "cap": 500,
-      "round": 0,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 240.91852300000028,
-      "read_only": true
-    },
-    {
-      "source": "primary",
+      "cap": 0,
+      "count": 3,
+      "width": 3840,
+      "height": 2560,
+      "wall_ms": [
+        278.48592700000154,
+        244.7138019999984,
+        237.38222699999824
+      ],
       "selected_is_primary": false,
-      "runtime": "candidate",
-      "cap": 500,
-      "round": 0,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 129.5923049999983,
       "read_only": true
     },
     {
       "source": "primary",
-      "selected_is_primary": false,
       "runtime": "baseline",
-      "cap": 0,
-      "round": 0,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 137.65833700000076,
+      "cap": 500,
+      "count": 3,
+      "width": 499,
+      "height": 333,
+      "wall_ms": [
+        437.07338700000037,
+        365.3747519999997,
+        323.3498069999987
+      ],
+      "selected_is_primary": false,
       "read_only": true
     },
     {
       "source": "primary",
-      "selected_is_primary": false,
       "runtime": "candidate",
       "cap": 0,
-      "round": 0,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 132.53463900000133,
+      "count": 3,
+      "width": 3840,
+      "height": 2560,
+      "wall_ms": [
+        234.90401700000075,
+        249.66225599999962,
+        272.01549800000066
+      ],
+      "selected_is_primary": false,
       "read_only": true
     },
     {
       "source": "primary",
+      "runtime": "candidate",
+      "cap": 500,
+      "count": 3,
+      "width": 499,
+      "height": 333,
+      "wall_ms": [
+        248.478701,
+        234.15480200000093,
+        236.59289600000193
+      ],
       "selected_is_primary": false,
-      "runtime": "candidate",
-      "cap": 500,
-      "round": 1,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 131.46952899999815,
       "read_only": true
     },
     {
-      "source": "primary",
-      "selected_is_primary": false,
-      "runtime": "baseline",
-      "cap": 500,
-      "round": 1,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 192.34007800000109,
-      "read_only": true
-    },
-    {
-      "source": "primary",
-      "selected_is_primary": false,
-      "runtime": "candidate",
-      "cap": 0,
-      "round": 1,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 129.98018199999933,
-      "read_only": true
-    },
-    {
-      "source": "primary",
-      "selected_is_primary": false,
+      "source": "selected",
       "runtime": "baseline",
       "cap": 0,
-      "round": 1,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 115.96691900000224,
+      "count": 3,
+      "width": 3840,
+      "height": 2560,
+      "wall_ms": [
+        215.2145399999972,
+        187.6432989999994,
+        180.02611999999863
+      ],
+      "selected_is_primary": true,
       "read_only": true
     },
     {
-      "source": "primary",
-      "selected_is_primary": false,
+      "source": "selected",
       "runtime": "baseline",
       "cap": 500,
-      "round": 2,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 172.94109599999865,
+      "count": 3,
+      "width": 499,
+      "height": 333,
+      "wall_ms": [
+        359.092558999997,
+        337.1164769999996,
+        296.32900999999765
+      ],
+      "selected_is_primary": true,
       "read_only": true
     },
     {
-      "source": "primary",
-      "selected_is_primary": false,
+      "source": "selected",
+      "runtime": "candidate",
+      "cap": 0,
+      "count": 3,
+      "width": 3840,
+      "height": 2560,
+      "wall_ms": [
+        266.11066500000015,
+        224.31827799999883,
+        189.86350899999888
+      ],
+      "selected_is_primary": true,
+      "read_only": true
+    },
+    {
+      "source": "selected",
       "runtime": "candidate",
       "cap": 500,
-      "round": 2,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 133.79393999999957,
-      "read_only": true
-    },
-    {
-      "source": "primary",
-      "selected_is_primary": false,
-      "runtime": "baseline",
-      "cap": 0,
-      "round": 2,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 137.4774690000013,
-      "read_only": true
-    },
-    {
-      "source": "primary",
-      "selected_is_primary": false,
-      "runtime": "candidate",
-      "cap": 0,
-      "round": 2,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 129.83107000000018,
-      "read_only": true
-    },
-    {
-      "source": "selected",
+      "count": 3,
+      "width": 499,
+      "height": 333,
+      "wall_ms": [
+        241.29675299999872,
+        209.20065500000055,
+        202.6686269999991
+      ],
       "selected_is_primary": true,
-      "runtime": "baseline",
-      "cap": 500,
-      "round": 0,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 147.3812689999977,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "candidate",
-      "cap": 500,
-      "round": 0,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 94.36402399999861,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "baseline",
-      "cap": 0,
-      "round": 0,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 92.8918420000009,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "candidate",
-      "cap": 0,
-      "round": 0,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 102.87499300000127,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "candidate",
-      "cap": 500,
-      "round": 1,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 122.31419300000198,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "baseline",
-      "cap": 500,
-      "round": 1,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 160.6075349999992,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "candidate",
-      "cap": 0,
-      "round": 1,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 97.43412200000239,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "baseline",
-      "cap": 0,
-      "round": 1,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 107.35516899999857,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "baseline",
-      "cap": 500,
-      "round": 2,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 152.50357900000017,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "candidate",
-      "cap": 500,
-      "round": 2,
-      "width": 500,
-      "height": 281,
-      "wall_ms": 96.77829700000075,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "baseline",
-      "cap": 0,
-      "round": 2,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 90.79238799999803,
-      "read_only": true
-    },
-    {
-      "source": "selected",
-      "selected_is_primary": true,
-      "runtime": "candidate",
-      "cap": 0,
-      "round": 2,
-      "width": 2560,
-      "height": 1440,
-      "wall_ms": 83.4580019999994,
       "read_only": true
     }
   ],
@@ -1622,9 +542,9 @@
     "site": true,
     "candidate_files": true
   },
-  "schema": 1,
+  "schema": 2,
   "task": "LPT-663",
-  "status": "isolated qualification passed; merge and production adoption await user review",
+  "status": "isolated qualification and actual window/display fixture review passed; merge consent and production tool/TUI verification remain open",
   "build_runs": {
     "production": 37781719030,
     "trace_baseline": 37782216800,
@@ -1646,11 +566,66 @@
     "separate_physical_monitors_tested": false
   },
   "visual_review": {
-    "window": "Title, Save buttons, canvas and item labels are readable in the actual 500px PNG.",
-    "display": "Private cropped UI and code panes are recognizable. Tiny text is not fully legible at the 500px monitor cap; use fresh detail. The fixture was occluded in these display crops, so they are not fixture-readability proof.",
-    "full_monitor_images_published": false,
-    "private_monitor_images_and_crops_deleted": true
+    "window": "Actual 500px PNG title, Save buttons, canvas and item labels are readable.",
+    "display": "After explicit user-approved CUA foreground setup of one new fixture, actual final primary and selected 400x267 crops showed understandable title, canvas, Save controls, checkbox and item groups. Intermediate resize-time frames were partially painted; final sequential frames were complete. Small text needs detail.",
+    "private_monitor_images_and_crops_deleted": true,
+    "full_monitor_images_published": false
   },
+  "foreground_display_proof": {
+    "user_approved_owned_foreground": true,
+    "native_api": ["bring_to_front", "set_window_frame"],
+    "candidate": "production artifact, not a trace build",
+    "control_input_count": 0,
+    "captures": 4,
+    "routes": ["primary", "selected", "primary", "selected"],
+    "native_dimensions": [3840, 2560],
+    "overview_dimensions": [499, 333],
+    "owned_crop_dimensions": [400, 267],
+    "final_both_routes_reviewed_and_understandable": true,
+    "intermediate_partial_paint_observed": true,
+    "same_primary_monitor": true,
+    "config_and_installed_bytes_unchanged": true,
+    "cleanup_all": true
+  },
+  "prior_runs": [
+    {
+      "technical_success": true,
+      "display_fixture_visibility": false,
+      "resize_median_ms": [
+        50.3005,
+        3.9965
+      ],
+      "image_only_mean_ms": [
+        125.4808006,
+        86.472197
+      ],
+      "full_mean_ms": [
+        155.6794638,
+        133.0533653
+      ],
+      "native_display_dimensions": [
+        2560,
+        1440
+      ],
+      "cleanup_all": true
+    },
+    {
+      "success": false,
+      "reason": "Qualifier incorrectly required a 500px long edge; existing legacy rounding produced 499.",
+      "window_samples": 116,
+      "clicks": 0,
+      "display_samples": 0,
+      "cleanup_all": true
+    },
+    {
+      "success": false,
+      "reason": "Same strict-cap check remained in the display path.",
+      "window_samples": 116,
+      "clicks": 0,
+      "display_samples": 0,
+      "cleanup_all": true
+    }
+  ],
   "tests": {
     "native_core_rust_1_97_1": 852,
     "extension_unit": 341,

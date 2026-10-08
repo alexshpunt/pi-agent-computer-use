@@ -46,17 +46,19 @@ The same new synthetic window used a 1600×1200 host rectangle and a 500px image
 
 | Measurement | Lanczos3 | Bilinear |
 | --- | ---: | ---: |
-| Native resize median | 50.30 ms | 4.00 ms |
-| Image-only capped call mean | 125.48 ms | 86.47 ms |
-| Full capped call mean | 155.68 ms | 133.05 ms |
-| Native-size call mean | 93.63 ms | 92.27 ms |
-| UI-only call mean | 89.11 ms | 81.36 ms |
+| Native resize median | 15.81 ms | 1.64 ms |
+| Image-only capped call mean | 86.77 ms | 70.46 ms |
+| Full capped call mean | 109.67 ms | 92.28 ms |
+| Native-size call mean | 70.77 ms | 73.91 ms |
+| UI-only call mean | 57.33 ms | 55.80 ms |
 
-Resize was about 12.6× faster in this run. Native-size and UI-only calls do not resize, so their differences are timing variation, not evidence of a resize benefit. Full-call times are SDK receipt times, not compositor frame age or a game latency guarantee.
+These are the latest complete paired run: resize was about 9.7× faster, while capped whole calls improved by about 16–17ms. The first complete run measured resize 50.30→4.00ms, image-only 125.48→86.47ms and full 155.68→133.05ms. Workload and source conditions varied; neither run promises a universal speedup. Native-size and UI-only calls do not resize, so their differences are timing variation, not evidence of a resize benefit. Full-call times are SDK receipt times, not compositor frame age or a game latency guarantee.
 
 All 24 capped window traces kept one final PNG encode and no intermediate PNG encode/decode. File delivery without an embedded image or UI tree also passed. The actual 500px window PNG had readable title, canvas text, Save buttons and item labels. Three clicks before/after movement and resize had independent click/pointer witnesses; the largest coordinate error was 0.77 CSS pixels per axis.
 
-Primary and selected-display paths returned matching capped/native dimensions. Only one physical 2560×1440 monitor was connected, so selected addressing used that same primary monitor. This is not a multi-monitor claim. Private crops showed recognizable UI/code panes, but tiny text was not fully legible at a 500px monitor cap. The fixture was occluded in those display crops; they do not prove fixture readability. Use fresh read-only detail for small text. No whole-monitor image is published; private monitor files and crops were removed.
+Primary and selected-display paths returned matching capped/native dimensions. Only one physical monitor was connected, so selected addressing used that same primary monitor. Its dimensions were 2560×1440 in the first run and 3840×2560 in the latest run; this is not a multi-monitor claim. Legacy two-step rounding produced 499×333 at the 500px cap in the latest run. Two qualification attempts stopped before input because the checker incorrectly required an exactly 500px long edge. Correcting that checker preserved the native implementation and exact baseline/candidate dimension comparison; those runs remain failures.
+
+The initial monitor crops showed other applications, not the occluded fixture, and did not prove fixture readability. The user then approved foregrounding only a new test window. A separate short check used CUA `bring_to_front` and `set_window_frame`, with no fixture-control clicks. The actual 400×267 fixture crops from both capped display paths had recognizable title, canvas, Save buttons, checkbox and item groups. Small labels are less legible than in a window overview; use fresh read-only detail for small text. Intermediate captures caught partially painted content after resizing; the final primary and selected frames were complete and understandable. Capture success is not paint readiness, and changing the resize filter does not fix that timing limit. No whole-monitor image is published; private crops were removed.
 
 The owned fixture/profile, clients, site and temporary candidate copies all cleaned up. Baseline config bytes and the installed baseline executable hash were unchanged. The original WSL endpoint had disappeared, so the experiment used a live endpoint override without writing config. [Redacted samples and checks](evidence/windows-bilinear/run.json) retain timing and geometry evidence without screenshots, native IDs or window titles.
 
@@ -67,5 +69,11 @@ The owned fixture/profile, clients, site and temporary candidate copies all clea
 The plan supplies the baseline config path and source, artifact directory and exact driver hash for the production candidate and both diagnostic builds. Artifact directories must be inside ignored `.tmp/fast-bilinear/`. An optional `interop` field supplies a live WSL socket for this experiment without rewriting installed config. The script checks all three binary hashes before staging temporary runtime copies. It does not change the baseline config or installed binary.
 
 The qualifier alternates baseline and candidate calls on one new owned fixture, separates native resize timing from full-call receipt timing, checks three application-witnessed pixel clicks and fresh read-only move/resize detail, and compares authorized primary/selected display reads. Full monitor images stay private and must be removed after review. Display pixels never authorize input. Cleanup closes only the owned fixture and removes its profile and temporary candidate files.
+
+For a separately approved foreground-only display check:
+
+`node --experimental-transform-types scripts/verify-bilinear-display-visibility.mjs PLAN.json --foreground-owned-fixture --private-displays`
+
+This stages only the exact production candidate, creates one owned fixture, foregrounds and positions only that window, and saves its private crops from four sequential display reads. It does not send control input, save complete monitor images, modify config or select a runtime. Actual crop review is separate from its technical success report.
 
 A completed test run does not prove compositor frame age, universal performance or game reaction speed. Actual readability and production/TUI checks must be reported separately before calling adoption complete.
