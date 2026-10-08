@@ -9,7 +9,7 @@ For an explicit per-action short cursor glide, use `animation:"reactive"`. Ordin
 - `key`: complete press/release of a letter, digit, return/tab/escape/space/backspace/delete, arrow, home/end/pageup/pagedown or f1..f12. Optional `modifiers` are ctrl/shift/alt/win.
 - `hotkey`: `keys:["ctrl","a"]`, unique modifiers followed by one key.
 - `type_text`: literal text up to2000 characters; `delay_ms` is CUA's per-character delay, 0..200, default30.
-- `set_value`: replace an observed element's value; requires its token.
+- `invoke`, `select`, `set_value`: [strict UIA intents](semantic-actions.md) on a current hint/token, with a separately qualified runtime. No physical or foreground fallback; `set_value` takes replacement `text`.
 - `select_all`: complete Ctrl+A.
 - `click`, `right_click`, `double_click`: observed token or window-image x/y. Optional modifiers; click also accepts a left/right/middle button.
 - `scroll`: observed element token, direction up/down/left/right, amount1..50, by line/page. Pixel scroll is refused before input: CUA0.33.2 does not correctly map points from resized screenshots.

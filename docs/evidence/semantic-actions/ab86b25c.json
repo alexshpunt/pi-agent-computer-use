@@ -1,0 +1,351 @@
+{
+  "source": "ab86b25cba1cb9c6f5025f25fdd7a8cb3cd21a44",
+  "windows_build": "37760419286",
+  "qualification": "failed_foreground_focus",
+  "owner_confirmed_no_interaction": true,
+  "owner_decision": "defer_no_focus_and_concurrency_goals_keep_UIA_with_focus_limit",
+  "actions": [
+    {
+      "app": "Chrome",
+      "action": "invoke",
+      "status": "delivered",
+      "started_ms": 1791456230562,
+      "ended_ms": 1791456230677,
+      "pattern": "invoke",
+      "physical_fallback": false,
+      "desktop_preserved": true,
+      "on_current_desktop": true,
+      "readback": [
+        {
+          "name": "1",
+          "value": null,
+          "selected": null,
+          "role": "Text"
+        },
+        {
+          "name": "Semantic value",
+          "value": "before",
+          "selected": null,
+          "role": "Edit"
+        },
+        {
+          "name": "Selection before",
+          "value": null,
+          "selected": true,
+          "role": "ListItem"
+        },
+        {
+          "name": "Selection after",
+          "value": null,
+          "selected": false,
+          "role": "ListItem"
+        },
+        {
+          "name": "Pi semantic target - Memory usage - 346 MB",
+          "value": null,
+          "selected": true,
+          "role": "TabItem"
+        }
+      ]
+    },
+    {
+      "app": "Chrome",
+      "action": "select",
+      "status": "delivered",
+      "started_ms": 1791456231572,
+      "ended_ms": 1791456231624,
+      "pattern": "selection_item",
+      "physical_fallback": false,
+      "desktop_preserved": true,
+      "on_current_desktop": true,
+      "readback": [
+        {
+          "name": "1",
+          "value": null,
+          "selected": null,
+          "role": "Text"
+        },
+        {
+          "name": "Semantic value",
+          "value": "before",
+          "selected": null,
+          "role": "Edit"
+        },
+        {
+          "name": "Selection before",
+          "value": null,
+          "selected": false,
+          "role": "ListItem"
+        },
+        {
+          "name": "Selection after",
+          "value": null,
+          "selected": true,
+          "role": "ListItem"
+        },
+        {
+          "name": "Pi semantic target - Memory usage - 346 MB",
+          "value": null,
+          "selected": true,
+          "role": "TabItem"
+        }
+      ]
+    },
+    {
+      "app": "Chrome",
+      "action": "set_value",
+      "status": "delivered",
+      "started_ms": 1791456232661,
+      "ended_ms": 1791456232725,
+      "pattern": "value",
+      "physical_fallback": false,
+      "desktop_preserved": true,
+      "on_current_desktop": true,
+      "readback": [
+        {
+          "name": "1",
+          "value": null,
+          "selected": null,
+          "role": "Text"
+        },
+        {
+          "name": "Semantic value",
+          "value": "Chrome ab86 current",
+          "selected": null,
+          "role": "Edit"
+        },
+        {
+          "name": "Selection before",
+          "value": null,
+          "selected": false,
+          "role": "ListItem"
+        },
+        {
+          "name": "Selection after",
+          "value": null,
+          "selected": true,
+          "role": "ListItem"
+        },
+        {
+          "name": "Pi semantic target - Memory usage - 346 MB",
+          "value": null,
+          "selected": true,
+          "role": "TabItem"
+        }
+      ]
+    },
+    {
+      "app": "Notepad",
+      "action": "set_value",
+      "status": "delivered",
+      "started_ms": 1791456233980,
+      "ended_ms": 1791456234030,
+      "pattern": "value",
+      "physical_fallback": false,
+      "desktop_preserved": true,
+      "on_current_desktop": true,
+      "readback": [
+        {
+          "name": "Text editor",
+          "value": "Notepad ab86 current",
+          "selected": null,
+          "role": "Document"
+        },
+        {
+          "name": "Notepad ab86 current. Modified.",
+          "value": null,
+          "selected": true,
+          "role": "TabItem"
+        }
+      ]
+    },
+    {
+      "app": "Notepad",
+      "action": "invoke",
+      "status": "delivered",
+      "started_ms": 1791456234925,
+      "ended_ms": 1791456235109,
+      "pattern": "invoke",
+      "physical_fallback": false,
+      "desktop_preserved": true,
+      "on_current_desktop": true,
+      "readback": [
+        {
+          "name": "Text editor",
+          "value": null,
+          "selected": null,
+          "role": "Document"
+        },
+        {
+          "name": "Notepad ab86 current. Modified.",
+          "value": null,
+          "selected": false,
+          "role": "TabItem"
+        },
+        {
+          "name": "Untitled. Unmodified.",
+          "value": null,
+          "selected": true,
+          "role": "TabItem"
+        }
+      ]
+    },
+    {
+      "app": "Notepad",
+      "action": "select",
+      "status": "delivered",
+      "started_ms": 1791456236224,
+      "ended_ms": 1791456236355,
+      "pattern": "selection_item",
+      "physical_fallback": false,
+      "desktop_preserved": true,
+      "on_current_desktop": true,
+      "readback": [
+        {
+          "name": "Text editor",
+          "value": "Notepad ab86 current",
+          "selected": null,
+          "role": "Document"
+        },
+        {
+          "name": "Notepad ab86 current. Modified.",
+          "value": null,
+          "selected": true,
+          "role": "TabItem"
+        },
+        {
+          "name": "Untitled. Unmodified.",
+          "value": null,
+          "selected": false,
+          "role": "TabItem"
+        }
+      ]
+    }
+  ],
+  "measurement": {
+    "samples": {
+      "count": 1875,
+      "first_ms": 1791456212956,
+      "last_ms": 1791456271826,
+      "span_ms": 58870,
+      "max_gap_ms": 47,
+      "sentinel_unchanged_rows": 561
+    },
+    "transitions": [
+      {
+        "time_ms": 1791456212956,
+        "foreground": "sentinel",
+        "focus": "sentinel"
+      },
+      {
+        "time_ms": 1791456230581,
+        "foreground": "other native window",
+        "focus": "other native window"
+      },
+      {
+        "time_ms": 1791456230611,
+        "foreground": "Chrome target",
+        "focus": "other native window"
+      },
+      {
+        "time_ms": 1791456233956,
+        "foreground": "other native window",
+        "focus": "other native window"
+      },
+      {
+        "time_ms": 1791456233986,
+        "foreground": "other native window",
+        "focus": "other native window"
+      },
+      {
+        "time_ms": 1791456234938,
+        "foreground": "other native window",
+        "focus": "other native window"
+      }
+    ],
+    "events": [
+      {
+        "at": 1791456230620,
+        "kind": "blur",
+        "window": "sentinel"
+      },
+      {
+        "at": 1791456230650,
+        "kind": "focus",
+        "window": "target"
+      },
+      {
+        "at": 1791456230653,
+        "kind": "focus",
+        "window": "target"
+      },
+      {
+        "at": 1791456230662,
+        "kind": "click",
+        "window": "target"
+      },
+      {
+        "at": 1791456231623,
+        "kind": "click",
+        "window": "target"
+      },
+      {
+        "at": 1791456231624,
+        "kind": "change",
+        "window": "target"
+      },
+      {
+        "at": 1791456232715,
+        "kind": "input",
+        "window": "target"
+      },
+      {
+        "at": 1791456232716,
+        "kind": "change",
+        "window": "target"
+      },
+      {
+        "at": 1791456234023,
+        "kind": "blur",
+        "window": "target"
+      }
+    ],
+    "events_capped": false,
+    "desktop_membership_preserved": true,
+    "states": {
+      "target": {
+        "kind": "target",
+        "count": 1,
+        "value": "Chrome ab86 current",
+        "selection": "after",
+        "radio": "before",
+        "active": "value",
+        "reported_ms": 1791456272086,
+        "received_ms": 1791456272053
+      },
+      "sentinel": {
+        "kind": "sentinel",
+        "value": "Sentinel only",
+        "active": "sentinel",
+        "reported_ms": 1791456272101,
+        "received_ms": 1791456272069
+      }
+    },
+    "limits": "20ms sampling goal, bounded to 120s/6000 rows; fixture events capped at1000. No proof of all intermediate focus or future provider behavior."
+  },
+  "cleanup": [
+    {
+      "status": "closed",
+      "sourceGone": true,
+      "profileRemoved": true
+    },
+    {
+      "status": "closed",
+      "sourceGone": true,
+      "profileRemoved": true
+    }
+  ],
+  "notepad_cleanup": "Task Notepad was absent at cleanup discovery; no fresh close action was sent. Cause of closure not established.",
+  "other_desktop": "Not repeated after current-desktop focus failure.",
+  "limits": "No continuous focus proof, future provider guarantee, multi-agent qualification or Windows architectural impossibility claim."
+}

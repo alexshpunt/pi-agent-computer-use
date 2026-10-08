@@ -39,6 +39,11 @@ export const SINGLE_PNG_RUNTIME = {
   source: "c2d84f0947b6ec0170cb8bd3114fe62e42e5bdd9", version: "0.34.0",
   sha256: "f63720485d48bfcc2637f1b65dc875241b10ad1fdd6e30847fdfde9f39a2b505",
 } as const;
+/** Exact Windows artifact for strict UIA actions; live app and focus checks remain separate. */
+export const SEMANTIC_RUNTIME = {
+  source: "ab86b25cba1cb9c6f5025f25fdd7a8cb3cd21a44", version: "0.34.0",
+  sha256: "17cf450b3e202b9f4b4153133dfb8f4bc3d8121c5f2d0246a6c3ec78e3f49185",
+} as const;
 const forkRuntimes = {
   "windows-held-paths": HELD_PATH_RUNTIME,
   "windows-key-holds": KEY_HOLD_RUNTIME,
@@ -46,6 +51,7 @@ const forkRuntimes = {
   "windows-capture-drag": CAPTURE_DRAG_RUNTIME,
   "windows-shell-desktops": SHELL_DESKTOP_RUNTIME,
   "windows-single-png": SINGLE_PNG_RUNTIME,
+  "windows-semantic-actions": SEMANTIC_RUNTIME,
 };
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
@@ -61,12 +67,14 @@ export class McpDriver implements Driver {
   get heldPaths(): boolean { return this.forkRuntime !== undefined; }
 
   /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
-  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
   /** Existing profiles do not expose exact monitor reads; only a separately qualified pin may enable them. */
-  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions"].includes(this.config.runtime ?? ""); }
   /** Older profiles cannot admit a straight drag against an immutable native capture. */
-  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops" || this.config.runtime === "windows-single-png"; }
+  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops" || this.config.runtime === "windows-single-png" || this.config.runtime === "windows-semantic-actions"; }
 
+  /** Only the exact semantic profile may invoke native UIA without the physical action ladder. */
+  get semanticActions(): boolean { return this.config.runtime === "windows-semantic-actions"; }
   /** Window, display and browser routes share the explicitly qualified Windows pin. */
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
@@ -126,6 +134,8 @@ export class McpDriver implements Driver {
 
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
+    if (name === "semantic_action" && !this.semanticActions)
+      return { content: [], structuredContent: { status: "refused", code: "semantic_action_unavailable", attempted: false, route: "accessibility", fallback: false }, isError: true };
     if (name === "drag" && args.capture_id !== undefined && !this.captureBoundDrag)
       return { content: [], structuredContent: { effect: "refused", code: "capture_bound_drag_unavailable" }, isError: true };
     if (["list_displays", "get_display_state"].includes(name) && !this.selectedDisplays)

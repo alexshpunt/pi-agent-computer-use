@@ -7,6 +7,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 // Deterministic MCP input receipts, not evidence of native application behavior.
 const log = process.argv[2];
 const captureDrag = process.argv[3] === "capture-drag";
+const semantic = process.argv[3] === "semantic";
 let capture; let captureCount = 0;
 const image = await sharp({ create: { width: 500, height: 350, channels: 3, background: "white" } }).png().toBuffer();
 const windows = [];
@@ -21,11 +22,16 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
   else if (name === "list_windows") state = { windows };
   else if (name === "get_window_state") {
     state = { window_bounds: windows[0].bounds, screenshot_width: 500, screenshot_height: 350, capture_id: "once",
-      elements: [{ element_token: "field", role: "textbox", label: "Field", actions: ["type_text"] }] }; pixels = image;
+      elements: [{ element_token: "field", role: "textbox", label: "Field", actions: ["type_text"] }] }; pixels = args.include_screenshot === false ? undefined : image;
     if (captureDrag) {
       capture = { id: `capture-${++captureCount}`, width: windows[0].bounds.width };
       state.capture_id = capture.id;
     }
+  } else if (semantic && name === "semantic_action") {
+    state = args.value === "provider-failure"
+      ? { status: "unknown", code: "semantic_provider_failed", attempted: true, route: "accessibility", fallback: false }
+      : { operation: args.operation, pattern: args.operation === "select" ? "selection_item" : args.operation === "set_value" ? "value" : "invoke",
+        route: "accessibility", effect: "unverifiable", delivery: { mode: "background" } };
   } else if (name === "fixture_key_hold") { state = {
     effect: args.keys.includes("escape") ? "partial" : "unverifiable",
     summary: args.keys.includes("escape") ? "Windows key hold: pressed=[escape], keys_released=false, pointer_prefix=[(1, true, false)]." : "Windows key hold: pressed=[shift,w], keys_released=true, duration_ms=500, held_ms=501.",

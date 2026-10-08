@@ -64,9 +64,9 @@ test("discovery, observation and action share identity; native delivery evidence
   vi.mocked(f.driver.call).mockResolvedValueOnce({ content: [], structuredContent: {
     effect: "confirmed", route: "accessibility", delivery: { mode: "background" } } });
   const delivered = await f.session.act({ window_ref: window.window_ref, observation_id: observed.details.observation_id!,
-    action: "set_value", element_token: "s1:0", text: "Disposable" });
+    action: "click", element_token: "s1:0" });
   expect(delivered.details.source_identity).toEqual(window.source_identity);
-  expect(delivered.details.action_capability).toMatchObject({ operation: "set_value", background: "delivered", foreground: "unknown" });
+  expect(delivered.details.action_capability).toMatchObject({ operation: "click", background: "delivered", foreground: "unknown" });
   const next = await f.session.observe(window.window_ref);
   vi.mocked(f.driver.call).mockResolvedValueOnce({ isError: true, content: [], structuredContent: {
     code: "background_uipi_blocked", event_kind: "keystroke", escalation: { recommended: "foreground" } } });

@@ -1,0 +1,163 @@
+{
+  "source": "8ac536b6ee22e89d40c43fcc1c1cd2cfae11c9c1",
+  "windows_build": 37755779213,
+  "qualification": "failed_cross_desktop",
+  "measurements": [
+    {
+      "file": "9-measurement.json",
+      "samples": 576,
+      "start": 1791452589037,
+      "end": 1791452607049,
+      "duration_ms": 18012,
+      "sentinel_foreground_only": true,
+      "sentinel_focus_only": true,
+      "max_gap_ms": 47,
+      "states": {
+        "target": {
+          "kind": "target",
+          "count": 2,
+          "value": "current verified 626",
+          "selection": "before",
+          "radio": "before",
+          "active": "choice",
+          "reported_ms": 1791452606956,
+          "received_ms": 1791452606972
+        },
+        "sentinel": {
+          "kind": "sentinel",
+          "value": "Sentinel only",
+          "active": "sentinel",
+          "reported_ms": 1791452606971,
+          "received_ms": 1791452606987
+        }
+      },
+      "events_capped": false
+    },
+    {
+      "file": "15-measurement.json",
+      "samples": 364,
+      "start": 1791452876613,
+      "end": 1791452887975,
+      "duration_ms": 11362,
+      "sentinel_foreground_only": true,
+      "sentinel_focus_only": true,
+      "max_gap_ms": 47,
+      "states": {
+        "target": {
+          "kind": "target",
+          "count": 2,
+          "value": "current verified 626",
+          "selection": "before",
+          "radio": "before",
+          "active": "choice",
+          "reported_ms": 1791452887960,
+          "received_ms": 1791452887911
+        },
+        "sentinel": {
+          "kind": "sentinel",
+          "value": "Sentinel only",
+          "active": "sentinel",
+          "reported_ms": 1791452887975,
+          "received_ms": 1791452887926
+        }
+      },
+      "events_capped": false
+    },
+    {
+      "file": "19-measurement.json",
+      "samples": 1030,
+      "start": 1791453005655,
+      "end": 1791453037876,
+      "duration_ms": 32221,
+      "sentinel_foreground_only": true,
+      "sentinel_focus_only": true,
+      "max_gap_ms": 48,
+      "states": {
+        "target": {
+          "kind": "target",
+          "count": 3,
+          "value": "other desktop 626",
+          "selection": "after",
+          "radio": "before",
+          "active": "choice",
+          "reported_ms": 1791453037862,
+          "received_ms": 1791453037899
+        },
+        "sentinel": {
+          "kind": "sentinel",
+          "value": "Sentinel only",
+          "active": "sentinel",
+          "reported_ms": 1791453037877,
+          "received_ms": 1791453037914
+        }
+      },
+      "events_capped": false
+    },
+    {
+      "file": "23-measurement.json",
+      "samples": 634,
+      "start": 1791453203841,
+      "end": 1791453223633,
+      "duration_ms": 19792,
+      "sentinel_foreground_only": true,
+      "sentinel_focus_only": true,
+      "max_gap_ms": 47,
+      "states": {
+        "target": {
+          "kind": "target",
+          "count": 4,
+          "value": "other desktop 626",
+          "selection": "after",
+          "radio": "before",
+          "active": "invoke",
+          "reported_ms": 1791453223556,
+          "received_ms": 1791453223550
+        },
+        "sentinel": {
+          "kind": "sentinel",
+          "value": "Sentinel only",
+          "active": "sentinel",
+          "reported_ms": 1791453223571,
+          "received_ms": 1791453223564
+        }
+      },
+      "events_capped": false
+    }
+  ],
+  "measurement_roles": [
+    "Chrome current desktop",
+    "Notepad current desktop",
+    "Chrome nominal other desktop; not accepted because target moved",
+    "Controlled one-invoke desktop relocation reproduction"
+  ],
+  "reproduction": {
+    "same_window": true,
+    "owner_interaction_during_measurement": false,
+    "before": {
+      "desktop": "other",
+      "current": false,
+      "sampled_at_unix_ms": 1791453216836
+    },
+    "after": {
+      "desktop": "sentinel",
+      "current": true,
+      "sampled_at_unix_ms": 1791453217233
+    },
+    "counter_before": 3,
+    "counter_after": 4
+  },
+  "negative": {
+    "unsupported_selection": "semantic_pattern_unsupported",
+    "attempted": false,
+    "physical_fallback": false,
+    "replay": "stale observation refused locally"
+  },
+  "cleanup": {
+    "chrome_windows_removed": 2,
+    "chrome_profiles_removed": 2,
+    "notepad_test_text_cleared": true,
+    "notepad_unmodified_tabs_closed": 3,
+    "production_discovery_empty": true
+  },
+  "limits": "20ms sampling goal, not guaranteed; bounds120s/6000rows. No continuous focus proof. Two intervals with a different foreground were excluded. Missing Notepad editor/tabs on inactive desktop are not successful actions. Browser DOM click events are application reactions to UIA, not proof of synthetic native input."
+}

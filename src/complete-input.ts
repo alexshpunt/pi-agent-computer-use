@@ -1,8 +1,9 @@
 import { Type } from "@earendil-works/pi-ai";
+import { isSemanticAction } from "./semantic-actions.ts";
 
 /** Complete CUA operations. None exposes a key or button held between calls. */
 export interface InputCommand {
-  action: "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold";
+  action: "invoke" | "select" | "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold";
   element_token?: string;
   /** Snapshot-scoped UI alias; ComputerSession resolves it before native validation. */
   hint?: string;
@@ -24,7 +25,7 @@ export type HoldPointer = Pick<InputCommand, "x" | "y" | "from_x" | "from_y" | "
 /** Wait before a complete step, measured from the previous step's completion. */
 export interface InputStep extends InputCommand { wait_ms?: number }
 
-const names = ["type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold"] as const;
+const names = ["invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold"] as const;
 const modifiers = ["ctrl", "shift", "alt", "win"];
 const enumSchema = (values: readonly string[]) => Type.Union(values.map(value => Type.Literal(value)));
 const optional = {
@@ -52,7 +53,7 @@ const optional = {
 export const actionParameters = Type.Object({
   window_ref: Type.String({ minLength: 1 }), observation_id: Type.String({ minLength: 1 }),
   action: enumSchema([...names, "sequence"]),
-  delivery_mode: Type.Optional(enumSchema(["background", "foreground"])),
+  delivery_mode: Type.Optional(Type.Union([Type.Literal("background"), Type.Literal("foreground")], { description: "Physical actions only: foreground after an observed refusal. Semantic invoke/select/set_value never accept foreground." })),
   animation: Type.Optional(Type.Literal("reactive", { description: "Use configured minimal CUA cursor animation for this action only, then restore ordinary animation. Native click pauses stay unchanged." })),
   actions: Type.Optional(Type.Array(Type.Object({
     action: enumSchema(["click", "drag"]),
@@ -71,7 +72,7 @@ const fields: Record<InputCommand["action"], string[]> = {
   key: ["key", "modifiers"], hotkey: ["keys"], type_text: ["text", "delay_ms"], set_value: ["text"],
   click: ["button", "modifiers"], right_click: ["modifiers"], double_click: ["modifiers"],
   scroll: ["direction", "amount", "by"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers", "via"],
-  select_all: [],
+  select_all: [], invoke: [], select: [],
   hold: ["keys", "duration_ms", "actions"],
 };
 const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
@@ -80,7 +81,7 @@ const integer = (value: unknown, min: number, max: number) => Number.isSafeInteg
 /** Validate complete commands against the original window overview before any member of a batch runs. */
 export function validateInput(command: InputStep, observed: { tokens: Set<string>; width?: number; height?: number }, sequence = false): void {
   if (!command || !fields[command.action]) throw new Error("Unsupported complete action.");
-  const allowed = new Set(["action", ...fields[command.action], ...(["drag", "hold"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
+  const allowed = new Set(["action", ...fields[command.action], ...(isSemanticAction(command.action) ? ["element_token"] : ["drag", "hold"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
   if (Object.keys(command).some(key => !allowed.has(key))) throw new Error("This action has unsupported or conflicting fields.");
   if (sequence && !["key", "hotkey", "type_text", "select_all", "drag"].includes(command.action)) throw new Error("Sequences accept only complete keyboard actions and drags.");
   if (command.action === "hold") {
@@ -108,7 +109,7 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
   if (pixel) { if (command.element_token !== undefined) throw new Error("Choose a token or a point, not both."); point(command.x, command.y); }
   if (["click", "right_click", "double_click", "scroll"].includes(command.action) && !command.element_token && !pixel) throw new Error("This pointer action needs an observed token or point.");
   if (["type_text", "set_value"].includes(command.action) && (typeof command.text !== "string" || command.text.length > 2000)) throw new Error("This action needs text, at most 2000 characters.");
-  if (command.action === "set_value" && !command.element_token) throw new Error("set_value needs an observed token.");
+  if (isSemanticAction(command.action) && !command.element_token) throw new Error("Semantic actions need an observed token.");
   if (command.action === "key" && !validKey(command.key)) throw new Error("Unsupported key.");
   if (command.modifiers !== undefined && (!Array.isArray(command.modifiers) || command.modifiers.length > 4 || new Set(command.modifiers).size !== command.modifiers.length || command.modifiers.some(value => !modifiers.includes(value)))) throw new Error("Use unique ctrl/shift/alt/win modifiers.");
   if (command.action === "hotkey") {
@@ -146,11 +147,13 @@ export function requestedInputTime(command: InputStep): number {
 /** Translate supported fields only. Coordinates stay in the original overview's local image domain.
  * captureBoundDrag enables straight-drag binding only for a separately qualified native runtime. */
 export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string, captureBoundDrag = false): { name: string; args: Record<string, unknown> } {
+  if (isSemanticAction(command.action)) return { name: "semantic_action", args: { ...target, element_token: command.element_token,
+    operation: command.action, ...(command.action === "set_value" ? { value: command.text } : {}) } };
   const name = command.action === "hold" ? "hold_keys" : command.action === "select_all" ? "hotkey" : command.action === "key" ? "press_key" : command.action;
-  const args: Record<string, unknown> = { delivery_mode: delivery, ...((["set_value", "right_click", "double_click", "hold"].includes(command.action) || command.via !== undefined) ? target : { target: { kind: "window", ...target } }) };
+  const args: Record<string, unknown> = { delivery_mode: delivery, ...((["right_click", "double_click", "hold"].includes(command.action) || command.via !== undefined) ? target : { target: { kind: "window", ...target } }) };
   for (const key of ["element_token", "x", "y", ...fields[command.action]]) {
     const value = command[key as keyof InputCommand];
-    if (value !== undefined) args[key === "modifiers" ? command.action === "key" ? "modifiers" : "modifier" : key === "text" && command.action === "set_value" ? "value" : key] = value;
+    if (value !== undefined) args[key === "modifiers" ? command.action === "key" ? "modifiers" : "modifier" : key] = value;
   }
   if (command.action === "select_all") args.keys = ["ctrl", "a"];
   if (captureId && ((command.action === "click" && command.x !== undefined) || (captureBoundDrag && command.action === "drag" && command.via === undefined))) args.capture_id = captureId;

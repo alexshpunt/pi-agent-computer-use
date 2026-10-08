@@ -126,7 +126,7 @@ Codemode forwards only the images you explicitly emit. Keep IDs, not frame paylo
 
 Read the detail images. Know the target, expected effect and stopping point of every action.
 
-Prefer a current short hint or observed element token for an identified control. Pass only one target form. Reported disabled or outside-image elements cannot act. Use pixels for controls visible only in the overview. Points and drag endpoints are local to the returned **window PNG**. Do not add the window's desktop position or mix display, detail, CSS and window-image coordinates.
+Prefer a current short hint or observed element token for an identified control. Pass only one target form. Reported disabled elements cannot act. Physical pointer targets also need image geometry; strict semantic targets do not depend on pixels. Use pixels for controls visible only in the overview. Points and drag endpoints are local to the returned **window PNG**. Do not add the window's desktop position or mix display, detail, CSS and window-image coordinates.
 
 Batch only steps whose targets and order are already known. Stop at navigation, a new dialog, changed layout or a result needing a new decision. Native accessibility is not browser DOM semantics; do not invent hints or a direct URL-navigation API.
 
@@ -199,7 +199,7 @@ All input requires `window_ref` and `observation_id`.
 - `click`, `right_click`, `double_click`: observed token or window-PNG `x/y`; optional `modifiers:["ctrl","shift","alt","win"]`. `click` optionally chooses `button:"left"|"right"|"middle"`.
 - `scroll`: observed `element_token` only; resized-image point scrolling is not supported by the pinned driver. Use `direction:"up"|"down"|"left"|"right"`, `amount:1..50`, `by:"line"|"page"`.
 - `drag`: `from_x/from_y/to_x/to_y`, optional `duration_ms:0..10000` (default500), `steps:1..200` (default20), button and modifiers. Without `via`, this is a straight complete drag. The selected qualified Windows fork also accepts `via` for a continuous foreground left-button path, as described above.
-- `type_text`: literal `text` up to2000 characters, optional per-character `delay_ms:0..200` (default30). `set_value` replaces a value and requires a token.
+- `type_text`: literal `text` up to2000 characters, optional per-character `delay_ms:0..200` (default30). `invoke`, `select` and `set_value` require a current hint/token and the qualified semantic runtime. They call UIA Invoke, SelectionItem.Select or Value/RangeValue only, with no pixels/modifiers/foreground/animation or physical fallback. `set_value` takes replacement `text`; `select` is not Ctrl+A. UI-only grounding is enough. This experimental UIA route can take foreground/focus even without physical fallback. Do not assume it leaves the human or another agent undisturbed. Provider completion proves neither app effect nor unchanged focus; read back independently. See [strict semantics](../../../docs/semantic-actions.md).
 - `key`: one letter/digit, return/tab/escape/space/backspace/delete, arrows, home/end/pageup/pagedown or f1..f12; optional modifiers. `hotkey` takes unique modifiers followed by one key, e.g. `keys:["ctrl","a"]`. `select_all` sends Ctrl+A.
 
 ## Grounding and access

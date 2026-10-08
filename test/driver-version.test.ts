@@ -59,6 +59,13 @@ test.each(["windows-shell-desktops", "windows-single-png"] as const)("the %s pro
     await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
 });
+test("strict semantic qualification preserves earlier capabilities and rejects wrong bytes before UIA dispatch", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-semantic-actions" });
+  try {
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual([true, true, true, true, true]);
+    await expect(backend.call("semantic_action", { operation: "invoke" })).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
 test("the capture-bound drag profile preserves earlier capabilities but rejects wrong bytes before startup", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-capture-drag" });
   try {

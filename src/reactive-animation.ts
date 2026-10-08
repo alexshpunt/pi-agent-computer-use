@@ -33,6 +33,7 @@ export class ReactiveAnimationDriver implements Driver {
   get heldKeys() { return this.base.heldKeys; }
   get selectedDisplays() { return this.base.selectedDisplays; }
   get captureBoundDrag() { return this.base.captureBoundDrag; }
+  get semanticActions() { return this.base.semanticActions; }
 
   /** Identity and permissions remain with the existing native peer. */
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal) {

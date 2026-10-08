@@ -3,6 +3,7 @@ import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./sele
 import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
 import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
+import { isSemanticAction, semanticReceipt } from "./semantic-actions.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
@@ -36,6 +37,8 @@ export interface Driver {
   captureBoundDrag?: boolean;
   /** True when existing native cursor controls can be scoped and restored for one action. */
   reactiveAnimation?: boolean;
+  /** True only for an exact qualified Windows runtime with UIA-only semantic dispatch. */
+  semanticActions?: boolean;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal, options?: { animation?: "reactive" }): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
@@ -785,12 +788,16 @@ export class ComputerSession {
           }
           const element = observed.ui?.elements.find(e => e.element_token === nativeStep.element_token);
           if (element?.enabled === false) throw Error("The observed target is disabled. No input was dispatched.");
-          if (element?.bounds.window_image && observed.width && observed.height) {
+          if (!isSemanticAction(nativeStep.action) && element?.bounds.window_image && observed.width && observed.height) {
             const r = element.bounds.window_image;
             if (r.x >= observed.width || r.y >= observed.height || r.x + r.width <= 0 || r.y + r.height <= 0)
               throw Error("The observed target is outside the image. No input was dispatched.");
           }
           validateInput(nativeStep, observed, batch);
+          if (isSemanticAction(nativeStep.action)) {
+            if (!this.driver.semanticActions) throw Error("Semantic actions require the explicitly selected qualified Windows semantic runtime. No input was dispatched.");
+            if (delivery_mode === "foreground" || animation !== undefined) throw Error("Semantic actions use accessibility only: no foreground or cursor animation.");
+          }
           return nativeStep;
         });
         if (this.driver.captureBoundDrag && !observed.captureId && commands.some(step => step.action === "drag" && step.via === undefined))
@@ -853,7 +860,8 @@ export class ComputerSession {
           const refused = state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
             "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
           const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
-          const status = refused ? "refused" : uncertain ? "unknown" : "delivered";
+          const inconsistent = isSemanticAction(step.action) && !refused && !uncertain && !semanticReceipt(step.action, state);
+          const status = refused ? "refused" : uncertain || inconsistent ? "unknown" : "delivered";
           row.status = status; inFlight = false;
           const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, state);
           row.action_capability = capability;
@@ -880,10 +888,10 @@ export class ComputerSession {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
           }
-          const result = this.result(status, `Driver returned ${status} for ${name} (requested: ${args.delivery_mode}). Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
+          const result = this.result(status, `Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
             { ...state, ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
               overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
-              resolved_native_screen: resolvedPoint ?? null, native_target_mark: entry.lastAction ?? null } } : {}),
+              resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
             ...(native.isError || !native.structuredContent ? {
               native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
             } : {}) }, { ...this.addressed(entry), action_capability: capability, ...(highlight ? { highlight } : {}) });

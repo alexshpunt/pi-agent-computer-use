@@ -11,6 +11,8 @@ export interface ActionCapability {
   unsupported: boolean;
   route: string | null;
   event_kind: string | null;
+  /** Native semantic evidence only; app effect and focus need independent readback. */
+  semantic?: { pattern: string | null; app_effect: "unverified"; focus: "unverified"; physical_fallback: false };
   code: string | null;
 }
 
@@ -27,7 +29,10 @@ export function actionCapability(operation: string, nativeTool: string, requeste
     requested_delivery: requested, actual_delivery: actual,
     background: unavailable ? "unavailable" : delivered && actual === "background" ? "delivered" : "unknown",
     foreground: delivered && actual === "foreground" ? "delivered" : unavailable && escalation?.recommended === "foreground" ? "suggested" : "unknown",
-    unsupported: status === "refused" && ["key_hold_unavailable", "held_path_unavailable"].includes(code ?? ""),
+    unsupported: status === "refused" && ["key_hold_unavailable", "held_path_unavailable", "semantic_pattern_unsupported"].includes(code ?? ""),
     route: typeof native.route === "string" ? native.route : null,
-    event_kind: typeof native.event_kind === "string" ? native.event_kind : null, code };
+    event_kind: typeof native.event_kind === "string" ? native.event_kind : null, code,
+    ...(nativeTool === "semantic_action" && native.route === "accessibility" && (status === "delivered" || native.fallback === false)
+      ? { semantic: { pattern: typeof native.pattern === "string" ? native.pattern : null, app_effect: "unverified" as const,
+        focus: "unverified" as const, physical_fallback: false as const } } : {}) };
 }
