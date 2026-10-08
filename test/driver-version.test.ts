@@ -2,6 +2,19 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "vitest";
 import { McpDriver } from "../src/driver.ts";
+import type { BundledRuntime } from "../src/native-runtime.ts";
+
+test.each(["linux-x64", "darwin-x64", "darwin-arm64"] as const)("%s never starts a Windows identity peer or advertises Windows-only fork routes", async target => {
+  const bundled: BundledRuntime = { target, root: "/missing-package", command: "/missing-package/runtime/cua-driver", source: "a".repeat(40), version: "0.34.0-dev.fixture", driverVersion: "0.34.0", files: {} };
+  const backend = new McpDriver({ command: bundled.command, bundled });
+  try {
+    expect(backend.platform).toBe(target.startsWith("darwin") ? "macos" : "linux");
+    expect(backend.windowLifetime).toBe(false);
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual([false, false, false, false, false]);
+    await expect(backend.identity({ pid: 42, window_id: 99 }, true)).resolves.toBeUndefined();
+    expect(await backend.call("semantic_action", { operation: "invoke" })).toMatchObject({ isError: true, structuredContent: { code: "semantic_action_unavailable", attempted: false } });
+  } finally { await backend.close(); }
+});
 
 test.each(["windows-held-paths", "windows-key-holds"] as const)("an unqualified %s executable cannot start a peer or dispatch input", async runtime => {
   const backend = new McpDriver({ command: process.execPath, runtime });
