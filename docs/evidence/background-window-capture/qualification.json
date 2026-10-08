@@ -1,0 +1,113 @@
+{
+  "scope": "Owner-approved Windows Chrome/Notepad qualification; not a universal window-only guarantee",
+  "native_source": "506239da08cfdafa63dac1857f5471752fb70f5e",
+  "native_driver_sha256": "0e25c8b83fd48b54be479eb128452a6f6b099b5ff6ce2d20bac024eda07ead16",
+  "rows": [
+    {
+      "app": "Chrome",
+      "state": "covered",
+      "expected": "green MARKER 2",
+      "status": "observed",
+      "time": "2026-10-07T17:04:29.727Z",
+      "current_desktop": true,
+      "dimensions": {
+        "width": 500,
+        "height": 444
+      },
+      "hash": "988e9429b06f2641376a2f1d0c013ce90724229256f58448a41ba47db044ca4a"
+    },
+    {
+      "app": "Notepad",
+      "state": "covered",
+      "expected": "MARKER B 625",
+      "status": "observed",
+      "time": "2026-10-07T17:04:30.127Z",
+      "current_desktop": true,
+      "dimensions": {
+        "width": 500,
+        "height": 444
+      },
+      "hash": "87b682603d6de27d20e4ddc90418a5636f22413b0ff58b990a31993b15819921"
+    },
+    {
+      "app": "Chrome",
+      "state": "other_desktop",
+      "expected": "blue MARKER 3",
+      "status": "observed",
+      "time": "2026-10-07T18:25:09.033Z",
+      "current_desktop": false,
+      "dimensions": {
+        "width": 500,
+        "height": 444
+      },
+      "hash": "fb66d46eb7f7f570ce3274e199079367b388cf73d79a10ce980019eb347b1290"
+    },
+    {
+      "app": "Notepad",
+      "state": "other_desktop",
+      "expected": "MARKER C 625",
+      "status": "observed",
+      "time": "2026-10-07T18:27:02.517Z",
+      "current_desktop": false,
+      "dimensions": {
+        "width": 500,
+        "height": 444
+      },
+      "hash": "7f0fb18c877ba91e87fefa5a36a14ea785ba29c0b2cb20b99be3d2e45b0a2f4e"
+    }
+  ],
+  "batches": [
+    {
+      "label": "covered_initial",
+      "count": 792,
+      "all_sentinel": true,
+      "max_gap_ms": 48
+    },
+    {
+      "label": "covered_changed",
+      "count": 969,
+      "all_sentinel": true,
+      "max_gap_ms": 47
+    },
+    {
+      "label": "other_desktop_initial",
+      "count": 979,
+      "all_sentinel": true,
+      "max_gap_ms": 47
+    },
+    {
+      "label": "other_desktop_chrome_changed",
+      "count": 555,
+      "all_sentinel": true,
+      "max_gap_ms": 47
+    },
+    {
+      "label": "other_desktop_notepad_changed",
+      "count": 968,
+      "all_sentinel": true,
+      "max_gap_ms": 47
+    }
+  ],
+  "foreground_limits": "Command-order brackets; separate Windows/WSL clocks; bounded sampling cannot rule out shorter transients.",
+  "owner_accepted_native_fallback": true,
+  "native_changed": false,
+  "cleanup": {
+    "windows_gone": true,
+    "isolated_profiles_removed": 2,
+    "method": "owner-assisted"
+  },
+  "final_after_reload": {
+    "minimized_notepad": "refused with native reason",
+    "image": false,
+    "ui": false,
+    "observation_id": false,
+    "task_blank_tab_closed": true,
+    "stale_input": "Unit and real-Pi contract verified; final live attempt had no ID and was not counted",
+    "tui": {
+      "pane": "w3MD:pB",
+      "revision": 136,
+      "cells": "188x57",
+      "summary": "Readable refusal and cleanup summary"
+    }
+  }
+}

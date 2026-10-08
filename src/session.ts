@@ -621,6 +621,14 @@ export class ComputerSession {
     if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry, native.structuredContent?.virtual_desktop));
     if (!native.structuredContent) throw new Error("Driver returned no structured window state.");
     const state = { ...native.structuredContent };
+    if (hasImage && typeof state.screenshot_error === "string" && state.screenshot_error.trim()) {
+      if (!await this.current(entry.ref, signal)) return this.result("refused", "Window changed during observation. Discover again.");
+      if (!this.allowed(entry)) return this.denied(entry.ref);
+      if (signal?.aborted) return this.result("refused", "Cancelled during observation; diagnostics withheld.");
+      const screenshot_error = state.screenshot_error.trim().slice(0, 2000);
+      return this.result("refused", `Window screenshot unavailable. Native reason: ${screenshot_error}`,
+        { screenshot_error }, this.addressed(entry, state.virtual_desktop));
+    }
     // Native screenshot-only reads may preserve their old AX snapshot. Never expose it as current.
     if (!hasUi) for (const key of ["elements", "tree_markdown", "snapshot_id", "invalidated_snapshot_ids", "elements_complete", "truncated", "truncation_reason", "total_element_count", "element_count", "focused_element"]) delete state[key];
     // Tree-only native receipts can describe an older pixel frame. It gives this observation no image authority.
