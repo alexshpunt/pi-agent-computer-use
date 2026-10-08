@@ -1,7 +1,7 @@
 import { guideOptions, type GuideOptions } from "./image-guides.ts";
 /** Native CUA window-capture settings. No pixels are transformed by this store. */
 export interface CuaVisionSettings {
-  kernel: "lanczos3"; maxLongEdge: number; scale: number; version: number; route: "cua_native"; hints?: boolean; guides?: GuideOptions;
+  kernel: "lanczos3" | "bilinear"; maxLongEdge: number; scale: number; version: number; route: "cua_native"; hints?: boolean; guides?: GuideOptions;
 }
 const defaults = (): CuaVisionSettings => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" });
 
@@ -16,16 +16,18 @@ export function nativeImageCap(settings: Pick<CuaVisionSettings, "maxLongEdge" |
 /** Session-local controls for the native cap. CUA owns resizing and fresh zoom. */
 export class CuaImageSettings {
   private current = defaults();
+  /** The trusted runtime owns the filter; the viewer may only change the cap. */
+  constructor(private readonly overviewKernel: () => CuaVisionSettings["kernel"] = () => "lanczos3") {}
   /** In-flight captures keep their own immutable settings copy. */
-  settings(): CuaVisionSettings { return structuredClone(this.current); }
+  settings(): CuaVisionSettings { return structuredClone({ ...this.current, kernel: this.overviewKernel() }); }
   /** Unsupported kernels or extra fields fail without changing the active tuple. */
   update(value: unknown): CuaVisionSettings {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected native CUA image settings.");
     const input = value as Record<string, unknown>;
-    if (Object.keys(input).sort().join(",") !== "kernel,maxLongEdge,scale" || input.kernel !== "lanczos3" ||
+    if (Object.keys(input).sort().join(",") !== "kernel,maxLongEdge,scale" || input.kernel !== this.overviewKernel() ||
       !Number.isSafeInteger(input.maxLongEdge) || (input.maxLongEdge as number) < 64 || (input.maxLongEdge as number) > 4096 ||
       typeof input.scale !== "number" || !Number.isFinite(input.scale) || input.scale < 0.05 || input.scale > 1)
-      throw new Error("Native CUA supports Lanczos3, long edge 64..4096 and scale 0.05..1. Saved crops and other kernels are unavailable.");
+      throw new Error(`The selected native overview filter is ${this.overviewKernel()}; use long edge 64..4096 and scale 0.05..1. Saved crops and filter switches are unavailable.`);
     this.current = { ...this.current, maxLongEdge: input.maxLongEdge as number, scale: input.scale, version: this.current.version + 1 };
     return this.settings();
   }

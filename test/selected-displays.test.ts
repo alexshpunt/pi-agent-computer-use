@@ -50,6 +50,19 @@ test("native discovery and selected pixels keep monitor identity, negative origi
   expect(f.driver.call).toHaveBeenCalledTimes(count);
 });
 
+test("overview metadata follows the trusted runtime filter while fresh display detail stays Lanczos3", async () => {
+  const f = await fixture();
+  Object.assign(f.driver, { overviewKernel: "bilinear" });
+  const { ref } = await discover(f);
+  const overview = await f.session.observeDisplay(ref);
+  expect(overview.details.agent_image).toMatchObject({ configuration: { kernel: "bilinear" } });
+  const detail = await f.session.observeDisplay(ref, undefined, {
+    image_id: overview.details.agent_image!.image_id as string, x: 100, y: 80, width: 100, height: 80,
+  });
+  expect(detail.details.status).toBe("observed");
+  expect(detail.details.agent_image).toMatchObject({ configuration: { kernel: "lanczos3" } });
+});
+
 test("selected detail uses fresh selected-monitor pixels and never a primary screenshot or host-global crop", async () => {
   const f = await fixture(); const { ref } = await discover(f); const overview = await f.session.observeDisplay(ref);
   const crop = await f.session.observeDisplay(ref, undefined, { image_id: overview.details.agent_image!.image_id as string, x: 100, y: 80, width: 100, height: 80 });

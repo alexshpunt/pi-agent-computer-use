@@ -4,6 +4,18 @@ import { CuaImageSettings } from "../src/cua-image-settings.ts";
 import { startVisionServer } from "../src/vision-server.ts";
 import { VisionTrace } from "../src/vision-trace.ts";
 
+test("the private viewer reports the selected native overview filter without offering a filter switch", () => {
+  let kernel: "lanczos3" | "bilinear" = "bilinear";
+  const images = new CuaImageSettings(() => kernel);
+  const frozen = images.settings();
+  expect(frozen.kernel).toBe("bilinear");
+  expect(images.update({ kernel: "bilinear", maxLongEdge: 800, scale: 1 }).kernel).toBe("bilinear");
+  expect(() => images.update({ kernel: "lanczos3", maxLongEdge: 800, scale: 1 })).toThrow();
+  images.reset(); expect(images.settings().kernel).toBe("bilinear");
+  kernel = "lanczos3";
+  expect(images.settings().kernel).toBe("lanczos3");
+  expect(frozen.kernel).toBe("bilinear");
+});
 // Native controls must not imply that a second image engine still runs.
 test("guide writes require a complete same-origin tuple and keep prior settings frozen", async () => {
   const images = new CuaImageSettings(); const original = images.settings();

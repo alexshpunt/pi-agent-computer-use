@@ -105,23 +105,34 @@ edit(`${core}image_utils.rs`, s => {
     t = replace(t, "    let mut out = Vec::new();", `    drop(buffer);\n    let _encode = ${span("image.native_PNG_encode", "crate")};\n    let mut out = Vec::new();`);
     return t;
   });
-  s = section(s, "pub fn encode_bgra_to_png(", s.includes("pub fn encode_bgra_to_png_resized(") ? "/// Resize top-down BGRA" : "// ── Tests", t => {
+  s = section(s, "pub fn encode_bgra_to_png(", s.includes("pub fn encode_bgra_to_png_resized(") ? (s.includes("/// Resize Windows top-down BGRA") ? "/// Resize Windows top-down BGRA" : "/// Resize top-down BGRA") : "// ── Tests", t => {
     t = replace(t, "    let mut rgba = bgra.to_vec();", `    let conversion = ${span("image.channel_conversion", "crate")};\n    let mut rgba = bgra.to_vec();`);
     t = replace(t, "    encode_rgba_to_png(&rgba, w, h)", "    drop(conversion);\n    encode_rgba_to_png(&rgba, w, h)");
     return t;
   });
   if (s.includes("pub fn encode_bgra_to_png_resized(")) {
-    s = section(s, "pub fn encode_bgra_to_png_resized(", "// ── Tests", t => {
+    s = section(s, "pub fn encode_bgra_to_png_resized(", s.includes("pub fn resize_windows_overview_png(") ? "/// Downscale a Windows display overview" : "// ── Tests", t => {
       t = replace(t, "    let mut rgba = bgra.to_vec();", `    let conversion = ${span("image.channel_conversion", "crate")};\n    let mut rgba = bgra.to_vec();`);
       t = replace(t, "    let buf = ImageBuffer::from_raw(w, h, rgba)", `    drop(conversion);\n    let buffer = ${span("image.RGBA_buffer", "crate")};\n    let buf = ImageBuffer::from_raw(w, h, rgba)`);
       t = replace(t, "    let img = DynamicImage::ImageRgba8(buf);", "    drop(buffer);\n    let img = DynamicImage::ImageRgba8(buf);");
-      t = replace(t, "img.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)", timed("image.Lanczos3", "img.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)", "crate"));
+      if (t.includes("img.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)"))
+        t = replace(t, "img.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)", timed("image.Lanczos3", "img.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)", "crate"));
       t = replace(t, "img.write_to(&mut std::io::Cursor::new(&mut out), ImageFormat::Png)", timed("image.final_PNG_encode", "img.write_to(&mut std::io::Cursor::new(&mut out), ImageFormat::Png)", "crate"));
       return t;
     });
   }
   return s;
 });
+// The Bilinear diagnostic child stays separate from the production artifact.
+// Time the actual owner, not a parallel benchmark implementation.
+if (files.get(`${core}image_utils.rs`).includes("fn resize_windows_overview(")) {
+  const file = `${core}image_utils.rs`;
+  let s = files.get(file);
+  s = section(s, "fn resize_windows_overview(", "// ── Tests", t =>
+    replace(t, "    let pixel_type = match img.color() {",
+      `    let _resize = ${span("image.Bilinear", "crate")};\n    let pixel_type = match img.color() {`));
+  files.set(file, s);
+}
 for (const [file, text] of files) {
   const target = path.join(directory, file);
   await mkdir(path.dirname(target), { recursive: true });

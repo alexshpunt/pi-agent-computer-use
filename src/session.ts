@@ -39,6 +39,8 @@ export interface Driver {
   reactiveAnimation?: boolean;
   /** True only for an exact qualified Windows runtime with UIA-only semantic dispatch. */
   semanticActions?: boolean;
+  /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
+  overviewKernel?: CuaVisionSettings["kernel"];
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal, options?: { animation?: "reactive" }): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
@@ -121,6 +123,10 @@ export class ComputerSession {
     private readonly observer?: WindowObserver,
     private readonly retainRaw?: (image: Content) => void) {}
 
+  private overviewSettings(): CuaVisionSettings {
+    const settings = this.settings();
+    return { ...settings, kernel: this.driver.overviewKernel ?? settings.kernel };
+  }
   private queue(work: () => Promise<ComputerResult>): Promise<ComputerResult> {
     const result = this.tail.then(work, work);
     this.tail = result.catch(() => undefined);
@@ -351,7 +357,7 @@ export class ComputerSession {
         const permitted = () => entry ? this.allowed(entry) : target.display === "primary" && this.getMode() === "yolo";
         const denied = () => { this.sequences.clear(); return this.result("refused", "Sequence source access denied. Safe permits session-owned windows only; retained pixels withheld."); };
         if (!permitted()) return denied();
-        const settings = { ...this.settings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
+        const settings = { ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
           ...(options.scale !== undefined ? { scale: options.scale } : {}) };
         const cap = nativeImageCap(settings);
         if (entry) { entry.observation = undefined; entry.detail = undefined; }
@@ -491,7 +497,7 @@ export class ComputerSession {
       const retire = () => { if (entry) entry.detail = undefined; else this.displayOverview = undefined; };
       retire();
       try {
-        const settings = { ...this.settings() }; const cap = nativeImageCap(settings);
+        const settings = { ...this.overviewSettings() }; const cap = nativeImageCap(settings);
         const native = await this.readDisplay(entry, cap, signal);
         if (this.getMode() !== "yolo") return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display capture; pixels withheld.");
@@ -612,7 +618,7 @@ export class ComputerSession {
     const current = await this.current(entry.ref, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
-    const settings = structuredClone({ ...this.settings(), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
+    const settings = structuredClone({ ...this.overviewSettings(), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
     const native = await this.driver.call("get_window_state", {
       ...entry.target,
       ...(hasUi ? { max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000, ...(query ? { query } : {}) }

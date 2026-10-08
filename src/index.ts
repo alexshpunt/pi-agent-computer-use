@@ -117,7 +117,8 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
 /** Standalone computer UI extension. The final Pi Agent IDE provider API remains separate. */
 export default function computerUse(pi: ExtensionAPI): void {
   const closeClassifier = registerClassifierTool(pi);
-  const images = new CuaImageSettings();
+  let overviewKernel: "lanczos3" | "bilinear" = "lanczos3";
+  const images = new CuaImageSettings(() => overviewKernel);
   const debug = registerVisionDebug(pi, images);
   const highlights = new WindowHighlights();
   const getMode = registerComputerMode(pi, () => highlights.clear());
@@ -127,6 +128,7 @@ export default function computerUse(pi: ExtensionAPI): void {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(async config => {
       const driver = new ReactiveAnimationDriver(new McpDriver(config), await loadReactiveAnimationConfig(cwd));
+      overviewKernel = driver.overviewKernel ?? "lanczos3";
       session = new ComputerSession(driver, getMode, () => images.settings(), highlights.flash, image => debug.trace.retainOriginal(image));
       return session;
     });
