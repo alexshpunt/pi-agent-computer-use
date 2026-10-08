@@ -1,0 +1,17 @@
+[package]
+name = "resize-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "resize-bench"
+path = "main.rs"
+
+[dependencies]
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+fast_image_resize = { version = "=6.1.0", default-features = false, features = ["std"] }
+pic-scale = { version = "=0.7.12", default-features = false, features = ["sse", "avx"] }
+serde_json = "=1.0.149"
