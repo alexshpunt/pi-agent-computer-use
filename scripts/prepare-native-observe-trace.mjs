@@ -5,9 +5,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 // Code generator: writes only ignored diagnostic source, never the CUA checkout.
-export const SOURCE = "506239da08cfdafa63dac1857f5471752fb70f5e";
+export const SOURCE = process.argv[3] ?? "506239da08cfdafa63dac1857f5471752fb70f5e";
+assert.match(SOURCE, /^[0-9a-f]{40}$/);
 const repo = process.argv[2] ?? "/root/dev/cua";
-const directory = path.resolve(".tmp/native-observe-profile/generated");
+const directory = path.resolve(process.argv[4] ?? ".tmp/native-observe-profile/generated");
 const rust = "libs/cua-driver/rust/crates/";
 const core = `${rust}cua-driver-core/src/`;
 const windows = `${rust}platform-windows/src/`;
@@ -54,7 +55,11 @@ edit(`${windows}tools/impl_.rs`, s => section(s, "impl Tool for GetWindowStateTo
   t = replace(t, "        use cua_driver_core::tool_args::ArgsExt;", "        drop(metadata_wait);\n        use cua_driver_core::tool_args::ArgsExt;");
   t = replace(t, "            let tree_task = tokio::task::spawn_blocking(move || {", `            let tree_task = tokio::task::spawn_blocking(move || {\n                let _tree = ${span("uia.walk_and_snapshot")};`);
   t = replace(t, "        let blocking = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {", `        let screenshot_wait = ${span("capture.worker_await")};\n        let blocking = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {\n            let _capture = ${span("capture.worker")};`);
-  t = replace(t, "                        let png = crate::capture::resize_png_if_needed(&raw, max_dim)?;", `                        let png = ${timed("image.resize_pipeline", "crate::capture::resize_png_if_needed(&raw, max_dim)")}?;`);
+  if (t.includes("crate::capture::screenshot_window_overview(hwnd, max_dim)")) {
+    t = replace(t, "crate::capture::screenshot_window_overview(hwnd, max_dim)", timed("image.overview_pipeline", "crate::capture::screenshot_window_overview(hwnd, max_dim)"));
+  } else {
+    t = replace(t, "                        let png = crate::capture::resize_png_if_needed(&raw, max_dim)?;", `                        let png = ${timed("image.resize_pipeline", "crate::capture::resize_png_if_needed(&raw, max_dim)")}?;`);
+  }
   t = replace(t, "B64.encode(&png)", timed("image.base64", "B64.encode(&png)"));
   t = replace(t, "        let result =\n            result.map", "        drop(screenshot_wait);\n        let result =\n            result.map");
   t = replace(t, "                            match bridge.publish(", "                            match cua_driver_core::native_observe_profile::timed(\"capture.publish\", || bridge.publish(");
@@ -76,7 +81,7 @@ edit(`${windows}shell_desktop.rs`, s => {
   s = replace(s, "manager.IsWindowOnCurrentVirtualDesktop(hwnd)", timed("shell.current_desktop", "manager.IsWindowOnCurrentVirtualDesktop(hwnd)"));
   return s;
 });
-edit(`${windows}capture.rs`, s => section(s, "unsafe fn screenshot_window_bytes_with_occlusion_unsafe(", "// `encode_bgra_to_png`", t => {
+edit(`${windows}capture.rs`, s => section(s, "unsafe fn screenshot_window_bytes_with_occlusion_unsafe", "// `encode_bgra_to_png`", t => {
   t = replace(t, "    let hwnd_raw = hwnd;", `    let _grab = ${span("capture.windows_grab")};\n    let hwnd_raw = hwnd;`);
   t = replace(t, "    let screen_dc = GetWindowDC(hwnd);", `    let setup = ${span("capture.GDI_setup")};\n    let screen_dc = GetWindowDC(hwnd);`);
   t = replace(t, "    let old_bitmap = SelectObject(mem_dc, bitmap);", "    let old_bitmap = SelectObject(mem_dc, bitmap);\n    drop(setup);");
@@ -100,11 +105,21 @@ edit(`${core}image_utils.rs`, s => {
     t = replace(t, "    let mut out = Vec::new();", `    drop(buffer);\n    let _encode = ${span("image.native_PNG_encode", "crate")};\n    let mut out = Vec::new();`);
     return t;
   });
-  s = section(s, "pub fn encode_bgra_to_png(", "// ── Tests", t => {
+  s = section(s, "pub fn encode_bgra_to_png(", s.includes("pub fn encode_bgra_to_png_resized(") ? "/// Resize top-down BGRA" : "// ── Tests", t => {
     t = replace(t, "    let mut rgba = bgra.to_vec();", `    let conversion = ${span("image.channel_conversion", "crate")};\n    let mut rgba = bgra.to_vec();`);
     t = replace(t, "    encode_rgba_to_png(&rgba, w, h)", "    drop(conversion);\n    encode_rgba_to_png(&rgba, w, h)");
     return t;
   });
+  if (s.includes("pub fn encode_bgra_to_png_resized(")) {
+    s = section(s, "pub fn encode_bgra_to_png_resized(", "// ── Tests", t => {
+      t = replace(t, "    let mut rgba = bgra.to_vec();", `    let conversion = ${span("image.channel_conversion", "crate")};\n    let mut rgba = bgra.to_vec();`);
+      t = replace(t, "    let buf = ImageBuffer::from_raw(w, h, rgba)", `    drop(conversion);\n    let buffer = ${span("image.RGBA_buffer", "crate")};\n    let buf = ImageBuffer::from_raw(w, h, rgba)`);
+      t = replace(t, "    let img = DynamicImage::ImageRgba8(buf);", "    drop(buffer);\n    let img = DynamicImage::ImageRgba8(buf);");
+      t = replace(t, "img.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)", timed("image.Lanczos3", "img.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)", "crate"));
+      t = replace(t, "img.write_to(&mut std::io::Cursor::new(&mut out), ImageFormat::Png)", timed("image.final_PNG_encode", "img.write_to(&mut std::io::Cursor::new(&mut out), ImageFormat::Png)", "crate"));
+      return t;
+    });
+  }
   return s;
 });
 for (const [file, text] of files) {

@@ -24,6 +24,8 @@ The standalone extension uses Cua Driver 0.33.2 to reach the Windows desktop fro
 
 Fresh window observations can choose `capture.granularity`: `image` skips the UI walk and grounds pixel input; `ui` skips pixels and grounds current hint/token actions; `full` remains the default. Omitted parts are not reused from older observations. See [mode options and limits](docs/observation-granularity.md).
 
+This installation selects a separately qualified Windows fork that resizes captured pixels before encoding one final overview PNG. The format, native capture route and input/detail contracts stay unchanged; the previous runtime remains available. See [single-PNG qualification and measured latency](docs/single-png-overviews.md).
+
 Bounded temporal observations use `computer_sequence`: capture metadata first, then select timestamped read-only frames explicitly in Codemode. The native window/display path reports real timing, missed slots and geometry changes without promising requested FPS. See [temporal capture](docs/temporal-capture.md) and [live results](docs/temporal-capture-results.md).
 
 YOLO is the default desktop-wide UI mode. The user can select session-owned Safe access with `/computer-mode safe` and return with `/computer-mode yolo`, without reload or target config. Live Notepad checks verified old-reference denial and separate ownership for windows sharing one PID. See [the Safe results and limits](docs/safe-windows-results.md). Neither mode is OS isolation. The final IDE provider API and migration route are still open. The [earlier single-window PoC report](docs/standalone-poc-results.md) is historical.

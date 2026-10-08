@@ -52,8 +52,8 @@ test("older native runtimes refuse selected-display reads before starting any pe
   }
 });
 
-test("the shell-desktop profile preserves earlier qualified capabilities and rejects wrong bytes before any membership read", async () => {
-  const backend = new McpDriver({ command: process.execPath, runtime: "windows-shell-desktops" });
+test.each(["windows-shell-desktops", "windows-single-png"] as const)("the %s profile preserves earlier qualified capabilities and rejects wrong bytes before any membership read", async runtime => {
+  const backend = new McpDriver({ command: process.execPath, runtime });
   try {
     expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag]).toEqual([true, true, true, true]);
     await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");

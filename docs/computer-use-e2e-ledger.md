@@ -28,6 +28,8 @@ The user paused the autonomous epic plan. The approved LPT-380 reversal is compl
 
 LPT-649 measured observation latency without changing the installed runtime: 50 public boundary probes and 80 paired warm installed/diagnostic calls passed, with zero sample input and owned cleanup. Exact native timers identified PrintWindow, Lanczos3 and two process enumerations as the main image-only costs. Client transport and owner remainders remain explicit; this is not an optimization or a fully split transport trace. See [native profiling](native-observe-profile.md).
 
+LPT-654's approved single-PNG Windows overview path passed exact pixel regressions, separate native owner/protocol builds, 104 owned fixture observations, request-correlated encode-stage proof, three returned-image clicks and three move/resize details. Paired warm means were 121.3→108.2ms image-only and 157.0→143.2ms full in that fixture; this is not compositor age or a game-speed guarantee. The exact production candidate was installed separately; the old runtime remains available. Approved reload, two production Save click/pointer witnesses, granularity separation, actual TUI and owned cleanup passed. Verification: 310 unit tests, typecheck, 23 real-Pi tests. See [results and limits](single-png-overviews.md).
+
 ## Queue snapshot
 
 | Task | Capability | State / next check |

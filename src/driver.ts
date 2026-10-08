@@ -34,12 +34,18 @@ export const SHELL_DESKTOP_RUNTIME = {
   source: "506239da08cfdafa63dac1857f5471752fb70f5e", version: "0.34.0",
   sha256: "0e25c8b83fd48b54be479eb128452a6f6b099b5ff6ce2d20bac024eda07ead16",
 } as const;
+/** Exact Windows artifact with pixel-first single-PNG overviews; earlier capture/input capabilities stay unchanged. */
+export const SINGLE_PNG_RUNTIME = {
+  source: "c2d84f0947b6ec0170cb8bd3114fe62e42e5bdd9", version: "0.34.0",
+  sha256: "f63720485d48bfcc2637f1b65dc875241b10ad1fdd6e30847fdfde9f39a2b505",
+} as const;
 const forkRuntimes = {
   "windows-held-paths": HELD_PATH_RUNTIME,
   "windows-key-holds": KEY_HOLD_RUNTIME,
   "windows-selected-displays": SELECTED_DISPLAY_RUNTIME,
   "windows-capture-drag": CAPTURE_DRAG_RUNTIME,
   "windows-shell-desktops": SHELL_DESKTOP_RUNTIME,
+  "windows-single-png": SINGLE_PNG_RUNTIME,
 };
 /** Owned native Windows MCP process reached through WSL executable interop. */
 export class McpDriver implements Driver {
@@ -55,11 +61,11 @@ export class McpDriver implements Driver {
   get heldPaths(): boolean { return this.forkRuntime !== undefined; }
 
   /** Bounded key holds need their own exact pin; the older mouse-path fork cannot provide them. */
-  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png"].includes(this.config.runtime ?? ""); }
   /** Existing profiles do not expose exact monitor reads; only a separately qualified pin may enable them. */
-  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png"].includes(this.config.runtime ?? ""); }
   /** Older profiles cannot admit a straight drag against an immutable native capture. */
-  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops"; }
+  get captureBoundDrag(): boolean { return this.config.runtime === "windows-capture-drag" || this.config.runtime === "windows-shell-desktops" || this.config.runtime === "windows-single-png"; }
 
   /** Window, display and browser routes share the explicitly qualified Windows pin. */
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
