@@ -69,6 +69,19 @@ Two earlier runs admitted no samples. The first stopped on the current-color ass
 
 This comparison is not a complete adoption qualification. It did not run a new covered/moved/resized/minimized/closed-window matrix, wrong-PID live probe or coordinate-click matrix. The direct lookup's absent-name behavior has Windows hermetic evidence; its name matches the live baseline. Extra metadata and refusal checks must be recorded before calling the proposed production candidate fully qualified.
 
+## Direct lookup follow-up checks
+
+The user approved targeted checks after reviewing the comparison. `verify-direct-process-lookup.mjs` exercised the exact production implementation db93a1db in a separately staged bundle, not a trace build or the installed runtime. It made 11 candidate requests on one new disposable Chrome window:
+
+- Image-only, UI-only and full observations kept both the executable basename and complete browser capture-coverage metadata equal to the retained runtime.
+- An intentionally wrong PID was refused in all three modes with the exact ownership error, without pixels or fabricated application metadata.
+- A correct observation still worked after each refused request.
+- After the owned window was closed and its profile removed, image-only and UI-only requests using the old target were refused as missing, without pixels or application metadata.
+
+The current-color witness passed; the saved overview was reviewed. No fixture-content input was sent. All owned resources were cleaned up and installed config/bytes stayed unchanged. See [the bounded live evidence](evidence/window-capture-latency/lookup.json). Closing a window is not a controlled reproduction of a process exiting precisely between two native API calls, and no actual PID reuse was forced.
+
+A first permission test incorrectly assumed that querying Windows System PID4 must fail. The CI host allowed it; build37838369449 failed on that test assumption, not on the candidate's normal lookup behavior. The replacement reads through a real handle to the test process with synchronization rights only. It changes no DACL or token privileges and checks the native image-query access-denied error. Candidate33e264ff extracts the borrowed-handle query as a normal internal function; the public lookup still closes its handle and maps either native error to an absent name. Its exact Windows build and final artifact smoke are pending.
+
 ## Reproduce
 
 Use exact source commits and ignored output directories:
@@ -96,5 +109,13 @@ node scripts/run-native-window-capture-comparison.mjs .tmp/window-capture-latenc
 ```
 
 The supporting runner stages separate verified bytes, opens one new private Chrome fixture through CUA, performs only read-only timing probes, and then cleans up its fixture, profile and clients. It verifies that installed bytes and config are unchanged. It never captures a display or sends timing input. Private pixels and errors stay in the ignored run directory; only bounded summaries are printed.
+
+For the narrower direct-lookup checks, prepare a private plan with `config`, `installed_sha256`, `interop`, and `candidate:{source,directory,sha256}` for the exact production artifact. The runner verifies all three executable hashes before opening one disposable window:
+
+```sh
+node --experimental-transform-types scripts/verify-direct-process-lookup.mjs .tmp/window-capture-latency/lookup-plan.json --owned-fixture
+```
+
+It compares metadata in each observation mode, checks exact wrong-PID and closed-target refusals, and verifies cleanup without switching the installed runtime.
 
 This supporting experiment is not the canonical CUA desktop matrix. Any proposed production capture change still needs geometry, refusal, isolation, cleanup and applicable regression evidence at its exact source. Report a slower or incorrect route as a rejected alternative, rather than weakening the contract to adopt it.

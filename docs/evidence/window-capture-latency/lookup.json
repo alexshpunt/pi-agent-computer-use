@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "success": true,
+  "candidate": {
+    "source": "db93a1db5935deca52f119d0acd9c2e265623a4c",
+    "sha256": "19efb118b63ccde042b819138862d6f191889c6d8e3b14d772f4aede674ddba7"
+  },
+  "checks": [
+    {
+      "check": "baseline_metadata_equal",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "wrong_pid_refused_without_pixels_or_name",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "valid_target_survives_refusal",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "baseline_metadata_equal",
+      "mode": "ui",
+      "passed": true
+    },
+    {
+      "check": "wrong_pid_refused_without_pixels_or_name",
+      "mode": "ui",
+      "passed": true
+    },
+    {
+      "check": "valid_target_survives_refusal",
+      "mode": "ui",
+      "passed": true
+    },
+    {
+      "check": "baseline_metadata_equal",
+      "mode": "full",
+      "passed": true
+    },
+    {
+      "check": "wrong_pid_refused_without_pixels_or_name",
+      "mode": "full",
+      "passed": true
+    },
+    {
+      "check": "valid_target_survives_refusal",
+      "mode": "full",
+      "passed": true
+    },
+    {
+      "check": "closed_owned_window_refused_without_pixels_or_name",
+      "mode": "image",
+      "passed": true
+    },
+    {
+      "check": "closed_owned_window_refused_without_pixels_or_name",
+      "mode": "ui",
+      "passed": true
+    }
+  ],
+  "native_requests": 11,
+  "installed_unchanged": true,
+  "no_fixture_content_input": true,
+  "cleanup": {
+    "fixture": true,
+    "clients": true,
+    "site": true,
+    "candidate_files": true
+  }
+}
