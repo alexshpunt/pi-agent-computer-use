@@ -6,7 +6,7 @@ LPT-673 covers two costs separately: looking up the name of an already known Win
 
 The baseline gets a process-table snapshot for `app_name`, then another for Chromium coverage metadata. The candidate queries the known PID with `QueryFullProcessImageNameW`, closes its limited-information handle, and reuses the optional basename. Exact PID/HWND ownership and lifetime checks remain separate. An unreadable name stays absent; there is no identity cache.
 
-Two Windows owner tests check the current executable's basename and the absence of a fabricated name for PID 0. The first checkpoint failed compilation because the helper was missing. The implementation's Windows build and native latency evidence are still pending.
+Two Windows owner tests check the current executable's basename and the absence of a fabricated name for PID 0. The first checkpoint failed compilation because the helper was missing. Implementation `db93a1db5935deca52f119d0acd9c2e265623a4c` passed Windows build37824130410, including both new lookup tests, owner tests and protocol/schema checks. Native latency and desktop evidence are still pending.
 
 ## Capture comparison
 
