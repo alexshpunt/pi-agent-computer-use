@@ -4,6 +4,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 // Finish exact, already dispatched build runs serially, then perform one owned read-only comparison.
 // A cancelled queue entry may be rerun once; source failures and unknown results stop the program.
@@ -16,9 +17,14 @@ assert.deepEqual(Object.keys(plan.runs).sort(), [...roles].sort());
 const directory = path.resolve(".tmp/window-capture-latency");
 await mkdir(directory, { recursive: true });
 const args = ["--repo", "alexshpunt/cua"];
-const runGh = async (command, timeout = 60000) => {
-  const result = await exec("gh", command, { timeout, maxBuffer: 4 * 1024 * 1024 });
-  return result.stdout;
+const runGh = async command => {
+  try {
+    const result = await exec("gh", command, { timeout: 60000, maxBuffer: 4 * 1024 * 1024 });
+    return result.stdout;
+  } catch (error) {
+    await writeFile(path.join(directory, "private-build-failure.log"), [error.message, error.stdout, error.stderr].filter(Boolean).join("\n"));
+    throw Error("GitHub operation stopped; inspect private-build-failure.log. No build replay.");
+  }
 };
 const variants = {};
 for (const role of roles) {
@@ -26,16 +32,27 @@ for (const role of roles) {
   assert.ok(Number.isSafeInteger(entry.id) && entry.id > 0);
   assert.match(entry.source, /^[a-f0-9]{40}$/);
   const id = String(entry.id);
-  const state = JSON.parse(await runGh(["run", "view", id, ...args, "--json", "headSha,status,conclusion"]));
+  const readState = async () => JSON.parse(await runGh(["api", `repos/alexshpunt/cua/actions/runs/${id}`, "--jq", "{headSha:.head_sha,status,conclusion,attempt:.run_attempt}"]));
+  const state = await readState();
   assert.equal(state.headSha, entry.source, "Run must belong to the exact requested diagnostic commit");
   if (state.status === "completed") {
     assert.ok(["success", "cancelled"].includes(state.conclusion), "Failed source build needs inspection, not automatic replay");
     if (state.conclusion === "cancelled") await runGh(["run", "rerun", id, ...args]);
   }
-  // gh watch blocks on the existing run; no polling loop or new workflow dispatch.
-  const watch = await runGh(["run", "watch", id, ...args, "--exit-status", "--interval", "60"], 70 * 60 * 1000);
-  await writeFile(path.join(directory, `build-${role}.log`), watch);
-  const verified = JSON.parse(await runGh(["run", "view", id, ...args, "--json", "headSha,status,conclusion"]));
+  // Short gh invocations use the managed credential wrapper each time. A long
+  // gh watch can keep one token past its lease. Never bypass the wrapper.
+  const deadline = Date.now() + 70 * 60 * 1000;
+  let verified = state;
+  while (verified.status !== "completed" || verified.conclusion === "cancelled") {
+    assert.ok(Date.now() < deadline, "Build wait budget exhausted");
+    if (verified !== state) await delay(60000);
+    verified = await readState();
+    assert.equal(verified.headSha, entry.source);
+    if (verified.status === "completed" && !(state.conclusion === "cancelled" && verified.attempt === state.attempt)) {
+      assert.equal(verified.conclusion, "success", "Build did not succeed; no automatic replay");
+    }
+  }
+  await writeFile(path.join(directory, `build-${role}.json`), JSON.stringify(verified, null, 2) + "\n");
   assert.equal(verified.headSha, entry.source); assert.equal(verified.status, "completed"); assert.equal(verified.conclusion, "success");
   const artifact = path.join(directory, `artifacts-${role}`);
   // A resumed successful download may be reused only after every file's provenance and hash check.

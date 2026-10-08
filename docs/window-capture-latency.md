@@ -43,6 +43,8 @@ node --experimental-transform-types scripts/qualify-native-window-capture.mjs .t
 
 For already dispatched builds, `run-native-window-capture-comparison.mjs` can finish the same work serially. Its private input replaces `variants` with `runs`, where each role has an exact `source` and GitHub run `id`. It allows one rerun for a cancelled queue entry, stops on source failures, verifies all downloaded executable hashes, and then invokes the supporting runner once. Each build wait is limited to 70 minutes and the fixture runner to 10 minutes.
 
+Build status checks use short calls through the installed managed `gh` wrapper. A single long `gh run watch` can outlive its supplied credential; one watch stopped on HTTP 401 during this experiment while the build continued. The runner resumes read-only monitoring of the same run, not the build itself. Private command errors are saved to a local log instead of flooding tool output.
+
 ```sh
 node scripts/run-native-window-capture-comparison.mjs .tmp/window-capture-latency/build-plan.json --owned-fixture
 ```
