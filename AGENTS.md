@@ -2,6 +2,7 @@
 
 Read [README.md](README.md) for project intent and [docs/research-references.md](docs/research-references.md) for research inputs. The linked Linear task owns accepted scope and acceptance; reference claims are not requirements.
 Read [the computer-use skill](.pi/skills/computer-use/SKILL.md) before operating UI tools. It describes overview, detail and sequential input through Pi Codemode.
+Before changing or verifying this extension in a worktree, read [the development skill](.pi/skills/develop-computer-use/SKILL.md). Use the worktree's code only for the task session, then restore global loading.
 
 ## Unified computer use
 

@@ -125,7 +125,7 @@ pi --no-extensions --no-skills --no-context-files --no-prompt-templates \
   -e ./src/index.ts --tools computer_apps,computer_open,computer_windows,computer_observe,computer_act,computer_close
 ```
 
-The tracked `.pi/extensions/computer-use.ts` is only this project's development entry point. Nothing is installed globally.
+Normal sessions load the globally configured package. There is no tracked project extension loader: loading both the package and a wrapper registers the same tools twice. For development, follow [the worktree skill](../.pi/skills/develop-computer-use/SKILL.md) to temporarily disable the global extension, load this checkout, check dependencies, and restore normal loading.
 
 For opt-in real-model Windows qualification:
 
