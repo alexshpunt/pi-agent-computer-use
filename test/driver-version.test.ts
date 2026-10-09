@@ -113,3 +113,23 @@ test("the exact selected-display profile preserves keys and paths but rejects wr
     await expect(backend.call("list_displays", {})).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
 });
+
+test("persistent WGC preserves earlier capabilities but refuses wrong bytes before capture", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-persistent-wgc" });
+  try {
+    expect(backend.overviewKernel).toBe("bilinear");
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions,
+      backend.persistentWgc]).toEqual([true,true,true,true,true,true]);
+    await expect(backend.call("get_window_state", { capture_backend:"wgc" })).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
+test("older native profiles cannot silently start WGC", async () => {
+  for (const runtime of [undefined,"windows-direct-process","windows-fast-bilinear"] as const) {
+    const backend = new McpDriver({ command: process.execPath, runtime });
+    try {
+      expect(await backend.call("get_window_state",{capture_backend:"wgc"})).toMatchObject({
+        isError:true, structuredContent:{code:"persistent_wgc_unavailable",attempted:false,fallback:false},
+      });
+    } finally { await backend.close(); }
+  }
+});

@@ -19,8 +19,8 @@ export interface UiResource {
   native_total: number | null; collected: number; matches: number; projection_truncated: boolean;
   elements: UiElement[];
 }
-/** Fresh window capture parts. Full is the default; image skips the UI walk and UI skips pixels. */
-export interface UiCaptureOptions { granularity?: "image" | "ui" | "full"; max_elements?: number; max_depth?: number; hints?: boolean; guides?: GuideOptions }
+/** Fresh window parts. WGC is Windows-only opt-in on a qualified runtime; default preserves native routing. */
+export interface UiCaptureOptions { backend?: "default" | "wgc"; granularity?: "image" | "ui" | "full"; max_elements?: number; max_depth?: number; hints?: boolean; guides?: GuideOptions }
 /** Read-only operations on one current snapshot; crop consumes its input authority. */
 export interface UiRequest {
   operation: "search" | "scope" | "inspect" | "highlight" | "crop" | "region";
@@ -41,11 +41,13 @@ function letters(n: number): string {
 
 /** Validate before a native walk or replacing any active snapshot. */
 export function validateUiCapture(options: UiCaptureOptions): void {
-  if (Object.keys(options).some(k => !["granularity", "max_elements", "max_depth", "hints", "guides"].includes(k)) ||
+  if (Object.keys(options).some(k => !["backend", "granularity", "max_elements", "max_depth", "hints", "guides"].includes(k)) ||
+    (options.backend !== undefined && !["default", "wgc"].includes(options.backend)) ||
     (options.granularity !== undefined && !["image", "ui", "full"].includes(options.granularity)) ||
     (options.max_elements !== undefined && (!Number.isSafeInteger(options.max_elements) || options.max_elements < 1 || options.max_elements > 2000)) ||
     (options.max_depth !== undefined && (!Number.isSafeInteger(options.max_depth) || options.max_depth < 1 || options.max_depth > 50)) ||
-    (options.hints !== undefined && typeof options.hints !== "boolean")) throw Error("Capture needs granularity image/ui/full, max_elements 1..2000, max_depth 1..50 and boolean hints.");
+    (options.hints !== undefined && typeof options.hints !== "boolean")) throw Error("Capture needs backend default/wgc, granularity image/ui/full, max_elements 1..2000, max_depth 1..50 and boolean hints.");
+  if (options.backend === "wgc" && options.granularity === "ui") throw Error("WGC needs an image or full window observation; UI-only never starts pixel capture.");
   if (options.guides !== undefined) guideOptions(options.guides);
   if (options.granularity === "image" && (options.max_elements !== undefined || options.max_depth !== undefined || options.hints === true))
     throw Error("Image-only observation has no UI walk or element hints.");

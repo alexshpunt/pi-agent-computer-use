@@ -43,6 +43,8 @@ export interface Driver {
   reactiveAnimation?: boolean;
   /** True only for an exact qualified Windows runtime with UIA-only semantic dispatch. */
   semanticActions?: boolean;
+  /** True only for an exact qualified runtime with session-owned, opt-in persistent WGC. */
+  persistentWgc?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
   overviewKernel?: CuaVisionSettings["kernel"];
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal, options?: { animation?: "reactive" }): Promise<DriverResult>;
@@ -82,7 +84,7 @@ export interface ComputerResult {
   };
   isError?: boolean;
 }
-interface Observation { id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
+interface Observation { id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
@@ -587,6 +589,7 @@ export class ComputerSession {
   }
 
   private async windowDetail(entry: WindowEntry, request: DetailRequest, signal?: AbortSignal): Promise<ComputerResult> {
+    if (entry.observation?.backend === "wgc") return this.result("refused", "Native zoom/crop does not support the explicit WGC route. Read a default overview to use native detail.");
     const overview = entry.detail;
     try { validateDetail(request, overview, true); }
     catch (error) { return this.result("refused", (error as Error).message); }
@@ -626,6 +629,8 @@ export class ComputerSession {
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
+    const wgc = options.backend === "wgc";
+    if (wgc && this.driver.persistentWgc !== true) return this.result("refused", "WGC needs an explicitly selected, qualified Windows runtime. Default capture is unchanged.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined; entry.detail = undefined;
     const current = await this.current(entry.ref, signal);
@@ -637,6 +642,7 @@ export class ComputerSession {
       ...(hasUi ? { max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000, ...(query ? { query } : {}) }
         : { include_accessibility_tree: false }),
       ...(hasImage ? { max_image_dimension: nativeImageCap(settings) } : { include_screenshot: false }),
+      ...(wgc ? { capture_backend: "wgc" } : {}),
     }, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (signal?.aborted) return this.result("refused", "Cancelled during observation; captured data withheld.");
@@ -651,10 +657,13 @@ export class ComputerSession {
       return this.result("refused", `Window screenshot unavailable. Native reason: ${screenshot_error}`,
         { screenshot_error }, this.addressed(entry, state.virtual_desktop));
     }
+    const backend = state.capture_backend as { backend?: unknown } | undefined;
+    if (wgc && (backend?.backend !== "wgc" || typeof state.capture_id !== "string" || !state.capture_id))
+      return this.result("refused", "Explicit WGC returned no bound WGC capture receipt; pixels and input authority withheld.");
     // Native screenshot-only reads may preserve their old AX snapshot. Never expose it as current.
     if (!hasUi) for (const key of ["elements", "tree_markdown", "snapshot_id", "invalidated_snapshot_ids", "elements_complete", "truncated", "truncation_reason", "total_element_count", "element_count", "focused_element"]) delete state[key];
     // Tree-only native receipts can describe an older pixel frame. It gives this observation no image authority.
-    if (!hasImage) for (const key of Object.keys(state)) if (key.startsWith("screenshot_") || ["capture_id", "agent_overlay_capture"].includes(key)) delete state[key];
+    if (!hasImage) for (const key of Object.keys(state)) if (key.startsWith("screenshot_") || ["capture_id", "agent_overlay_capture", "capture_backend"].includes(key)) delete state[key];
     if (hasUi && !Array.isArray(state.elements)) throw new Error("Driver returned no structured UI elements.");
     if (hasUi && !hasImage) state.elements = (state.elements as Record<string, unknown>[]).map(element => {
       const { screenshot_frame: _oldPixels, ...current } = element; return current;
@@ -672,7 +681,7 @@ export class ComputerSession {
       delete element.bounds.window_image; element.hint_display = "off";
     }
     const elements = hasUi ? state.elements as { element_token?: unknown; frame?: unknown }[] : [];
-    entry.observation = { id, ui, settings,
+    entry.observation = { id, ui, settings, ...(wgc ? { backend: "wgc" as const } : {}),
       width: hasImage && typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: hasImage && typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
       tokens: new Set(elements.map(element => element.element_token).filter((token): token is string => typeof token === "string")),
@@ -685,7 +694,7 @@ export class ComputerSession {
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during observation; captured data withheld."); }
     const source = this.source("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
     if (!hasUi) source.semantic_scope = "none";
-    if (!hasImage) source.capabilities.detail = "unsupported";
+    if (!hasImage || wgc) source.capabilities.detail = "unsupported";
     const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
     if (!this.allowed(entry)) { entry.observation = undefined; entry.detail = undefined; return this.denied(entry.ref); }
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during window frame; captured data withheld."); }
@@ -712,7 +721,7 @@ export class ComputerSession {
     const message = hasUi
       ? `Fresh full window observation: ${ui!.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui!.complete === true ? "complete" : ui!.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`
       : "Fresh image-only window observation. Accessibility was not collected; no current UI hints/tokens. Pixel input uses this window image; paint freshness is unverified.";
-    return this.result("observed", message, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
+    return this.result("observed", `${message}${wgc ? " Retained WGC capture; native detail is not supported on this route." : ""}`, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
       agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
