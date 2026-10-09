@@ -38,6 +38,37 @@ async function fixture(persistentWgc = false, captureBackend: unknown = { backen
 }
 function inputs(driver: Driver) { return vi.mocked(driver.call).mock.calls.filter(([name]) => ["click", "drag", "press_key"].includes(name)); }
 
+test.each([false, true])("selected WGC runtime defaults image/full to WGC, not UI-only (qualified=%s)", async qualified => {
+  const f = await fixture(qualified);
+  for (const mode of [undefined, "image", "full", "ui"]) {
+    const read = await f.observe(mode);
+    expect(read.details.status).toBe("observed");
+    const args = vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state").at(-1)![1];
+    if (qualified && mode !== "ui") {
+      expect(args.capture_backend).toBe("wgc");
+      expect(read.details.state!.capture_backend).toMatchObject({ backend: "wgc" });
+      expect(read.details.source!.capabilities.detail).toBe("unsupported");
+    } else {
+      expect(args).not.toHaveProperty("capture_backend");
+      expect(read.details.state!.capture_backend).toBeUndefined();
+    }
+  }
+  const native = await f.observe("image", { backend: "default" });
+  expect(native.details.status).toBe("observed");
+  expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state").at(-1)![1]).not.toHaveProperty("capture_backend");
+  expect(native.details.source!.capabilities.detail).not.toBe("unsupported");
+});
+
+test("implicit WGC refuses substituted pixels without retrying native capture", async () => {
+  const f = await fixture(true, { backend: "default" });
+  const read = await f.observe("image");
+  expect(read.details.status).toBe("refused");
+  expect(read.content.some(block => block.type === "image")).toBe(false);
+  expect(read.details.observation_id).toBeUndefined();
+  expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state")).toHaveLength(1);
+  expect(inputs(f.driver)).toHaveLength(0);
+});
+
 test("full stays the default and returns current UI and pixels", async () => {
   const f = await fixture(); const read = await f.observe();
   expect(read.details.status).toBe("observed");
@@ -148,7 +179,7 @@ test("unsupported or invalid capture selection does not capture or retire valid 
 test("explicit WGC never admits substituted default pixels or reuses the previous observation", async () => {
   for (const metadata of [null, { backend: "default" }]) {
     const f = await fixture(true, metadata);
-    const prior = await f.observe("image");
+    const prior = await f.observe("image", { backend: "default" });
     const read = await f.observe("image", { backend: "wgc" });
     expect(read.details.status).toBe("refused");
     expect(read.content.some(block => block.type === "image")).toBe(false);
