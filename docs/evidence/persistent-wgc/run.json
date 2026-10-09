@@ -836,7 +836,18 @@
     "PowerShell process-absence checks could not launch. Exact Linux launchers were absent, owned fixture/profile cleanup passed, and all copied candidate executable files were removed."
   ],
   "delivery": {
-    "merged": false,
+    "merged": true,
+    "normal_runtime_adopted": false,
+    "approval_request": "fa521cd2-048e-41ce-ba01-a51c955bc9fa",
+    "required_ci": {
+      "run": 37940393155,
+      "head": "0dfe5ec65fe94e4cb6a259a3f217b1ef440a63dc",
+      "conclusion": "success"
+    },
+    "native_merge": "b28749f47494d0fb5150e9f377a46605928cc8b6",
+    "extension_review_head": "6d375bac57034cfd4efed20a78b7450c7319e8eb",
+    "extension_merge": "f15eb3814abd0079f87267c88c0654ceaf3f2901",
+    "merged_extension_tree_matches_review_head": true,
     "temporary_loading_restored": true,
     "temporary_candidate_removed": true,
     "temporary_setup_files_removed": true,

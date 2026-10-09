@@ -24,7 +24,7 @@ The standalone extension selects its native CUA runtime from packages installed 
 
 Fresh window observations can choose `capture.granularity`: `image` skips the UI walk and grounds pixel input; `ui` skips pixels and grounds current hint/token actions; `full` remains the default. Omitted parts are not reused from older observations. See [mode options and limits](docs/observation-granularity.md).
 
-A separately hash-checked Windows candidate supports `capture.backend: "wgc"` for session/window retained image or full observations. The default native route is unchanged. Candidate native, production tool and TUI checks passed; this does not adopt it into the normal installation or promise current pixels. See [the opt-in contract and evidence](docs/persistent-wgc.md).
+A separately hash-checked Windows candidate supports `capture.backend: "wgc"` for session/window retained image or full observations. The default native route is unchanged. Native, production tool and TUI checks passed, and the approved changes are merged; this does not adopt the candidate into the normal installation or promise current pixels. See [the opt-in contract and evidence](docs/persistent-wgc.md).
 
 This installation selects a separately qualified Windows fork that resizes captured pixels before encoding one final overview PNG. The format, native capture route and input/detail contracts stay unchanged; the previous runtime remains available. See [single-PNG qualification and measured latency](docs/single-png-overviews.md).
 

@@ -1,6 +1,6 @@
 # Opt-in persistent WGC
 
-This is the Windows-only opt-in candidate for [LPT-695](https://linear.app/alexshpunt/issue/LPT-695). Native, production-tool and TUI checks passed. Merge/delivery is pending. The installed runtime and its default capture route are unchanged.
+This is the Windows-only opt-in candidate for [LPT-695](https://linear.app/alexshpunt/issue/LPT-695). Native, production-tool and TUI checks passed. The approved native and extension heads are merged and pushed. The installed runtime and its default capture route are unchanged.
 
 ## Choose a window route
 
@@ -34,7 +34,7 @@ A greater presentation timestamp does not prove current or changed pixels. Signe
 - Production tools after reload returned one default planning overview, explicit WGC image/full/image reads with warm reuse, one current WGC pixel Save click and an independent pointer/click witness. The final PNG showed revision1 and counter1. UI-only returned no inherited pixels/backend, while invalid UI+WGC and native detail refused without substitute pixels.
 - The actual human viewport `w3RW:p5`, revision133 at158×57 cells, showed readable backend/freshness, witness and detail-refusal results. The owned fixture exited with source/profile cleanup; `computer_close` released the peer.
 - Full verification passed 378 unit tests, typecheck and 26 real-Pi tests. Temporary loading/config and all copied candidate executables were removed; normal global startup origins and loading were verified. Independent PowerShell process checks timed out. Linux launchers were absent, but external Windows process absence is not claimed.
-- Read-only native review found no blocking contract issue. Merge/delivery remains pending.
+- Read-only native review found no blocking contract issue. Required Release metadata CI [37940393155](https://github.com/alexshpunt/cua/actions/runs/37940393155) passed for the approved native head. [Native PR20](https://github.com/alexshpunt/cua/pull/20) merged as `b28749f47494d0fb5150e9f377a46605928cc8b6`; extension head `6d375bac57034cfd4efed20a78b7450c7319e8eb` merged into develop as `f15eb3814abd0079f87267c88c0654ceaf3f2901`. The merged extension tree exactly matches the qualified review head. Runtime adoption remains a separate decision.
 
 ## Observed tool timing
 
