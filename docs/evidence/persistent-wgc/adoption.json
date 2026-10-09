@@ -45,10 +45,24 @@
     "cleanup": { "fixture_exit": 0, "sourceGone": true, "profileRemoved": true, "computer_close": "closed" }
   },
   "delivery": {
-    "normal_main_selected": false,
-    "normal_main_post_reload_verified": false,
+    "normal_main_selected": true,
+    "normal_main_post_reload_verified": true,
     "temporary_loading_restored": true,
-    "merged": false
+    "merged": true,
+    "feature_revision": "5056548b7c1b3c0e8b96cefe1a14f7b8358af2ac",
+    "develop_merge": "d645477df8aa0fa4266f52a82ea277e49d6a69c4",
+    "startup_receipt": "2f003b623724"
+  },
+  "main_live": {
+    "default_full_wgc": true,
+    "default_image_wgc": true,
+    "ui_only_no_pixels_or_backend": true,
+    "explicit_default_native_capture": true,
+    "image_dimensions": { "width": 500, "height": 358 },
+    "kernel": "bilinear",
+    "input_sent": false,
+    "tui": { "pane": "w3MD:pS", "revision": 28, "columns": 274, "rows": 108, "readable": true },
+    "cleanup": { "fixture_receipt": "c82d422d2eee", "fixture_exit": 0, "sourceGone": true, "profileRemoved": true, "computer_close": "closed" }
   },
   "limits": [
     "Paint freshness remains unverified; timestamps are not application witnesses.",
