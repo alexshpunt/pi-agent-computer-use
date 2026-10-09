@@ -17,7 +17,8 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
   else if (name === "list_windows") state = { windows: [91, 92].map(window_id => ({ pid: 42, window_id, bounds })) };
   else if (name === "get_window_state") {
     const id = ++serial;
-    state = { window_bounds: bounds, screenshot_width: 500, screenshot_height: 320, capture_id: `capture-${id}`,
+    state = { capture_backend: { backend: args.capture_backend === "wgc" && args.query !== "substitute" ? "wgc" : "default", resources_reused: serial > 1, paint_freshness: "unverified" },
+      window_bounds: bounds, screenshot_width: 500, screenshot_height: 320, capture_id: `capture-${id}`,
       snapshot_id: `s${id}`, tree_markdown: "retained native tree", elements_complete: true,
       elements: [{ element_index: 0, element_token: `s${id}:0`, role: "Button", label: "Save", enabled: true,
         actions: ["invoke"], frame: { x: 180, y: 190, w: 100, h: 40 },
