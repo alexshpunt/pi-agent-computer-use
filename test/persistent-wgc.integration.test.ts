@@ -4,7 +4,7 @@ import { assistantMessage, getToolExecution, getToolResultText, PiIntegrationTes
   testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
 
-test("real Pi opts into WGC only for image/full and refuses substituted pixels without fallback", async () => {
+test("real Pi selects WGC by default on its selected runtime and keeps explicit native capture", async () => {
   await mkdir(".tmp/wgc-integration", { recursive: true });
   const cwd = await mkdtemp(path.resolve(".tmp/wgc-integration/pi-contract-"));
   const log = path.join(cwd, "calls.jsonl");
@@ -22,11 +22,11 @@ const act = async id => {
 };
 const full=await observe({backend:"default"});
 if(full.status!=="observed"||!full.ui||!full.image)throw Error("Default changed");
-const image=await observe({granularity:"image",backend:"wgc"});
+const image=await observe({granularity:"image"});
 if(image.status!=="observed"||!image.image||image.ui||image.state.capture_backend.backend!=="wgc")throw Error("WGC parts missing");
 if((await act(image.observation_id)).status!=="delivered")throw Error("WGC input missing");
 if((await act(image.observation_id)).status!=="refused")throw Error("WGC input replayed");
-const wgcFull=await observe({granularity:"full",backend:"wgc",hints:false});
+const wgcFull=await observe({granularity:"full",hints:false});
 if(wgcFull.status!=="observed"||!wgcFull.ui||!wgcFull.image)throw Error("Full WGC missing");
 const ui=await observe({granularity:"ui"});
 if(ui.status!=="observed"||ui.image||ui.state.capture_backend||ui.state.capture_id)throw Error("UI inherited WGC pixels");
@@ -49,7 +49,7 @@ text("WGC projection passed; exactly one native click and no fallback.");
         assistantMessage([toolCall({ id: "close", name: "computer_close", arguments: {} })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
-    }).run("Select retained WGC explicitly without changing the default or inheriting pixel authority.");
+    }).run("Use selected-runtime WGC by default without inheriting pixel authority; explicit default keeps native capture.");
     expect(getToolExecution(result, "wgc").isError, getToolResultText(result, "wgc")).toBe(false);
     expect(getToolResultText(result, "wgc")).toContain("WGC projection passed");
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));

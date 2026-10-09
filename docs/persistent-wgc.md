@@ -1,10 +1,12 @@
 # Opt-in persistent WGC
 
-This is the Windows-only opt-in candidate for [LPT-695](https://linear.app/alexshpunt/issue/LPT-695). Native, production-tool and TUI checks passed. The approved native and extension heads are merged and pushed. The installed runtime and its default capture route are unchanged.
+This is the Windows-only retained capture path from [LPT-695](https://linear.app/alexshpunt/issue/LPT-695). Native, production-tool and TUI checks passed, and the approved implementation is merged. Initial qualification kept the installed runtime unchanged. The later explicit runtime/default-selection approval and checks are recorded below.
 
 ## Choose a window route
 
-`computer_observe({window_ref, capture:{backend:"wgc", granularity:"image"}})` explicitly requests retained Windows Graphics Capture. `full` also collects current UI; omitted granularity remains full. Omitted backend or `"default"` keeps the existing native route.
+The selected `windows-persistent-wgc` runtime now uses retained WGC for ordinary image/full window observations, including omitted capture options. UI-only never starts pixel capture. Other runtimes keep the existing native route.
+
+`computer_observe({window_ref, capture:{backend:"wgc", granularity:"image"}})` explicitly requests WGC. `full` also collects current UI; omitted granularity remains full. Explicit `backend:"default"` selects the old native route and permits its native detail. Display capture and temporal sequences retain their existing routing.
 
 WGC requires an explicitly selected, hash-checked Windows candidate. Unsupported runtimes refuse before replacing valid observation authority. UI-only plus WGC is invalid: UI-only never starts pixel capture. Display capture and temporal sequences do not select this backend.
 
@@ -49,3 +51,13 @@ The finite production smoke measured whole `computer_observe` calls, including t
 These three samples are not a paired speed comparison or a general latency guarantee. Some native current-marker checks needed a second successful read. No production speedup, paint-freshness guarantee or full capture certification is claimed.
 
 See [the redacted run evidence](evidence/persistent-wgc/run.json).
+
+## Approved default selection and runtime switch
+
+The user later explicitly requested the runtime switch and approved WGC by default for ordinary image/full observations. Only selecting the pinned `windows-persistent-wgc` profile changes omitted window backend to WGC. Old profiles, UI-only, displays and temporal sequences keep their existing routing. Explicit `backend:"default"` remains the old native path; there is no automatic fallback on WGC failure.
+
+The exact source841dad7e artifact is copied into a separate permanent directory with all three checked executables, licenses/notices and source/hash/version metadata. The prior direct-process runtime remains intact. Its config is saved as `previous-computer-use.json` beside the new runtime for rollback. The interop setting stays unchanged.
+
+The default-selection regression was red before the small adapter change. The changed tree passed381 unit tests, typecheck and26 real-Pi tests. A fresh task-session production run verified implicit full/image WGC receipts, warm reuse, one witnessed Save pixel click, UI-only without pixels/backend and explicit old-route capture. Its actual TUI was readable, and the owned fixture/profile/peer were cleaned.
+
+Final main-checkout selection and post-reload proof are pending. See [the separate adoption evidence](evidence/persistent-wgc/adoption.json). Roll back by restoring the saved previous config into the checkout's ignored `.pi/computer-use.json`, then reload Pi; do not overwrite or delete either runtime directory.

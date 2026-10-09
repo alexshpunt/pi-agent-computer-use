@@ -53,7 +53,7 @@ Full is the default. Set `capture:{granularity:"image"}` for fresh pixels withou
 
 Image-only grounds pixel input on that image, not old hints or tokens. UI-only grounds current hint/token actions, not pixels or image detail; only local search/inspect are available without images. UI queries and walk limits require UI. Hint labels need full; guides need pixels. See [mode options and limits](../../../docs/observation-granularity.md).
 
-On a separately qualified Windows runtime, `capture:{backend:"wgc",granularity:"image"}` selects session/window retained capture; full is also supported. Omitted backend keeps default native capture. UI-only cannot select WGC. Explicit WGC refuses on failure with no capture fallback; native zoom/crop is unsupported on this route. Increasing timestamps do not prove current pixels. See [the WGC contract and qualification status](../../../docs/persistent-wgc.md).
+The selected `windows-persistent-wgc` runtime uses retained WGC by default for image/full window observations. Other runtimes keep their existing route. `capture:{backend:"default"}` explicitly selects the old native route, including when native detail is needed. `capture:{backend:"wgc",granularity:"image"}` explicitly requests WGC; full is also supported. UI-only cannot select WGC. Explicit WGC refuses on failure with no capture fallback; native zoom/crop is unsupported on this route. Increasing timestamps do not prove current pixels. See [the WGC contract and qualification status](../../../docs/persistent-wgc.md).
 
 ## Optional overview guides
 

@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "scope": "User-approved runtime adoption and WGC default only on selected windows-persistent-wgc runtime",
+  "approval": {
+    "request": "b67ab195-7263-4cf0-b5bb-c1e9283cd6ac",
+    "question": "wgc_adoption_default",
+    "answer": "default_wgc",
+    "runtime_switch_explicitly_requested": true
+  },
+  "artifact": {
+    "source": "841dad7e11619bf7ecba3f98e1c20319cbeb7e52",
+    "build": 37929917740,
+    "driver_sha256": "cf45f42407b06da75c20d21e45da0c68093ccc43afeeaf460a5c6a286794d20d",
+    "uia_sha256": "f0d910876bfa227406457bf4dc842351b734bdf72ebe3c713aa94f7df349f991",
+    "cursor_sha256": "44158f44da1a6fc04a158f7e64d9bcdac4b78cb597143df51fc60e341d1925b9",
+    "permanent_copy_verified": true,
+    "license_notices_retained": true,
+    "previous_runtime_and_config_retained": true
+  },
+  "qualification": {
+    "regression_red_receipt": "4e116507c27f",
+    "unit": 381,
+    "typecheck": "passed",
+    "real_pi": 26,
+    "full_real_pi_receipt": "39755950e9c4",
+    "diff_check": "passed",
+    "native_code_changed": false,
+    "dependency_versions_changed": false
+  },
+  "feature_live": {
+    "default_full_wgc": true,
+    "default_image_wgc": true,
+    "warm_resources_reused": true,
+    "ui_only_no_pixels_or_backend": true,
+    "explicit_default_native_capture": true,
+    "one_pixel_click_delivered": true,
+    "independent_witness": { "pointerdown": 1, "click": 1, "counter": 1 },
+    "image_dimensions": { "width": 500, "height": 358 },
+    "samples": [
+      { "mode": "image", "wall_ms": 241, "resources_reused": false, "setup_ms": 87.4506 },
+      { "mode": "image", "wall_ms": 141, "resources_reused": true, "setup_ms": 0 }
+    ],
+    "timing_boundary": "Two finite whole-tool observations, not a paired speed benchmark or latency guarantee",
+    "tui": { "pane": "w3S9:p1", "revision": 90, "columns": 274, "rows": 108, "readable": true },
+    "cleanup": { "fixture_exit": 0, "sourceGone": true, "profileRemoved": true, "computer_close": "closed" }
+  },
+  "delivery": {
+    "normal_main_selected": false,
+    "normal_main_post_reload_verified": false,
+    "temporary_loading_restored": true,
+    "merged": false
+  },
+  "limits": [
+    "Paint freshness remains unverified; timestamps are not application witnesses.",
+    "Native detail is unsupported on WGC; explicit backend default permits the old route.",
+    "Idle expiry can require setup again.",
+    "Native OS/GPU calls may outlive cancellation."
+  ]
+}

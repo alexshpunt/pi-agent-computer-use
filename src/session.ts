@@ -43,7 +43,7 @@ export interface Driver {
   reactiveAnimation?: boolean;
   /** True only for an exact qualified Windows runtime with UIA-only semantic dispatch. */
   semanticActions?: boolean;
-  /** True only for an exact qualified runtime with session-owned, opt-in persistent WGC. */
+  /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
   persistentWgc?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
   overviewKernel?: CuaVisionSettings["kernel"];
@@ -589,7 +589,7 @@ export class ComputerSession {
   }
 
   private async windowDetail(entry: WindowEntry, request: DetailRequest, signal?: AbortSignal): Promise<ComputerResult> {
-    if (entry.observation?.backend === "wgc") return this.result("refused", "Native zoom/crop does not support the explicit WGC route. Read a default overview to use native detail.");
+    if (entry.observation?.backend === "wgc") return this.result("refused", "Native zoom/crop does not support WGC. Read an overview with capture.backend: default to use native detail.");
     const overview = entry.detail;
     try { validateDetail(request, overview, true); }
     catch (error) { return this.result("refused", (error as Error).message); }
@@ -629,7 +629,7 @@ export class ComputerSession {
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
-    const wgc = options.backend === "wgc";
+    const wgc = options.backend === "wgc" || (options.backend === undefined && hasImage && this.driver.persistentWgc === true);
     if (wgc && this.driver.persistentWgc !== true) return this.result("refused", "WGC needs an explicitly selected, qualified Windows runtime. Default capture is unchanged.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined; entry.detail = undefined;
@@ -659,7 +659,7 @@ export class ComputerSession {
     }
     const backend = state.capture_backend as { backend?: unknown } | undefined;
     if (wgc && (backend?.backend !== "wgc" || typeof state.capture_id !== "string" || !state.capture_id))
-      return this.result("refused", "Explicit WGC returned no bound WGC capture receipt; pixels and input authority withheld.");
+      return this.result("refused", "WGC returned no bound WGC capture receipt; pixels and input authority withheld.");
     // Native screenshot-only reads may preserve their old AX snapshot. Never expose it as current.
     if (!hasUi) for (const key of ["elements", "tree_markdown", "snapshot_id", "invalidated_snapshot_ids", "elements_complete", "truncated", "truncation_reason", "total_element_count", "element_count", "focused_element"]) delete state[key];
     // Tree-only native receipts can describe an older pixel frame. It gives this observation no image authority.
