@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { nativeImageCap } from "./cua-image-settings.ts";
 import { imageGuides, guideOptions, type GuideOptions, type ImageGuides, type GuideAnnotation } from "./image-guides.ts";
 import { clipRect, screenRect, type ScreenRect } from "./highlight-geometry.ts";
 import type { Content } from "./session.ts";
@@ -20,7 +21,7 @@ export interface UiResource {
   elements: UiElement[];
 }
 /** Fresh window parts. WGC is Windows-only opt-in on a qualified runtime; default preserves native routing. */
-export interface UiCaptureOptions { backend?: "default" | "wgc"; granularity?: "image" | "ui" | "full"; max_elements?: number; max_depth?: number; hints?: boolean; guides?: GuideOptions }
+export interface UiCaptureOptions { backend?: "default" | "wgc"; granularity?: "image" | "ui" | "full"; maxLongEdge?: number; scale?: number; max_elements?: number; max_depth?: number; hints?: boolean; guides?: GuideOptions }
 /** Read-only operations on one current snapshot; crop consumes its input authority. */
 export interface UiRequest {
   operation: "search" | "scope" | "inspect" | "highlight" | "crop" | "region";
@@ -41,7 +42,7 @@ function letters(n: number): string {
 
 /** Validate before a native walk or replacing any active snapshot. */
 export function validateUiCapture(options: UiCaptureOptions): void {
-  if (Object.keys(options).some(k => !["backend", "granularity", "max_elements", "max_depth", "hints", "guides"].includes(k)) ||
+  if (Object.keys(options).some(k => !["backend", "granularity", "maxLongEdge", "scale", "max_elements", "max_depth", "hints", "guides"].includes(k)) ||
     (options.backend !== undefined && !["default", "wgc"].includes(options.backend)) ||
     (options.granularity !== undefined && !["image", "ui", "full"].includes(options.granularity)) ||
     (options.max_elements !== undefined && (!Number.isSafeInteger(options.max_elements) || options.max_elements < 1 || options.max_elements > 2000)) ||
@@ -49,6 +50,9 @@ export function validateUiCapture(options: UiCaptureOptions): void {
     (options.hints !== undefined && typeof options.hints !== "boolean")) throw Error("Capture needs backend default/wgc, granularity image/ui/full, max_elements 1..2000, max_depth 1..50 and boolean hints.");
   if (options.backend === "wgc" && options.granularity === "ui") throw Error("WGC needs an image or full window observation; UI-only never starts pixel capture.");
   if (options.guides !== undefined) guideOptions(options.guides);
+  nativeImageCap({ maxLongEdge: options.maxLongEdge ?? 500, scale: options.scale ?? 1 });
+  if (options.granularity === "ui" && (options.maxLongEdge !== undefined || options.scale !== undefined))
+    throw Error("UI-only observation has no image size or scale.");
   if (options.granularity === "image" && (options.max_elements !== undefined || options.max_depth !== undefined || options.hints === true))
     throw Error("Image-only observation has no UI walk or element hints.");
   if (options.granularity === "ui" && (options.hints !== undefined || options.guides !== undefined))

@@ -639,7 +639,8 @@ export class ComputerSession {
     const current = await this.current(entry.ref, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
-    const settings = structuredClone({ ...this.overviewSettings(), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
+    const settings = structuredClone({ ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
+      ...(options.scale !== undefined ? { scale: options.scale } : {}), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
     const native = await this.driver.call("get_window_state", {
       ...entry.target,
       ...(hasUi ? { max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000, ...(query ? { query } : {}) }
@@ -787,6 +788,30 @@ export class ComputerSession {
     }
     return this.result("observed", `Read-only UI ${request.operation}: ${ui.elements.length}/${ui.matches} matches in the collected snapshot. ${ui.complete === true ? "Native collection reported complete." : "Collection may be partial; absence does not prove nonexistence."}`,
       undefined, { ...this.addressed(entry), observation_id: observed.id, ui });
+  }
+  /** Check an issued observation for cached resource reading without capturing or renewing input authority. */
+  checkObservation(target: { window_ref?: string; display?: string }, id: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (signal?.aborted) return this.result("refused", "Cancelled before observation reference check.");
+      if ((target.window_ref !== undefined) === (target.display !== undefined))
+        return this.result("refused", "Choose one observed window or display reference.");
+      if (target.display !== undefined) {
+        if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display observation reading.");
+        const detail = target.display === "primary" ? this.displayOverview : this.displayEntries.get(target.display)?.detail;
+        return detail?.id === id ? this.result("observed", "Existing read-only display observation; no fresh pixels or input authority.")
+          : this.result("refused", "Retired display observation. Read a new overview.");
+      }
+      try {
+        const known = this.entries.get(target.window_ref!);
+        if (known && !this.allowed(known)) return this.denied(known.ref);
+        const entry = await this.current(target.window_ref!, signal);
+        if (!entry || entry.observation?.id !== id) return this.result("refused", "Retired or closed window observation. Read a new overview.");
+        if (!this.allowed(entry)) return this.denied(entry.ref);
+        if (signal?.aborted) return this.result("refused", "Observation reference check cancelled.");
+        return this.result("observed", "Existing window observation; no native capture or renewal of input authority.", undefined,
+          { ...this.addressed(entry), observation_id: id });
+      } catch (error) { return this.failed(error, false); }
+    });
   }
   /** Consume one overview for a complete action or bounded sequence. Never replay a completed prefix. */
   act(action: Action, signal?: AbortSignal): Promise<ComputerResult> {

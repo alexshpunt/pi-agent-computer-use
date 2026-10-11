@@ -19,6 +19,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "pi-test run -- vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
+    "dev:ide": "node scripts/link-ide-source.mjs",
     "probe:driver": "node scripts/probe-driver.mjs"
   },
   "dependencies": {
@@ -27,10 +28,12 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "pi-agent-ide": ">=0.8.0 <0.9.0",
+    "typebox": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.99.1",
+    "@earendil-works/pi-coding-agent": "1.1.0",
     "@types/node": "24.0.4",
     "pi-coding-agent-test": "0.1.3",
     "typescript": "5.9.3",
