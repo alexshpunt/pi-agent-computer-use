@@ -4,6 +4,7 @@ import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenc
 import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
 import { isSemanticAction, semanticReceipt } from "./semantic-actions.ts";
+import { isPointerMove, pointerReceipt } from "./pointer-actions.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
@@ -43,6 +44,8 @@ export interface Driver {
   reactiveAnimation?: boolean;
   /** True only for an exact qualified Windows runtime with UIA-only semantic dispatch. */
   semanticActions?: boolean;
+  /** True only for the explicitly selected, byte-checked Windows native pointer runtime. */
+  nativePointer?: boolean;
   /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
   persistentWgc?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
@@ -822,6 +825,12 @@ export class ComputerSession {
               throw Error("The observed target is outside the image. No input was dispatched.");
           }
           validateInput(nativeStep, observed, batch);
+          if (isPointerMove(nativeStep.action)) {
+            if (!this.driver.nativePointer) throw Error("Pointer movement requires the explicitly selected native pointer runtime. No input was dispatched.");
+            if (animation !== undefined) throw Error("Native pointer movement has no overlay animation.");
+            if (nativeStep.element_token ? !observed.frames.has(nativeStep.element_token) : !observed.captureId)
+              throw Error("Pointer movement needs a current token with proven geometry or this overview's native capture. Observe again.");
+          }
           if (isSemanticAction(nativeStep.action)) {
             if (!this.driver.semanticActions) throw Error("Semantic actions require the explicitly selected qualified Windows semantic runtime. No input was dispatched.");
             if (delivery_mode === "foreground" || animation !== undefined) throw Error("Semantic actions use accessibility only: no foreground or cursor animation.");
@@ -868,7 +877,7 @@ export class ComputerSession {
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached during admission; no more steps dispatched.");
           entry.observation = undefined; entry.detail = undefined;
-          const pointerAction = ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
+          const pointerAction = isPointerMove(step.action) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
           if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
           const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
             ...(step.via ? { via_points: step.via.length } : {}), ...(step.actions ? { actions: step.actions.map(pointer => { const { via, ...compact } = pointer; return { ...compact, ...(via ? { via_points: via.length } : {}) }; }) } : {}) };
@@ -888,7 +897,8 @@ export class ComputerSession {
           const refused = state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
             "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
           const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
-          const inconsistent = isSemanticAction(step.action) && !refused && !uncertain && !semanticReceipt(step.action, state);
+          const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
+            : isPointerMove(step.action) && (delivery_mode !== "foreground" || !pointerReceipt(step, state)));
           const status = refused ? "refused" : uncertain || inconsistent ? "unknown" : "delivered";
           row.status = status; inFlight = false;
           const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, state);

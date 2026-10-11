@@ -1,0 +1,683 @@
+{
+  "date": "2026-10-11",
+  "candidate": {
+    "source": "ce28c95175efc97a040cebebd80fec63526aec64",
+    "version": "0.34.0",
+    "sha256": "ee0d2a6d8593512eaa4e5cd1466f3902cfdf85111628f2f54859c60adac67197",
+    "signed": false
+  },
+  "ide": {
+    "source": "/root/dev/pi/pi-agent-ide",
+    "version": "0.8.0",
+    "commit": "394f3784fb3e34a46a1727f3c9cdaf1c5af408ed",
+    "originDevelopVerified": true
+  },
+  "notes": [
+    "Readonly PowerShell cursor coordinates have no qualified DPI mapping; only window identity and unchanged/changed samples are used. These coordinates never grounded input.",
+    "Measured browser witnesses precede cleanup clicks. Cleanup removes only the two task-owned private profiles.",
+    "Native dispatch receipts do not prove application effects; separate snapshots and witnesses verify this fixture."
+  ],
+  "records": [
+    {
+      "file": "1-ready.json",
+      "data": {
+        "label": "ready",
+        "state": {
+          "reports": [
+            {
+              "serial": 52,
+              "time": 1791701473379,
+              "menu": false,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": false,
+              "focus": "BODY",
+              "received_ms": 1791701473489
+            },
+            {
+              "serial": 16,
+              "time": 1791701473394,
+              "menu": false,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": false,
+              "focus": "BODY",
+              "received_ms": 1791701473504
+            }
+          ],
+          "events": [
+            [],
+            []
+          ],
+          "dropped": [
+            0,
+            0
+          ]
+        },
+        "native_state": {
+          "status": "measured",
+          "measured_ms": 1791701473557,
+          "foreground_window": 459100,
+          "pointer": {
+            "x": 753,
+            "y": 1117,
+            "space": "windows_desktop_pixels",
+            "read_only": true
+          },
+          "window_at_pointer": 459100
+        }
+      }
+    },
+    {
+      "file": "2-background-refusal.json",
+      "data": {
+        "label": "background-refusal",
+        "state": {
+          "reports": [
+            {
+              "serial": 518,
+              "time": 1791701519990,
+              "menu": false,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": false,
+              "focus": "BODY",
+              "received_ms": 1791701519653
+            },
+            {
+              "serial": 482,
+              "time": 1791701519990,
+              "menu": false,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": false,
+              "focus": "BODY",
+              "received_ms": 1791701519653
+            }
+          ],
+          "events": [
+            [],
+            []
+          ],
+          "dropped": [
+            0,
+            0
+          ]
+        },
+        "native_state": {
+          "status": "measured",
+          "measured_ms": 1791701519698,
+          "foreground_window": 459100,
+          "pointer": {
+            "x": 753,
+            "y": 1117,
+            "space": "windows_desktop_pixels",
+            "read_only": true
+          },
+          "window_at_pointer": 459100
+        }
+      }
+    },
+    {
+      "file": "3-move-menu.json",
+      "data": {
+        "label": "move-menu",
+        "state": {
+          "reports": [
+            {
+              "serial": 861,
+              "time": 1791701554279,
+              "menu": true,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": true,
+              "focus": "BODY",
+              "received_ms": 1791701554009
+            },
+            {
+              "serial": 825,
+              "time": 1791701554295,
+              "menu": false,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": false,
+              "focus": "BODY",
+              "received_ms": 1791701554025
+            }
+          ],
+          "events": [
+            [
+              {
+                "type": "pointerenter",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530465,
+                "received_ms": 1791701530400
+              },
+              {
+                "type": "pointerenter",
+                "target": "HTML",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530465.5999,
+                "received_ms": 1791701530406
+              },
+              {
+                "type": "pointerenter",
+                "target": "BODY",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.0999,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointerenter",
+                "target": "menu",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.3,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointerenter",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.5999,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointermove",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530467,
+                "received_ms": 1791701530408
+              }
+            ],
+            []
+          ],
+          "dropped": [
+            0,
+            0
+          ]
+        },
+        "native_state": {
+          "status": "measured",
+          "measured_ms": 1791701554097,
+          "foreground_window": 1970368,
+          "pointer": {
+            "x": 217,
+            "y": 295,
+            "space": "windows_desktop_pixels",
+            "read_only": true
+          },
+          "window_at_pointer": 1970368
+        }
+      }
+    },
+    {
+      "file": "4-hover-tooltip.json",
+      "data": {
+        "label": "hover-tooltip",
+        "state": {
+          "reports": [
+            {
+              "serial": 980,
+              "time": 1791701566078,
+              "menu": false,
+              "tooltip": true,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": true,
+              "focus": "BODY",
+              "received_ms": 1791701566117
+            },
+            {
+              "serial": 943,
+              "time": 1791701566094,
+              "menu": false,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": false,
+              "focus": "BODY",
+              "received_ms": 1791701566133
+            }
+          ],
+          "events": [
+            [
+              {
+                "type": "pointerenter",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530465,
+                "received_ms": 1791701530400
+              },
+              {
+                "type": "pointerenter",
+                "target": "HTML",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530465.5999,
+                "received_ms": 1791701530406
+              },
+              {
+                "type": "pointerenter",
+                "target": "BODY",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.0999,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointerenter",
+                "target": "menu",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.3,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointerenter",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.5999,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointermove",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530467,
+                "received_ms": 1791701530408
+              },
+              {
+                "type": "pointerleave",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564062.3,
+                "received_ms": 1791701564047
+              },
+              {
+                "type": "pointerleave",
+                "target": "menu",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564062.5999,
+                "received_ms": 1791701564049
+              },
+              {
+                "type": "pointerenter",
+                "target": "tooltip-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564062.8,
+                "received_ms": 1791701564050
+              },
+              {
+                "type": "pointermove",
+                "target": "tooltip-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564063.2,
+                "received_ms": 1791701564050
+              }
+            ],
+            []
+          ],
+          "dropped": [
+            0,
+            0
+          ]
+        },
+        "native_state": {
+          "status": "measured",
+          "measured_ms": 1791701566142,
+          "foreground_window": 1970368,
+          "pointer": {
+            "x": 217,
+            "y": 359,
+            "space": "windows_desktop_pixels",
+            "read_only": true
+          },
+          "window_at_pointer": 1970368
+        }
+      }
+    },
+    {
+      "file": "5-verified-sentinel.json",
+      "data": {
+        "label": "verified-sentinel",
+        "state": {
+          "reports": [
+            {
+              "serial": 1292,
+              "time": 1791701597288,
+              "menu": false,
+              "tooltip": true,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": true,
+              "focus": "BODY",
+              "received_ms": 1791701597327
+            },
+            {
+              "serial": 1255,
+              "time": 1791701597289,
+              "menu": false,
+              "tooltip": false,
+              "forbidden": {
+                "mousedown": 0,
+                "mouseup": 0,
+                "click": 0,
+                "dblclick": 0,
+                "contextmenu": 0,
+                "keydown": 0,
+                "keyup": 0,
+                "input": 0,
+                "wheel": 0
+              },
+              "has_focus": false,
+              "focus": "BODY",
+              "received_ms": 1791701597327
+            }
+          ],
+          "events": [
+            [
+              {
+                "type": "pointerenter",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530465,
+                "received_ms": 1791701530400
+              },
+              {
+                "type": "pointerenter",
+                "target": "HTML",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530465.5999,
+                "received_ms": 1791701530406
+              },
+              {
+                "type": "pointerenter",
+                "target": "BODY",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.0999,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointerenter",
+                "target": "menu",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.3,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointerenter",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530466.5999,
+                "received_ms": 1791701530407
+              },
+              {
+                "type": "pointermove",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 148.33334350585938,
+                "time": 1791701530467,
+                "received_ms": 1791701530408
+              },
+              {
+                "type": "pointerleave",
+                "target": "menu-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564062.3,
+                "received_ms": 1791701564047
+              },
+              {
+                "type": "pointerleave",
+                "target": "menu",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564062.5999,
+                "received_ms": 1791701564049
+              },
+              {
+                "type": "pointerenter",
+                "target": "tooltip-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564062.8,
+                "received_ms": 1791701564050
+              },
+              {
+                "type": "pointermove",
+                "target": "tooltip-trigger",
+                "trusted": true,
+                "buttons": 0,
+                "key": null,
+                "x": 150,
+                "y": 211.66668701171875,
+                "time": 1791701564063.2,
+                "received_ms": 1791701564050
+              }
+            ],
+            []
+          ],
+          "dropped": [
+            0,
+            0
+          ]
+        },
+        "native_state": {
+          "status": "measured",
+          "measured_ms": 1791701597397,
+          "foreground_window": 1970368,
+          "pointer": {
+            "x": 217,
+            "y": 359,
+            "space": "windows_desktop_pixels",
+            "read_only": true
+          },
+          "window_at_pointer": 1970368
+        }
+      }
+    },
+    {
+      "file": "cleanup.json",
+      "data": [
+        {
+          "target": {
+            "pid": 17600,
+            "window_id": 70066
+          },
+          "result": {
+            "sourceGone": true,
+            "profileRemoved": true
+          }
+        },
+        {
+          "target": {
+            "pid": 26456,
+            "window_id": 1970368
+          },
+          "result": {
+            "sourceGone": true,
+            "profileRemoved": true
+          }
+        }
+      ]
+    }
+  ]
+}
