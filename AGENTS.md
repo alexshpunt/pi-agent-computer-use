@@ -1,12 +1,12 @@
 # Working on this project
 
 Read [README.md](README.md) for project intent and [docs/research-references.md](docs/research-references.md) for research inputs. The linked Linear task owns accepted scope and acceptance; reference claims are not requirements.
-Read [the computer-use skill](.pi/skills/computer-use/SKILL.md) before operating UI tools. It describes overview, detail and sequential input through Pi Codemode.
+Read [the computer-use skill](.pi/skills/computer-use/SKILL.md) before operating UI tools. It describes native Read/Search, literal Write and snapshot-bound JSON Insert. Codemode composition is optional.
 Before changing or verifying this extension in a worktree, read [the development skill](.pi/skills/develop-computer-use/SKILL.md). Use the worktree's code only for the task session, then restore global loading.
 
 ## Unified computer use
 
-Use one window-first `computer_*` tool family for all apps, including browsers. Discover a window, read its native accessibility tree and screenshot, then click or type. Do not create a separate browsing API or bind a browser page, tab or profile to use an ordinary window. `browser_*` tools are temporarily disabled in the production extension; their adapter and standalone profiler remain for research.
+Expose one window-first computer provider through ordinary IDE Read/Search/Write/Insert for all apps, including browsers. Keep only the visual classifier as a separate computer tool. Discover a window, read its native accessibility tree and screenshot, then click or type. Do not create a separate browsing API or bind a browser page, tab or profile to use an ordinary window. `browser_*` tools are temporarily disabled in the production extension; their adapter and standalone profiler remain for research.
 
 In YOLO, existing windows do not need session ownership or a browser grant. Safe still limits access to session-opened windows. Neither mode authorizes unrelated work or bypasses the user's task boundaries.
 
@@ -22,7 +22,7 @@ Prefer the newest upstream release that passes our compatibility checks. When de
 
 Add missing capabilities in our adapter layer when the driver's public API is enough. When a required native capability is missing, the user-approved CUA fork may add it inside the driver. Keep changes focused and keep CUA as the only capture/input backend. Small, focused processing above native CUA output is allowed, such as cropping a full-resolution display capture.
 
-The user has approved a public CUA fork for continuous Windows drawing. First prove that the upstream base builds on Windows, then add a continuous drag path and verify it through the production computer_* tools. The final acceptance is drawing a picture with the brush in a new Paint document, not merely passing a synthetic canvas test. Keep the existing qualified driver until the fork passes compatibility and live checks. Do not silently replace the installed runtime or change persistent machine setup.
+The user has approved a public CUA fork for continuous Windows drawing. First prove that the upstream base builds on Windows, then add a continuous drag path and verify it through the production computer provider. The final acceptance is drawing a picture with the brush in a new Paint document, not merely passing a synthetic canvas test. Keep the existing qualified driver until the fork passes compatibility and live checks. Do not silently replace the installed runtime or change persistent machine setup.
 
 Do not restore the retired Playwright browser, Sharp image engine, saved-original crop pipeline or stable-DOM hint registry as a fallback. A focused crop/resize dependency may serve an approved adapter feature; it must not become another browser or capture engine. Keep source identity, coordinate domains, permissions and freshness limits explicit. An adapter must not bypass ownership or Safe mode, or silently fall back to a wider source.
 
@@ -36,7 +36,7 @@ Current M4–M6 tasks cover only the Windows host controlled from WSL, including
 
 The retained browser research adapter stays within its owned session, even under YOLO; it is not registered as agent tooling. Desktop YOLO is the default; only the user can change Safe/YOLO. Safe is a UI policy, not OS isolation. LPT-372 and its game are paused; its unfinished old-backend patch is archived in Linear. [Sandbox work](https://linear.app/alexshpunt/issue/LPT-364) is separate and deferred.
 
-Keep Pi Agent IDE unchanged. The final provider API and migration remain open. Any extraction experiment needs an isolated IDE branch/worktree and verification of both extensions together. Read [the external comparison](docs/research/external-implementations.md) before repeating research.
+Use IDE's public provider SDK. Computer-specific capture, policy and input belong here, never in IDE. If a demonstrated gap needs a generic public SDK extension, use an isolated IDE branch/worktree and verify both extensions together. Pi core stays read-only. Standalone computer-use checks must not inherit an unrelated latest/clean-IDE gate. Read [the external comparison](docs/research/external-implementations.md) before repeating research.
 
 Ask before broadening platform/backend/app scope, adding permissions, or changing persistent machine setup. Live verification uses only newly created or explicitly authorized disposable Notepad/Calculator windows, new Paint documents for the approved drawing work, or the owned browser on synthetic local pages. Never act on real documents, personal browser data, accounts or external forms. Desktop-wide capability does not authorize unrelated tasks.
 

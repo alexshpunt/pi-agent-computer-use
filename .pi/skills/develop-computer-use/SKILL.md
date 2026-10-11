@@ -29,6 +29,7 @@ Load exactly one copy. The global package is the default; a task session must te
 
    Disable any other computer-use loader or package entry that loads this checkout. Do not add `-e` on top of normal loading.
 5. Check dependencies in this worktree. A fresh Git worktree has no `node_modules`; loading the global checkout does not provide its dependencies. Run `npm ls --depth=0` and confirm `sharp` can be imported from the worktree. If dependencies are missing, run `npm ci --ignore-scripts` using the committed lockfile, then repeat the import check. Do not change dependency versions, global installs, native runtime selection, or machine settings for this setup.
+For this provider checkout, install with `npm ci --ignore-scripts --legacy-peer-deps`, then link its public SDK with `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This does not change IDE's checkout, settings or dependencies. Use the actual consumer in provider integration tests; do not require an unrelated fetch/cleanliness gate for standalone backend tests.
 6. Treat the settings and loader as temporary session setup. They are ignored by Git. Do not stage, commit, or push them; use explicit staging paths.
 
 ## Verify before reloading
