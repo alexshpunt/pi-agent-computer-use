@@ -32,6 +32,8 @@ Prefer a small Qt helper for on-screen observation and crop frames; Qt is a cand
 
 ## Access and scope
 
+Current M4–M6 tasks cover only the Windows host controlled from WSL, including browser work. Other desktop platforms are not approved or verified, and we have no environment to test them. Do not turn their qualification into current feature acceptance or claim support there. Keep platform limits explicit; any later expansion needs a separate owner decision.
+
 The retained browser research adapter stays within its owned session, even under YOLO; it is not registered as agent tooling. Desktop YOLO is the default; only the user can change Safe/YOLO. Safe is a UI policy, not OS isolation. LPT-372 and its game are paused; its unfinished old-backend patch is archived in Linear. [Sandbox work](https://linear.app/alexshpunt/issue/LPT-364) is separate and deferred.
 
 Keep Pi Agent IDE unchanged. The final provider API and migration remain open. Any extraction experiment needs an isolated IDE branch/worktree and verification of both extensions together. Read [the external comparison](docs/research/external-implementations.md) before repeating research.

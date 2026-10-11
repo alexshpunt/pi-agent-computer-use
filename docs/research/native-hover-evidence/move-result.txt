@@ -1,0 +1,76 @@
+Driver returned delivered for move_pointer (requested: foreground). Observe again to verify application state.
+Human mark: target unavailable (native_geometry_unavailable).
+{
+  "target": {
+    "pid": 26456,
+    "window_id": 1970368
+  },
+  "window_ref": "w-9a155b64-57fe-46dd-af8d-a6f87f1918ba",
+  "source_identity": {
+    "domain": "windows-host",
+    "identity": {
+      "session_id": "64496480-2faa-45f7-b200-035bb30316f3",
+      "window_ref": "w-9a155b64-57fe-46dd-af8d-a6f87f1918ba",
+      "pid": 26456,
+      "window_id": 1970368
+    },
+    "membership": {
+      "windows_session_id": null,
+      "virtual_desktop_id": null,
+      "monitor_id": null
+    },
+    "virtual_desktop": {
+      "status": "unknown",
+      "reason": "not_reported"
+    }
+  },
+  "action_capability": {
+    "scope": "attempted_action_only",
+    "basis": "native_receipt",
+    "operation": "move",
+    "native_tool": "move_pointer",
+    "requested_delivery": "foreground",
+    "actual_delivery": "foreground",
+    "background": "unknown",
+    "foreground": "delivered",
+    "unsupported": false,
+    "route": "native",
+    "event_kind": null,
+    "code": null
+  },
+  "highlight": {
+    "status": "unavailable",
+    "reason": "native_geometry_unavailable"
+  },
+  "status": "delivered",
+  "mode": "yolo",
+  "state": {
+    "attempted": true,
+    "delivered": true,
+    "delivery_mode": "foreground",
+    "dwell_elapsed_ms": 0,
+    "dwell_ms": 0,
+    "effect": "unverifiable",
+    "foreground_at_target": true,
+    "foreground_changed": true,
+    "pointer_at_target": true,
+    "pointer_changed": true,
+    "route": "native",
+    "coordinate_grounding": {
+      "input_space": "window_image_pixels",
+      "transform": "cua_native_once",
+      "overview": {
+        "width": 395,
+        "height": 500
+      },
+      "requested": {
+        "x": 95,
+        "y": 148
+      },
+      "resolved_native_screen": null,
+      "native_target_mark": {
+        "reason": "Native action did not report usable target geometry."
+      }
+    }
+  }
+}

@@ -3,12 +3,14 @@ import { isSemanticAction } from "./semantic-actions.ts";
 
 /** Complete CUA operations. None exposes a key or button held between calls. */
 export interface InputCommand {
-  action: "invoke" | "select" | "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold";
+  action: "move" | "hover" | "invoke" | "select" | "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold";
   element_token?: string;
   /** Snapshot-scoped UI alias; ComputerSession resolves it before native validation. */
   hint?: string;
   x?: number; y?: number;
   text?: string; key?: string; keys?: string[]; modifiers?: string[];
+  /** Required bounded native dwell for hover; move sends no dwell. */
+  dwell_ms?: number;
   delay_ms?: number;
   button?: "left" | "right" | "middle";
   direction?: "up" | "down" | "left" | "right";
@@ -25,7 +27,7 @@ export type HoldPointer = Pick<InputCommand, "x" | "y" | "from_x" | "from_y" | "
 /** Wait before a complete step, measured from the previous step's completion. */
 export interface InputStep extends InputCommand { wait_ms?: number }
 
-const names = ["invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold"] as const;
+const names = ["move", "hover", "invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold"] as const;
 const modifiers = ["ctrl", "shift", "alt", "win"];
 const enumSchema = (values: readonly string[]) => Type.Union(values.map(value => Type.Literal(value)));
 const optional = {
@@ -36,6 +38,7 @@ const optional = {
   key: Type.Optional(Type.String({ minLength: 1, description: "Complete key: letter/digit, return, tab, escape, space, backspace, delete, arrows, home/end, pageup/pagedown or f1..f12." })),
   keys: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 8, uniqueItems: true, description: "hotkey: modifiers followed by one key. hold: 1..8 simultaneous ordinary keys or ctrl/shift/alt/win, released within this call." })),
   modifiers: Type.Optional(Type.Array(enumSchema(modifiers), { maxItems: 4, uniqueItems: true })),
+  dwell_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "hover only: required native dwell after pointer arrival. move has no dwell. Completion is not tooltip verification." })),
   delay_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 200, description: "type_text only: CUA's per-character delay; default 30." })),
   button: Type.Optional(enumSchema(["left", "right", "middle"])),
   direction: Type.Optional(enumSchema(["up", "down", "left", "right"])),
@@ -69,6 +72,7 @@ export const actionParameters = Type.Object({
 }, { additionalProperties: false });
 
 const fields: Record<InputCommand["action"], string[]> = {
+  move: [], hover: ["dwell_ms"],
   key: ["key", "modifiers"], hotkey: ["keys"], type_text: ["text", "delay_ms"], set_value: ["text"],
   click: ["button", "modifiers"], right_click: ["modifiers"], double_click: ["modifiers"],
   scroll: ["direction", "amount", "by"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers", "via"],
@@ -107,7 +111,8 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
   if (command.element_token !== undefined && !observed.tokens.has(command.element_token)) throw new Error("Element token is not in this window's current observation.");
   const pixel = command.x !== undefined || command.y !== undefined;
   if (pixel) { if (command.element_token !== undefined) throw new Error("Choose a token or a point, not both."); point(command.x, command.y); }
-  if (["click", "right_click", "double_click", "scroll"].includes(command.action) && !command.element_token && !pixel) throw new Error("This pointer action needs an observed token or point.");
+  if (["move", "hover", "click", "right_click", "double_click", "scroll"].includes(command.action) && !command.element_token && !pixel) throw new Error("This pointer action needs an observed token or point.");
+  if (command.action === "hover" && !integer(command.dwell_ms, 1, 10000)) throw new Error("hover needs dwell_ms from 1 to 10000.");
   if (["type_text", "set_value"].includes(command.action) && (typeof command.text !== "string" || command.text.length > 2000)) throw new Error("This action needs text, at most 2000 characters.");
   if (isSemanticAction(command.action) && !command.element_token) throw new Error("Semantic actions need an observed token.");
   if (command.action === "key" && !validKey(command.key)) throw new Error("Unsupported key.");
@@ -147,6 +152,10 @@ export function requestedInputTime(command: InputStep): number {
 /** Translate supported fields only. Coordinates stay in the original overview's local image domain.
  * captureBoundDrag enables straight-drag binding only for a separately qualified native runtime. */
 export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string, captureBoundDrag = false): { name: string; args: Record<string, unknown> } {
+  if (command.action === "move" || command.action === "hover") return { name: "move_pointer", args: {
+    ...target, delivery_mode: delivery, dwell_ms: command.action === "hover" ? command.dwell_ms : 0,
+    ...(command.element_token !== undefined ? { element_token: command.element_token } : { capture_id: captureId, x: command.x, y: command.y }),
+  } };
   if (isSemanticAction(command.action)) return { name: "semantic_action", args: { ...target, element_token: command.element_token,
     operation: command.action, ...(command.action === "set_value" ? { value: command.text } : {}) } };
   const name = command.action === "hold" ? "hold_keys" : command.action === "select_all" ? "hotkey" : command.action === "key" ? "press_key" : command.action;
