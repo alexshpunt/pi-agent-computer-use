@@ -29,7 +29,7 @@ Warm the model in a separate read-only bounded call if cold startup would consum
 
 ## Keep the data inside the program
 
-`await tools.computer_observe(...)` returns data to JavaScript. It does not by itself publish that data to the reasoning agent. `computer_classify` can consume the supplied image without the agent seeing it.
+Use ordinary Read on a computer window resource. Its native data includes image blocks; inspect the actual returned type before extracting them. Keep those blocks inside the program unless explicitly emitting an image. `computer_classify` consumes supplied pixels without another capture.
 
 During the loop:
 
@@ -48,15 +48,15 @@ Set a small `max_output_tokens` on every Codemode chunk. This limits text output
 
 ## Keep the reaction path short
 
-After a full planning overview establishes the layout, prefer `computer_observe({window_ref,capture:{granularity:"image"}})` and `computer_classify({image:view.image, region, condition, threshold})` for an eligible target. Image-only skips the UI walk and grounds pixel input on that exact observation; it has no current hints, tokens or selection metadata. Recover completed targets from current visible state, and stop when layout or state is uncertain. Use full when current UI is needed, or UI-only for a separate non-visual control check. Never carry hints across these fresh reads. The integer region belongs to that supplied image, not a detail image or native screen coordinates. Crop happens in the warm worker's memory; do not take a second screenshot or start a shell just to crop it.
+After a full planning overview establishes the layout, prefer Read on the known window address with `views:["image"]`, then classify its actual native image block with `computer_classify` for an eligible target. Image-only skips the UI walk and grounds pixel input on that exact observation; it has no current hints, tokens or selection metadata. Recover completed targets from current visible state, and stop when layout or state is uncertain. Use full when current UI is needed, or UI-only for a separate non-visual control check. Never carry hints across these fresh reads. The integer region belongs to that supplied image, not a detail image or native screen coordinates. Crop happens in the warm worker's memory; do not take a second screenshot or start a shell just to crop it.
 
 When checking several targets in one frame, pass `regions` once and use its ordered `results`. Do not confuse concurrent single-crop calls with a model batch: the worker serializes separate requests. Bound both tool calls and total crops evaluated. Skip empty batches.
 
-For repeated snapshots of a known field, a one-frame `computer_sequence` with `capture.region` avoids an accessibility walk and crops only supplied native pixels. Inspect its actual frame count and stop reason, then select that frame privately. The crop's coordinates start at zero; do not mix them with the full-window coordinates. Sequence frames are read-only, so get a fresh window overview before input.
+For repeated snapshots of a known field, a one-frame sequence Read with its `region` option avoids an accessibility walk and crops only supplied native pixels. Inspect its actual frame count and stop reason, then select that frame privately. The crop's coordinates start at zero; do not mix them with the full-window coordinates. Sequence frames are read-only, so get a fresh window overview before input.
 
 Do not insert sleep calls into a reaction loop unless pacing was explicitly requested. Observe and process sequentially as quickly as the bounded program can; keep native captures, classification and input timings separate.
 
-For authorized reactive input, add `animation:"reactive"` to `computer_act` when a short cursor glide helps. The adapter restores the ordinary glide after each native call. This changes animation only, not native click pauses; count profile switching in the action timing. See [local configuration and failure rules](../../../docs/reactive-animation.md).
+For authorized reactive input, add `animation:"reactive"` to an Insert JSON action on the current observation address when a short cursor glide helps. The adapter restores the ordinary glide after each native call. This changes animation only, not native click pauses; count profile switching in the action timing. See [local configuration and failure rules](../../../docs/reactive-animation.md).
 
 Classification neither consumes nor renews input authority. If no intervening read/action consumed the overview and its observed target is still valid, use that observation for the action. Otherwise observe again. Set a maximum frame age before dispatch; if analysis takes too long, discard that decision rather than clicking an expired detection.
 
@@ -89,7 +89,7 @@ Use background input first. After an actual background refusal, get a fresh obse
 
 User cancellation ends the run. Do not catch cancellation and restart. Codemode stores commit only when the script succeeds; an aborted script can lose its state updates even though native input happened. On resumption, recover the current application state from a fresh overview and treat any unfinished action as uncertain. Never reconstruct eligibility merely from an old store.
 
-On a normal early stop, return successfully with the bounded summary so compact state can persist. On timeout or cancellation, do not claim that normal cleanup or final state persistence happened. Release only task-owned resources when appropriate; `computer_close` does not close app windows. Do not delete source images, user documents or model assets as cleanup.
+On a normal early stop, return successfully with the bounded summary so compact state can persist. On timeout or cancellation, do not claim that normal cleanup or final state persistence happened. Release only task-owned resources when appropriate; Insert session close releases the runtime but does not close app windows. Do not delete source images, user documents or model assets as cleanup.
 
 ## Return one small summary
 
