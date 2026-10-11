@@ -11,6 +11,7 @@ import { McpDriver } from "./driver.ts";
 import { registerComputerMode } from "./mode.ts";
 import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
+import { registerComputerProvider } from "./provider.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
@@ -115,8 +116,8 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
   });
 }
 
-/** Standalone computer UI extension. The final Pi Agent IDE provider API remains separate. */
-export default function computerUse(pi: ExtensionAPI): void {
+/** Register native computer resources with ordinary IDE tools and retain the separate visual classifier. */
+export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   const closeClassifier = registerClassifierTool(pi);
   let overviewKernel: "lanczos3" | "bilinear" = "lanczos3";
   const images = new CuaImageSettings(() => overviewKernel);
@@ -136,12 +137,13 @@ export default function computerUse(pi: ExtensionAPI): void {
     try { return await loading; }
     finally { loading = undefined; }
   }
-  registerComputerTools(pi, getSession, async () => {
+  await registerComputerProvider(pi, getSession, async () => {
     await closeClassifier();
     const result: ComputerResult = session ? await session.close() : {
       content: [{ type: "text", text: "No owned computer-use runtime is running." }],
       details: { status: "closed", mode: getMode() },
     };
+    session = undefined;
     try { await highlights.close(); }
     catch { return { content: [{ type: "text", text: "Qt frame shutdown is unconfirmed." }],
       details: { status: "unknown", mode: getMode() }, isError: true }; }
