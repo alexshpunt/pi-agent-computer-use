@@ -1,5 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { isSemanticAction } from "./semantic-actions.ts";
+import { isCoordinateScroll } from "./scroll-actions.ts";
 
 /** Complete CUA operations. None exposes a key or button held between calls. */
 export interface InputCommand {
@@ -15,6 +16,10 @@ export interface InputCommand {
   button?: "left" | "right" | "middle";
   direction?: "up" | "down" | "left" | "right";
   amount?: number; by?: "line" | "page";
+  /** Signed native wheel detents at a pixel point; positive values scroll content right/down. */
+  delta_x?: number; delta_y?: number;
+  /** Coordinate scroll only; one detent is 120 native wheel-delta units, not a content distance. */
+  unit?: "wheel_detents";
   from_x?: number; from_y?: number; to_x?: number; to_y?: number;
   duration_ms?: number; steps?: number;
   /** Intermediate local screenshot points in one Windows left-button stroke. */
@@ -44,6 +49,10 @@ const optional = {
   direction: Type.Optional(enumSchema(["up", "down", "left", "right"])),
   amount: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
   by: Type.Optional(enumSchema(["line", "page"])),
+  // Keep number schemas: Pi normalizes integer fields before our validator can reject fractions.
+  delta_x: Type.Optional(Type.Number({ minimum: -50, maximum: 50, multipleOf: 1, description: "Coordinate scroll only: signed integer horizontal wheel detents; positive scrolls content right. Default zero; at least one axis must be nonzero." })),
+  delta_y: Type.Optional(Type.Number({ minimum: -50, maximum: 50, multipleOf: 1, description: "Coordinate scroll only: signed integer vertical wheel detents; positive scrolls content down. Default zero; at least one axis must be nonzero." })),
+  unit: Type.Optional(Type.Literal("wheel_detents", { description: "Required for coordinate scroll: use current overview x/y and delta_x/delta_y, not a hint/token or direction/amount/by. One detent is 120 native wheel-delta units, not pixels or text lines; the app controls displacement. Background refuses; explicit foreground leaves pointer/focus active. No animation/modifiers/sequence steps." })),
   from_x: Type.Optional(Type.Number({ minimum: 0 })), from_y: Type.Optional(Type.Number({ minimum: 0 })),
   to_x: Type.Optional(Type.Number({ minimum: 0 })), to_y: Type.Optional(Type.Number({ minimum: 0 })),
   duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })),
@@ -75,7 +84,7 @@ const fields: Record<InputCommand["action"], string[]> = {
   move: [], hover: ["dwell_ms"],
   key: ["key", "modifiers"], hotkey: ["keys"], type_text: ["text", "delay_ms"], set_value: ["text"],
   click: ["button", "modifiers"], right_click: ["modifiers"], double_click: ["modifiers"],
-  scroll: ["direction", "amount", "by"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers", "via"],
+  scroll: ["direction", "amount", "by", "delta_x", "delta_y", "unit"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers", "via"],
   select_all: [], invoke: [], select: [],
   hold: ["keys", "duration_ms", "actions"],
 };
@@ -124,10 +133,18 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
   if (command.delay_ms !== undefined && !integer(command.delay_ms, 0, 200)) throw new Error("delay_ms must be 0..200.");
   if (command.button !== undefined && !["left", "right", "middle"].includes(command.button)) throw new Error("Unsupported button.");
   if (command.action === "scroll") {
-    if (!command.element_token || pixel) throw new Error("scroll requires an observed element_token; CUA 0.33.2 pixel scroll does not map resized screenshots correctly.");
-    if (!["up", "down", "left", "right"].includes(command.direction ?? "")) throw new Error("Unsupported scroll direction.");
-    if (command.amount !== undefined && !integer(command.amount, 1, 50)) throw new Error("amount must be 1..50.");
-    if (command.by !== undefined && !["line", "page"].includes(command.by)) throw new Error("Scroll by line or page.");
+    if (pixel) {
+      if (command.direction !== undefined || command.amount !== undefined || command.by !== undefined) throw new Error("Coordinate scroll cannot combine detents with direction, amount or by.");
+      if (command.unit !== "wheel_detents") throw new Error("Coordinate scroll requires unit: wheel_detents; displacement is controlled by the app.");
+      const dx = command.delta_x === undefined ? 0 : command.delta_x, dy = command.delta_y === undefined ? 0 : command.delta_y;
+      if (!integer(dx, -50, 50) || !integer(dy, -50, 50) || (dx === 0 && dy === 0)) throw new Error("Coordinate scroll needs integer deltas in -50..50 detents and at least one nonzero axis.");
+    } else {
+      if (command.delta_x !== undefined || command.delta_y !== undefined || command.unit !== undefined) throw new Error("Wheel detents require a point in the current window overview.");
+      if (!command.element_token) throw new Error("Accessibility scroll requires an observed element_token.");
+      if (!["up", "down", "left", "right"].includes(command.direction ?? "")) throw new Error("Unsupported scroll direction.");
+      if (command.amount !== undefined && !integer(command.amount, 1, 50)) throw new Error("amount must be 1..50.");
+      if (command.by !== undefined && !["line", "page"].includes(command.by)) throw new Error("Scroll by line or page.");
+    }
   }
   if (command.action === "drag") {
     point(command.from_x, command.from_y); point(command.to_x, command.to_y);
@@ -152,6 +169,10 @@ export function requestedInputTime(command: InputStep): number {
 /** Translate supported fields only. Coordinates stay in the original overview's local image domain.
  * captureBoundDrag enables straight-drag binding only for a separately qualified native runtime. */
 export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string, captureBoundDrag = false): { name: string; args: Record<string, unknown> } {
+  if (isCoordinateScroll(command)) return { name: "scroll_at", args: {
+    ...target, capture_id: captureId, x: command.x, y: command.y,
+    delta_x: command.delta_x ?? 0, delta_y: command.delta_y ?? 0, unit: command.unit, delivery_mode: delivery,
+  } };
   if (command.action === "move" || command.action === "hover") return { name: "move_pointer", args: {
     ...target, delivery_mode: delivery, dwell_ms: command.action === "hover" ? command.dwell_ms : 0,
     ...(command.element_token !== undefined ? { element_token: command.element_token } : { capture_id: captureId, x: command.x, y: command.y }),

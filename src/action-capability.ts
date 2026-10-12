@@ -21,7 +21,7 @@ export function actionCapability(operation: string, nativeTool: string, requeste
   status: "delivered" | "refused" | "unknown", native: Record<string, unknown>): ActionCapability {
   const delivery = native.delivery as { mode?: unknown } | undefined;
   const escalation = native.escalation as { recommended?: unknown } | undefined;
-  const mode = nativeTool === "move_pointer" ? native.delivery_mode : delivery?.mode;
+  const mode = ["move_pointer", "scroll_at"].includes(nativeTool) ? native.delivery_mode ?? delivery?.mode : delivery?.mode;
   const actual = mode === "background" || mode === "foreground" ? mode : "unknown";
   const code = typeof native.code === "string" ? native.code : null;
   const unavailable = status === "refused" && ["background_unavailable", "background_occluded", "background_uipi_blocked"].includes(code ?? "");
