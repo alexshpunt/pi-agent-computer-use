@@ -142,3 +142,26 @@ test("older native profiles cannot silently start WGC", async () => {
     } finally { await backend.close(); }
   }
 });
+
+test("coordinate scroll keeps inherited Windows capabilities but rejects changed bytes before input", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-coordinate-scroll" });
+  try {
+    expect(backend.overviewKernel).toBe("bilinear");
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag,
+      backend.semanticActions, backend.persistentWgc, backend.nativePointer, backend.coordinateScroll])
+      .toEqual([true, true, true, true, true, true, true, true]);
+    await expect(backend.call("scroll_at", { delivery_mode: "foreground" })).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
+test("older runtimes refuse coordinate scroll before starting any native peer", async () => {
+  for (const runtime of [undefined, "windows-persistent-wgc", "windows-native-pointer"] as const) {
+    const backend = new McpDriver({ command: process.execPath, runtime });
+    try {
+      expect(backend.coordinateScroll).toBe(false);
+      expect(await backend.call("scroll_at", { delivery_mode: "foreground" })).toMatchObject({
+        isError: true, structuredContent: { code: "coordinate_scroll_unavailable", attempted: false, delivered: false,
+          pointer_attempted: false, pointer_delivered: false, attempted_axes: [], delivered_axes: [], fallback: false },
+      });
+    } finally { await backend.close(); }
+  }
+});

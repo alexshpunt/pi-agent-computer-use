@@ -4,6 +4,21 @@ import type { ComputerResult } from "../src/session.ts";
 
 const resources = { appSource: (id: string) => `computer:app/${id}` };
 
+test("coordinate scroll presentation exposes native wheel units and interrupted axis prefixes", () => {
+  const result: ComputerResult = { isError: true, content: [{ type: "text", text: "Coordinate scroll interrupted. Never replay unknown input." }],
+    details: { status: "unknown", mode: "yolo", state: { unit: "wheel_detents", delta_x: -1, delta_y: 2,
+      pointer_attempted: true, pointer_delivered: true, attempted_axes: ["y", "x"], delivered_axes: ["y"],
+      code: "cancelled", private_native_data: "x".repeat(20_000) } } };
+  const before = JSON.stringify(result), summary = presentComputerResult(resources, result);
+  expect(summary).toContain("delta_x=-1, delta_y=2; unit=wheel_detents");
+  expect(summary).toContain("pointer_attempted=true, pointer_delivered=true");
+  expect(summary).toContain('attempted_axes=["y","x"], delivered_axes=["y"]');
+  expect(summary).toContain("cancelled");
+  expect(summary).toContain("Never replay");
+  expect(summary.length).toBeLessThan(1000);
+  expect(JSON.stringify(result)).toBe(before);
+});
+
 test("action presentation keeps uncertainty and delivered prefixes without dumping native state", () => {
   const result: ComputerResult = { isError: true,
     content: [{ type: "text", text: 'Sequence refused: 1/2 steps delivered; 2 attempted. Never replay the completed prefix.\n{"large":"native dump"}' }],

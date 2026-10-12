@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import { assistantMessage, getToolExecution, getToolResultText, PiIntegrationTest, testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
 
-const runCommand = promisify(execFile);
 const fixture = (name: string) => path.resolve("test/fixtures", name);
 const prelude = `const parse=raw=>JSON.parse(raw.slice(raw.indexOf("{")));
 const act=async args=>{try{return parse(await tools.computer_act(args));}catch(e){const message=String(e.message);if(message.includes('Validation failed for tool "computer_act"'))return {status:"schema_refused"};return parse(message);}};
@@ -15,7 +12,7 @@ const open=async()=>parse(await tools.computer_open({app:"Notepad"})).window_ref
 const first=await open(),second=await open();
 store("first",first);store("second",second);`;
 
-// With PI_HOVER_IDE_SOURCE set, load and record that exact current checkout rather than an installed historical IDE.
+// Run standalone computer-use through Pi SDK Codemode, without loading Pi Agent IDE.
 async function scenario(testName: string, code: string) {
   await mkdir(".tmp/lpt-729", { recursive: true });
   const cwd = await mkdtemp(path.resolve(".tmp/lpt-729/pi-pointer-")), log = path.join(cwd, "calls.jsonl");
@@ -23,20 +20,8 @@ async function scenario(testName: string, code: string) {
     await mkdir(path.join(cwd, ".pi"));
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath,
       args: [fixture("pointer-hover-driver.mjs"), log] }));
-    const ide = process.env.PI_HOVER_IDE_SOURCE;
-    let provenance: { source: string; commit: string; version: string } | undefined;
-    if (ide) {
-      await runCommand("git", ["-C", ide, "fetch", "origin", "develop"]);
-      const { stdout: changed } = await runCommand("git", ["-C", ide, "status", "--porcelain"]);
-      expect(changed.trim(), "The loaded IDE checkout must be clean").toBe("");
-      const { stdout } = await runCommand("git", ["-C", ide, "rev-parse", "HEAD", "origin/develop"]);
-      const [head, develop] = stdout.trim().split("\n");
-      expect(head, "The loaded IDE checkout must match latest fetched origin/develop").toBe(develop);
-      provenance = { source: path.resolve(ide), commit: head,
-        version: JSON.parse(await readFile(path.join(ide, "package.json"), "utf8")).version };
-    }
     const result = await new PiIntegrationTest({ testName, artifactsDir: testArtifactsDir(import.meta.filename), cwd,
-      extensions: [...(ide ? [path.resolve(ide, "src/pi-agent-ide.ts")] : []), fixture("pointer-hover-extension.ts")],
+      extensions: [fixture("pointer-hover-extension.ts")],
       isolateUserResources: true,
       piCommand: process.env.PI_HOVER_PI_COMMAND,
       tools: ["codemode", "computer_open", "computer_windows", "computer_observe", "computer_act", "computer_close", "fixture_pointer_control"],
@@ -44,11 +29,6 @@ async function scenario(testName: string, code: string) {
         assistantMessage([toolCall({ id: "close", name: "computer_close", arguments: {} })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")])],
     }).run("Exercise native pointer admission against synthetic MCP windows only. Never operate a real desktop.");
-    if (provenance) {
-      const { stdout } = await runCommand("git", ["-C", provenance.source, "rev-parse", "HEAD"]);
-      expect(stdout.trim(), "The IDE source must not change during the run").toBe(provenance.commit);
-      await writeFile(path.join(result.artifacts.directory, "ide-source.json"), JSON.stringify(provenance, null, 2));
-    }
     expect(getToolExecution(result, "pointer").isError, getToolResultText(result, "pointer")).toBe(false);
     expect(getToolResultText(result, "pointer")).toContain("Pointer contract passed");
     return (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));

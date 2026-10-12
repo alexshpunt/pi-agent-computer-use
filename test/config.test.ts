@@ -40,3 +40,14 @@ test("an old target configuration is refused rather than silently changing its p
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: "driver", target: { pid: 42, window_id: 100 } }));
   await expect(loadComputerConfig(cwd)).rejects.toThrow("Remove the old target field");
 });
+
+test("coordinate scroll is an explicit trusted artifact profile, never an implicit runtime", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const config = { command: "/owned/candidate/cua-driver.exe", runtime: "windows-coordinate-scroll" };
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(config));
+  expect(await loadComputerConfig(cwd)).toEqual(config);
+  for (const invalid of [{ runtime: config.runtime }, { ...config, args: ["mcp"] }]) {
+    await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(invalid));
+    await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
+  }
+});
