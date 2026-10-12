@@ -5,6 +5,7 @@ import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
 import { isSemanticAction, semanticReceipt } from "./semantic-actions.ts";
 import { isPointerMove, pointerReceipt } from "./pointer-actions.ts";
+import { isCoordinateScroll, scrollReceipt } from "./scroll-actions.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
@@ -46,6 +47,8 @@ export interface Driver {
   semanticActions?: boolean;
   /** True only for the explicitly selected, byte-checked Windows native pointer runtime. */
   nativePointer?: boolean;
+  /** True only for an explicitly selected, byte-checked Windows capture-bound wheel runtime. */
+  coordinateScroll?: boolean;
   /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
   persistentWgc?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
@@ -850,6 +853,11 @@ export class ComputerSession {
               throw Error("The observed target is outside the image. No input was dispatched.");
           }
           validateInput(nativeStep, observed, batch);
+          if (isCoordinateScroll(nativeStep)) {
+            if (!this.driver.coordinateScroll) throw Error("Coordinate scroll requires the explicitly selected native scroll runtime. No input was dispatched.");
+            if (animation !== undefined) throw Error("Native coordinate scroll has no overlay animation.");
+            if (!observed.captureId) throw Error("Coordinate scroll needs this overview's native capture. Observe again.");
+          }
           if (isPointerMove(nativeStep.action)) {
             if (!this.driver.nativePointer) throw Error("Pointer movement requires the explicitly selected native pointer runtime. No input was dispatched.");
             if (animation !== undefined) throw Error("Native pointer movement has no overlay animation.");
@@ -902,7 +910,7 @@ export class ComputerSession {
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached during admission; no more steps dispatched.");
           entry.observation = undefined; entry.detail = undefined;
-          const pointerAction = isPointerMove(step.action) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
+          const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
           if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
           const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
             ...(step.via ? { via_points: step.via.length } : {}), ...(step.actions ? { actions: step.actions.map(pointer => { const { via, ...compact } = pointer; return { ...compact, ...(via ? { via_points: via.length } : {}) }; }) } : {}) };
@@ -923,7 +931,8 @@ export class ComputerSession {
             "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
           const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
           const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
-            : isPointerMove(step.action) && (delivery_mode !== "foreground" || !pointerReceipt(step, state)));
+            : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
+            : isCoordinateScroll(step) && (delivery_mode !== "foreground" || !scrollReceipt(step, state)));
           const status = refused ? "refused" : uncertain || inconsistent ? "unknown" : "delivered";
           row.status = status; inFlight = false;
           const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, state);

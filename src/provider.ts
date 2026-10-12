@@ -49,6 +49,10 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     if (message) lines.push(message);
     for (const key of ["code", "native_message", "delivery_mode", "path", "effect"])
       if (typeof state[key] === "string") lines.push(`${key}: ${state[key]}`);
+    if (state.unit === "wheel_detents") {
+      lines.push(`Scroll: delta_x=${state.delta_x}, delta_y=${state.delta_y}; unit=wheel_detents`,
+        `Native prefix: pointer_attempted=${state.pointer_attempted}, pointer_delivered=${state.pointer_delivered}; attempted_axes=${JSON.stringify(state.attempted_axes)}, delivered_axes=${JSON.stringify(state.delivered_axes)}`);
+    }
   }
   if (d.sequence) {
     const sequence = d.sequence;
@@ -129,7 +133,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         format(payload) { const result = payload as ComputerResult; return { ...result, content: [{ type: "text", text: presentComputerResult(resources, result) }] }; },
         toScriptData(payload) { return { kind: "custom", resolverId: "computer", value: (payload as ComputerResult).details }; },
       } });
-      api.describe("Search computer:apps or computer:windows for installed-app/permitted-window metadata, computer:displays for monitors, or an observation for its collected UI. Discovery launches nothing; UI Search performs no new native walk.");
+      api.describe("Search computer:apps or computer:windows for installed-app/permitted-window metadata, or an observation for its collected UI. Read computer:displays for monitor metadata. Discovery launches nothing; UI Search performs no new native walk.");
     } }),
     connectTextEditorPlugin(pi, { protocol: TEXT_EDITOR_PROTOCOL, apiVersion: TEXT_EDITOR_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ resolver, priority: -250 });

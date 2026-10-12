@@ -66,7 +66,13 @@ export const NATIVE_POINTER_RUNTIME = {
   source: "ce28c95175efc97a040cebebd80fec63526aec64", version: "0.34.0",
   sha256: "ee0d2a6d8593512eaa4e5cd1466f3902cfdf85111628f2f54859c60adac67197",
 } as const;
+/** Exact unsigned Windows coordinate wheel candidate; selection does not adopt it as the default runtime. */
+export const COORDINATE_SCROLL_RUNTIME = {
+  source: "365d627c2d0611625116a532223f3813fcd2a6cc", version: "0.34.0",
+  sha256: "f10c90e998dfb90f0507b106527351c73b64656941435088ab9611824d03157a",
+} as const;
 const forkRuntimes = {
+  "windows-coordinate-scroll": COORDINATE_SCROLL_RUNTIME,
   "windows-native-pointer": NATIVE_POINTER_RUNTIME,
   "windows-held-paths": HELD_PATH_RUNTIME,
   "windows-key-holds": KEY_HOLD_RUNTIME,
@@ -105,18 +111,20 @@ export class McpDriver implements Driver {
 
   /** Custom held paths remain Windows-only and require checked fork bytes or a pinned bundle. */
   get heldPaths(): boolean { return this.bundledWindows || this.forkRuntime !== undefined; }
-  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer"].includes(this.config.runtime ?? ""); }
-  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer"].includes(this.config.runtime ?? ""); }
-  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll"].includes(this.config.runtime ?? ""); }
+  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll"].includes(this.config.runtime ?? ""); }
 
   /** Experimental strict UIA can change focus; only the checked Windows fork supplies this route. */
-  get semanticActions(): boolean { return this.bundledWindows || ["windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer"].includes(this.config.runtime ?? ""); }
-  /** Only this byte-checked candidate supplies real movement; live qualification is separate. */
-  get nativePointer(): boolean { return this.config.runtime === "windows-native-pointer"; }
+  get semanticActions(): boolean { return this.bundledWindows || ["windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll"].includes(this.config.runtime ?? ""); }
+  /** Only these byte-checked candidates supply real movement; live qualification is separate. */
+  get nativePointer(): boolean { return ["windows-native-pointer", "windows-coordinate-scroll"].includes(this.config.runtime ?? ""); }
+  /** Capture-bound wheel input requires the exact selected candidate; old profiles cannot borrow it. */
+  get coordinateScroll(): boolean { return this.config.runtime === "windows-coordinate-scroll"; }
   /** Retained capture is opt-in and never inferred from an unqualified bundle or version. */
-  get persistentWgc(): boolean { return ["windows-persistent-wgc", "windows-native-pointer"].includes(this.config.runtime ?? ""); }
+  get persistentWgc(): boolean { return ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll"].includes(this.config.runtime ?? ""); }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
-  get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
+  get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
   }
@@ -202,6 +210,9 @@ export class McpDriver implements Driver {
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
     if (name === "get_window_state" && args.capture_backend === "wgc" && !this.persistentWgc)
       return { content: [], structuredContent: { status: "refused", code: "persistent_wgc_unavailable", attempted: false, fallback: false }, isError: true };
+    if (name === "scroll_at" && !this.coordinateScroll)
+      return { content: [], structuredContent: { status: "refused", code: "coordinate_scroll_unavailable", attempted: false, delivered: false,
+        pointer_attempted: false, pointer_delivered: false, attempted_axes: [], delivered_axes: [], fallback: false }, isError: true };
     if (name === "move_pointer" && !this.nativePointer)
       return { content: [], structuredContent: { status: "refused", code: "native_pointer_unavailable", attempted: false, delivered: false, fallback: false }, isError: true };
     if (name === "semantic_action" && !this.semanticActions)
