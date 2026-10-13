@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { parseComputerAddress, computerSource, type ComputerAddress } from "./computer-address.ts";
 import { parseComputerViews } from "./computer-views.ts";
 import type { ComputerSession, ComputerResult, Action } from "./session.ts";
+import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -56,7 +57,8 @@ export class ComputerResources {
     if (address.kind === "window-state") {
       const state = this.windowStates.get(address.ref);
       if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
-      return `# Computer window state\nWindow: ${computerSource("window", state.window_ref)}\nState: ${address.source}\nInsert {\"action\":\"restore\"} explicitly restores and activates this exact window once. No capture, typing or pointer authority. No native query occurred during descriptor resolution.`;
+      const operations = state.result.details.window_state_kind === "management" ? "move/resize/minimize/maximize/focus or restore" : "restore";
+      return `# Computer window state\nWindow: ${computerSource("window", state.window_ref)}\nState: ${address.source}\nInsert one ${operations} command consumes this state. No capture, typing or pointer authority. No native query occurred during descriptor resolution.`;
     }
     if (address.kind === "observation") {
       const snapshot = this.snapshot(address.ref);
@@ -85,7 +87,7 @@ export class ComputerResources {
       if (checked.details.status !== "observed") { this.windowStates.delete(address.ref); return checked; }
       return { ...state.result, content: state.result.content.map(block => block.type === "text"
         ? { ...block, text: block.text.replace(/^.*?(?=\n|$)/,
-          "Cached native window state. No new metadata sample or renewed restore authority. Insert restore consumes this state once.") }
+          "Cached native window state. No new metadata sample or renewed one-use authority. Insert consumes this state once.") }
         : block) };
     }
     if (view.kind === "sequence") {
@@ -172,14 +174,20 @@ export class ComputerResources {
   /** Dispatch exactly one literal Write or JSON Insert against its address-bound target. */
   async perform(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind === "window-state") {
-      if (tool !== "insert") throw new ComputerRequestError("Window state grants only explicit restore through Insert, never literal Write.");
+      if (tool !== "insert") throw new ComputerRequestError("Window state grants native control through Insert, never literal Write.");
       const command = commandObject(value);
-      only(command, ["action"]);
-      if (command.action !== "restore") throw new ComputerRequestError("Window state grants only restore, not clicks, keys, typing or sequences.");
+      let management: WindowManagementCommand | undefined;
+      if (command.action === "restore") only(command, ["action"]);
+      else {
+        try { management = parseWindowManagement(command); }
+        catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+      }
       const state = this.windowStates.get(address.ref);
       if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
       this.windowStates.delete(address.ref);
-      return (await this.getSession(cwd)).restoreWindow(state.window_ref, address.ref, signal);
+      const session = await this.getSession(cwd);
+      return management ? session.manageWindow(state.window_ref, address.ref, management, signal)
+        : session.restoreWindow(state.window_ref, address.ref, signal);
     }
     if (tool === "insert" && (address.kind === "session" || address.kind === "app")) {
       const command = commandObject(value);
