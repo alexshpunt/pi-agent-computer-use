@@ -4,6 +4,54 @@ import type { ComputerResult } from "../src/session.ts";
 
 const resources = { appSource: (id: string) => `computer:app/${id}` };
 
+test("control-state presentation separates desktop frame coordinates from pointer input and preserves canonical data", () => {
+  const result: ComputerResult = { content: [], details: { status: "observed", mode: "yolo",
+    window_state_id: "management-state", window_state_kind: "management", state: { state: {
+      bounds: { x: -100, y: 80, width: 640, height: 800 }, bounds_source: "dwm_visible_frame",
+      coordinate_space: "windows_desktop_pixels", minimized: false, maximized: true, visible: true,
+      foreground_at_target: false, keyboard_focus_at_target: null, virtual_desktop: { on_current_desktop: null },
+    } } } };
+  const before = JSON.stringify(result), text = presentComputerResult(resources, result);
+  expect(text).toContain("computer:window-state/management-state");
+  expect(text).toContain('{"x":-100,"y":80,"width":640,"height":800}');
+  expect(text).toContain("source=dwm_visible_frame; unit=windows_desktop_pixels");
+  expect(text).toContain("maximized=true");
+  expect(text).toContain("keyboard_focus=null");
+  expect(text).not.toContain("computer:observation/");
+  expect(JSON.stringify(result)).toBe(before);
+});
+test("unknown management retains submitted prefix and constrained geometry without a raw dump", () => {
+  const result: ComputerResult = { content: [], isError: true, details: { status: "unknown", mode: "yolo",
+    state: { operation: "resize", mutation_attempted: true, mutation_accepted: true, postcondition_confirmed: false,
+      requested_bounds: { x: 60, y: 60, width: 300, height: 400 },
+      observed: { bounds: { x: 60, y: 60, width: 500, height: 400 }, bounds_source: "window_rect",
+        minimized: false, maximized: false, visible: true, foreground_at_target: false, keyboard_focus_at_target: null },
+      code: "window_management_timeout", private_native_data: "x".repeat(20000) } } };
+  const before = JSON.stringify(result), text = presentComputerResult(resources, result);
+  expect(text).toContain("mutation_attempted=true, mutation_accepted=true, postcondition_confirmed=false");
+  expect(text).toContain('"width":300');
+  expect(text).toContain('"width":500');
+  expect(text).toContain("source=window_rect");
+  expect(text).toContain("keyboard_focus=null");
+  expect(text).toContain("window_management_timeout");
+  expect(text.length).toBeLessThan(1200);
+  expect(JSON.stringify(result)).toBe(before);
+});
+
+test("schema-rejected management retains an explicitly unvalidated prefix without claiming delivered success", () => {
+  const result: ComputerResult = { content: [], isError: true, details: { status: "unknown", mode: "yolo",
+    state: { code: "tool_output_invalid", execution_state: "unknown", invalid_output: {
+      operation: "focus", mutation_attempted: true, mutation_accepted: true, postcondition_confirmed: true, requested_bounds: null,
+      observed: { minimized: false, maximized: false, visible: true, foreground_at_target: true, keyboard_focus_at_target: null },
+    } } } };
+  const before = JSON.stringify(result), text = presentComputerResult(resources, result);
+  expect(text).toContain("Computer unknown");
+  expect(text).toContain("Unvalidated management: focus");
+  expect(text).toContain("mutation_attempted=true, mutation_accepted=true, postcondition_confirmed=true");
+  expect(text).toContain("keyboard_focus=null");
+  expect(text).not.toContain("Computer delivered");
+  expect(JSON.stringify(result)).toBe(before);
+});
 test("window state exposes its restore-only address and independent foreground/focus metadata", () => {
   const result: ComputerResult = { content: [], details: { status: "observed", mode: "yolo", window_state_id: "fresh-state",
     state: { minimized: true, visible: true, foreground_at_target: false, keyboard_focus_at_target: null } } };

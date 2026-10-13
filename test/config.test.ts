@@ -51,6 +51,16 @@ test("window restore is an explicit artifact profile and rejects missing command
     await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
   }
 });
+test("management selects only an explicit artifact profile and fixed transport", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const config = { command: "/owned/candidate/cua-driver.exe", runtime: "windows-window-management" };
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(config));
+  expect(await loadComputerConfig(cwd)).toEqual(config);
+  for (const invalid of [{ runtime: config.runtime }, { ...config, args: ["mcp"] }]) {
+    await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(invalid));
+    await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
+  }
+});
 test("coordinate scroll is an explicit trusted artifact profile, never an implicit runtime", async () => {
   const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
   const config = { command: "/owned/candidate/cua-driver.exe", runtime: "windows-coordinate-scroll" };

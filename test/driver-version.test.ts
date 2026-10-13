@@ -4,6 +4,28 @@ import { expect, test } from "vitest";
 import { McpDriver } from "../src/driver.ts";
 import type { BundledRuntime } from "../src/native-runtime.ts";
 
+test("management preserves inherited routes but rejects changed bytes before state acquisition", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-window-management" });
+  try {
+    expect([backend.windowManagement, backend.windowRestore, backend.coordinateScroll, backend.nativePointer, backend.persistentWgc,
+      backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual(Array(10).fill(true));
+    expect(backend.overviewKernel).toBe("bilinear");
+    await expect(backend.call("get_window_control_state", { pid: 42, window_id: 91 })).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
+test("old profiles cannot dispatch management or acquire its admission through direct calls", async () => {
+  for (const runtime of [undefined, "windows-persistent-wgc", "windows-coordinate-scroll", "windows-window-restore"] as const) {
+    const backend = new McpDriver({ command: process.execPath, runtime });
+    try {
+      expect(backend.windowManagement).toBe(false);
+      for (const name of ["get_window_control_state", "manage_window"])
+        expect(await backend.call(name, { pid: 42, window_id: 91, state_id: "state", operation: "focus" })).toMatchObject({
+          isError: true, structuredContent: { code: "window_management_unavailable", mutation_attempted: false, mutation_accepted: false, postcondition_confirmed: false },
+        });
+    } finally { await backend.close(); }
+  }
+});
+
 test.each(["linux-x64", "darwin-x64", "darwin-arm64"] as const)("%s never starts a Windows identity peer or advertises Windows-only fork routes", async target => {
   const bundled: BundledRuntime = { target, root: "/missing-package", command: "/missing-package/runtime/cua-driver", source: "a".repeat(40), version: "0.34.0-dev.fixture", driverVersion: "0.34.0", files: {} };
   const backend = new McpDriver({ command: bundled.command, bundled });
