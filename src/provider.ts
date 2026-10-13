@@ -19,9 +19,23 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
   const lines = [`Computer ${d.status} (${d.mode})`];
   if (d.window_ref) lines.push(`Window: ${computerSource("window", d.window_ref)}`);
   if (d.window_state_id && d.status === "observed") {
+    const sample = d.window_state_kind === "management" ? record(state.state) : state;
     lines.push(`State: ${computerSource("window-state", d.window_state_id)}`,
-      `Window state: minimized=${state.minimized}, visible=${state.visible}; foreground=${state.foreground_at_target}, keyboard_focus=${state.keyboard_focus_at_target}`,
-      'Insert {"action":"restore"} once explicitly restores and activates this window. No pixel, typing or pointer authority.');
+      `Window state: minimized=${sample.minimized}, visible=${sample.visible}; foreground=${sample.foreground_at_target}, keyboard_focus=${sample.keyboard_focus_at_target}${d.window_state_kind === "management" ? `; maximized=${sample.maximized}` : ""}`);
+    if (d.window_state_kind === "management") {
+      lines.push(`Bounds: ${JSON.stringify(sample.bounds)}; source=${sample.bounds_source}; unit=${sample.coordinate_space}`,
+        `Current virtual desktop: ${record(sample.virtual_desktop).on_current_desktop}`,
+        "Use one Insert move/resize/minimize/maximize/focus or restore. Frame units are desktop pixels, not pointer coordinates.");
+    } else lines.push('Insert {"action":"restore"} once explicitly restores and activates this window. No pixel, typing or pointer authority.');
+  }
+  const invalidManagement = state.code === "tool_output_invalid" ? record(state.invalid_output) : {};
+  const management = typeof state.mutation_attempted === "boolean" ? state : invalidManagement;
+  if (typeof management.mutation_attempted === "boolean") {
+    const measured = record(management.observed), unvalidated = management === invalidManagement;
+    lines.push(`${unvalidated ? "Unvalidated" : "Native"} management: ${management.operation}; mutation_attempted=${management.mutation_attempted}, mutation_accepted=${management.mutation_accepted}, postcondition_confirmed=${management.postcondition_confirmed}`,
+      `Requested bounds: ${JSON.stringify(management.requested_bounds)}; observed bounds: ${JSON.stringify(measured.bounds ?? null)}; source=${measured.bounds_source ?? "unavailable"}`,
+      `${unvalidated ? "Reported" : "Measured"} state: minimized=${measured.minimized}, maximized=${measured.maximized}, visible=${measured.visible}; foreground=${measured.foreground_at_target}, keyboard_focus=${measured.keyboard_focus_at_target}`);
+    if (unvalidated) lines.push("The native schema rejected this payload. Keep outcome unknown; do not treat its reported completion as validated success.");
   }
   if (typeof state.restore_attempted === "boolean") {
     lines.push(`Native restore prefix: restore_attempted=${state.restore_attempted}, restore_requested=${state.restore_requested}, restored=${state.restored}`,
@@ -70,7 +84,9 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
-  lines.push(d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input." : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview before another action.");
+  lines.push(d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
+    : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
+    : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
   return lines.join("\n");
 }
 
@@ -127,7 +143,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           script: { kind: "native", source: address.source, blocks: canonical } } };
       } });
       api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id, window-state/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
-        views: "Computer: image/ui/full; state alone on a window returns fresh restore-only metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
+        views: "Computer: image/ui/full; state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
     } }),
     connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],

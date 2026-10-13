@@ -76,7 +76,13 @@ export const WINDOW_RESTORE_RUNTIME = {
   source: "1c119c822d92622b7fbaaa2490ee7aabca8cf827", version: "0.34.0",
   sha256: "c53dbdd3bd9a75469e14783b8e6f44573a9aa3f6c3c4998da9ee4e9a7a02d614",
 } as const;
+/** Exact isolated Windows management candidate; not an installed-runtime adoption. */
+export const WINDOW_MANAGEMENT_RUNTIME = {
+  source: "4379acbd422a822e75a02c4951b45a276a2293a7", version: "0.34.0",
+  sha256: "18ed1b8d97f364de5e5eb70aa7ad95e96e2b3a3554a6a9ab1fbf16d349461458",
+} as const;
 const forkRuntimes = {
+  "windows-window-management": WINDOW_MANAGEMENT_RUNTIME,
   "windows-window-restore": WINDOW_RESTORE_RUNTIME,
   "windows-coordinate-scroll": COORDINATE_SCROLL_RUNTIME,
   "windows-native-pointer": NATIVE_POINTER_RUNTIME,
@@ -117,22 +123,24 @@ export class McpDriver implements Driver {
 
   /** Custom held paths remain Windows-only and require checked fork bytes or a pinned bundle. */
   get heldPaths(): boolean { return this.bundledWindows || this.forkRuntime !== undefined; }
-  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? ""); }
-  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? ""); }
-  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
+  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
 
   /** Experimental strict UIA can change focus; only the checked Windows fork supplies this route. */
-  get semanticActions(): boolean { return this.bundledWindows || ["windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? ""); }
+  get semanticActions(): boolean { return this.bundledWindows || ["windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
   /** Only these byte-checked candidates supply real movement; live qualification is separate. */
-  get nativePointer(): boolean { return ["windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? ""); }
+  get nativePointer(): boolean { return ["windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
   /** Capture-bound wheel input requires the exact selected candidate; old profiles cannot borrow it. */
-  get coordinateScroll(): boolean { return ["windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? ""); }
+  get coordinateScroll(): boolean { return ["windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
   /** Metadata-only state and restore require this exact byte-checked Windows candidate. */
-  get windowRestore(): boolean { return this.config.runtime === "windows-window-restore"; }
+  get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
+  /** Old profiles cannot borrow state-bound management from matching version numbers. */
+  get windowManagement(): boolean { return this.config.runtime === "windows-window-management"; }
   /** Retained capture is opt-in and never inferred from an unqualified bundle or version. */
-  get persistentWgc(): boolean { return ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? ""); }
+  get persistentWgc(): boolean { return ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? ""); }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
-  get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
+  get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
   }
@@ -216,6 +224,12 @@ export class McpDriver implements Driver {
 
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
+    if (["get_window_control_state", "manage_window"].includes(name) && !this.windowManagement)
+      return { content: [], isError: true, structuredContent: {
+        pid: args.pid, window_id: args.window_id, state_id: args.state_id, operation: args.operation, route: "native", status: "refused",
+        effect: "refused", code: "window_management_unavailable", mutation_attempted: false, mutation_accepted: false,
+        postcondition_confirmed: false, requested_bounds: null, before: null, observed: null,
+      } };
     if (["get_window_status", "restore_window"].includes(name) && !this.windowRestore)
       return { content: [], isError: true, structuredContent: {
         pid: args.pid, window_id: args.window_id, state_id: args.state_id, route: "native", status: "refused",
