@@ -3,6 +3,7 @@ import { validateSequence, type SequenceOptions, type FrameSelection } from "./t
 
 /** One native Read mode. Details and sampled frames never grant input authority. */
 export type ComputerViews =
+  | { kind: "state" }
   | { kind: "overview"; capture: UiCaptureOptions }
   | { kind: "region"; region: { x: number; y: number; width: number; height: number } }
   | { kind: "sequence"; options: SequenceOptions }
@@ -21,6 +22,10 @@ function keys(value: Record<string, unknown>, allowed: readonly string[]): void 
 /** Validate owned views before capturing; text offsets are never image coordinates. */
 export function parseComputerViews(views: readonly string[] = []): ComputerViews {
   const first = views[0] ?? "";
+  if (views.includes("state")) {
+    if (views.length !== 1) throw Error("Use state alone: window metadata has no pixels, UI or capture options.");
+    return { kind: "state" };
+  }
   if (/^(sequence|frames|element):/.test(first)) {
     if (views.length !== 1) throw Error("Use one sequence, frames or element view without overview options.");
     const value = first.slice(first.indexOf(":") + 1);

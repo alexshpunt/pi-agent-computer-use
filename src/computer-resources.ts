@@ -23,6 +23,7 @@ function only(value: Record<string, unknown>, fields: readonly string[]): void {
 /** Addressable projections of one ComputerSession. Cached descriptors never acquire native pixels. */
 export class ComputerResources {
   private readonly snapshots = new Map<string, Snapshot>();
+  private readonly windowStates = new Map<string, { window_ref: string; result: ComputerResult }>();
   private readonly apps = new Map<string, string>();
 
   /** Give installed paths opaque addresses; paths themselves are not session references. */
@@ -52,6 +53,11 @@ export class ComputerResources {
 
   /** Resolve an editor's readonly descriptor without native acquisition or target refresh. */
   descriptor(address: ComputerAddress): string {
+    if (address.kind === "window-state") {
+      const state = this.windowStates.get(address.ref);
+      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
+      return `# Computer window state\nWindow: ${computerSource("window", state.window_ref)}\nState: ${address.source}\nInsert {\"action\":\"restore\"} explicitly restores and activates this exact window once. No capture, typing or pointer authority. No native query occurred during descriptor resolution.`;
+    }
     if (address.kind === "observation") {
       const snapshot = this.snapshot(address.ref);
       const source = snapshot.target.window_ref !== undefined ? computerSource("window", snapshot.target.window_ref)
@@ -71,9 +77,22 @@ export class ComputerResources {
       return undefined;
     }
     const session = await this.getSession(cwd);
+    if (address.kind === "window-state") {
+      if (views?.length) throw new ComputerRequestError("Cached window state has no capture or UI views. Read the window with state view for a fresh state.");
+      const state = this.windowStates.get(address.ref);
+      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
+      const checked = await session.checkWindowState(state.window_ref, address.ref, signal);
+      if (checked.details.status !== "observed") { this.windowStates.delete(address.ref); return checked; }
+      return { ...state.result, content: state.result.content.map(block => block.type === "text"
+        ? { ...block, text: block.text.replace(/^.*?(?=\n|$)/,
+          "Cached native window state. No new metadata sample or renewed restore authority. Insert restore consumes this state once.") }
+        : block) };
+    }
     if (view.kind === "sequence") {
       if (address.kind !== "window" && address.kind !== "display") throw new ComputerRequestError("Capture a sequence from a window/display address, not an observation.");
       const target = address.kind === "window" ? { window_ref: address.ref } : { display: address.ref };
+      if (target.window_ref) for (const [id, entry] of this.windowStates)
+        if (entry.window_ref === target.window_ref) this.windowStates.delete(id);
       for (const [id, entry] of this.snapshots) if (entry.target.window_ref === target.window_ref && entry.target.display === target.display) this.snapshots.delete(id);
       return session.captureSequence(target, view.options, signal);
     }
@@ -87,6 +106,17 @@ export class ComputerResources {
       return session[address.kind](signal);
     }
     if (address.kind === "window") {
+      // Fresh window Read retires both provider handles before any native acquisition.
+      for (const [id, entry] of this.windowStates) if (entry.window_ref === address.ref) this.windowStates.delete(id);
+      for (const [id, entry] of this.snapshots) if (entry.target.window_ref === address.ref) this.snapshots.delete(id);
+      if (view.kind === "state") {
+        const result = await session.observeWindowState(address.ref, signal);
+        if (result.details.status === "observed" && result.details.window_state_id) {
+          this.windowStates.set(result.details.window_state_id, { window_ref: address.ref, result });
+          while (this.windowStates.size > 64) this.windowStates.delete(this.windowStates.keys().next().value!);
+        }
+        return result;
+      }
       if (view.kind !== "overview") throw new ComputerRequestError("Read an overview, then apply region to its returned observation address.");
       return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture));
     }
@@ -141,11 +171,22 @@ export class ComputerResources {
 
   /** Dispatch exactly one literal Write or JSON Insert against its address-bound target. */
   async perform(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind === "window-state") {
+      if (tool !== "insert") throw new ComputerRequestError("Window state grants only explicit restore through Insert, never literal Write.");
+      const command = commandObject(value);
+      only(command, ["action"]);
+      if (command.action !== "restore") throw new ComputerRequestError("Window state grants only restore, not clicks, keys, typing or sequences.");
+      const state = this.windowStates.get(address.ref);
+      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
+      this.windowStates.delete(address.ref);
+      return (await this.getSession(cwd)).restoreWindow(state.window_ref, address.ref, signal);
+    }
     if (tool === "insert" && (address.kind === "session" || address.kind === "app")) {
       const command = commandObject(value);
       if (command.action === "close" && address.kind === "session") {
         only(command, ["action"]);
         this.snapshots.clear();
+        this.windowStates.clear();
         this.apps.clear();
         return this.closeSession();
       }
