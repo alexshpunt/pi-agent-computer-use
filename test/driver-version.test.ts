@@ -143,6 +143,30 @@ test("older native profiles cannot silently start WGC", async () => {
   }
 });
 
+test("restore candidate inherits qualified capabilities and rejects wrong bytes before state or mutation", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-window-restore" });
+  try {
+    expect(backend.overviewKernel).toBe("bilinear");
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag,
+      backend.semanticActions, backend.persistentWgc, backend.nativePointer, backend.coordinateScroll, backend.windowRestore])
+      .toEqual([true, true, true, true, true, true, true, true, true]);
+    for (const name of ["get_window_status", "restore_window"])
+      await expect(backend.call(name, { pid: 42, window_id: 91, state_id: "state" })).rejects.toThrow("artifact hash mismatch");
+  } finally { await backend.close(); }
+});
+test("older runtime profiles refuse restore metadata and mutation without starting a peer", async () => {
+  for (const runtime of [undefined, "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll"] as const) {
+    const backend = new McpDriver({ command: process.execPath, runtime });
+    try {
+      expect(backend.windowRestore).toBe(false);
+      for (const name of ["get_window_status", "restore_window"])
+        expect(await backend.call(name, { pid: 42, window_id: 91, state_id: "state" })).toMatchObject({
+          isError: true, structuredContent: { code: "window_restore_unavailable", effect: "refused", fallback: false,
+            restore_attempted: false, restore_requested: false, restored: false, activation_attempted: false, activation_succeeded: false },
+        });
+    } finally { await backend.close(); }
+  }
+});
 test("coordinate scroll keeps inherited Windows capabilities but rejects changed bytes before input", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-coordinate-scroll" });
   try {

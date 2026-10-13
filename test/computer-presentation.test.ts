@@ -4,6 +4,28 @@ import type { ComputerResult } from "../src/session.ts";
 
 const resources = { appSource: (id: string) => `computer:app/${id}` };
 
+test("window state exposes its restore-only address and independent foreground/focus metadata", () => {
+  const result: ComputerResult = { content: [], details: { status: "observed", mode: "yolo", window_state_id: "fresh-state",
+    state: { minimized: true, visible: true, foreground_at_target: false, keyboard_focus_at_target: null } } };
+  const text = presentComputerResult(resources, result);
+  expect(text).toContain("computer:window-state/fresh-state");
+  expect(text).toContain("minimized=true, visible=true");
+  expect(text).toContain("foreground=false, keyboard_focus=null");
+  expect(text).toContain("restore");
+  expect(text).not.toContain("computer:observation/");
+});
+
+test("interrupted restore presentation preserves mutation prefix without claiming focus or fresh paint", () => {
+  const result: ComputerResult = { content: [], isError: true, details: { status: "unknown", mode: "yolo",
+    state: { restore_attempted: true, restore_requested: true, restored: true, activation_attempted: true,
+      activation_succeeded: false, visible: true, foreground_at_target: false, keyboard_focus_at_target: null } } };
+  const text = presentComputerResult(resources, result);
+  expect(text).toContain("restore_attempted=true, restore_requested=true, restored=true");
+  expect(text).toContain("activation_attempted=true, activation_succeeded=false");
+  expect(text).toContain("foreground=false, keyboard_focus=null");
+  expect(text).toContain("Never replay");
+});
+
 test("coordinate scroll presentation exposes native wheel units and interrupted axis prefixes", () => {
   const result: ComputerResult = { isError: true, content: [{ type: "text", text: "Coordinate scroll interrupted. Never replay unknown input." }],
     details: { status: "unknown", mode: "yolo", state: { unit: "wheel_detents", delta_x: -1, delta_y: 2,
