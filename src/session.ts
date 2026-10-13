@@ -6,6 +6,7 @@ import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, 
 import { isSemanticAction, semanticReceipt } from "./semantic-actions.ts";
 import { isPointerMove, pointerReceipt } from "./pointer-actions.ts";
 import { isCoordinateScroll, scrollReceipt } from "./scroll-actions.ts";
+import { validWindowStatus, windowRestoreStatus } from "./window-restore.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
 import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
@@ -49,6 +50,8 @@ export interface Driver {
   nativePointer?: boolean;
   /** True only for an explicitly selected, byte-checked Windows capture-bound wheel runtime. */
   coordinateScroll?: boolean;
+  /** True only for a byte-qualified Windows state admission and no-input restore runtime. */
+  windowRestore?: boolean;
   /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
   persistentWgc?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
@@ -74,6 +77,8 @@ export interface ComputerResult {
     target?: WindowTarget;
     window_ref?: string;
     observation_id?: string;
+    /** One-use window-state authority for explicit restore, never ordinary input. */
+    window_state_id?: string;
     opened?: boolean;
     state?: Record<string, unknown>;
     source?: ObservationSource;
@@ -91,7 +96,8 @@ export interface ComputerResult {
   isError?: boolean;
 }
 interface Observation { id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; detail?: DetailContext; lastAction?: GuideMark }
+interface WindowState { id: string; nativeId: string }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
@@ -381,7 +387,7 @@ export class ComputerSession {
         const settings = { ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
           ...(options.scale !== undefined ? { scale: options.scale } : {}) };
         const cap = nativeImageCap(settings);
-        if (entry) { entry.observation = undefined; entry.detail = undefined; }
+        if (entry) { entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined; }
         else this.displayOverview = undefined;
         let first = true;
         const sequence = await collectSequence(options, async active => {
@@ -632,6 +638,7 @@ export class ComputerSession {
   }
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}): Promise<ComputerResult> {
     validateUiCapture(options);
+    entry.windowState = undefined;
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
@@ -732,6 +739,78 @@ export class ComputerSession {
       agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
+  /** Acquire fresh native window metadata and one-use restore authority without pixels or a UI walk. */
+  observeWindowState(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        const known = this.entries.get(ref);
+        if (known && !this.allowed(known)) return this.denied(ref);
+        if (known) { known.windowState = undefined; known.observation = undefined; known.detail = undefined; }
+        if (signal?.aborted) return this.result("refused", "Cancelled before window state acquisition.");
+        const entry = await this.current(ref, signal);
+        if (!entry) return this.result("refused", "Unknown, closed or reused window. Discover again.");
+        if (!this.driver.windowRestore) return this.result("refused", "Window restore needs an explicitly selected qualified native runtime. Ask the user to restore the window manually; never send keys or clicks as a workaround.", undefined, this.addressed(entry));
+        const native = await this.driver.call("get_window_status", { ...entry.target }, signal);
+        if (!this.allowed(entry)) return this.denied(ref);
+        if (signal?.aborted) return this.result("refused", "Cancelled during window state acquisition; no authority issued.");
+        if (!await this.current(ref, signal)) return this.result("refused", "Window closed or was reused during state acquisition.");
+        if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Window state revoked or cancelled; no authority issued.");
+        const state = native.structuredContent;
+        if (native.isError || !state || !validWindowStatus(state, entry.target) || native.content.some(block => block.type === "image"))
+          return this.result("refused", "Native window state refused or its exact-source receipt is invalid. Ask the user to restore manually; no input fallback.", state, this.addressed(entry));
+        const id = randomUUID();
+        entry.windowState = { id, nativeId: state.state_id as string };
+        return this.result("observed", "Fresh native window state. Insert restore explicitly restores and activates this exact window once. No pixels, UI hints, typing or pointer authority.", state,
+          { ...this.addressed(entry), window_state_id: id });
+      } catch (error) { return this.failed(error, false); }
+    });
+  }
+
+  /** Check cached state authority without acquiring metadata or renewing its one-use native lease. */
+  checkWindowState(ref: string, id: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        const known = this.entries.get(ref);
+        if (known && !this.allowed(known)) return this.denied(ref);
+        if (signal?.aborted) return this.result("refused", "Cancelled before window state reference check.");
+        const entry = await this.current(ref, signal);
+        if (!entry || entry.windowState?.id !== id) return this.result("refused", "Retired or closed window state. Read a fresh state.");
+        if (!this.allowed(entry)) return this.denied(ref);
+        if (signal?.aborted) return this.result("refused", "Window state reference check cancelled.");
+        return this.result("observed", "Existing window state; no native acquisition or renewal of restore authority.", undefined,
+          { ...this.addressed(entry), window_state_id: id });
+      } catch (error) { return this.failed(error, false); }
+    });
+  }
+  /** Consume one admitted window state for explicit restore and activation; never capture, inject input or replay. */
+  restoreWindow(ref: string, id: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = this.entries.get(ref), observed = entry?.windowState;
+      if (!entry || !observed || observed.id !== id) return this.result("refused", "Retired or missing window state. Read a new state before restore.");
+      entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      if (!this.allowed(entry)) return this.denied(ref);
+      if (signal?.aborted) return this.result("refused", "Cancelled before native restore dispatch.");
+      let dispatched = false;
+      try {
+        if (!await this.current(ref, signal)) return this.result("refused", "Window closed or was reused before restore.");
+        if (!this.allowed(entry)) return this.denied(ref);
+        if (signal?.aborted) return this.result("refused", "Cancelled before native restore dispatch.");
+        if (!this.driver.windowRestore) return this.result("refused", "Native restore is unavailable. Ask the user to restore manually; no input fallback.");
+        dispatched = true;
+        const native = await this.driver.call("restore_window", { ...entry.target, state_id: observed.nativeId }, signal);
+        const status = windowRestoreStatus(native.structuredContent, entry.target, observed.nativeId, native.isError === true);
+        // A transport cancellation, lost identity or permission change cannot retract a submitted native transition.
+        // Keep the native receipt even when this final identity check fails or throws.
+        let current = false;
+        try { current = !!await this.current(ref, signal); } catch { /* The delivered prefix remains available below. */ }
+        const outcome = signal?.aborted || !this.allowed(entry) || !current ? "unknown" : status;
+        const message = outcome === "delivered" ? "Native restoration and target foreground confirmed. Keyboard focus is measured separately; Read fresh pixels to inspect paint."
+          : outcome === "refused" ? "Native restore refused before mutation. Ask the user to restore manually; no keys or clicks were used."
+          : "Restore outcome incomplete or unknown. Retained native prefix follows; do not replay. Read fresh window state/pixels before deciding.";
+        return this.result(outcome, message, native.structuredContent, this.addressed(entry));
+      } catch (error) { return this.failed(error, dispatched); }
+    });
+  }
   /** Read fresh window parts for an existing reference. Each mode retires this window's previous observation. */
   observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions): Promise<ComputerResult> {
     return this.queue(async () => {

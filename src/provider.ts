@@ -18,6 +18,16 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
   const d = result.details, state = d.state ?? {};
   const lines = [`Computer ${d.status} (${d.mode})`];
   if (d.window_ref) lines.push(`Window: ${computerSource("window", d.window_ref)}`);
+  if (d.window_state_id && d.status === "observed") {
+    lines.push(`State: ${computerSource("window-state", d.window_state_id)}`,
+      `Window state: minimized=${state.minimized}, visible=${state.visible}; foreground=${state.foreground_at_target}, keyboard_focus=${state.keyboard_focus_at_target}`,
+      'Insert {"action":"restore"} once explicitly restores and activates this window. No pixel, typing or pointer authority.');
+  }
+  if (typeof state.restore_attempted === "boolean") {
+    lines.push(`Native restore prefix: restore_attempted=${state.restore_attempted}, restore_requested=${state.restore_requested}, restored=${state.restored}`,
+      `Activation: activation_attempted=${state.activation_attempted}, activation_succeeded=${state.activation_succeeded}; foreground_changed=${state.foreground_changed}`,
+      `Measured state: visible=${state.visible}; foreground=${state.foreground_at_target}, keyboard_focus=${state.keyboard_focus_at_target}`);
+  }
   const id = d.observation_id ?? d.agent_image?.image_id;
   if (typeof id === "string" && d.status === "observed") lines.push(`Observation: ${computerSource("observation", id)}`);
   if (d.agent_image) {
@@ -96,7 +106,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
   await Promise.all([
     connectReadPlugin(pi, { protocol: READ_PROTOCOL, apiVersion: READ_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ resolver, priority: -250 });
-      for (const view of ["image", "ui", "full", "backend", "region", "sequence", "frames", "capture", "element"])
+      for (const view of ["image", "ui", "full", "state", "backend", "region", "sequence", "frames", "capture", "element"])
         api.addView({ view, contentKind: "any", presenter: { id: `computer-${view}`, present: document => document } });
       api.addHandler({ stage: "read", when: { resolvedBy: resolver.id, contentKind: "any" }, async handler(context) {
         const { request, resolverContext } = context;
@@ -116,8 +126,8 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           details: { source: address.source, resolvedBy: resolver.id, presentationTruncated: truncated, ...(result ? { computer: result.details } : {}) },
           script: { kind: "native", source: address.source, blocks: canonical } } };
       } });
-      api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
-        views: "Computer: image/ui/full; backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
+      api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id, window-state/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
+        views: "Computer: image/ui/full; state alone on a window returns fresh restore-only metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
     } }),
     connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],
@@ -160,7 +170,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           }
         },
       });
-      api.describe("Computer Write sends content literally through type_text to a fresh observation address; optional ?hint=...&delivery=foreground&delay_ms=0. No implicit select-all, submit or program execution. Computer Insert sends one JSON action to that observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground requires an observed background refusal; Safe/YOLO is user-controlled.");
+      api.describe("Computer Write sends content literally through type_text to a fresh observation address; optional ?hint=...&delivery=foreground&delay_ms=0. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
     } }),
   ]);
 }

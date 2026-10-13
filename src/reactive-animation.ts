@@ -38,6 +38,7 @@ export class ReactiveAnimationDriver implements Driver {
   get semanticActions() { return this.base.semanticActions; }
   get nativePointer() { return this.base.nativePointer; }
   get coordinateScroll() { return this.base.coordinateScroll; }
+  get windowRestore() { return this.base.windowRestore; }
   get persistentWgc() { return this.base.persistentWgc; }
   get overviewKernel() { return this.base.overviewKernel; }
 
