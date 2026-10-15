@@ -18,6 +18,7 @@ Read views:
 | --- | --- |
 | `full` (default), `image`, `ui` | Fresh full window, pixels without a UI walk, or current UI without pixels. |
 | `state` | Fresh native metadata without pixels or a UI walk. Use alone on a window. The selected runtime issues restore-only or management state; management also reports bounds, maximized state and independent virtual-desktop queries. |
+| `dom`, `dom:{"locator":{"test_id":"save"}}` | Fresh bounded readonly DOM from an existing driver-owned browser. Use alone; see the DOM contract below. |
 | `backend:default`, `backend:wgc` | Explicit window image route. WGC requires a qualified runtime, with no fallback. |
 | `capture:{"max_elements":500,"max_depth":20,"hints":true}` | Fresh bounded walk/hints. Optional `guides` takes grid/region/action booleans. `maxLongEdge` (64..4096) and `scale` (0.05..1) set this window Read’s native image cap without changing session defaults. |
 | `region:100,80,120,60` | Fresh readonly detail in local pixels of the addressed observation image. Consumes its overview. |
@@ -30,6 +31,20 @@ Examples contain placeholder rectangles/hints. Choose actual targets from the cu
 Search an observation address to filter its collected UI without another native walk. Missing nodes in an incomplete tree remain unknown. Scope and highlight use stored overview pixels; they are not fresh captures.
 
 Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Native WGC detail is unsupported: use an explicit default-route overview when detail is needed. Display detail, frames and text selections never grant input authority.
+
+## Readonly browser DOM
+
+DOM inspection is opt-in through the explicitly selected, byte-checked `windows-dom-inspection` runtime. It is not the default runtime. The route requires an existing driver-owned browser endpoint and an exact window with one proven selected tab. It never prepares an endpoint, launches or replaces a browser/profile, or activates a tab. Other windows and ordinary `ui`/`image`/`full` Reads keep their existing behavior and policy.
+
+To explicitly create a new isolated browser, Insert `{"action":"open_browser"}` into `computer:session`. This uses the same selected runtime and native session as later DOM reads, returns its exact window address, and admits it under Safe. It accepts no URL, existing profile or endpoint. Opening is separate from inspection; a refused DOM read never launches a replacement. Never replay an uncertain launch.
+
+Read the authorized window with `views:["dom"]`, or use one JSON view such as `dom:{"locator":{"role":"button","name":"Save"},"include_hidden":true,"max_nodes":100,"max_depth":16}`. Omit image, UI, state, backend and capture views. Locator fields are `role`, `name`, `label`, `text`, `test_id` and `css`. Semantic predicates are exact; `text` is a substring and `css` uses the native browser query. Combined predicates must all match; duplicate matches remain separate. Limits are `max_nodes` 1..200 and `max_depth` 1..32. Locators are bounded to 256 characters per field.
+
+The returned `dom` resource contains snapshot-local hints, frame identities, tags, attributes, accessible role/name, live value/states and visibility where available. Native layout units are not qualified as CSS pixels: `bounds_css` stays null and `geometry_status` reports that limitation. Missing metadata stays unavailable. Check `complete`, `collection_complete`, `truncated`, `omitted` and projection limits before interpreting absence. A finished or empty projection does not prove that an incomplete collection inspected every node or frame.
+
+Read the issued observation without views, or with `dom`, to inspect its cached records. Search that observation to filter collected text and attributes without another native query. Read `element:inspect,<actual-hint>` for one record. Read `element:scope,<actual-hint>`, or a nonempty `dom:{...}` options view on the observation, for a fresh bounded native query; `scope` accepts only a hint from that observation. A refresh retires older hints. Fresh window reads, close and reload also retire them. Do not borrow hints between DOM/UI snapshots or frames; stale and detached native sources refuse rather than silently rebind.
+
+DOM observations are readonly: Write and Insert refuse, and cached reads/searches do not renew native references. The reserved `document_css_pixels` domain never grants desktop or screenshot coordinates. DOM element crop/highlight currently refuses because native-pixel correspondence is not qualified. Do not guess a transform or use a page screenshot as native pixels. Read a fresh native window overview for ordinary image/UI inspection or input.
 
 ## Restore a minimized window
 
@@ -76,6 +91,6 @@ Input consumes its observation even on refusal after admission. Interrupted batc
 
 ## Cleanup and development
 
-Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into `computer:session` to release the runtime and references. This does not close application documents or save them.
+Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into `computer:session` to release the runtime and references. This does not close unrelated application documents or save them. It does end the session's explicitly opened isolated browsers and remove their owned profiles; a failed or uncertain cleanup is reported rather than called complete.
 
 For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This links the public peer SDK without modifying IDE or its dependencies. Normal loading still needs both extensions installed. Use the [development skill](../.pi/skills/develop-computer-use/SKILL.md) for isolated task loading and restoration. Installation/interface switching and new native runtime adoption are separate decisions.
