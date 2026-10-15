@@ -40,6 +40,9 @@ function letters(n: number): string {
   return out;
 }
 
+/** Issue a short snapshot-local alias shared by UIA and readonly DOM projections. */
+export function elementHint(serial: number, index: number): string { return `${serial.toString(36)}:${letters(index)}`; }
+
 /** Validate before a native walk or replacing any active snapshot. */
 export function validateUiCapture(options: UiCaptureOptions): void {
   if (Object.keys(options).some(k => !["backend", "granularity", "maxLongEdge", "scale", "max_elements", "max_depth", "hints", "guides"].includes(k)) ||
@@ -63,9 +66,9 @@ export function validateUiCapture(options: UiCaptureOptions): void {
 export function createUiResource(state: Record<string, unknown>, window: string, observation: string, serial: number): UiResource {
   const native = (Array.isArray(state.elements) ? state.elements : []) as Record<string, unknown>[];
   const rows = native.filter(e => typeof e?.element_token === "string");
-  const aliases = new Map(rows.map((e, i) => [e.element_index, `${serial.toString(36)}:${letters(i)}`] as const).filter(([key]) => index(key) !== null));
+  const aliases = new Map(rows.map((e, i) => [e.element_index, elementHint(serial, i)] as const).filter(([key]) => index(key) !== null));
   const elements: UiElement[] = rows.map((e, i) => ({
-    hint: `${serial.toString(36)}:${letters(i)}`, element_token: e.element_token as string,
+    hint: elementHint(serial, i), element_token: e.element_token as string,
     index: index(e.element_index), parent_hint: aliases.get(e.parent_index) ?? null,
     role: text(e.role), name: text(e.label), value: text(e.value),
     text_truncated: [e.label, e.value].some(v => typeof v === "string" && v.length > 1024),

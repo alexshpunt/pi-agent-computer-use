@@ -16,6 +16,8 @@ import { actionCapability, type ActionCapability } from "./action-capability.ts"
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
+import { validateDomRead, validateDomBinding, validateDomSnapshot, type DomReadOptions } from "./dom-inspection.ts";
+import { createDomResource, projectDom, domPreview, type DomResource, type DomObservation } from "./dom-resource.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -53,6 +55,8 @@ export interface Driver {
   coordinateScroll?: boolean;
   /** True only for a byte-qualified Windows state admission and no-input restore runtime. */
   windowRestore?: boolean;
+  /** True only for an explicitly selected byte-checked readonly DOM inspection candidate. */
+  domInspection?: boolean;
   /** True only for an exact byte-qualified Windows state-bound management runtime. */
   windowManagement?: boolean;
   /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
@@ -92,6 +96,8 @@ export interface ComputerResult {
     agent_image?: Record<string, unknown>;
     highlight?: HighlightResult;
     ui?: UiResource;
+    /** Readonly browser metadata, isolated from UIA and pixel-input authority. */
+    dom?: DomResource;
     /** Fresh window capture parts; omitted for non-overview results. */
     granularity?: "image" | "ui" | "full";
     captured?: { image: boolean; ui: boolean };
@@ -102,7 +108,7 @@ export interface ComputerResult {
 }
 interface Observation { id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; detail?: DetailContext; lastAction?: GuideMark }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: DomObservation; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
@@ -118,6 +124,7 @@ export class ComputerSession {
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
+  private browserSession = false;
 
   private get platform(): NativePlatform { return this.driver.platform ?? "windows"; }
 
@@ -170,7 +177,7 @@ export class ComputerSession {
       text_truncated: e.text_truncated || (e.name?.length ?? 0) > 128 || (e.value?.length ?? 0) > 128 })) };
     const projection = visibleUi && { ui_elements: visibleUi.elements.length, full_ui_elements: extra.ui!.elements.length,
       note: "Plain text shows at most 30 elements with 128-character names/values. Use structured ui or local search/scope for the rest." };
-    const display = extra.sequence ? { ...details, sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source,
+    const display = extra.dom ? { ...details, dom: domPreview(extra.dom), text_projection: { note: "Readonly DOM preview only; structured dom retains bounded full records. CSS rectangles are not native pixels." } } : extra.sequence ? { ...details, sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source,
       frames: extra.sequence.frames.map(frameSummary) }, text_projection: { note: "Frame summaries only; full per-frame source metadata is in the structured sequence resource." } }
       : extra.selected_frames ? { ...details, source: extra.selected_frames[0]?.source, selected_frames: extra.selected_frames.map(frameSummary),
         text_projection: { note: "Frame summaries only; full per-frame source metadata accompanies each structured frame." } }
@@ -184,6 +191,8 @@ export class ComputerSession {
       ...(extra.sequence ? { sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source, frames: extra.sequence.frames.slice(0, 5).map(frameSummary) } } : {}),
       ...(extra.selected_frames ? { selected_frames: extra.selected_frames.slice(0, 5).map(frameSummary) } : {}),
       text_projection: { note: "Plain text shows five frame summaries. Full metadata is available in the structured result.", metadata_omitted: true } })
+      : extra.dom ? JSON.stringify({ status, mode: details.mode, window_ref: extra.window_ref, observation_id: extra.observation_id,
+        dom: domPreview(extra.dom, 0), text_projection: { note: "DOM records omitted from text; use the structured resource.", metadata_omitted: true } })
       : visibleUi ? JSON.stringify({ status, mode: details.mode,
       window_ref: extra.window_ref, observation_id: extra.observation_id,
       agent_image: extra.agent_image && { image_id: extra.agent_image.image_id, output: extra.agent_image.output },
@@ -214,6 +223,7 @@ export class ComputerSession {
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
     this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
+    this.browserSession = false;
     await this.driver.close().catch(() => undefined);
     const reason = error instanceof Error ? error.message : String(error);
     return this.result(dispatched ? "unknown" : "refused", dispatched
@@ -235,6 +245,23 @@ export class ComputerSession {
     throw new Error(`Driver returned no structured ${name} result.`);
   }
 
+  private async browserState(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    const arguments_ = { ...args, session: this.sessionId };
+    const result = signal === undefined ? await this.driver.call(name, arguments_) : await this.driver.call(name, arguments_, signal);
+    const state = result.structuredContent;
+    if (result.isError || result.content.some(block => block.type === "image") || !state || Array.isArray(state) ||
+      JSON.stringify(state).length > 65_536 || state.status === "refused" || state.refusal || state.error)
+      throw Error("Native browser lifecycle receipt is invalid or refused; no fallback or replay.");
+    return state;
+  }
+
+  private async startBrowserSession(signal?: AbortSignal): Promise<void> {
+    if (this.browserSession) return;
+    // An interrupted start may still own a native session. Keep it available for cleanup, never replay start.
+    this.browserSession = true;
+    const started = await this.browserState("start_session", {}, signal);
+    if (started.active !== true || started.session !== this.sessionId) throw Error("Native browser session was not admitted.");
+  }
   private async register(target: WindowTarget, signal?: AbortSignal): Promise<WindowEntry | undefined> {
     if (this.driver.windowLifetime === false) return undefined;
     if (!Number.isSafeInteger(target.pid) || target.pid <= 0 || !Number.isSafeInteger(target.window_id) || target.window_id <= 0)
@@ -301,6 +328,58 @@ export class ComputerSession {
     });
   }
 
+  /** Explicitly open one new driver-owned isolated browser. No navigation, profile attachment or input is implied. */
+  openBrowser(signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (signal?.aborted || !this.driver.domInspection || this.driver.windowLifetime === false)
+        return this.result("refused", "Isolated browser opening needs the qualified DOM runtime and live window identity; nothing was launched.");
+      let attempted = false;
+      const check = () => {
+        if (signal?.aborted || !this.driver.domInspection) throw Error("Browser opening cancelled or runtime admission revoked.");
+      };
+      try {
+        await this.startBrowserSession(signal);
+        check();
+        attempted = true;
+        const prepared = await this.browserState("browser_prepare", { allow_launch: true, profile: { mode: "isolated_new" } }, signal);
+        check();
+        const pid = prepared.prepared_pid;
+        if (prepared.prepared !== true || !Number.isSafeInteger(pid) || (pid as number) <= 0)
+          throw Error("Browser preparation did not attest one owned process.");
+        const native = await this.driver.call("list_windows", { pid }, signal);
+        check();
+        const windows = native.structuredContent?.windows;
+        if (native.isError || native.content.some(block => block.type === "image") || !Array.isArray(windows) ||
+          windows.length !== 1 || JSON.stringify(windows).length > 65_536 || windows[0]?.pid !== pid)
+          throw Error("Owned browser has no unique exact native window.");
+        const target = windows[0] as WindowTarget;
+        const entry = await this.register(target, signal);
+        check();
+        if (!entry || await this.driver.identity(entry.target, false, signal) !== entry.identity)
+          throw Error("Owned browser lifetime could not be established.");
+        check();
+        entry.owned = true;
+        return this.result("observed", "New isolated browser opened in this runtime session. No navigation, pixels or input authority. Read its window explicitly. Session close releases this owned browser/profile; other application documents remain untouched.",
+          { operation: "open_browser", launch_attempted: true, prepared: true, isolated_profile: true },
+          { ...this.addressed(entry), opened: true });
+      } catch (error) {
+        // Cleanup is allowed after cancellation, but another launch is never attempted.
+        let cleanup = "not_needed";
+        if (this.browserSession) {
+          cleanup = "unknown";
+          try {
+            const ended = await this.browserState("end_session", {});
+            if (ended.active === false && ended.session === this.sessionId) cleanup = "confirmed";
+          } catch { /* The transport close below still releases this owned native peer. */ }
+        }
+        const failed = await this.failed(error, attempted);
+        return this.result(failed.details.status, attempted
+          ? "Browser launch outcome is unknown. Owned cleanup was requested; discover before deciding and never replay the launch blindly."
+          : "Browser opening stopped before launch; owned native session cleanup was requested.",
+          { operation: "open_browser", launch_attempted: attempted, cleanup, reason: (error instanceof Error ? error.message : String(error)).slice(0, 1024) });
+      }
+    });
+  }
   /** Launch once, establish a genuinely new window, and return its first UI observation. No shell strings from the model. */
   open(app: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -392,7 +471,7 @@ export class ComputerSession {
         const settings = { ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
           ...(options.scale !== undefined ? { scale: options.scale } : {}) };
         const cap = nativeImageCap(settings);
-        if (entry) { entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined; }
+        if (entry) { entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined; }
         else this.displayOverview = undefined;
         let first = true;
         const sequence = await collectSequence(options, async active => {
@@ -643,7 +722,7 @@ export class ComputerSession {
   }
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}): Promise<ComputerResult> {
     validateUiCapture(options);
-    entry.windowState = undefined;
+    entry.dom = undefined; entry.windowState = undefined;
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
@@ -744,13 +823,97 @@ export class ComputerSession {
       agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
+  /** Readonly DOM acquisition for the selected tab of an existing exact driver-owned browser. */
+  observeDom(ref: string, options: DomReadOptions = {}, signal?: AbortSignal, sourceId?: string): Promise<ComputerResult> {
+    return this.queue(async () => {
+      let request: DomReadOptions;
+      try { request = validateDomRead(options); }
+      catch (error) { return this.result("refused", String(error)); }
+      const entry = this.entries.get(ref);
+      if (!entry || !this.allowed(entry)) return entry ? this.denied(ref) : this.result("refused", "Unknown window. Discover again.");
+      const previous = entry.dom;
+      let scopeRef: string | undefined;
+      if (sourceId !== undefined && previous?.id !== sourceId) return this.result("refused", "Retired DOM snapshot. Read the window again.");
+      if (request.scope !== undefined) {
+        scopeRef = sourceId && previous?.refs.get(request.scope) || undefined;
+        if (!scopeRef) return this.result("refused", "Scope requires a hint from the current DOM observation.");
+      }
+      entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      try {
+        const admitted = async () => {
+          if (signal?.aborted || !this.driver.domInspection || !this.allowed(entry) || await this.current(ref, signal) !== entry)
+            throw Error("DOM source is cancelled, unqualified, closed, reused or outside the current mode.");
+          if (signal?.aborted || !this.allowed(entry)) throw Error("DOM admission revoked.");
+        };
+        await admitted();
+        const read = async (name: string, args: Record<string, unknown>) => {
+          await admitted();
+          const result = await this.driver.call(name, { ...args, session: this.sessionId }, signal);
+          await admitted();
+          if (result.isError || result.content.some(block => block.type === "image") || !result.structuredContent ||
+            result.structuredContent.status === "refused" || result.structuredContent.refusal)
+            throw Error("Native readonly DOM route refused or returned an invalid result. No fallback or replay.");
+          return result.structuredContent;
+        };
+        await this.startBrowserSession(signal);
+        await admitted();
+        const binding = previous?.binding ?? validateDomBinding(await read("get_browser_state", { ...entry.target }));
+        const { scope: _scope, ...nativeOptions } = request;
+        const state = await read("get_browser_state", { ...binding, snapshot_format: "dom_inspect_v1", include_screenshot: false,
+          ...nativeOptions, ...(scopeRef ? { scope_ref: scopeRef } : {}) });
+        const snapshot = validateDomSnapshot(state, binding, request.max_nodes ?? 200);
+        await admitted();
+        const id = randomUUID();
+        // Keep at most three bounded DOM snapshots; none confer input or native pixel authority.
+        const retained = [...this.entries.values()].filter(value => value.dom);
+        for (const old of retained.slice(0, Math.max(0, retained.length - 2))) old.dom = undefined;
+        entry.dom = createDomResource(snapshot, binding, ref, id, ++this.uiSerial);
+        return this.result("observed", "Fresh readonly DOM. Coverage applies only to this bounded collection; CSS bounds are not native pixels. No typing, pointer or action authority.",
+          undefined, { ...this.addressed(entry), observation_id: id, dom: structuredClone(entry.dom.resource) });
+      } catch (error) {
+        entry.dom = undefined;
+        return this.result("refused", `DOM unavailable: ${error instanceof Error ? error.message : String(error)}`, undefined, this.addressed(entry));
+      }
+    });
+  }
+
+  /** Read a cached DOM resource without querying the page or renewing native references. */
+  checkDom(ref: string, id: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        const entry = await this.current(ref, signal);
+        if (signal?.aborted || !this.driver.domInspection || !entry || entry.dom?.id !== id)
+          return this.result("refused", "Retired, revoked or cancelled DOM observation. Read the window again.");
+        return this.result("observed", "Cached readonly DOM; no native query, new snapshot or authority renewal.", undefined,
+          { ...this.addressed(entry), observation_id: id, dom: structuredClone(entry.dom.resource) });
+      } catch (error) { return this.failed(error, false); }
+    });
+  }
+
+  /** Inspect or search collected DOM records. Native crops require a separate proven pixel transform. */
+  inspectDom(ref: string, id: string, request: { operation: "search" | "inspect" | "crop" | "highlight"; hint?: string; query?: string; limit?: number },
+    signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        const entry = await this.current(ref, signal);
+        if (signal?.aborted || !this.driver.domInspection || !entry || entry.dom?.id !== id)
+          return this.result("refused", "Retired, revoked or cancelled DOM observation. Read the window again.");
+        const dom = projectDom(entry.dom.resource, request);
+        if (request.operation === "crop" || request.operation === "highlight")
+          return this.result("refused", "DOM CSS geometry has no qualified native-pixel correspondence on this source. No guessed crop or wider-source fallback.",
+            undefined, { ...this.addressed(entry), observation_id: id });
+        return this.result("observed", "Cached readonly DOM projection. Empty matches do not prove absence beyond the reported collection coverage.", undefined,
+          { ...this.addressed(entry), observation_id: id, dom });
+      } catch (error) { return this.result("refused", error instanceof Error ? error.message : String(error)); }
+    });
+  }
   /** Acquire fresh one-use native state without pixels, a UI walk or ordinary-input authority. */
   observeWindowState(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       try {
         const known = this.entries.get(ref);
         if (known && !this.allowed(known)) return this.denied(ref);
-        if (known) { known.windowState = undefined; known.observation = undefined; known.detail = undefined; }
+        if (known) { known.dom = undefined; known.windowState = undefined; known.observation = undefined; known.detail = undefined; }
         if (signal?.aborted) return this.result("refused", "Cancelled before window state acquisition.");
         const entry = await this.current(ref, signal);
         if (!entry) return this.result("refused", "Unknown, closed or reused window. Discover again.");
@@ -796,7 +959,7 @@ export class ComputerSession {
     return this.queue(async () => {
       const entry = this.entries.get(ref), observed = entry?.windowState;
       if (!entry || !observed || observed.id !== id) return this.result("refused", "Retired or missing window state. Read a new state before restore.");
-      entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       if (!this.allowed(entry)) return this.denied(ref);
       if (signal?.aborted) return this.result("refused", "Cancelled before native restore dispatch.");
       let dispatched = false;
@@ -825,7 +988,7 @@ export class ComputerSession {
     return this.queue(async () => {
       const entry = this.entries.get(ref), observed = entry?.windowState;
       if (!entry || !observed || observed.id !== id) return this.result("refused", "Retired or missing window state. Read a fresh state.");
-      entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       if (!this.allowed(entry)) return this.denied(ref);
       if (signal?.aborted) return this.result("refused", "Cancelled before native management dispatch.");
       let dispatched = false;
@@ -1097,12 +1260,17 @@ export class ComputerSession {
     });
   }
 
-  /** Release owned runtime and invalidate references. Application windows and files are not closed or saved. */
+  /** Release owned runtime and isolated browser profiles. Other application windows/files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
       this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
-      await this.driver.close();
-      return this.result("closed", "Owned computer-use runtime closed. Application windows were not closed.");
+      try {
+        if (this.browserSession) {
+          const ended = await this.browserState("end_session", {});
+          if (ended.active !== false || ended.session !== this.sessionId) throw Error("Native browser cleanup was not confirmed.");
+        }
+      } finally { this.browserSession = false; await this.driver.close(); }
+      return this.result("closed", "Owned computer-use runtime and isolated browser profiles released. Other application documents were not closed or saved.");
     });
   }
 }
