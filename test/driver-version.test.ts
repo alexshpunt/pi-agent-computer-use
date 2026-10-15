@@ -1,9 +1,99 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { expect, test } from "vitest";
-import { McpDriver } from "../src/driver.ts";
+import { DOM_INSPECTION_RUNTIME, McpDriver } from "../src/driver.ts";
 import type { BundledRuntime } from "../src/native-runtime.ts";
+import { ReactiveAnimationDriver } from "../src/reactive-animation.ts";
 
+test("DOM startup validates the complete actual MCP schema before dispatch", async () => {
+  await mkdir(".tmp", { recursive: true });
+  const directory = await mkdtemp(path.resolve(".tmp/dom-runtime-schema-"));
+  const pinned = DOM_INSPECTION_RUNTIME as { sha256: string };
+  const originalHash = pinned.sha256;
+  const properties = {
+    snapshot_format: { type: "string", enum: ["dom_refs_v1", "semantic_v2", "dom_inspect_v1"] },
+    locator: { type: "object", additionalProperties: false, properties: Object.fromEntries(
+      ["role", "name", "label", "text", "test_id", "css"].map(name => [name, { type: "string" }])) },
+    scope_ref: { type: "string" }, include_hidden: { type: "boolean" },
+    max_nodes: { type: "integer", minimum: 1, maximum: 200 },
+    max_depth: { type: "integer", minimum: 1, maximum: 32 },
+    screenshot_mode: { type: "string", enum: ["viewport", "surface_unclipped", "native_view"] },
+  };
+  const cases: { name: string; change?: Record<string, unknown>; omit?: string; nextCursor?: string }[] = [
+    { name: "valid" },
+    { name: "format", change: { snapshot_format: { type: "string", enum: ["semantic_v2"] } } },
+    ...["locator", "scope_ref", "include_hidden", "max_nodes", "max_depth"].map(name => ({ name, omit: name })),
+    { name: "wrong-bound", change: { max_nodes: { type: "string" } } },
+    { name: "wrong-mode", change: { screenshot_mode: { type: "string", enum: ["viewport", "guessed"] } } },
+    { name: "pagination", nextCursor: "more" },
+  ];
+  try {
+    for (const item of cases) {
+      const command = path.join(directory, `${item.name}.mjs`);
+      const log = path.join(directory, `${item.name}.log`);
+      const fields: Record<string, unknown> = { ...properties, ...item.change };
+      if (item.omit) delete fields[item.omit];
+      const listing = { tools: [{ name: "get_browser_state", inputSchema: { type: "object", properties: fields } }],
+        ...(item.nextCursor ? { nextCursor: item.nextCursor } : {}) };
+      const script = `#!${process.execPath}
+import { createInterface } from "node:readline";
+import { appendFileSync } from "node:fs";
+const listing = ${JSON.stringify(listing)};
+createInterface({ input: process.stdin }).on("line", line => {
+  const request = JSON.parse(line);
+  if (request.id === undefined) return;
+  appendFileSync(${JSON.stringify(log)}, request.method + "\\n");
+  const result = request.method === "initialize" ? {
+    protocolVersion: request.params.protocolVersion, serverInfo: { name: "cua-driver", version: "0.34.0" },
+    capabilities: { tools: {}, experimental: { "ai.cua.driver.envelopes": { version: 1 } } }
+  } : request.method === "tools/list" ? listing : { content: [], structuredContent: { status: "ok" } };
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\\n");
+});
+`;
+      await writeFile(command, script, { mode: 0o700 });
+      // Only this synthetic executable is qualified for the wire test; restore the real pin afterward.
+      pinned.sha256 = createHash("sha256").update(script).digest("hex");
+      const backend = new McpDriver({ command, runtime: "windows-dom-inspection" });
+      try {
+        if (item.name === "valid")
+          expect(await backend.call("get_browser_state", { snapshot_format: "dom_inspect_v1" })).toMatchObject({
+            structuredContent: { status: "ok" },
+          });
+        else
+          await expect(backend.call("get_browser_state", { snapshot_format: "dom_inspect_v1" })).rejects.toThrow("native_runtime_schema");
+        const methods = (await readFile(log, "utf8")).trim().split("\n");
+        expect(methods).toContain("tools/list");
+        expect(methods.filter(method => method === "tools/call")).toHaveLength(item.name === "valid" ? 1 : 0);
+      } finally { await backend.close(); }
+    }
+  } finally { pinned.sha256 = originalHash; await rm(directory, { recursive: true, force: true }); }
+}, 20_000);
+test("DOM candidate inherits window capabilities and forwards only its explicit readonly flag", async () => {
+  const backend = new McpDriver({ command: process.execPath, runtime: "windows-dom-inspection" });
+  const wrapped = new ReactiveAnimationDriver(backend, { glide_duration_ms: 1 });
+  try {
+    expect([backend.domInspection, backend.windowManagement, backend.windowRestore, backend.coordinateScroll,
+      backend.nativePointer, backend.persistentWgc, backend.heldPaths, backend.heldKeys, backend.selectedDisplays,
+      backend.captureBoundDrag, backend.semanticActions, wrapped.domInspection]).toEqual(Array(12).fill(true));
+    expect(backend.overviewKernel).toBe("bilinear");
+    await expect(backend.call("get_browser_state", { snapshot_format: "dom_inspect_v1" })).rejects.toThrow("artifact hash mismatch");
+  } finally { await wrapped.close(); }
+});
+test("old profiles refuse readonly DOM before starting any native peer", async () => {
+  for (const runtime of [undefined, "windows-persistent-wgc", "windows-window-restore", "windows-window-management"] as const) {
+    const backend = new McpDriver({ command: "/missing/native-peer", runtime });
+    const wrapped = new ReactiveAnimationDriver(backend, { glide_duration_ms: 1 });
+    try {
+      expect(backend.domInspection).toBe(false);
+      expect(wrapped.domInspection).toBe(false);
+      expect(await wrapped.call("get_browser_state", { snapshot_format: "dom_inspect_v1" })).toMatchObject({
+        isError: true, structuredContent: { status: "refused", code: "dom_inspection_unavailable", attempted: false,
+          input_authority: false, fallback: false },
+      });
+    } finally { await wrapped.close(); }
+  }
+});
 test("management preserves inherited routes but rejects changed bytes before state acquisition", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-window-management" });
   try {

@@ -61,6 +61,16 @@ test("management selects only an explicit artifact profile and fixed transport",
     await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
   }
 });
+test("DOM inspection requires an explicit artifact and refuses custom transport arguments", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const config = { command: "/owned/candidate/cua-driver.exe", runtime: "windows-dom-inspection" };
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(config));
+  expect(await loadComputerConfig(cwd)).toEqual(config);
+  for (const invalid of [{ runtime: config.runtime }, { ...config, args: ["mcp"] }]) {
+    await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(invalid));
+    await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
+  }
+});
 test("coordinate scroll is an explicit trusted artifact profile, never an implicit runtime", async () => {
   const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
   const config = { command: "/owned/candidate/cua-driver.exe", runtime: "windows-coordinate-scroll" };
