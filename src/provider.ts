@@ -7,6 +7,7 @@ import { connectAgentDocumentation } from "pi-agent-ide/api/documentation";
 import { readFile } from "node:fs/promises";
 import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError } from "./computer-resources.ts";
 import { computerSource } from "./computer-address.ts";
+import { domPreview } from "./dom-resource.ts";
 import type { ComputerSession, ComputerResult, Content } from "./session.ts";
 
 const owns = (source: unknown): source is string => typeof source === "string" && source.startsWith("computer:");
@@ -50,7 +51,23 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     if (configuration.maxLongEdge !== undefined) lines.push(`Capture: maxLongEdge=${configuration.maxLongEdge}, scale=${configuration.scale}`);
   }
   if (d.source) lines.push(`Source: ${d.source.captured_at}; input=${d.source.capabilities.input}; paint freshness=${d.source.visibility.paint_freshness}`);
-  if (d.ui) {
+  if (d.dom) {
+    const dom = domPreview(d.dom);
+    if (d.status !== "observed") {
+      const message = computerResultText(result).split("\n{", 1)[0];
+      if (message) lines.push(message);
+      if (typeof state.code === "string") lines.push(`code: ${state.code}`);
+    }
+    lines.push(`DOM: snapshot=${dom.snapshot_id}, complete=${dom.complete}, collection_complete=${dom.collection_complete}, truncated=${dom.truncated}; returned=${dom.returned_count}/${dom.matched_count}; projection_matches=${dom.matches}, projection_truncated=${dom.projection_truncated}; readonly, input=none`,
+      `Page: ${label(dom.page.title)} | ${label(dom.page.url)}; scope=${dom.scope}`,
+      `Omitted: ${JSON.stringify(dom.omitted)}; geometry=${dom.geometry_status}`,
+      `Preview: ${dom.elements.length}/${d.dom.elements.length} collected records; use bounded Search or element:inspect for detail.`);
+    if (state.cached_dom === true) lines.push("Cached DOM: no new DOM query or authority renewal; inspect the collected snapshot, not current page state.");
+    if (!dom.complete || !dom.collection_complete || dom.truncated || dom.projection_truncated) lines.push("Treat absence as unknown outside the returned bounded projection.");
+    for (const e of dom.elements) lines.push(`${e.hint} | frame=${label(e.frame.ref)} (${e.frame.kind}) | ${label(e.tag)} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | visibility=${e.visibility} | bounds=${JSON.stringify(e.bounds_css)} ${e.coordinate_space}`,
+      `  text=${label(e.text)}; text_truncated=${e.text_truncated}; states=${label(JSON.stringify(e.states))}; attributes=${label(JSON.stringify(e.attributes))}`);
+    lines.push("DOM hints are readonly. Never use CSS bounds as native image coordinates or input targets; native crop/highlight needs an independent geometry proof.");
+  } else if (d.ui) {
     lines.push(`UI: collected=${d.ui.collected}, complete=${d.ui.complete}, truncated=${d.ui.truncated || d.ui.projection_truncated}`);
     for (const e of d.ui.elements) lines.push(`${e.hint} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | enabled=${e.enabled} | image_bounds=${JSON.stringify(e.bounds.window_image ?? null)}`);
   } else if (d.status === "listed") {
@@ -84,10 +101,22 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
-  lines.push(d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
+  lines.push(d.dom ? "Read the window with dom view for a fresh bounded DOM query. Use Search or element:inspect on this snapshot; Write/Insert are unavailable."
+    : d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
     : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
-  return lines.join("\n");
+  const text = lines.join("\n");
+  if (!d.dom || Buffer.byteLength(text) <= 24_000) return text;
+  // Read and Search share the same byte budget; retain whole lines and never split Unicode.
+  const notice = "DOM text preview reached its byte limit. Use bounded Search or element:inspect; omitted text is not absence or input authority.";
+  const preview: string[] = [];
+  let bytes = Buffer.byteLength(notice) + 1;
+  for (const line of lines) {
+    const size = Buffer.byteLength(line) + 1;
+    if (bytes + size > 24_000) break;
+    preview.push(line); bytes += size;
+  }
+  return `${preview.join("\n")}\n${notice}`;
 }
 
 /** Preserve uncertainty when a later refusal follows an already-delivered action prefix. */
@@ -122,7 +151,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
   await Promise.all([
     connectReadPlugin(pi, { protocol: READ_PROTOCOL, apiVersion: READ_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ resolver, priority: -250 });
-      for (const view of ["image", "ui", "full", "state", "backend", "region", "sequence", "frames", "capture", "element"])
+      for (const view of ["image", "ui", "full", "state", "dom", "backend", "region", "sequence", "frames", "capture", "element"])
         api.addView({ view, contentKind: "any", presenter: { id: `computer-${view}`, present: document => document } });
       api.addHandler({ stage: "read", when: { resolvedBy: resolver.id, contentKind: "any" }, async handler(context) {
         const { request, resolverContext } = context;
@@ -134,7 +163,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         if (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 0)) throw new ComputerRequestError("limit must be a nonnegative text line count.");
         if (!Number.isSafeInteger(offset)) throw new ComputerRequestError("offset must be an integer text line offset.");
         body = lines.slice(start, request.limit === undefined ? undefined : start + request.limit).join("\n");
-        const uiOnly = request.views?.includes("ui") ?? false;
+        const uiOnly = !!result?.details.dom && !result.details.agent_image || (request.views?.includes("ui") ?? false);
         const canonical = nativeBlocks(body, result, uiOnly);
         const truncated = context.audience !== "script" && Buffer.byteLength(body) > 24_000;
         const preview = truncated ? Buffer.from(body).subarray(0, 24_000).toString("utf8") + "\n[Presentation truncated; narrow UI Search or use text offset/limit. Native script data retains the requested projection.]" : body;
@@ -143,7 +172,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           script: { kind: "native", source: address.source, blocks: canonical } } };
       } });
       api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id, window-state/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
-        views: "Computer: image/ui/full; state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
+        views: "Computer: image/ui/full; dom alone or dom:{locator:{role,name,label,text,test_id,css},scope,include_hidden,max_nodes,max_depth} on a window returns fresh readonly DOM; cached DOM Read/Search performs no new query or authority renewal. Use element:scope,hint on a DOM observation for a fresh subtree query. DOM hints grant no Write/Insert or image-coordinate authority. state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
     } }),
     connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],
@@ -159,7 +188,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         format(payload) { const result = payload as ComputerResult; return { ...result, content: [{ type: "text", text: presentComputerResult(resources, result) }] }; },
         toScriptData(payload) { return { kind: "custom", resolverId: "computer", value: (payload as ComputerResult).details }; },
       } });
-      api.describe("Search computer:apps or computer:windows for installed-app/permitted-window metadata, or an observation for its collected UI. Read computer:displays for monitor metadata. Discovery launches nothing; UI Search performs no new native walk.");
+      api.describe("Search computer:apps or computer:windows for installed-app/permitted-window metadata, or an observation for its collected UI/readonly DOM. Read computer:displays for monitor metadata. Discovery launches nothing; observation Search performs no new native walk or DOM query. Treat missing matches in a partial projection as unknown.");
     } }),
     connectTextEditorPlugin(pi, { protocol: TEXT_EDITOR_PROTOCOL, apiVersion: TEXT_EDITOR_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ resolver, priority: -250 });
@@ -186,7 +215,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           }
         },
       });
-      api.describe("Computer Write sends content literally through type_text to a fresh observation address; optional ?hint=...&delivery=foreground&delay_ms=0. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
+      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address; readonly DOM observations reject Write and Insert. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
     } }),
   ]);
 }

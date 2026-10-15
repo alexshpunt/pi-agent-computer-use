@@ -41,6 +41,10 @@ export class ComputerResources {
     if (!entry) throw new ComputerRequestError("Observation reference expired. Read a new window/display overview.");
     return entry;
   }
+  private retireWindow(ref: string): void {
+    for (const [id, entry] of this.windowStates) if (entry.window_ref === ref) this.windowStates.delete(id);
+    for (const [id, entry] of this.snapshots) if (entry.target.window_ref === ref) this.snapshots.delete(id);
+  }
   private remember(target: ObservationTarget, result: ComputerResult): ComputerResult {
     const id = result.details.observation_id ?? result.details.agent_image?.image_id;
     if (result.details.status !== "observed" || typeof id !== "string") return result;
@@ -65,7 +69,8 @@ export class ComputerResources {
       const source = snapshot.target.window_ref !== undefined ? computerSource("window", snapshot.target.window_ref)
         : computerSource("display", snapshot.target.display!);
       return `# Computer observation\nSource: ${source}\nObservation: ${computerSource("observation", address.ref)}\n` +
-        (snapshot.target.window_ref !== undefined ? "Input needs this still-current observation. Insert sends JSON commands; Write sends literal text."
+        (snapshot.result.details.dom ? "Readonly DOM snapshot. Cached Read and Search perform no new DOM query or authority renewal. Write and Insert are unavailable. CSS bounds are not native image coordinates."
+          : snapshot.target.window_ref !== undefined ? "Input needs this still-current observation. Insert sends JSON commands; Write sends literal text."
           : "Display observation is readonly and grants no input authority.");
     }
     return `# Computer resource\nSource: ${address.source}\nUse Read for native observation, Search for discovery, and Insert for explicit commands. No native capture occurred during descriptor resolution.`;
@@ -109,8 +114,7 @@ export class ComputerResources {
     }
     if (address.kind === "window") {
       // Fresh window Read retires both provider handles before any native acquisition.
-      for (const [id, entry] of this.windowStates) if (entry.window_ref === address.ref) this.windowStates.delete(id);
-      for (const [id, entry] of this.snapshots) if (entry.target.window_ref === address.ref) this.snapshots.delete(id);
+      this.retireWindow(address.ref);
       if (view.kind === "state") {
         const result = await session.observeWindowState(address.ref, signal);
         if (result.details.status === "observed" && result.details.window_state_id) {
@@ -119,6 +123,7 @@ export class ComputerResources {
         }
         return result;
       }
+      if (view.kind === "dom") return this.remember({ window_ref: address.ref }, await session.observeDom(address.ref, view.options, signal));
       if (view.kind !== "overview") throw new ComputerRequestError("Read an overview, then apply region to its returned observation address.");
       return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture));
     }
@@ -130,6 +135,27 @@ export class ComputerResources {
     const snapshot = this.snapshot(address.ref);
     if (address.hint || address.delivery || address.delayMs !== undefined)
       throw new ComputerRequestError("Hint/delivery/delay address options are for input, not Read.");
+    if (snapshot.result.details.dom) {
+      const ref = snapshot.target.window_ref;
+      if (!ref) throw new ComputerRequestError("Readonly DOM requires a window source.");
+      if (view.kind === "element") {
+        if (view.operation !== "scope") return session.inspectDom(ref, address.ref, { operation: view.operation, hint: view.hint }, signal);
+        this.retireWindow(ref);
+        return this.remember({ window_ref: ref }, await session.observeDom(ref, { scope: view.hint }, signal, address.ref));
+      }
+      if (view.kind === "dom" && Object.keys(view.options).length) {
+        this.retireWindow(ref);
+        return this.remember({ window_ref: ref }, await session.observeDom(ref, view.options, signal, address.ref));
+      }
+      if (view.kind !== "dom" && (view.kind !== "overview" || views?.length))
+        throw new ComputerRequestError("Readonly DOM has no image/UI/state views or image-coordinate regions. Use a fresh window Read.");
+      const checked = await session.checkDom(ref, address.ref, signal);
+      if (checked.details.status !== "observed") { this.snapshots.delete(address.ref); return checked; }
+      return { ...snapshot.result, details: { ...snapshot.result.details, state: { ...snapshot.result.details.state, cached_dom: true } },
+        content: snapshot.result.content.map(block => block.type === "text" ? { ...block,
+          text: "Cached readonly DOM snapshot. No new DOM query or authority renewal.\n" + block.text } : block) };
+    }
+    if (view.kind === "dom") throw new ComputerRequestError("This observation has no DOM scope. Read its window with dom view.");
     if (view.kind === "element") {
       if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations have no collected UI.");
       if (view.operation === "crop") this.snapshots.delete(address.ref);
@@ -167,6 +193,8 @@ export class ComputerResources {
     if (address.hint || address.delivery || address.delayMs !== undefined) throw new ComputerRequestError("Input options do not select a Search scope.");
     const snapshot = this.snapshot(address.ref);
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display images have no native UI search scope.");
+    if (snapshot.result.details.dom) return session.inspectDom(snapshot.target.window_ref, address.ref,
+      { operation: "search", query, ...(limit !== undefined ? { limit } : {}) }, signal);
     return session.observe(snapshot.target.window_ref, signal, undefined, undefined,
       { operation: "search", observation_id: address.ref, query, ...(limit !== undefined ? { limit } : {}) });
   }
@@ -198,6 +226,11 @@ export class ComputerResources {
         this.apps.clear();
         return this.closeSession();
       }
+      if (command.action === "open_browser" && address.kind === "session") {
+        only(command, ["action"]);
+        const result = await (await this.getSession(cwd)).openBrowser(signal);
+        return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
+      }
       if (command.action !== "open") throw new ComputerRequestError("Use open for an app, or close to release the computer session; it does not close application documents.");
       only(command, address.kind === "app" ? ["action"] : ["action", "app"]);
       const app = address.kind === "app" ? this.apps.get(address.ref) : command.app;
@@ -207,6 +240,7 @@ export class ComputerResources {
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Input needs the observation address returned by a fresh window Read.");
     const snapshot = this.snapshot(address.ref);
+    if (snapshot.result.details.dom) throw new ComputerRequestError("Readonly DOM observations grant no Write or Insert authority. Read a fresh window UI/image overview for input.");
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations are readonly; choose a window overview for input.");
     let command: Record<string, unknown>;
     if (tool === "write") {
