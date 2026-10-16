@@ -9,11 +9,17 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { nativeWindowState } from "./native-window-state.mjs";
 import { assertSelectedBridgeTab } from "./owned-browser-bridge-contract.mjs";
-import { assertReadonlyPixelWitness, closePixelProbeServer, validatePixelProbeReport } from "./dom-native-pixel-contract.mjs";
+import { assertReadonlyPixelHistory, assertReadonlyPixelWitness, closePixelProbeServer, validatePixelProbeReport } from "./dom-native-pixel-contract.mjs";
+import { MARKERS, verifyMarkerRaster } from "./dom-marker-geometry.mjs";
+import { createDomPixelPage } from "./fixtures/dom-marker-page.mjs";
+import { validateDomSnapshot } from "../src/dom-inspection.ts";
+import { validateDomGeometry } from "../src/dom-geometry.ts";
+import sharp from "sharp";
 
 // Bounded research: one isolated CUA-owned page, private CDP pixels and native captures.
 // It never dispatches browser input, selects tabs, or exposes page pixels as native pixels.
-assert.deepEqual(process.argv.slice(2), ["--live-approved"]);
+const cssomMarkers = process.argv.includes("--cssom-markers");
+assert.deepEqual(process.argv.slice(2), cssomMarkers ? ["--live-approved", "--cssom-markers"] : ["--live-approved"]);
 const command = process.env.CUA_DRIVER_PATH, expected = process.env.CUA_DRIVER_SHA256;
 assert.ok(command?.endsWith(".exe")); assert.match(expected ?? "", /^[a-f0-9]{64}$/);
 assert.ok(process.env.WSL_INTEROP && (await stat(process.env.WSL_INTEROP)).isSocket());
@@ -21,14 +27,16 @@ const hash = createHash("sha256").update(await readFile(command)).digest("hex");
 const directory = `.tmp/lpt-733/pixels-${Date.now()}`, nonce = randomUUID(), session = `pi-dom-pixels-${randomUUID()}`;
 const title = `Pi DOM pixel proof ${nonce.slice(0, 8)}`;
 await mkdir(directory, { recursive: true });
-const reports = [], records = [];
-let target, page, profile, started = false, stopping = false, rejected = 0, stderr = "";
-const html = `<!doctype html><meta charset="utf-8"><title>${title}</title>
-<style>html{background:#f4e7d1}body{margin:0;font:24px sans-serif;color:#172638}.pattern{height:160px;background:repeating-linear-gradient(90deg,#d73b42 0 17px,#235db1 17px 39px,#53a568 39px 62px,#ffcd45 62px 83px)}main{margin:31px 43px;border:7px solid #934aad;padding:29px;background:#f9fcff}aside{height:90px;background:linear-gradient(37deg,#25599b,#fccb38)}</style>
-<div class="pattern"></div><main><h1>Original native pixels</h1><p>Static owned page: ${nonce}</p><p>Readonly proof, no input.</p><aside></aside></main>
-<script>const documentId=crypto.randomUUID(),events=[];for(const type of ['keydown','keyup','beforeinput','input','mousedown','mouseup','pointerdown','pointerup','wheel','click'])document.addEventListener(type,e=>{if(events.length<32)events.push({type,trusted:e.isTrusted})},true);
-function send(){fetch('/witness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce:${JSON.stringify(nonce)},documentId,events,location:location.href,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scrollX,scrollY}})}).catch(()=>{})}send();setInterval(send,300);</script>`;
-const server = createServer(async (request, response) => {
+const pendingReports = new Set();
+const reports = [], records = [], geometrySamples = { before: [], after: [] }, rasterProofs = [];
+let target, page, profile, started = false, stopping = false, navigated = false, rejected = 0, stderr = "";
+const html = createDomPixelPage({ title, nonce, cssomMarkers });
+const server = createServer((request, response) => {
+  const handling = handleRequest(request, response);
+  pendingReports.add(handling);
+  void handling.then(() => pendingReports.delete(handling), () => { pendingReports.delete(handling); rejected++; });
+});
+async function handleRequest(request, response) {
   if (request.method === "GET" && request.url === "/") { response.setHeader("Content-Type", "text/html; charset=utf-8"); response.end(html); return; }
   if (request.method !== "POST" || request.url !== "/witness") { response.writeHead(404).end(); return; }
   try {
@@ -36,7 +44,7 @@ const server = createServer(async (request, response) => {
     const report = validatePixelProbeReport(JSON.parse(body), nonce); assert.ok(reports.length < 1000);
     reports.push({ ...report, received_ms: Date.now() }); response.writeHead(204).end();
   } catch { rejected++; response.writeHead(400).end(); }
-});
+}
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const url = `http://127.0.0.1:${server.address().port}/`;
 const transport = new StdioClientTransport({ command, args: ["mcp", "--direct", "--embedded"], stderr: "pipe", env: {
@@ -44,11 +52,15 @@ const transport = new StdioClientTransport({ command, args: ["mcp", "--direct", 
   CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false", DO_NOT_TRACK: "1" } });
 transport.stderr?.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-8000); });
 const client = new Client({ name: "pi-dom-native-pixel-research", version: "0.0.0" });
-const save = () => writeFile(`${directory}/run.json`, JSON.stringify({ hash, session, url, target, page, profile, records, reports, rejected }, null, 2) + "\n");
+const save = () => writeFile(`${directory}/run.json`, JSON.stringify({ hash, session, url, target, page, profile, records, reports, rejected, geometrySamples, rasterProofs }, null, 2) + "\n");
 async function call(label, name, args = {}) {
   assert.ok(!stopping || name === "end_session", "Stop/deadline prevents later dispatch.");
+  assert.ok(records.length < 128 || name === "end_session", "Bounded native-call journal exhausted.");
   assert.ok(["start_session","end_session","browser_prepare","list_windows","get_browser_state","browser_navigate","get_window_state"].includes(name));
-  if (name === "browser_navigate") assert.equal(args.url, url, "Only owned fixture setup navigation.");
+  if (name === "browser_navigate") {
+    assert.equal(args.url, url, "Only owned fixture setup navigation.");
+    assert.equal(navigated, false, "No navigation replay or browser replacement."); navigated = true;
+  }
   const start = performance.now();
   let result;
   try { result = await client.callTool({ name, arguments: { ...args, session } }, undefined, { timeout: 30_000 }); }
@@ -61,7 +73,11 @@ async function call(label, name, args = {}) {
   records.push({ label, name, args, elapsed_ms: performance.now() - start, structuredContent: result.structuredContent,
     isError: result.isError ?? false, text: (result.content ?? []).filter(block => block.type === "text").map(block => block.text), images });
   await save(); console.log(JSON.stringify({ directory, ...records.at(-1) }));
-  assert.ok(!result.isError, "Native refusal stops this probe without fallback/replay."); return result;
+  if (name === "get_browser_state" && args.snapshot_format === "dom_inspect_v1")
+    assert.equal(images.length, 0, "Readonly DOM/geometry must not acquire pixels implicitly.");
+  if (name === "get_window_state") assert.equal(images.length, 1, "Require one exact native window raster.");
+  assert.ok(!result.isError && result.structuredContent?.status !== "refused" && !result.structuredContent?.refusal && !result.structuredContent?.error,
+    "Native refusal stops this probe without fallback/replay."); return result;
 }
 async function selected(label) {
   const state = (await call(label, "get_browser_state", target)).structuredContent;
@@ -74,6 +90,58 @@ async function witness(label) {
   assert.equal(native.status, "measured"); assert.equal(native.windows[0].exists, true);
   const record = { label, report, native }; await writeFile(`${directory}/${label}.json`, JSON.stringify(record, null, 2) + "\n");
   return record;
+}
+function markerWitness(report) {
+  assert.equal(report.viewport.scrollX, 0); assert.equal(report.viewport.scrollY, 0);
+  assert.ok(Array.isArray(report.markers) && report.markers.length === MARKERS.length);
+  for (const marker of MARKERS) {
+    const rows = report.markers.filter(row => row.id === marker.id);
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].bounds, marker.css, "Require the declared synthetic CSS layout, not an inferred transform.");
+  }
+}
+async function sampleMarkerGeometry(phase) {
+  for (const marker of MARKERS) {
+    await selected(`marker-${phase}-${marker.id}-selected`);
+    const snapshot = validateDomSnapshot((await call(`marker-${phase}-${marker.id}-snapshot`, "get_browser_state",
+      { ...page, snapshot_format: "dom_inspect_v1", include_screenshot: false, include_hidden: true,
+        max_nodes: 20, max_depth: 16, locator: { test_id: marker.id } })).structuredContent, page, 20);
+    const rows = snapshot.elements.filter(row => row.attributes.id === marker.id && row.frame.kind === "main");
+    assert.equal(rows.length, 1, "Require one exact main-document marker ref.");
+    const sample = validateDomGeometry((await call(`marker-${phase}-${marker.id}-geometry`, "get_browser_state",
+      { ...page, snapshot_format: "dom_inspect_v1", geometry_ref: rows[0].ref })).structuredContent, page, rows[0].ref);
+    const independent = await witness(`marker-${phase}-${marker.id}-witness`);
+    markerWitness(independent.report);
+    assert.deepEqual(sample.bounds, independent.report.markers.find(row => row.id === marker.id).bounds);
+    assert.deepEqual(sample.scroll, { x: 0, y: 0 });
+    geometrySamples[phase].push({ id: marker.id, bounds: sample.bounds });
+    await selected(`marker-${phase}-${marker.id}-selected-after`);
+  }
+  await save();
+}
+async function verifyPrivateMarkerImages(before, final) {
+  markerWitness(before.report); markerWitness(final.report);
+  assert.deepEqual(final.report.viewport, before.report.viewport, "The fixture viewport changed during sampling.");
+  assert.deepEqual(geometrySamples.before, geometrySamples.after);
+  let first;
+  for (const phase of ["before", "after"]) {
+    const images = records.find(record => record.label === `native_view-${phase}`)?.images;
+    assert.equal(images?.length, 1);
+    const png = await readFile(`${directory}/${images[0]}`);
+    assert.ok(png.length <= 32 * 1024 * 1024 && png.length >= 26 && png.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])));
+    assert.equal(png[24], 8, "Only original eight-bit PNG samples are admitted.");
+    assert.ok([2, 6].includes(png[25]), "Only truecolor PNG samples are admitted.");
+    const { data, info } = await sharp(png, { limitInputPixels: 16_000_000, ignoreIcc: true })
+      .ensureAlpha().raw({ depth: "uchar" }).toBuffer({ resolveWithObject: true });
+    assert.equal(info.channels, 4);
+    const proof = verifyMarkerRaster(data, info.width, info.height, geometrySamples[phase], before.report.viewport.dpr);
+    if (first) {
+      assert.equal(info.width, first.width); assert.equal(info.height, first.height);
+      assert.ok(data.equals(first.data), "Private page rasters changed; no atomic or current native proof is inferred.");
+    } else first = { width: info.width, height: info.height, data };
+    rasterProofs.push({ phase, ...proof });
+  }
+  await save();
 }
 async function ownedProfile(pid) {
   const script = `$ErrorActionPreference='Stop';$p=Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}';if(!$p){throw 'Owned process gone'};$p.CommandLine`;
@@ -93,6 +161,7 @@ try {
   assert.ok(!tools.nextCursor, "Tool discovery must be complete before launching an owned browser.");
   const stateTool = tools.tools.find(tool => tool.name === "get_browser_state");
   assert.deepEqual(stateTool?.inputSchema?.properties?.screenshot_mode?.enum, ["viewport", "surface_unclipped", "native_view"], "Candidate must advertise explicit no-clip capture modes.");
+  if (cssomMarkers) assert.ok(stateTool.inputSchema.properties.geometry_ref, "CSS marker mode needs explicit readonly geometry before owned launch.");
   // A lost acknowledgement can still leave the named session alive; cleanup must try it once.
   started = true; await call("start", "start_session");
   const prepared = (await call("prepare", "browser_prepare", { allow_launch: true, profile: { mode: "isolated_new" } })).structuredContent;
@@ -117,7 +186,8 @@ try {
     }
     await selected(`selected-${mode}-${phase}-after`);
   };
-  await capture("surface_unclipped", "before");
+  if (cssomMarkers) await sampleMarkerGeometry("before");
+  else await capture("surface_unclipped", "before");
   await capture("native_view", "before");
   await call("native-wgc", "get_window_state", { ...target, capture_backend: "wgc", include_accessibility_tree: false, max_image_dimension: 4096 });
   await selected("selected-after-wgc");
@@ -125,11 +195,13 @@ try {
   // Record its actual metadata; never label it pure PrintWindow without evidence.
   await call("native-default", "get_window_state", { ...target, include_accessibility_tree: false, max_image_dimension: 4096 });
   await selected("selected-after-default");
-  await capture("surface_unclipped", "after");
+  if (!cssomMarkers) await capture("surface_unclipped", "after");
   await capture("native_view", "after");
+  if (cssomMarkers) await sampleMarkerGeometry("after");
   await selected("selected-final");
   const final = await witness("final"); assert.deepEqual(final.native.pointer, before.native.pointer, "Physical pointer changed during readonly sampling.");
-  console.log(JSON.stringify({ directory, sampling_complete: true, proof: "pending exact offline RGB comparison; not atomic geometry or acceptance" }));
+  if (cssomMarkers) await verifyPrivateMarkerImages(before, final);
+  console.log(JSON.stringify({ directory, sampling_complete: true, witness_integrity: "pending owned shutdown", proof: "pending final history integrity and exact offline RGB comparison; not atomic geometry or acceptance" }));
 } finally {
   const cleanup = {};
   try { if (started) { await call("end", "end_session"); cleanup.sessionEnded = true; } }
@@ -148,6 +220,16 @@ try {
   } catch (error) { cleanup.verification_error = String(error); process.exitCode = 1; }
   const releases = await Promise.allSettled([(async () => { try { await client.close(); } finally { await transport.close(); } })(), closePixelProbeServer(server)]);
   cleanup.release_errors = releases.flatMap(result => result.status === "rejected" ? [String(result.reason)] : []);
+  if (cleanup.release_errors.length) process.exitCode = 1;
+  // No new connections remain; let aborted/in-flight request handlers finish before sealing evidence.
+  const handlers = await Promise.allSettled([...pendingReports]);
+  cleanup.release_errors.push(...handlers.flatMap(result => result.status === "rejected" ? [String(result.reason)] : []));
+  try {
+    assertReadonlyPixelHistory(reports, nonce, url, rejected);
+    cleanup.witness_integrity = true;
+  } catch (error) {
+    cleanup.witness_integrity = false; cleanup.witness_error = String(error); process.exitCode = 1;
+  }
   if (cleanup.release_errors.length) process.exitCode = 1;
   await save(); await writeFile(`${directory}/cleanup.json`, JSON.stringify(cleanup, null, 2) + "\n"); await writeFile(`${directory}/stderr.log`, stderr);
   console.log(JSON.stringify({ directory, cleanup })); process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop);

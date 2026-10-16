@@ -7,11 +7,13 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 const log = process.argv[2];
 const identities = new Map([[91, "fixture:91"], [92, "fixture:92"], [93, "fixture:93"]]);
 let serial = 0, outcome = "success";
+const snapshots = new Map();
 const properties = {
   snapshot_format: { type: "string", enum: ["dom_inspect_v1"] },
   locator: { type: "object", additionalProperties: false,
     properties: Object.fromEntries(["role", "name", "label", "text", "test_id", "css"].map(key => [key, { type: "string" }])) },
   scope_ref: { type: "string" }, include_hidden: { type: "boolean" },
+  geometry_ref: { type: "string", minLength: 1, maxLength: 256 },
   max_nodes: { type: "integer", minimum: 1, maximum: 200 }, max_depth: { type: "integer", minimum: 1, maximum: 32 },
   screenshot_mode: { type: "string", enum: ["viewport", "surface_unclipped", "native_view"] },
 };
@@ -43,6 +45,23 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
         title: `Readonly DOM fixture ${args.window_id}`, url: "http://127.0.0.1/fixture" }] };
     if (outcome === "ambiguous_binding") { state.tabs.push({ ...state.tabs[0], tab_id: "other", active: true }); outcome = "success"; }
     else if (outcome === "foreign_profile") { state.endpoint_access_class = "existing_profile"; outcome = "success"; }
+  } else if (name === "get_browser_state" && args.geometry_ref !== undefined) {
+    const allowed = ["target_id", "tab_id", "session", "snapshot_format", "geometry_ref"];
+    if (args.snapshot_format !== "dom_inspect_v1" || Object.keys(args).some(key => !allowed.includes(key)))
+      throw Error("Geometry accepts only one current readonly source, never collection or capture options");
+    const current = snapshots.get(args.target_id), row = current?.rows.find(row => row.ref === args.geometry_ref);
+    if (!row || args.tab_id !== current.tab || row.frame.kind !== "main")
+      state = { status: "refused", refusal: { code: row ? "browser_route_unavailable" : "browser_ref_stale" } };
+    else {
+      state = { status: "ok", mode: "element_geometry", target_id: args.target_id, tab_id: args.tab_id,
+        ref: args.geometry_ref, source_ref: args.geometry_ref, frame: { kind: "main" },
+        coordinate_space: "frame_viewport_css_pixels", viewport: "layout", method: "isolated_cssom_border_box",
+        native_pixel_mapping: "unavailable", atomic: false, connected: true, same_document: true,
+        bounds: { x: 10.25, y: 20.5, width: 90, height: 30 }, scroll: { x: 0, y: 120 },
+        visual_viewport: { offset_x: 0, offset_y: 0, page_x: 0, page_y: 120, width: 800, height: 600, scale: 1 } };
+      if (outcome === "wrong_geometry_source") state.tab_id = "foreign";
+    }
+    outcome = "success";
   } else if (name === "get_browser_state") {
     if (args.include_screenshot !== false || args.snapshot_format !== "dom_inspect_v1") throw Error("Only explicit readonly DOM snapshots are available");
     const id = `p${++serial}`;
@@ -57,6 +76,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
     if (args.locator?.role) rows = rows.filter(row => row.role === args.locator.role);
     const matched = rows.length;
     rows = rows.slice(0, args.max_nodes ?? 200);
+    snapshots.set(args.target_id, { tab: args.tab_id, rows });
     state = { status: "ok", mode: "snapshot", target_id: args.target_id, tab_id: args.tab_id,
       page: { url: "http://127.0.0.1/fixture", title: "Readonly DOM fixture" },
       snapshot: { id, format: "dom_inspect_v1", complete: false, collection_complete: false, matched_count: matched,

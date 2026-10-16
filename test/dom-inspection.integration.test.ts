@@ -35,9 +35,17 @@ for (const scenario of ["workflow", "admission", "receipts"] as const) test.each
       expect(snapshots.length).toBeGreaterThan(0);
       for (const { arguments: args } of snapshots) {
         expect(args).toMatchObject({ target_id: expect.stringMatching(/^bt-9[123]$/), tab_id: expect.stringMatching(/^tab-9[123]$/),
-          snapshot_format: "dom_inspect_v1", include_screenshot: false, session: expect.any(String) });
-        expect(Object.keys(args).every(key => ["target_id", "tab_id", "snapshot_format", "include_screenshot", "session", "include_hidden", "max_nodes", "max_depth", "locator", "scope_ref"].includes(key))).toBe(true);
+          snapshot_format: "dom_inspect_v1", session: expect.any(String) });
+        if (args.geometry_ref !== undefined) {
+          expect(args.geometry_ref).toMatch(/^p[0-9]+:[0-9]+$/);
+          expect(args.include_screenshot).toBeUndefined();
+          expect(Object.keys(args).sort()).toEqual(["geometry_ref", "session", "snapshot_format", "tab_id", "target_id"]);
+        } else {
+          expect(args.include_screenshot).toBe(false);
+          expect(Object.keys(args).every(key => ["target_id", "tab_id", "snapshot_format", "include_screenshot", "session", "include_hidden", "max_nodes", "max_depth", "locator", "scope_ref"].includes(key))).toBe(true);
+        }
       }
+      expect(snapshots.filter(row => row.arguments.geometry_ref)).toHaveLength(scenario === "admission" ? 0 : 2);
       expect(rows.filter(row => ["browser_prepare", "browser_navigate", "browser_click", "browser_type", "click", "type_text", "hotkey", "press_key", "bring_to_front", "set_window_frame", "move_pointer", "scroll_at", "get_desktop_state", "zoom"].includes(row.name))).toEqual([]);
       expect(rows.filter(row => row.name === "start_session")).toHaveLength(1);
       expect(rows.filter(row => row.name === "end_session")).toHaveLength(1);

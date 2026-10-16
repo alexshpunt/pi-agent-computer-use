@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ComputerMode, ComputerResult, ComputerSession, WindowTarget } from "../../src/session.ts";
-import type { DomResource } from "../../src/dom-resource.ts";
+import type { DomResource, DomGeometryResource } from "../../src/dom-resource.ts";
 
 interface Result { isError?: boolean; content: { type: string; text?: string }[]; details?: unknown }
 interface Row { name: string; arguments: Record<string, unknown> }
@@ -24,6 +24,12 @@ function dom(result: Result): DomResource {
   const value = find(result.details, "dom");
   assert(value && typeof value === "object", `No structured readonly DOM resource: ${body(result)}`);
   return value as DomResource;
+}
+
+function geometry(result: Result): DomGeometryResource {
+  const value = find(result.details, "dom_geometry");
+  assert(value && typeof value === "object", `No structured readonly CSS geometry: ${body(result)}`);
+  return value as DomGeometryResource;
 }
 
 /** Exercise ordinary IDE tools against a synthetic MCP peer, not an installed Windows runtime. */
@@ -75,7 +81,8 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const result = await call(name, args, callSignal); assert(result.isError, `${name} accepted invalid readonly authority: ${body(result)}`); return result;
       };
       const journal = async (): Promise<Row[]> => (await readFile(log!, "utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
-      const snapshots = async () => (await journal()).filter(row => row.arguments.snapshot_format === "dom_inspect_v1");
+      const snapshots = async () => (await journal()).filter(row => row.arguments.snapshot_format === "dom_inspect_v1" && row.arguments.geometry_ref === undefined);
+      const geometryReads = async () => (await journal()).filter(row => row.arguments.geometry_ref !== undefined);
       const control = (operation: string, window_id = 91) => driver!.call("fixture_control", { operation, window_id }, signal);
       const window = async (id = 91) => reference(await ok("search", { path: "computer:windows", query: `Readonly DOM fixture ${id}` }), "window");
       const read = (target: string, options?: Record<string, unknown>) => ok("read", { path: target, views: [options ? `dom:${JSON.stringify(options)}` : "dom"] });
@@ -104,6 +111,26 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("insert", { path: observation, text: '{"action":"click","x":10,"y":20}' });
         await denied("read", { path: first, views: ['dom:{"target_id":"foreign"}'] });
         assert((await snapshots()).length === before, "Cached inspection or invalid fields dispatched a hidden DOM walk");
+        const sample = await ok("read", { path: observation, views: [`element:geometry,${checkbox.hint}`] });
+        const measured = geometry(sample);
+        assert(measured.window_ref === resource.window_ref && measured.observation_id === resource.observation_id &&
+          measured.hint === checkbox.hint && measured.frame.ref === checkbox.frame.ref, "Geometry lost its model-visible readonly source");
+        assert(measured.coordinate_space === "frame_viewport_css_pixels" && measured.viewport === "layout" &&
+          measured.native_pixel_mapping === "unavailable" && measured.atomic === false && measured.bounds.x === 10.25,
+          "CSS sample was converted or claimed native-pixel/atomic authority");
+        assert(sample.content.every(block => block.type !== "image") && find(sample.details, "ui") === undefined &&
+          find(sample.details, "agent_image") === undefined && find(sample.details, "action_capability") === undefined,
+          "CSS geometry minted image or input authority");
+        assert(!/bt-91|tab-91|p[0-9]+:[0-9]+/.test(JSON.stringify(sample.details)), "Native capabilities leaked into the geometry result");
+        await ok("read", { path: observation, views: [`element:geometry,${checkbox.hint}`] });
+        const geometryCount = (await geometryReads()).length;
+        await denied("read", { path: observation, views: [`element:geometry,${resource.elements[1].hint}`] });
+        assert((await geometryReads()).length === geometryCount, "Child-frame geometry reached native sampling");
+        assert((await snapshots()).length === before, "Geometry silently resnapshotted or changed source metadata");
+        assert(dom(await ok("read", { path: observation })).elements.every(row => row.bounds_css === null),
+          "Fresh viewport CSS sample overwrote cached unqualified document geometry");
+        await denied("write", { path: observation, content: "geometry is not typing authority" });
+        await denied("insert", { path: observation, text: '{"action":"click","x":10.25,"y":20.5}' });
         const scoped = await ok("read", { path: observation, views: [`element:scope,${resource.elements[1].hint}`] });
         assert(dom(scoped).scope === "subtree" && dom(scoped).elements[0].frame.ref === "df-frame", "Frame-qualified scope changed source");
         const request = (await snapshots()).at(-1)!.arguments;
@@ -113,6 +140,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("read", { path: current, views: [`element:inspect,${checkbox.hint}`] });
         await ok("read", { path: first, views: ["ui"] }); await denied("read", { path: current });
         const ui = await ok("read", { path: first, views: ["ui"] }), uiRef = reference(ui, "observation");
+        await denied("read", { path: uiRef, views: ["element:geometry,1:a"] });
         const final = await read(first, { locator: { role: "button", name: "Advance" }, max_nodes: 1 });
         assert(dom(final).truncated === true && dom(final).matched_count === 2 && dom(final).elements.length === 1, "Bounded exact locator hid duplicate/truncation evidence");
         await denied("write", { path: uiRef, content: "retired UI" });
@@ -120,7 +148,10 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert(bindings.length === 2, "Scoped DOM silently rebound or refreshed the native binding");
       } else if (scenario === "admission") {
         const view = await read(first), observation = reference(view, "observation"), before = (await snapshots()).length;
-        mode = "safe"; await denied("read", { path: observation }); await denied("read", { path: first, views: ["dom"] });
+        mode = "safe";
+        await denied("read", { path: observation, views: [`element:geometry,${dom(view).elements[0].hint}`] });
+        assert((await geometryReads()).length === 0, "Safe mode dispatched geometry before permission admission");
+        await denied("read", { path: observation }); await denied("read", { path: first, views: ["dom"] });
         mode = "yolo";
         const second = await window(92), oldSecond = reference(await read(second), "observation");
         await control("reuse", 92); await denied("read", { path: oldSecond }); await denied("read", { path: second, views: ["dom"] });
@@ -144,6 +175,17 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert((await snapshots()).length === 5, "Malformed replies were retried or binding refusals reached DOM collection");
         const recovery = await read(first);
         assert(dom(recovery).elements.length === 3, "A new explicit read could not recover after a known refusal");
+        const recoveryRef = reference(recovery, "observation"), recoveryHint = dom(recovery).elements[0].hint;
+        await control("wrong_geometry_source");
+        const substituted = await denied("read", { path: recoveryRef, views: [`element:geometry,${recoveryHint}`] });
+        assert(find(substituted.details, "dom_geometry") === undefined, "Substituted geometry source leaked coordinates");
+        await denied("read", { path: recoveryRef });
+        const current = await read(first), currentRef = reference(current, "observation"), currentHint = dom(current).elements[0].hint;
+        const afterGeometry = new AbortController(); cancelAfterSnapshot = afterGeometry;
+        const cancelledGeometry = await denied("read", { path: currentRef, views: [`element:geometry,${currentHint}`] }, afterGeometry.signal);
+        assert(find(cancelledGeometry.details, "dom_geometry") === undefined, "Cancelled geometry response minted usable coordinates");
+        await denied("read", { path: currentRef });
+        assert((await geometryReads()).length === 2, "Malformed/cancelled geometry was replayed or omitted");
       }
       const rows = await journal();
       assert(rows.every(row => ["fixture_identity", "fixture_control", "list_windows", "start_session", "end_session", "get_window_state", "get_browser_state"].includes(row.name)),

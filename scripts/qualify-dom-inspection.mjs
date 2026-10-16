@@ -12,10 +12,12 @@ import { nativeWindowState } from "./native-window-state.mjs";
 import { assertBridgeDispatchAllowed, assertSelectedBridgeTab } from "./owned-browser-bridge-contract.mjs";
 import { closePixelProbeServer } from "./dom-native-pixel-contract.mjs";
 import { validateDomSnapshot } from "../src/dom-inspection.ts";
+import { assertCssomWitness } from "./dom-cssom-contract.mjs";
 
 // Standalone native qualification, not an ordinary IDE provider or a crop implementation.
 // Usage: node --experimental-transform-types scripts/qualify-dom-inspection.mjs --live-approved
-assert.deepEqual(process.argv.slice(2), ["--live-approved"]);
+const geometryOnly = process.argv.includes("--cssom-geometry");
+assert.deepEqual(process.argv.slice(2), geometryOnly ? ["--live-approved", "--cssom-geometry"] : ["--live-approved"]);
 const command = process.env.CUA_DRIVER_PATH, expected = process.env.CUA_DRIVER_SHA256;
 assert.ok(command?.endsWith(".exe")); assert.match(expected ?? "", /^[a-f0-9]{64}$/);
 assert.ok(process.env.WSL_INTEROP && (await stat(process.env.WSL_INTEROP)).isSocket());
@@ -23,7 +25,7 @@ const hash = createHash("sha256").update(await readFile(command)).digest("hex");
 assert.equal(hash, expected, "Use the exact independently verified candidate.");
 const directory = `.tmp/lpt-733/dom-${Date.now()}`, nonce = randomUUID();
 const session = `pi-dom-inspection-${randomUUID()}`, title = `Pi DOM inspection ${nonce} root`;
-const transitionAfterMs = 90_000, records = [], checks = [], limitations = [];
+const transitionAfterMs = geometryOnly ? 0 : 90_000, records = [], checks = [], limitations = [];
 await mkdir(directory, { recursive: true });
 let fixture, target, page, profile, url, crossOrigin, started = false, stopping = false, navigated = false, stderr = "";
 const servers = [createServer(), createServer()];
@@ -141,6 +143,39 @@ function metadata(row, key, expectedValue, label) {
     assert.equal(measured, expectedValue, `${label} contradicted the independent fixture.`);
   }
 }
+async function qualifyCssom(before) {
+  const field = oneMain(await inspect("cssom-current-field", { locator: { test_id: "value" } }), "value");
+  async function sample(label, row, nodeId) {
+    await selected(`${label}-selected-before`);
+    const measured = await call(label, "get_browser_state", { ...page, snapshot_format: "dom_inspect_v1", geometry_ref: row.ref });
+    await selected(`${label}-selected-after`);
+    const independent = await witness(`${label}-witness`, 0);
+    assert.equal(independent.reports.root.pageNonce, before.reports.root.pageNonce);
+    const proof = assertCssomWitness(measured, { page, reference: row.ref, report: independent.reports.root, nodeId });
+    checks.push({ label, ...proof }); await save();
+  }
+  await sample("cssom-field-first", field, "value");
+  // A repeated read must work with a fresh attachment to the same live source.
+  await sample("cssom-field-repeat", field, "value");
+  const shadow = oneMain(await inspect("cssom-current-shadow", { locator: { test_id: "shadow-choice" } }), "shadow-choice");
+  await sample("cssom-open-shadow", shadow, "shadow-choice");
+  await call("cssom-superseded-ref", "get_browser_state", { ...page, snapshot_format: "dom_inspect_v1", geometry_ref: field.ref }, "browser_ref_stale");
+  const frames = await inspect("cssom-frame-sources", { locator: { css: "#duplicate-a" } });
+  const children = frames.elements.filter(row => row.frame.kind !== "main");
+  assert.ok(children.length > 0 && children.length <= 3, "Require the bounded fixture's contained child sources.");
+  for (const row of children) {
+    await call(`cssom-child-refusal-${row.frame.ref}`, "get_browser_state",
+      { ...page, snapshot_format: "dom_inspect_v1", geometry_ref: row.ref }, "browser_route_unavailable");
+  }
+  const final = await witness("cssom-final", 0);
+  assert.deepEqual(final.native.pointer, before.native.pointer);
+  await selected("cssom-selected-final");
+  await save();
+  console.log(JSON.stringify({ directory, sampling_complete: true, cssom_fixture_samples_verified: true,
+    qualification_scope: "Current synthetic main/open-shadow elements at the recorded viewport and scroll only",
+    visual_viewport_independently_witnessed: false, native_pixel_mapping_qualified: false,
+    ordinary_ide_acceptance: false, atomic_dom_native_paint: false }));
+}
 async function ownedProfile(pid) {
   const script = `$ErrorActionPreference='Stop';$p=Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}';if(!$p){throw 'Owned process gone'};$p.CommandLine`;
   const { stdout } = await promisify(execFile)("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
@@ -169,6 +204,7 @@ try {
   const stateSchema = tools.tools.find(tool => tool.name === "get_browser_state")?.inputSchema?.properties;
   assert.ok(stateSchema?.snapshot_format?.enum?.includes("dom_inspect_v1"), "Candidate must advertise the typed readonly DOM route.");
   for (const key of ["locator", "scope_ref", "include_hidden", "max_nodes", "max_depth"]) assert.ok(stateSchema[key], `Missing native DOM contract: ${key}`);
+  if (geometryOnly) assert.ok(stateSchema.geometry_ref, "Explicit CSSOM mode requires the native geometry_ref contract before launch.");
   started = true; // An unknown start outcome still needs named-session cleanup.
   await call("start", "start_session");
   const prepared = await call("prepare", "browser_prepare", { allow_launch: true, profile: { mode: "isolated_new" } });
@@ -182,6 +218,9 @@ try {
   await call("fixture-navigation", "browser_navigate", { ...page, url });
   const before = await witness("baseline", 0);
 
+  if (geometryOnly) {
+    await qualifyCssom(before);
+  } else {
   const css = await inspect("css-shadow-and-duplicates", { locator: { css: "button[aria-label='Duplicate choice']" } });
   assert.deepEqual(mainRows(css).map(row => row.attributes.id).sort(), ["duplicate-a", "duplicate-b", "shadow-choice"]);
   const frameGroups = new Map();
@@ -257,6 +296,7 @@ try {
   console.log(JSON.stringify({ directory, sampling_complete: true, metadata_qualified: limitations.length === 0, limitations,
     ordinary_ide_acceptance: false, crop_qualified: false, atomic_dom_native_paint: false }));
   if (limitations.length) process.exitCode = 1;
+  }
 } finally {
   const cleanup = {};
   try { if (started) { await call("end", "end_session"); cleanup.sessionEnded = true; } }

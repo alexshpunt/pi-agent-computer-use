@@ -8,6 +8,23 @@ const nonce = "owned-nonce", url = "http://127.0.0.1:4000/";
 const report = () => ({ nonce, documentId: "original-document", events: [], location: url, received_ms: 100,
   viewport: { width: 900, height: 600, dpr: 1.5, scrollX: 0, scrollY: 0 } });
 
+test("final history catches dirty reports after the last fresh sampling witness", async () => {
+  const { assertReadonlyPixelHistory } = await import("../scripts/dom-native-pixel-contract.mjs");
+  for (const late of [
+    { ...report(), events: [{ type: "keydown" }] },
+    { ...report(), documentId: "replacement-document" },
+    { ...report(), location: "http://foreign/" },
+  ]) {
+    const history = [report()];
+    assertReadonlyPixelWitness(history, nonce, url, 0, 200);
+    history.push(late);
+    assert.throws(() => assertReadonlyPixelHistory(history, nonce, url, 0));
+  }
+  assert.throws(() => assertReadonlyPixelHistory([report()], nonce, url, 1));
+  // Integrity after shutdown is separate from freshness at the sampling boundary.
+  assert.equal(assertReadonlyPixelHistory([report()], nonce, url, 0).documentId, "original-document");
+});
+
 test("fresh same-document readonly reports retain CSS viewport metadata without input authority", () => {
   const records = [report(), { ...report(), received_ms: 300 }];
   assert.equal(assertReadonlyPixelWitness(records, nonce, url, 0, 400), records[1]);

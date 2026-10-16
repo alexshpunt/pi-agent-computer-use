@@ -11,8 +11,8 @@ export function validatePixelProbeReport(report, nonce) {
   return report;
 }
 
-/** A same-URL reload cannot hide input or substitute a new document during paired sampling. */
-export function assertReadonlyPixelWitness(reports, nonce, url, rejected, now = Date.now()) {
+/** Validate the entire retained history, including reports received during owned cleanup. */
+export function assertReadonlyPixelHistory(reports, nonce, url, rejected) {
   assert.ok(Array.isArray(reports) && reports.length > 0 && reports.length <= 1000);
   assert.equal(rejected, 0);
   for (const report of reports) {
@@ -21,7 +21,12 @@ export function assertReadonlyPixelWitness(reports, nonce, url, rejected, now = 
     assert.deepEqual(report.events, [], "Unexpected input cannot be hidden by a later report.");
   }
   assert.equal(new Set(reports.map(report => report.documentId)).size, 1, "Owned document changed during sampling.");
-  const latest = reports.at(-1);
+  return reports.at(-1);
+}
+
+/** Require history integrity and a fresh report at the actual sampling boundary. */
+export function assertReadonlyPixelWitness(reports, nonce, url, rejected, now = Date.now()) {
+  const latest = assertReadonlyPixelHistory(reports, nonce, url, rejected);
   assert.ok(Number.isFinite(latest.received_ms) && now - latest.received_ms >= 0 && now - latest.received_ms <= 5000, "Stale page witness.");
   return latest;
 }

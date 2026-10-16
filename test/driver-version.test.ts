@@ -16,6 +16,7 @@ test("DOM startup validates the complete actual MCP schema before dispatch", asy
     locator: { type: "object", additionalProperties: false, properties: Object.fromEntries(
       ["role", "name", "label", "text", "test_id", "css"].map(name => [name, { type: "string" }])) },
     scope_ref: { type: "string" }, include_hidden: { type: "boolean" },
+    geometry_ref: { type: "string", minLength: 1, maxLength: 256 },
     max_nodes: { type: "integer", minimum: 1, maximum: 200 },
     max_depth: { type: "integer", minimum: 1, maximum: 32 },
     screenshot_mode: { type: "string", enum: ["viewport", "surface_unclipped", "native_view"] },
@@ -23,7 +24,14 @@ test("DOM startup validates the complete actual MCP schema before dispatch", asy
   const cases: { name: string; change?: Record<string, unknown>; omit?: string; nextCursor?: string }[] = [
     { name: "valid" },
     { name: "format", change: { snapshot_format: { type: "string", enum: ["semantic_v2"] } } },
-    ...["locator", "scope_ref", "include_hidden", "max_nodes", "max_depth"].map(name => ({ name, omit: name })),
+    ...["locator", "scope_ref", "include_hidden", "max_nodes", "max_depth", "geometry_ref"].map(name => ({ name, omit: name })),
+    ...[
+      { type: "integer", minLength: 1, maxLength: 256 },
+      { type: "string", maxLength: 256 },
+      { type: "string", minLength: 0, maxLength: 256 },
+      { type: "string", minLength: 1 },
+      { type: "string", minLength: 1, maxLength: 1024 },
+    ].map((geometry_ref, index) => ({ name: `geometry-contract-${index}`, change: { geometry_ref } })),
     { name: "wrong-bound", change: { max_nodes: { type: "string" } } },
     { name: "wrong-mode", change: { screenshot_mode: { type: "string", enum: ["viewport", "guessed"] } } },
     { name: "pagination", nextCursor: "more" },
@@ -57,11 +65,11 @@ createInterface({ input: process.stdin }).on("line", line => {
       const backend = new McpDriver({ command, runtime: "windows-dom-inspection" });
       try {
         if (item.name === "valid")
-          expect(await backend.call("get_browser_state", { snapshot_format: "dom_inspect_v1" })).toMatchObject({
+          expect(await backend.call("get_browser_state", { snapshot_format: "dom_inspect_v1", geometry_ref: "p1:0" })).toMatchObject({
             structuredContent: { status: "ok" },
           });
         else
-          await expect(backend.call("get_browser_state", { snapshot_format: "dom_inspect_v1" })).rejects.toThrow("native_runtime_schema");
+          await expect(backend.call("get_browser_state", { snapshot_format: "dom_inspect_v1", geometry_ref: "p1:0" })).rejects.toThrow("native_runtime_schema");
         const methods = (await readFile(log, "utf8")).trim().split("\n");
         expect(methods).toContain("tools/list");
         expect(methods.filter(method => method === "tools/call")).toHaveLength(item.name === "valid" ? 1 : 0);

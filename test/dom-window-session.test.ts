@@ -15,6 +15,16 @@ async function fixture() {
       if (name !== "get_browser_state") throw Error(`Unexpected native call: ${name}`);
       if (!args.snapshot_format) return { content: [], structuredContent: { status: "ok", mode: "bind", binding_quality: "exact", endpoint_access_class: "driver_owned",
         target_id: "bt-one", tabs: [{ tab_id: "tab-one", active: true, title: "Fixture", url: "http://127.0.0.1/" }] } };
+      if (args.geometry_ref) {
+        const state = { status: "ok", mode: "element_geometry", target_id: "bt-one", tab_id: "tab-one",
+          ref: args.geometry_ref, source_ref: args.geometry_ref, frame: { kind: "main" },
+          coordinate_space: "frame_viewport_css_pixels", viewport: "layout", method: "isolated_cssom_border_box",
+          native_pixel_mapping: "unavailable", atomic: false, connected: true, same_document: true,
+          bounds: { x: 10.25, y: 20.5, width: 90, height: 30 }, scroll: { x: 0, y: 120 },
+          visual_viewport: { offset_x: 0, offset_y: 0, page_x: 0, page_y: 120, width: 800, height: 600, scale: 1 } };
+        after?.();
+        return { content: [], structuredContent: replace ? replace(state) : state };
+      }
       const id = `p${++serial}`;
       const state = { status: "ok", mode: "snapshot", target_id: "bt-one", tab_id: "tab-one", page: { url: "http://127.0.0.1/", title: "Fixture" },
         snapshot: { id, format: "dom_inspect_v1", complete: false, collection_complete: false, matched_count: 1, returned_count: 1, truncated: false,
@@ -117,6 +127,63 @@ test("unknown native fields cannot escape bounded valid DOM text projections", a
   expect(body.length).toBeLessThan(24_500);
   expect(JSON.parse(body.slice(body.indexOf("\n") + 1))).toMatchObject({ status: "observed" });
   expect(JSON.stringify(result.details.dom)).not.toContain("unknown");
+});
+test("explicit CSS geometry uses the current readonly hint without minting image or input authority", async () => {
+  const f = await fixture(), observed = await f.session.observeDom(f.ref), id = observed.details.observation_id!;
+  const hint = observed.details.dom!.elements[0].hint, count = f.calls().length;
+  const sampled = await f.session.sampleDomGeometry(f.ref, id, hint);
+  expect(sampled.details.status).toBe("observed");
+  expect(sampled.details.dom_geometry).toMatchObject({ window_ref: f.ref, observation_id: id, hint,
+    frame: { ref: "df-main", kind: "main" }, coordinate_space: "frame_viewport_css_pixels", native_pixel_mapping: "unavailable",
+    bounds: { x: 10.25, y: 20.5, width: 90, height: 30 } });
+  expect(sampled.details.ui).toBeUndefined(); expect(sampled.details.agent_image).toBeUndefined();
+  expect(sampled.details.action_capability).toBeUndefined(); expect(sampled.content.every(block => block.type === "text")).toBe(true);
+  expect(JSON.stringify(sampled)).not.toMatch(/bt-one|tab-one|p1:0/);
+  expect(f.calls()).toHaveLength(count + 1);
+  expect(f.calls().at(-1)?.[1]).toMatchObject({ snapshot_format: "dom_inspect_v1", geometry_ref: "p1:0" });
+  expect((await f.session.checkDom(f.ref, id)).details.dom?.elements[0].bounds_css).toBeNull();
+  expect((await f.session.act({ window_ref: f.ref, observation_id: id, action: "click", x: 10, y: 20 })).details.status).toBe("refused");
+});
+
+test("unknown geometry hints and child frames refuse before native geometry dispatch", async () => {
+  const f = await fixture(), observed = await f.session.observeDom(f.ref), id = observed.details.observation_id!;
+  let count = f.calls().length;
+  expect((await f.session.sampleDomGeometry(f.ref, id, "foreign:a")).details.status).toBe("refused");
+  expect(f.calls()).toHaveLength(count);
+  expect((await f.session.checkDom(f.ref, id)).details.status).toBe("observed");
+  f.replace(value => ({ ...value, elements: (value.elements as Record<string, unknown>[]).map(row => ({
+    ...row, frame: { ref: "df-child", kind: "iframe" }
+  })) }));
+  const child = await f.session.observeDom(f.ref); count = f.calls().length;
+  expect((await f.session.sampleDomGeometry(f.ref, child.details.observation_id!, child.details.dom!.elements[0].hint)).details.status).toBe("refused");
+  expect(f.calls()).toHaveLength(count);
+});
+
+test.each(["safe", "reused", "closed", "disabled", "cancelled"] as const)("%s source cannot sample CSS geometry", async change => {
+  const f = await fixture(), observed = await f.session.observeDom(f.ref), count = f.calls().length;
+  const abort = new AbortController();
+  if (change === "safe") f.setMode("safe");
+  if (change === "reused") f.setLife("two");
+  if (change === "closed") f.setLife(undefined);
+  if (change === "disabled") f.setEnabled(false);
+  if (change === "cancelled") abort.abort();
+  expect((await f.session.sampleDomGeometry(f.ref, observed.details.observation_id!, observed.details.dom!.elements[0].hint, abort.signal)).details.status).toBe("refused");
+  expect(f.calls()).toHaveLength(count);
+});
+
+test("cancelled or substituted geometry retires the source without replay or leaked coordinates", async () => {
+  const f = await fixture(), observed = await f.session.observeDom(f.ref), abort = new AbortController();
+  const id = observed.details.observation_id!, hint = observed.details.dom!.elements[0].hint;
+  f.after(() => abort.abort());
+  const cancelled = await f.session.sampleDomGeometry(f.ref, id, hint, abort.signal);
+  expect(cancelled.details.status).toBe("refused"); expect(cancelled.details.dom_geometry).toBeUndefined();
+  f.after(() => {}); f.replace(undefined);
+  const fresh = await f.session.observeDom(f.ref);
+  f.replace(value => ({ ...value, tab_id: "foreign" }));
+  const invalid = await f.session.sampleDomGeometry(f.ref, fresh.details.observation_id!, fresh.details.dom!.elements[0].hint);
+  expect(invalid.details.status).toBe("refused"); expect(invalid.details.dom_geometry).toBeUndefined();
+  expect((await f.session.checkDom(f.ref, fresh.details.observation_id!)).details.status).toBe("refused");
+  expect(f.calls().filter(([, args]) => args.geometry_ref)).toHaveLength(2);
 });
 test("ordinary window reads retire DOM and fresh DOM retires ordinary input", async () => {
   const f = await fixture(), first = await f.session.observeDom(f.ref);

@@ -24,6 +24,7 @@ function fixture() {
     observeDom: vi.fn(async () => observed(`dom-${++serial}`)),
     checkDom: vi.fn(async () => observed("checked")),
     inspectDom: vi.fn(async () => observed("inspected")),
+    sampleDomGeometry: vi.fn(async () => ({ content: [], details: { status: "observed", mode: "yolo" } })),
     observe: vi.fn(async () => observed(`ui-${++serial}`, false)),
     checkObservation: vi.fn(async () => observed("checked-ui", false)),
     observeWindowState: vi.fn(async () => ({ content: [], details: { status: "observed", mode: "yolo", window_state_id: "state-1" } })),
@@ -91,6 +92,39 @@ describe("readonly DOM resource routing", () => {
     expect(f.session.observeDom).toHaveBeenLastCalledWith("fixture", { locator: { role: "button" } }, undefined, "dom-2");
     expect(() => f.resources.descriptor(f.address("dom-2"))).toThrow(/expired/i);
     expect(f.session.observe).not.toHaveBeenCalled();
+  });
+
+  test("explicit element geometry routes only from a current DOM observation and does not renew its snapshot", async () => {
+    const f = fixture();
+    expect(parseComputerViews(["element:geometry,1:a"])).toEqual({ kind: "element", operation: "geometry", hint: "1:a" });
+    await f.resources.read(f.window, "/fixture", ["dom"]);
+    await f.resources.read(f.address(), "/fixture", ["element:geometry,1:a"]);
+    expect(f.session.sampleDomGeometry).toHaveBeenCalledExactlyOnceWith("fixture", "dom-1", "1:a", undefined);
+    expect(f.session.inspectDom).not.toHaveBeenCalled();
+    expect(f.session.observeDom).toHaveBeenCalledTimes(1);
+    expect(f.resources.descriptor(f.address())).toMatch(/readonly DOM/i);
+    await f.resources.read(f.window, "/fixture", ["ui"]);
+    await expect(f.resources.read(f.address("ui-2"), "/fixture", ["element:geometry,1:a"])).rejects.toThrow(/requires.*DOM/i);
+    expect(f.session.sampleDomGeometry).toHaveBeenCalledTimes(1);
+  });
+
+  test("CSS sample presentation shows its viewport domain and native-mapping refusal", () => {
+    const result: ComputerResult = { content: [], details: { status: "observed", mode: "yolo", window_ref: "fixture", observation_id: "dom-1",
+      dom_geometry: { window_ref: "fixture", observation_id: "dom-1", hint: "1:a", frame: { ref: "frame-main", kind: "main" },
+        received_at: "2026-10-17T00:00:00.000Z", coordinate_space: "frame_viewport_css_pixels", viewport: "layout",
+        method: "isolated_cssom_border_box", native_pixel_mapping: "unavailable", atomic: false, connected: true, same_document: true,
+        bounds: { x: 10.25, y: 20.5, width: 90, height: 30 }, scroll: { x: 0, y: 120 },
+        visual_viewport: { offset_x: 0, offset_y: 0, page_x: 0, page_y: 120, width: 800, height: 600, scale: 1 } } } };
+    const output = presentComputerResult({ appSource: id => id }, result);
+    expect(output).toContain("DOM CSS geometry: 1:a");
+    const previewHead = output.slice(0, output.indexOf("Bounds:"));
+    expect(previewHead).toContain("native mapping=unavailable");
+    expect(previewHead).toContain("atomic=false");
+    expect(output).toContain("frame_viewport_css_pixels; viewport=layout");
+    expect(output).toContain("native mapping=unavailable");
+    expect(output).toContain("atomic=false");
+    expect(output).toContain("readonly, input=none");
+    expect(Buffer.byteLength(output)).toBeLessThan(24000);
   });
 
   test("every DOM Write/Insert shape refuses before dispatch, including identity and delivery backdoors", async () => {
