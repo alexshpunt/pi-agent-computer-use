@@ -23,6 +23,7 @@ Read views:
 | `capture:{"max_elements":500,"max_depth":20,"hints":true}` | Fresh bounded walk/hints. Optional `guides` takes grid/region/action booleans. `maxLongEdge` (64..4096) and `scale` (0.05..1) set this window Read’s native image cap without changing session defaults. |
 | `region:100,80,120,60` | Fresh readonly detail in local pixels of the addressed observation image. Consumes its overview. |
 | `element:inspect,1:a` | Inspect an actual collected hint. Also scope/highlight/crop; crop consumes the overview. |
+| `element:geometry,1:a` | Fresh readonly CSS geometry for a current main-document/open-shadow DOM hint. No native-pixel mapping or input authority. |
 | `sequence:{"duration_ms":2000,"fps":4}` | Bounded temporal capture from a window or primary display. Returns metadata and a sequence address, not frames. |
 | `frames:endpoints` | Explicit readonly selection from a sequence. Also all/first/last/changed, `frames:{"indexes":[0,2]}` or inclusive `frames:{"from":0,"to":2}`. |
 
@@ -43,6 +44,12 @@ Read the authorized window with `views:["dom"]`, or use one JSON view such as `d
 The returned `dom` resource contains snapshot-local hints, frame identities, tags, attributes, accessible role/name, live value/states and visibility where available. Native layout units are not qualified as CSS pixels: `bounds_css` stays null and `geometry_status` reports that limitation. Missing metadata stays unavailable. Check `complete`, `collection_complete`, `truncated`, `omitted` and projection limits before interpreting absence. A finished or empty projection does not prove that an incomplete collection inspected every node or frame.
 
 Read the issued observation without views, or with `dom`, to inspect its cached records. Search that observation to filter collected text and attributes without another native query. Read `element:inspect,<actual-hint>` for one record. Read `element:scope,<actual-hint>`, or a nonempty `dom:{...}` options view on the observation, for a fresh bounded native query; `scope` accepts only a hint from that observation. A refresh retires older hints. Fresh window reads, close and reload also retire them. Do not borrow hints between DOM/UI snapshots or frames; stale and detached native sources refuse rather than silently rebind.
+
+Read the current DOM observation with `views:["element:geometry,<actual-hint>"]` for a fresh CSSOM geometry sample. This runs a fixed readonly function in an isolated world; it accepts no script. Main-document and open-shadow elements are supported; child-frame geometry refuses. Unknown or stale hints, detached or reused sources, Safe-mode revocation and cancellation refuse rather than rebind or fall back.
+
+The returned `dom_geometry` identifies the window, source observation, hint, frame and provider receipt time (`received_at`, not a browser/paint timestamp). Its `bounds` use `coordinate_space:"frame_viewport_css_pixels"` with `viewport:"layout"`; `scroll` and `visual_viewport` are separate metadata. Treat the rectangle as a sample: `atomic:false` does not prove visibility or simultaneous DOM/paint state. `native_pixel_mapping:"unavailable"` means these values are not native image coordinates or input/crop/highlight authority.
+
+Geometry sampling does not overwrite cached `bounds_css:null`, create a new DOM snapshot or renew reference lifetime. Cached Read, Search and `element:inspect` keep their existing behavior. Read the window with `dom` for fresh metadata and new hints.
 
 DOM observations are readonly: Write and Insert refuse, and cached reads/searches do not renew native references. The reserved `document_css_pixels` domain never grants desktop or screenshot coordinates. DOM element crop/highlight currently refuses because native-pixel correspondence is not qualified. Do not guess a transform or use a page screenshot as native pixels. Read a fresh native window overview for ordinary image/UI inspection or input.
 
