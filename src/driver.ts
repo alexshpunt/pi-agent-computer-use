@@ -83,8 +83,8 @@ export const WINDOW_MANAGEMENT_RUNTIME = {
 } as const;
 /** Exact CI candidate only; Windows live qualification and installed-runtime adoption are separate. */
 export const DOM_INSPECTION_RUNTIME = {
-  source: "231d5d889c7d23bbf0ea3912f617d530654eb863", version: "0.34.0",
-  sha256: "47d0ea1fe9e22bd0d616387a2ab4b12141931a3ca731b6604f0c41d366642ea3",
+  source: "d0d1fee851737b9576aeb5574e14d46bb279a27b", version: "0.34.0",
+  sha256: "8e7ecb67c2eb359e5369c3c976b004f8f19f3bf0684a58cacc097f9adc38be4d",
 } as const;
 const forkRuntimes = {
   "windows-dom-inspection": DOM_INSPECTION_RUNTIME,
@@ -122,6 +122,7 @@ function hasDomInspectionSchema(schema: { type?: string; properties?: Record<str
         && (field as Record<string, unknown>).type === "string";
     })
     && property("scope_ref").type === "string" && property("include_hidden").type === "boolean"
+    && property("geometry_ref").type === "string" && property("geometry_ref").minLength === 1 && property("geometry_ref").maxLength === 256
     && property("max_nodes").type === "integer" && property("max_nodes").minimum === 1 && property("max_nodes").maximum === 200
     && property("max_depth").type === "integer" && property("max_depth").minimum === 1 && property("max_depth").maximum === 32
     && modes.type === "string" && Array.isArray(modes.enum) && modes.enum.length === 3

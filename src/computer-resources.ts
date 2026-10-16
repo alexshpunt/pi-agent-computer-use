@@ -139,6 +139,7 @@ export class ComputerResources {
       const ref = snapshot.target.window_ref;
       if (!ref) throw new ComputerRequestError("Readonly DOM requires a window source.");
       if (view.kind === "element") {
+        if (view.operation === "geometry") return session.sampleDomGeometry(ref, address.ref, view.hint, signal);
         if (view.operation !== "scope") return session.inspectDom(ref, address.ref, { operation: view.operation, hint: view.hint }, signal);
         this.retireWindow(ref);
         return this.remember({ window_ref: ref }, await session.observeDom(ref, { scope: view.hint }, signal, address.ref));
@@ -158,6 +159,7 @@ export class ComputerResources {
     if (view.kind === "dom") throw new ComputerRequestError("This observation has no DOM scope. Read its window with dom view.");
     if (view.kind === "element") {
       if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations have no collected UI.");
+      if (view.operation === "geometry") throw new ComputerRequestError("CSS geometry requires a current readonly DOM observation, not UI hints or image coordinates.");
       if (view.operation === "crop") this.snapshots.delete(address.ref);
       return session.observe(snapshot.target.window_ref, signal, undefined, undefined,
         { operation: view.operation, observation_id: address.ref, hint: view.hint });
