@@ -1,4 +1,5 @@
 import type { DomBinding, DomElement, DomSnapshot } from "./dom-inspection.ts";
+import type { DomGeometry } from "./dom-geometry.ts";
 import { elementHint } from "./ui-resources.ts";
 
 /** Readonly DOM metadata. CSS rectangles are never native pixels or input authority. */
@@ -11,6 +12,15 @@ export interface DomResource extends Omit<DomSnapshot, "id" | "elements"> {
   matches: number;
   projection_truncated: boolean;
   geometry_status: "unqualified_native_layout_units";
+}
+/** Fresh CSS-only sample linked to a current readonly DOM alias, never image/input authority. */
+export interface DomGeometryResource extends DomGeometry {
+  window_ref: string;
+  observation_id: string;
+  hint: string;
+  frame: DomElement["frame"];
+  /** Provider receipt time, not a native browser/paint timestamp. */
+  received_at: string;
 }
 /** Private admission retains native references separately from model-visible aliases. */
 export interface DomObservation {

@@ -10,7 +10,7 @@ export type ComputerViews =
   | { kind: "region"; region: { x: number; y: number; width: number; height: number } }
   | { kind: "sequence"; options: SequenceOptions }
   | { kind: "frames"; selection: FrameSelection }
-  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop"; hint: string };
+  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop" | "geometry"; hint: string };
 
 function json(value: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(value);
@@ -47,8 +47,8 @@ export function parseComputerViews(views: readonly string[] = []): ComputerViews
     }
     if (first.startsWith("element:")) {
       const [operation, hint, extra] = value.split(",");
-      if (extra !== undefined || !["inspect", "scope", "highlight", "crop"].includes(operation) || !/^[a-z0-9]+:[a-z]+$/.test(hint ?? ""))
-        throw Error("Use element:inspect|scope|highlight|crop,current-hint. Crop consumes its overview.");
+      if (extra !== undefined || !["inspect", "scope", "highlight", "crop", "geometry"].includes(operation) || !/^[a-z0-9]+:[a-z]+$/.test(hint ?? ""))
+        throw Error("Use element:inspect|scope|highlight|crop|geometry,current-hint. Geometry is readonly DOM CSS only; crop consumes its overview.");
       return { kind: "element", operation: operation as Extract<ComputerViews, { kind: "element" }>["operation"], hint };
     }
     if (["all", "first", "last", "endpoints", "changed"].includes(value)) return { kind: "frames", selection: value as FrameSelection };

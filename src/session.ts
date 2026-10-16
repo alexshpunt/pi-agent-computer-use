@@ -17,7 +17,8 @@ import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts"
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import { validateDomRead, validateDomBinding, validateDomSnapshot, type DomReadOptions } from "./dom-inspection.ts";
-import { createDomResource, projectDom, domPreview, type DomResource, type DomObservation } from "./dom-resource.ts";
+import { createDomResource, projectDom, domPreview, type DomResource, type DomObservation, type DomGeometryResource } from "./dom-resource.ts";
+import { validateDomGeometry } from "./dom-geometry.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -98,6 +99,8 @@ export interface ComputerResult {
     ui?: UiResource;
     /** Readonly browser metadata, isolated from UIA and pixel-input authority. */
     dom?: DomResource;
+    /** Fresh layout-viewport CSS sample; never native pixels or input/crop authority. */
+    dom_geometry?: DomGeometryResource;
     /** Fresh window capture parts; omitted for non-overview results. */
     granularity?: "image" | "ui" | "full";
     captured?: { image: boolean; ui: boolean };
@@ -907,6 +910,41 @@ export class ComputerSession {
       } catch (error) { return this.result("refused", error instanceof Error ? error.message : String(error)); }
     });
   }
+  /** Explicitly sample one current main/open-shadow DOM hint without resnapshotting or issuing input authority. */
+  sampleDomGeometry(ref: string, id: string, hint: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = this.entries.get(ref), observed = entry?.dom;
+      if (!entry || !observed || observed.id !== id || !this.allowed(entry) || signal?.aborted ||
+        !this.driver.domInspection || !this.browserSession)
+        return this.result("refused", "Retired, revoked or cancelled DOM source. Read the window with dom first.");
+      const reference = observed.refs.get(hint), row = observed.resource.elements.find(row => row.hint === hint);
+      if (!reference || !row || row.frame.kind !== "main")
+        return this.result("refused", "Geometry needs a current main-document/open-shadow DOM hint. Child-frame mapping is not qualified.");
+      try {
+        const admitted = async () => {
+          if (signal?.aborted || !this.driver.domInspection || !this.allowed(entry) || entry.dom !== observed ||
+            await this.current(ref, signal) !== entry || signal?.aborted || !this.allowed(entry))
+            throw Error("DOM geometry source is cancelled, revoked, closed or reused.");
+        };
+        await admitted();
+        const native = await this.driver.call("get_browser_state", { ...observed.binding, session: this.sessionId,
+          snapshot_format: "dom_inspect_v1", geometry_ref: reference }, signal);
+        await admitted();
+        if (native.isError || native.content.some(block => block.type === "image"))
+          throw Error("Native CSS geometry refused or returned pixels. No fallback or replay.");
+        const sample = validateDomGeometry(native.structuredContent, observed.binding, reference);
+        const geometry: DomGeometryResource = { ...sample, window_ref: ref, observation_id: id, hint,
+          frame: structuredClone(row.frame), received_at: new Date().toISOString() };
+        return this.result("observed", "Fresh readonly layout-viewport CSS geometry sample. Native-pixel mapping is unavailable; not visibility, atomic paint or input/crop authority.",
+          undefined, { ...this.addressed(entry), observation_id: id, dom_geometry: geometry });
+      } catch (error) {
+        entry.dom = undefined;
+        return this.result("refused", `DOM geometry unavailable: ${error instanceof Error ? error.message : String(error)}`,
+          undefined, this.addressed(entry));
+      }
+    });
+  }
+
   /** Acquire fresh one-use native state without pixels, a UI walk or ordinary-input authority. */
   observeWindowState(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {

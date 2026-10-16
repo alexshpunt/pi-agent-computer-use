@@ -51,7 +51,14 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     if (configuration.maxLongEdge !== undefined) lines.push(`Capture: maxLongEdge=${configuration.maxLongEdge}, scale=${configuration.scale}`);
   }
   if (d.source) lines.push(`Source: ${d.source.captured_at}; input=${d.source.capabilities.input}; paint freshness=${d.source.visibility.paint_freshness}`);
-  if (d.dom) {
+  if (d.dom_geometry) {
+    const sample = d.dom_geometry;
+    lines.push(`DOM CSS geometry: ${sample.hint}; readonly, input=none; native mapping=${sample.native_pixel_mapping}; atomic=${sample.atomic}`,
+      `Frame: ${label(sample.frame.ref)} (${sample.frame.kind}); method=${sample.method}; received=${sample.received_at}`,
+      `Bounds: ${JSON.stringify(sample.bounds)}; ${sample.coordinate_space}; viewport=${sample.viewport}`,
+      `Scroll: ${JSON.stringify(sample.scroll)}; visual viewport: ${JSON.stringify(sample.visual_viewport)}`,
+      "This sample is not visibility, native image coordinates, input or crop/highlight authority.");
+  } else if (d.dom) {
     const dom = domPreview(d.dom);
     if (d.status !== "observed") {
       const message = computerResultText(result).split("\n{", 1)[0];
@@ -101,7 +108,8 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
-  lines.push(d.dom ? "Read the window with dom view for a fresh bounded DOM query. Use Search or element:inspect on this snapshot; Write/Insert are unavailable."
+  lines.push(d.dom_geometry ? "The source DOM snapshot remains cached. Read the window with dom for fresh metadata; sample geometry again only while its source stays current."
+    : d.dom ? "Read the window with dom view for a fresh bounded DOM query. Use Search or element:inspect on this snapshot; Write/Insert are unavailable."
     : d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
     : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
