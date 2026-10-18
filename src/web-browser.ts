@@ -13,12 +13,16 @@ export interface WebTarget {
   frames?: string[];
 }
 /** Options for a fresh Playwright aria snapshot in "ai" mode. */
-export interface WebSnapshotOptions { target?: WebTarget; boxes?: boolean; depth?: number }
+export interface WebSnapshotOptions {
+  target?: WebTarget; boxes?: boolean; depth?: number;
+  /** Also return the browser's whole retained console, page-error and network log. */
+  log?: boolean;
+}
 /** One Playwright action. Page actions target the active tab; delivery is not proof of the application's response. */
 export interface WebAction {
   action: "click" | "hover" | "fill" | "type" | "press" | "check" | "uncheck" | "select" | "focus" | "scroll" | "wait" | "wait_load"
     | "navigate" | "back" | "forward" | "reload" | "new_tab" | "switch_tab" | "close_tab" | "dialog"
-    | "upload" | "wait_download" | "cancel_download";
+    | "upload" | "wait_download" | "cancel_download" | "evaluate";
   target?: WebTarget;
   button?: "left" | "right" | "middle"; click_count?: number;
   text?: string; key?: string; values?: string[];
@@ -36,7 +40,19 @@ export interface WebAction {
   chooser?: boolean;
   /** Download id such as d1; defaults to the latest download. */
   download?: string;
+  /** JavaScript expression evaluated in the active tab, or a function called with the target element. */
+  expression?: string;
 }
+/** One retained console message, uncaught page error or failed network event. `seq` increases across the browser's lifetime. */
+export interface WebLogEntry {
+  seq: number; at: string; tab: string;
+  kind: "console" | "page_error" | "request_failed" | "http_error";
+  /** Console type such as error or warning; request method for network entries. */
+  level: string;
+  text: string; url?: string; status?: number;
+}
+/** Result of an evaluate action: a JSON value, or the exception the page code threw. */
+export interface WebEvaluation { value?: string; error?: string; truncated?: boolean }
 /** One download of the owned browser. Files live in Playwright's temporary directory until the browser closes. */
 export interface WebDownload {
   id: string; tab: string; url: string; filename: string;
@@ -57,7 +73,14 @@ export interface WebTab {
 /** A JavaScript dialog held open in the active tab until the agent accepts or dismisses it. */
 export interface WebDialog { type: string; message: string; default_value?: string }
 /** Page state returned with every snapshot or action. `events` lists tab and dialog events since the previous snapshot. */
-export interface WebPage { url: string; title: string; snapshot: string; tabs: WebTab[]; active?: string; dialog?: WebDialog; events: string[]; downloads?: WebDownload[] }
+export interface WebPage {
+  url: string; title: string; snapshot: string; tabs: WebTab[]; active?: string; dialog?: WebDialog; events: string[]; downloads?: WebDownload[];
+  /** Warnings, errors and failed requests since the previous snapshot; `omitted` counts newer entries beyond the shown limit. */
+  log?: { entries: WebLogEntry[]; omitted: number };
+  /** The whole retained log when requested; `dropped` entries were evicted before `first_seq`, so earlier history is incomplete. */
+  history?: { entries: WebLogEntry[]; first_seq: number; dropped: number };
+  evaluation?: WebEvaluation;
+}
 export interface WebOpened { pid: number; version: string; url: string; title: string }
 /** Starts one owned browser; the session binds its native window. */
 export type WebLauncher = (options: WebLaunchOptions, signal?: AbortSignal) => Promise<{ browser: WebBrowser; opened: WebOpened }>;
@@ -119,11 +142,13 @@ export function validateWebTarget(value: unknown): WebTarget {
 /** Validate a `dom` or `dom:{...}` Read view. */
 export function validateWebSnapshot(value: unknown = {}): WebSnapshotOptions {
   const options = record(value, "dom options");
-  only(options, ["target", "boxes", "depth"], "dom options");
+  only(options, ["target", "boxes", "depth", "log"], "dom options");
+  if (options.log !== undefined && typeof options.log !== "boolean") throw Error("log must be boolean.");
   if (options.boxes !== undefined && typeof options.boxes !== "boolean") throw Error("boxes must be boolean.");
   return { ...(options.target !== undefined ? { target: validateWebTarget(options.target) } : {}),
     ...(options.boxes !== undefined ? { boxes: options.boxes as boolean } : {}),
-    ...(options.depth !== undefined ? { depth: integer(options.depth, 1, 64, "depth") } : {}) };
+    ...(options.depth !== undefined ? { depth: integer(options.depth, 1, 64, "depth") } : {}),
+    ...(options.log ? { log: true } : {}) };
 }
 
 const ACTIONS: Record<WebAction["action"], { fields: readonly string[]; target: "required" | "optional" | "none" }> = {
@@ -150,6 +175,7 @@ const ACTIONS: Record<WebAction["action"], { fields: readonly string[]; target: 
   upload: { fields: ["files", "chooser"], target: "required" },
   wait_download: { fields: ["download"], target: "none" },
   cancel_download: { fields: ["download"], target: "none" },
+  evaluate: { fields: ["expression"], target: "optional" },
 };
 const tabId = (value: unknown): string => {
   if (typeof value !== "string" || !/^t\d{1,6}$/.test(value)) throw Error("tab must be a tab id such as t2 from the tab list.");
@@ -222,6 +248,7 @@ export function validateWebAction(value: unknown): WebAction {
       action.chooser = command.chooser;
     }
   }
+  if (name === "evaluate") action.expression = text(command.expression, "expression", 20_000);
   if ((name === "wait_download" || name === "cancel_download") && command.download !== undefined) {
     if (typeof command.download !== "string" || !/^d\d{1,6}$/.test(command.download)) throw Error("download must be an id such as d1 from the download list.");
     action.download = command.download;

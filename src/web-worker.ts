@@ -4,7 +4,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
-import type { WebAction, WebDownload, WebLaunchOptions, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
+import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
 
 interface Tab { id: string; page: Page; title: string; load: WebTab["load"]; opener?: string; dialog?: Dialog; onDialog: Set<() => void> }
 interface DownloadRecord { info: WebDownload; download: Download; done: Promise<void> }
@@ -20,6 +20,19 @@ let active: Tab | undefined;
 let events: string[] = [];
 /** Downloads of this browser. Playwright keeps their files in its temporary directory and deletes them when the browser closes. */
 const downloads: DownloadRecord[] = [];
+/** Console, page-error and network log of every tab, oldest first; at most LOG_LIMIT entries are retained. */
+const log: WebLogEntry[] = [];
+const LOG_LIMIT = 200, LOG_SHOWN = 30;
+let logSeq = 0;
+/** Highest seq already shown in a snapshot. */
+let logShown = 0;
+
+function record(tab: Tab, entry: Omit<WebLogEntry, "seq" | "at" | "tab">): void {
+  log.push({ seq: ++logSeq, at: new Date().toISOString(), tab: tab.id, ...entry, text: short(entry.text, 1000), ...(entry.url ? { url: short(entry.url, 500) } : {}) });
+  if (log.length > LOG_LIMIT) log.shift();
+}
+/** Console logs, info and debug stay in the history; snapshots show what usually needs attention. */
+const notable = (entry: WebLogEntry) => entry.kind !== "console" || entry.level === "error" || entry.level === "warning" || entry.level === "assert";
 
 function note(event: string): void {
   events.push(event);
@@ -42,6 +55,12 @@ function adopt(page: Page): Tab {
     for (const wake of tab.onDialog) wake();
   });
   page.on("download", download => track(tab, download));
+  page.on("console", message => record(tab, { kind: "console", level: message.type(), text: message.text(), url: message.location().url || undefined }));
+  page.on("pageerror", error => record(tab, { kind: "page_error", level: "error", text: error.stack ?? error.message }));
+  page.on("requestfailed", request => record(tab, { kind: "request_failed", level: request.method(), text: request.failure()?.errorText ?? "failed", url: request.url() }));
+  page.on("response", response => {
+    if (response.status() >= 400) record(tab, { kind: "http_error", level: response.request().method(), text: `${response.status()} ${response.statusText()}`.trim(), url: response.url(), status: response.status() });
+  });
   page.on("close", () => {
     tabs.splice(tabs.indexOf(tab), 1);
     if (active === tab) active = undefined;
@@ -143,9 +162,17 @@ async function open({ browser, url }: WebLaunchOptions) {
   return { pid: processInfo.find(item => item.type === "browser")?.id, version: owner.version(), url: active.page.url(), title: await active.page.title() };
 }
 
-async function snapshot({ target, boxes, depth }: WebSnapshotOptions) {
+function logSince() {
+  const fresh = log.filter(entry => entry.seq > logShown && notable(entry));
+  logShown = logSeq;
+  return fresh.length ? { log: { entries: fresh.slice(0, LOG_SHOWN), omitted: Math.max(0, fresh.length - LOG_SHOWN) } } : {};
+}
+
+async function snapshot({ target, boxes, depth, log: wantLog }: WebSnapshotOptions, evaluation?: WebEvaluation) {
   const base = () => ({ tabs: listTabs(), ...(active ? { active: active.id } : {}), events: events.splice(0),
-    ...(downloads.length ? { downloads: downloads.map(item => ({ ...item.info })) } : {}) });
+    ...(downloads.length ? { downloads: downloads.map(item => ({ ...item.info })) } : {}), ...logSince(),
+    ...(wantLog ? { history: { entries: [...log], first_seq: log[0]?.seq ?? logSeq + 1, dropped: Math.max(0, logSeq - log.length) } } : {}),
+    ...(evaluation ? { evaluation } : {}) });
   if (!active) return { url: "", title: "", snapshot: "", ...base() };
   const tab = active, page = tab.page;
   const options = { mode: "ai" as const, boxes, depth, timeout: 10_000 };
@@ -157,7 +184,7 @@ async function snapshot({ target, boxes, depth }: WebSnapshotOptions) {
 }
 
 async function act(action: WebAction) {
-  const timeout = action.timeout_ms ?? (["navigate", "back", "forward", "reload", "new_tab", "wait_load", "wait_download", "upload"].includes(action.action) ? 30_000 : 5_000);
+  const timeout = action.timeout_ms ?? (["navigate", "back", "forward", "reload", "new_tab", "wait_load", "wait_download", "upload", "evaluate"].includes(action.action) ? 30_000 : 5_000);
   switch (action.action) {
     case "new_tab": {
       creating = true;
@@ -194,6 +221,37 @@ async function act(action: WebAction) {
       await record.download.cancel();
       await record.done;
       return snapshot({});
+    }
+    case "evaluate": {
+      const tab = current(), page = idle(tab);
+      // Resolve the element first: a missing or ambiguous target is a refusal, because no page code has run yet.
+      const element = action.target ? await locate(page, action.target).elementHandle({ timeout: Math.min(timeout, 5_000) }).catch((error: Error) => {
+        throw new Error(`The evaluate target did not resolve to one element; nothing ran. ${error.message}`);
+      }) : undefined;
+      // Evaluate the source in the page; if it yields a function, call it with the target element (or nothing).
+      // Playwright serializes these callbacks by source text, so each must be self-contained.
+      const run = element
+        ? element.evaluate((el, source) => { const value = (0, eval)(source); return typeof value === "function" ? value(el) : value; }, action.expression!)
+          .finally(() => element.dispose())
+        : page.evaluate(source => { const value = (0, eval)(source); return typeof value === "function" ? value() : value; }, action.expression!);
+      let timer: NodeJS.Timeout | undefined;
+      const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error(`evaluate did not finish within ${timeout} ms; it may still be running in the page.`), { name: "TimeoutError" })), timeout); });
+      let evaluation: WebEvaluation;
+      try {
+        const settled = await untilDialog(tab, Promise.race([run, late]));
+        if (settled === "dialog") evaluation = { error: "The code opened a dialog; it continues after the dialog is handled." };
+        else {
+          const json = JSON.stringify(settled) ?? "undefined";
+          evaluation = json.length > 20_000 ? { value: json.slice(0, 20_000), truncated: true } : { value: json };
+        }
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        // Playwright locator timeouts and the overall time limit stay uncertain; an exception thrown by page code is its result.
+        if (failure.name === "TimeoutError") throw failure;
+        // Keep the page's own error line, without Playwright's call prefix and its internal stack frames.
+        evaluation = { error: short(failure.message.split("\n")[0].replace(/^\w+\.evaluate: /, ""), 2000) };
+      } finally { clearTimeout(timer); }
+      return snapshot({}, evaluation);
     }
     case "dialog": {
       const tab = current(), dialog = tab.dialog;
@@ -258,7 +316,7 @@ async function screenshot({ target, highlight }: { target?: WebTarget; highlight
 
 async function close() {
   const owned = context, directory = profile;
-  context = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0;
+  context = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
   await owned?.close();
   if (directory) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   return {};
