@@ -17,7 +17,8 @@ export interface WebSnapshotOptions { target?: WebTarget; boxes?: boolean; depth
 /** One Playwright action. Page actions target the active tab; delivery is not proof of the application's response. */
 export interface WebAction {
   action: "click" | "hover" | "fill" | "type" | "press" | "check" | "uncheck" | "select" | "focus" | "scroll" | "wait" | "wait_load"
-    | "navigate" | "back" | "forward" | "reload" | "new_tab" | "switch_tab" | "close_tab" | "dialog";
+    | "navigate" | "back" | "forward" | "reload" | "new_tab" | "switch_tab" | "close_tab" | "dialog"
+    | "upload" | "wait_download" | "cancel_download";
   target?: WebTarget;
   button?: "left" | "right" | "middle"; click_count?: number;
   text?: string; key?: string; values?: string[];
@@ -29,6 +30,18 @@ export interface WebAction {
   tab?: string;
   /** Accept or dismiss the active tab's open dialog; text answers a prompt. */
   accept?: boolean;
+  /** Absolute local paths to upload. The session converts WSL paths for the Windows browser. */
+  files?: string[];
+  /** Upload through the file chooser the target opens instead of setting a file input directly. */
+  chooser?: boolean;
+  /** Download id such as d1; defaults to the latest download. */
+  download?: string;
+}
+/** One download of the owned browser. Files live in Playwright's temporary directory until the browser closes. */
+export interface WebDownload {
+  id: string; tab: string; url: string; filename: string;
+  state: "in_progress" | "completed" | "canceled" | "failed";
+  path?: string; bytes?: number; error?: string;
 }
 /** Installed browser channel launched by Playwright. */
 export type WebChannel = "chrome" | "msedge";
@@ -44,7 +57,7 @@ export interface WebTab {
 /** A JavaScript dialog held open in the active tab until the agent accepts or dismisses it. */
 export interface WebDialog { type: string; message: string; default_value?: string }
 /** Page state returned with every snapshot or action. `events` lists tab and dialog events since the previous snapshot. */
-export interface WebPage { url: string; title: string; snapshot: string; tabs: WebTab[]; active?: string; dialog?: WebDialog; events: string[] }
+export interface WebPage { url: string; title: string; snapshot: string; tabs: WebTab[]; active?: string; dialog?: WebDialog; events: string[]; downloads?: WebDownload[] }
 export interface WebOpened { pid: number; version: string; url: string; title: string }
 /** Starts one owned browser; the session binds its native window. */
 export type WebLauncher = (options: WebLaunchOptions, signal?: AbortSignal) => Promise<{ browser: WebBrowser; opened: WebOpened }>;
@@ -134,6 +147,9 @@ const ACTIONS: Record<WebAction["action"], { fields: readonly string[]; target: 
   switch_tab: { fields: ["tab"], target: "none" },
   close_tab: { fields: ["tab"], target: "none" },
   dialog: { fields: ["accept", "text"], target: "none" },
+  upload: { fields: ["files", "chooser"], target: "required" },
+  wait_download: { fields: ["download"], target: "none" },
+  cancel_download: { fields: ["download"], target: "none" },
 };
 const tabId = (value: unknown): string => {
   if (typeof value !== "string" || !/^t\d{1,6}$/.test(value)) throw Error("tab must be a tab id such as t2 from the tab list.");
@@ -193,6 +209,22 @@ export function validateWebAction(value: unknown): WebAction {
       if (!command.accept || typeof command.text !== "string" || command.text.length > 20_000) throw Error("dialog text answers an accepted prompt and must be a string of at most 20000 characters.");
       action.text = command.text;
     }
+  }
+  if (name === "upload") {
+    if (!Array.isArray(command.files) || command.files.length < 1 || command.files.length > 32) throw Error("upload needs files: 1..32 absolute paths.");
+    action.files = command.files.map((file, index) => {
+      const value = text(file, `files[${index}]`, 4096);
+      if (!value.startsWith("/") && !/^[a-z]:[\\/]/i.test(value) && !value.startsWith("\\\\")) throw Error(`files[${index}] must be an absolute WSL or Windows path.`);
+      return value;
+    });
+    if (command.chooser !== undefined) {
+      if (typeof command.chooser !== "boolean") throw Error("chooser must be boolean.");
+      action.chooser = command.chooser;
+    }
+  }
+  if ((name === "wait_download" || name === "cancel_download") && command.download !== undefined) {
+    if (typeof command.download !== "string" || !/^d\d{1,6}$/.test(command.download)) throw Error("download must be an id such as d1 from the download list.");
+    action.download = command.download;
   }
   return action;
 }
@@ -270,6 +302,24 @@ export class WebBrowser {
       await browser.close().catch(() => undefined);
       throw error;
     }
+  }
+
+  /**
+   * Snapshot the active tab or run one action there. From WSL, upload paths go to the Windows browser as Windows paths
+   * and download paths come back as WSL paths, so the agent uses one path domain throughout.
+   */
+  async page(op: "snapshot", args: WebSnapshotOptions, signal?: AbortSignal): Promise<WebPage>;
+  async page(op: "act", args: WebAction, signal?: AbortSignal): Promise<WebPage>;
+  async page(op: "snapshot" | "act", args: WebSnapshotOptions | WebAction, signal?: AbortSignal): Promise<WebPage> {
+    const wsl = process.platform === "linux";
+    const convert = async (from: string, flag: "-w" | "-u") => (await run("wslpath", [flag, from], { timeout: 5000 })).stdout.trim();
+    const action = args as WebAction;
+    const sent = wsl && action.files
+      ? { ...action, files: await Promise.all(action.files.map(file => file.startsWith("/") ? convert(file, "-w") : file)) } : args;
+    const page = await this.request<WebPage>(op, sent, signal, op === "act" ? 120_000 : undefined);
+    // The action already ran; an unconvertible path stays in Windows form rather than turning delivery into a refusal.
+    if (wsl) for (const download of page.downloads ?? []) if (download.path) download.path = await convert(download.path, "-u").catch(() => download.path);
+    return page;
   }
 
   private fail(error: Error): void {

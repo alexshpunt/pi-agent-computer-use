@@ -63,6 +63,8 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       lines.push(`Tab ${tab.id}${tab.active ? " (active)" : ""}: ${label(tab.title)} | ${label(tab.url)} | ${tab.load}${tab.opener ? ` | opened by ${tab.opener}` : ""}${tab.dialog ? ` | ${tab.dialog} dialog open` : ""}`);
     if (dom.dialog) lines.push(`Dialog: ${dom.dialog.type} ${JSON.stringify(dom.dialog.message)}${dom.dialog.default_value !== undefined ? ` (default ${JSON.stringify(dom.dialog.default_value)})` : ""}. ` +
       "The page waits for it: Insert {\"action\":\"dialog\",\"accept\":true} or false; an accepted prompt takes \"text\". Other page actions refuse until then.");
+    for (const item of dom.downloads ?? [])
+      lines.push(`Download ${item.id}: ${label(item.filename)} | ${item.state} | tab ${item.tab}${item.bytes !== undefined ? ` | ${item.bytes} bytes` : ""}${item.path ? ` | ${label(item.path)}` : ""}${item.error ? ` | ${label(item.error)}` : ""}`);
     for (const event of dom.events ?? []) lines.push(`Event: ${label(event)}`);
     if (d.dom.matches !== undefined) lines.push(`Matching snapshot lines: ${d.dom.matches}`);
     if (d.dom.truncated) lines.push("Snapshot truncated; narrow it with dom:{\"target\":...,\"depth\":...}.");

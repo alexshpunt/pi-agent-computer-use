@@ -1,12 +1,13 @@
 // Windows Node worker: one visible Playwright browser with a disposable profile. EOF closes it and deletes the profile.
 import readline from "node:readline";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium, type BrowserContext, type Dialog, type FrameLocator, type Locator, type Page } from "playwright-core";
-import type { WebAction, WebLaunchOptions, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
+import { chromium, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
+import type { WebAction, WebDownload, WebLaunchOptions, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
 
 interface Tab { id: string; page: Page; title: string; load: WebTab["load"]; opener?: string; dialog?: Dialog; onDialog: Set<() => void> }
+interface DownloadRecord { info: WebDownload; download: Download; done: Promise<void> }
 
 let context: BrowserContext | undefined;
 let profile: string | undefined;
@@ -17,6 +18,8 @@ const tabs: Tab[] = [];
 let active: Tab | undefined;
 /** Tab and dialog events since the last snapshot, oldest first. */
 let events: string[] = [];
+/** Downloads of this browser. Playwright keeps their files in its temporary directory and deletes them when the browser closes. */
+const downloads: DownloadRecord[] = [];
 
 function note(event: string): void {
   events.push(event);
@@ -38,12 +41,33 @@ function adopt(page: Page): Tab {
     note(`${tab.id}: ${dialog.type()} dialog opened: "${short(dialog.message())}"`);
     for (const wake of tab.onDialog) wake();
   });
+  page.on("download", download => track(tab, download));
   page.on("close", () => {
     tabs.splice(tabs.indexOf(tab), 1);
     if (active === tab) active = undefined;
     note(`${tab.id}: tab closed${active ? "" : "; no tab is active, switch_tab to choose one"}`);
   });
   return tab;
+}
+
+function track(tab: Tab, download: Download): void {
+  const info: WebDownload = { id: `d${downloads.length + 1}`, tab: tab.id, url: download.url(), filename: download.suggestedFilename(), state: "in_progress" };
+  note(`${info.id}: download of "${short(info.filename)}" started in ${tab.id}`);
+  const done = download.path().then(async file => {
+    info.state = "completed"; info.path = file; info.bytes = (await stat(file)).size;
+    note(`${info.id}: download completed (${info.bytes} bytes)`);
+  }, async () => {
+    const failure = await download.failure().catch(() => null);
+    info.state = failure === "canceled" ? "canceled" : "failed";
+    if (failure && failure !== "canceled") info.error = short(failure);
+    note(`${info.id}: download ${info.state}${info.error ? `: ${info.error}` : ""}`);
+  });
+  downloads.push({ info, download, done });
+}
+function downloadOf(id: string | undefined): DownloadRecord {
+  const record = id ? downloads.find(item => item.info.id === id) : downloads.at(-1);
+  if (!record) throw new Error(id ? `No download ${id}. Nothing was sent.` : "No download has started in this browser. Nothing was sent.");
+  return record;
 }
 
 function listTabs(): WebTab[] {
@@ -120,7 +144,8 @@ async function open({ browser, url }: WebLaunchOptions) {
 }
 
 async function snapshot({ target, boxes, depth }: WebSnapshotOptions) {
-  const base = () => ({ tabs: listTabs(), ...(active ? { active: active.id } : {}), events: events.splice(0) });
+  const base = () => ({ tabs: listTabs(), ...(active ? { active: active.id } : {}), events: events.splice(0),
+    ...(downloads.length ? { downloads: downloads.map(item => ({ ...item.info })) } : {}) });
   if (!active) return { url: "", title: "", snapshot: "", ...base() };
   const tab = active, page = tab.page;
   const options = { mode: "ai" as const, boxes, depth, timeout: 10_000 };
@@ -132,7 +157,7 @@ async function snapshot({ target, boxes, depth }: WebSnapshotOptions) {
 }
 
 async function act(action: WebAction) {
-  const timeout = action.timeout_ms ?? (["navigate", "back", "forward", "reload", "new_tab", "wait_load"].includes(action.action) ? 30_000 : 5_000);
+  const timeout = action.timeout_ms ?? (["navigate", "back", "forward", "reload", "new_tab", "wait_load", "wait_download", "upload"].includes(action.action) ? 30_000 : 5_000);
   switch (action.action) {
     case "new_tab": {
       creating = true;
@@ -152,6 +177,22 @@ async function act(action: WebAction) {
       const tab = action.tab ? byId(action.tab) : current();
       if (tabs.length === 1) throw new Error("This is the last tab; closing it would close the browser. Close the computer session instead. Nothing was sent.");
       await tab.page.close();
+      return snapshot({});
+    }
+    case "wait_download": {
+      const record = downloadOf(action.download);
+      let timer: NodeJS.Timeout | undefined;
+      const late = new Promise<"late">(resolve => { timer = setTimeout(() => resolve("late"), timeout); });
+      // Waiting has no side effect: an unfinished download is reported in the snapshot, not as an uncertain action.
+      if (await Promise.race([record.done, late]) === "late") note(`${record.info.id}: still ${record.info.state} after ${timeout} ms`);
+      clearTimeout(timer);
+      return snapshot({});
+    }
+    case "cancel_download": {
+      const record = downloadOf(action.download);
+      if (record.info.state !== "in_progress") throw new Error(`Download ${record.info.id} is already ${record.info.state}. Nothing was sent.`);
+      await record.download.cancel();
+      await record.done;
       return snapshot({});
     }
     case "dialog": {
@@ -188,6 +229,12 @@ async function act(action: WebAction) {
         return response;
       }
       case "reload": return page.reload({ waitUntil: "domcontentloaded", timeout });
+      case "upload": {
+        if (!action.chooser) return target!.setInputFiles(action.files!, { timeout });
+        // Intercepting the chooser keeps the native file dialog closed; the page receives the files as if picked there.
+        const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout }), target!.click({ timeout })]);
+        return chooser.setFiles(action.files!, { timeout });
+      }
     }
   };
   if (await untilDialog(tab, run()) === "dialog") note(`${tab.id}: ${action.action} is waiting for the dialog; it may finish after the dialog is handled`);
@@ -211,7 +258,7 @@ async function screenshot({ target, highlight }: { target?: WebTarget; highlight
 
 async function close() {
   const owned = context, directory = profile;
-  context = undefined; active = undefined; profile = undefined; tabs.length = 0;
+  context = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0;
   await owned?.close();
   if (directory) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   return {};
