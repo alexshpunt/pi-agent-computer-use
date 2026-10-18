@@ -7,6 +7,7 @@ import { connectAgentDocumentation } from "pi-agent-ide/api/documentation";
 import { readFile } from "node:fs/promises";
 import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError } from "./computer-resources.ts";
 import { computerSource } from "./computer-address.ts";
+import type { WebLogEntry } from "./web-browser.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
 import type { ComputerSession, ComputerResult, Content } from "./session.ts";
@@ -66,6 +67,15 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     for (const item of dom.downloads ?? [])
       lines.push(`Download ${item.id}: ${label(item.filename)} | ${item.state} | tab ${item.tab}${item.bytes !== undefined ? ` | ${item.bytes} bytes` : ""}${item.path ? ` | ${label(item.path)}` : ""}${item.error ? ` | ${label(item.error)}` : ""}`);
     for (const event of dom.events ?? []) lines.push(`Event: ${label(event)}`);
+    const entry = (item: WebLogEntry) => `#${item.seq} ${item.at.slice(11, 23)} ${item.tab} ${item.kind}${item.kind === "console" ? `.${item.level}` : ` ${item.level}`}: ${label(item.text)}${item.url ? ` | ${label(item.url)}` : ""}`;
+    if (dom.evaluation) lines.push(dom.evaluation.error !== undefined ? `Evaluation error: ${label(dom.evaluation.error)}`
+      : `Evaluation result${dom.evaluation.truncated ? " (truncated to 20000 characters)" : ""}: ${dom.evaluation.value}`);
+    for (const item of dom.log?.entries ?? []) lines.push(`Log ${entry(item)}`);
+    if (dom.log?.omitted) lines.push(`Log: ${dom.log.omitted} more new entries; Read dom:{"log":true} for the retained history.`);
+    if (dom.history) {
+      lines.push(`Log history: ${dom.history.entries.length} retained entries from #${dom.history.first_seq}${dom.history.dropped ? `; ${dom.history.dropped} older entries were dropped, so earlier history is incomplete` : ""}.`);
+      for (const item of dom.history.entries) lines.push(`History ${entry(item)}`);
+    }
     if (d.dom.matches !== undefined) lines.push(`Matching snapshot lines: ${d.dom.matches}`);
     if (d.dom.truncated) lines.push("Snapshot truncated; narrow it with dom:{\"target\":...,\"depth\":...}.");
     lines.push(...d.dom.snapshot.split("\n"));
@@ -174,7 +184,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           script: { kind: "native", source: address.source, blocks: canonical } } };
       } });
       api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id, window-state/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
-        views: "Computer: image/ui/full; dom alone or dom:{target,boxes,depth} on a window opened by open_browser returns a fresh Playwright aria snapshot with [ref=...] values; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
+        views: "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a window opened by open_browser returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
     } }),
     connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],

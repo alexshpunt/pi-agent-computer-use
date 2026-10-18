@@ -890,7 +890,7 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
-        return this.result("delivered", `Playwright performed ${action.action}${action.target ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
+        return this.result("delivered", `Playwright performed ${action.action}${action.target && action.action !== "evaluate" ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
       } catch (error) { return this.webFailure(entry, error, true); }
     });
