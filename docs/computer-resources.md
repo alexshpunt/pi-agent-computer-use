@@ -18,7 +18,7 @@ Read views:
 | --- | --- |
 | `full` (default), `image`, `ui` | Fresh full window, pixels without a UI walk, or current UI without pixels. |
 | `state` | Fresh native metadata without pixels or a UI walk. Use alone on a window. The selected runtime issues restore-only or management state; management also reports bounds, maximized state and independent virtual-desktop queries. |
-| `dom`, `dom:{"target":{"role":"button","name":"Save"},"depth":4}` | Fresh Playwright aria snapshot of a browser opened with `open_browser`. Use alone; see [Browser pages](#browser-pages). |
+| `dom`, `dom:{"target":{"role":"button","name":"Save"},"depth":4}` | Fresh Playwright aria snapshot of a browser opened with `open_browser`. Use alone; add `"log":true` for the retained console and network log. See [Browser pages](#browser-pages). |
 | `backend:default`, `backend:wgc` | Explicit window image route. WGC requires a qualified runtime, with no fallback. |
 | `capture:{"max_elements":500,"max_depth":20,"hints":true}` | Fresh bounded walk/hints. Optional `guides` takes grid/region/action booleans. `maxLongEdge` (64..4096) and `scale` (0.05..1) set this window Read’s native image cap without changing session defaults. |
 | `region:100,80,120,60` | Fresh readonly detail in local pixels of the addressed observation image. Consumes its overview. |
@@ -63,8 +63,9 @@ Insert one JSON action into the latest DOM observation:
 | `upload` | `target`, `files` (1..32 absolute WSL or Windows paths); `chooser: true` clicks the target and fills the file chooser it opens |
 | `wait_download` | optional `download` id; defaults to the latest |
 | `cancel_download` | optional `download` id; defaults to the latest |
+| `evaluate` | `expression` (JavaScript); optional `target` passed to a function expression |
 
-Every action accepts `timeout_ms` (1..60000; default 5000, 30000 for navigation, `wait_load`, `new_tab`, `upload` and `wait_download`). Playwright waits for the element to be visible, stable, enabled and to receive events, then sends normal browser input. For example:
+Every action accepts `timeout_ms` (1..60000; default 5000, 30000 for navigation, `wait_load`, `new_tab`, `upload`, `wait_download` and `evaluate`). Playwright waits for the element to be visible, stable, enabled and to receive events, then sends normal browser input. For example:
 
 ```json
 {"action":"fill","target":{"label":"Name"},"text":"Ada"}
@@ -85,6 +86,12 @@ A JavaScript `alert`, `confirm` or `prompt` dialog stays open until you answer i
 Insert `upload` with a file input as `target`, or with `"chooser":true` and the button that opens the page's file chooser; the chooser is intercepted, so no native file dialog appears. Files must exist; a missing path refuses. The page may process the files asynchronously, so its response can appear in a later snapshot.
 
 A download started by a page action appears as `Download d1: name | state | tab | bytes | path`, with state `in_progress`, `completed`, `canceled` or `failed`. The path is a WSL path into the browser's temporary directory; copy the file elsewhere if you need it, because closing the session deletes it. `wait_download` waits up to `timeout_ms` (default 30000); an unfinished download stays `in_progress` with an event, not an error. `cancel_download` stops an in-progress download and refuses for a finished one.
+
+### Page code and diagnostics
+
+Insert `{"action":"evaluate","expression":"document.title"}` to run JavaScript in the active tab. If the expression yields a function, it is called with the `target` element, or with nothing: `{"action":"evaluate","target":{"role":"status"},"expression":"el => el.textContent"}`. Promises are awaited. The result returns as `Evaluation result:` JSON, cut at 20000 characters. An exception thrown by the code is the action's result, shown as `Evaluation error:`. A target that does not resolve refuses before any code runs. Reaching the time limit is `unknown`: the code may still be running.
+
+Every snapshot shows `Log` lines for console errors, warnings and assertions, uncaught page errors (`page_error`), failed requests (`request_failed`) and HTTP responses of 400 or more (`http_error`) since the previous snapshot. Each line has a sequence number, time, tab and URL. Read `dom:{"log":true}` for the browser's whole retained log, including console log/info/debug; it keeps the latest 200 entries and reports how many older ones were dropped. Use these lines to tell an application failure from an action failure: a refused or `unknown` action is reported on the action itself, not in the log.
 
 ## Restore a minimized window
 
