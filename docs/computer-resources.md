@@ -54,8 +54,14 @@ Insert one JSON action into the latest DOM observation:
 | `scroll` | `delta_x` and/or `delta_y` in CSS pixels; optional `target` to scroll under |
 | `wait` | `target`; optional `state` (`visible`, `hidden`, `attached`, `detached`) |
 | `navigate` | `url` (HTTP(S)) |
+| `back`, `forward`, `reload` | none |
+| `wait_load` | optional `state`: `load` (default), `domcontentloaded` or `networkidle` |
+| `new_tab` | optional `url`; the new tab becomes active |
+| `switch_tab` | `tab`, an id such as `t2` from the tab list |
+| `close_tab` | optional `tab`; defaults to the active tab. The last tab refuses: close the computer session instead |
+| `dialog` | `accept` (`true` or `false`); optional `text` answers an accepted prompt |
 
-Every action accepts `timeout_ms` (1..60000; default 5000, 30000 for navigation). Playwright waits for the element to be visible, stable, enabled and to receive events, then sends normal browser input. For example:
+Every action accepts `timeout_ms` (1..60000; default 5000, 30000 for navigation, `wait_load` and `new_tab`). Playwright waits for the element to be visible, stable, enabled and to receive events, then sends normal browser input. For example:
 
 ```json
 {"action":"fill","target":{"label":"Name"},"text":"Ada"}
@@ -64,6 +70,12 @@ Every action accepts `timeout_ms` (1..60000; default 5000, 30000 for navigation)
 A delivered action returns the page's next snapshot as a new observation; check it for the application's response. A Playwright refusal, such as a strict-mode violation, sent nothing. A timeout or lost connection is `unknown`: the action may have reached the page, so read a fresh snapshot and never replay it blindly. Write, native input fields and address options do not apply to DOM observations.
 
 On a DOM observation, Read `image` for a screenshot of the page viewport, `element:crop,<ref>` for one element, or `element:highlight,<ref>` for the viewport with that element overlaid. These are page pixels: they ground no native input. Search the observation to filter its snapshot lines. A fresh window Read of any kind replaces the window's previous observations.
+
+### Tabs and dialogs
+
+Every snapshot lists the browser's tabs (`Tab t1 (active): title | url | load state`, with `opened by` for popups) and `Event:` lines for tabs opened or closed and dialogs since the previous snapshot. Page actions, snapshots and screenshots use only the active tab. A popup or page-opened tab never becomes active by itself: Insert `switch_tab` to work in it. If the active tab closes, no tab is active until `switch_tab`. Tab ids stay valid for the browser's lifetime. Frames are reached through refs or `frames` locators in the active tab.
+
+A JavaScript `alert`, `confirm` or `prompt` dialog stays open until you answer it. The snapshot shows a `Dialog:` line with its type, message and prompt default, and the tab list marks the tab. An action that opens a dialog returns as soon as the dialog appears; it may finish after you answer. Other page actions in that tab refuse without sending anything until you Insert `{"action":"dialog","accept":true}` or `false`.
 
 ## Restore a minimized window
 
