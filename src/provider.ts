@@ -57,7 +57,13 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       const message = computerResultText(result).split("\n{", 1)[0];
       if (message) lines.push(message);
     }
-    lines.push(`Page: ${label(d.dom.title)} | ${label(d.dom.url)}`);
+    const dom = d.dom;
+    lines.push(dom.active ? `Page: ${label(dom.title)} | ${label(dom.url)} | tab ${dom.active}` : "Page: none; no tab is active. Insert {\"action\":\"switch_tab\",\"tab\":\"<id>\"}.");
+    for (const tab of dom.tabs ?? [])
+      lines.push(`Tab ${tab.id}${tab.active ? " (active)" : ""}: ${label(tab.title)} | ${label(tab.url)} | ${tab.load}${tab.opener ? ` | opened by ${tab.opener}` : ""}${tab.dialog ? ` | ${tab.dialog} dialog open` : ""}`);
+    if (dom.dialog) lines.push(`Dialog: ${dom.dialog.type} ${JSON.stringify(dom.dialog.message)}${dom.dialog.default_value !== undefined ? ` (default ${JSON.stringify(dom.dialog.default_value)})` : ""}. ` +
+      "The page waits for it: Insert {\"action\":\"dialog\",\"accept\":true} or false; an accepted prompt takes \"text\". Other page actions refuse until then.");
+    for (const event of dom.events ?? []) lines.push(`Event: ${label(event)}`);
     if (d.dom.matches !== undefined) lines.push(`Matching snapshot lines: ${d.dom.matches}`);
     if (d.dom.truncated) lines.push("Snapshot truncated; narrow it with dom:{\"target\":...,\"depth\":...}.");
     lines.push(...d.dom.snapshot.split("\n"));
@@ -218,7 +224,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           }
         },
       });
-      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation, use only explicit Insert {\"action\":\"dom\",\"source_hint\":\"current hint\",\"input_route\":\"dom_event\",\"request\":{\"action\":\"fill\",\"locator\":{\"test_id\":\"name\"},\"text\":\"value\"}}. The hint supplies document context; the locator selects the target. The dom_event route is programmatic, not trusted input; trusted currently refuses without fallback. DOM hints grant no ordinary Write, coordinate or UIA authority. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
+      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation of a browser opened with Insert {\"action\":\"open_browser\"}, Insert one Playwright action such as {\"action\":\"fill\",\"target\":{\"label\":\"Name\"},\"text\":\"value\"}; actions target the active tab, and tab/navigation/dialog actions are listed in docs:computer. Use no Write or native input on a DOM observation. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
     } }),
   ]);
 }

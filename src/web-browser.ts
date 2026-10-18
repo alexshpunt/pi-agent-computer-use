@@ -14,21 +14,37 @@ export interface WebTarget {
 }
 /** Options for a fresh Playwright aria snapshot in "ai" mode. */
 export interface WebSnapshotOptions { target?: WebTarget; boxes?: boolean; depth?: number }
-/** One Playwright action. Delivery is not proof of the application's response. */
+/** One Playwright action. Page actions target the active tab; delivery is not proof of the application's response. */
 export interface WebAction {
-  action: "click" | "hover" | "fill" | "type" | "press" | "check" | "uncheck" | "select" | "focus" | "scroll" | "wait" | "navigate";
+  action: "click" | "hover" | "fill" | "type" | "press" | "check" | "uncheck" | "select" | "focus" | "scroll" | "wait" | "wait_load"
+    | "navigate" | "back" | "forward" | "reload" | "new_tab" | "switch_tab" | "close_tab" | "dialog";
   target?: WebTarget;
   button?: "left" | "right" | "middle"; click_count?: number;
   text?: string; key?: string; values?: string[];
   delta_x?: number; delta_y?: number;
-  state?: "visible" | "hidden" | "attached" | "detached";
+  /** Element state for wait; load state for wait_load. */
+  state?: "visible" | "hidden" | "attached" | "detached" | "load" | "domcontentloaded" | "networkidle";
   url?: string; timeout_ms?: number;
+  /** Tab id such as t2 for switch_tab and close_tab. */
+  tab?: string;
+  /** Accept or dismiss the active tab's open dialog; text answers a prompt. */
+  accept?: boolean;
 }
 /** Installed browser channel launched by Playwright. */
 export type WebChannel = "chrome" | "msedge";
 export interface WebLaunchOptions { browser?: WebChannel; url?: string }
-/** Page state returned with every snapshot or action. */
-export interface WebPage { url: string; title: string; snapshot: string }
+/** One open tab or popup of the owned browser. Ids are stable for the browser's lifetime. */
+export interface WebTab {
+  id: string; url: string; title: string; active: boolean;
+  load: "loading" | "interactive" | "complete";
+  opener?: string;
+  /** Type of a JavaScript dialog waiting in this tab. */
+  dialog?: string;
+}
+/** A JavaScript dialog held open in the active tab until the agent accepts or dismisses it. */
+export interface WebDialog { type: string; message: string; default_value?: string }
+/** Page state returned with every snapshot or action. `events` lists tab and dialog events since the previous snapshot. */
+export interface WebPage { url: string; title: string; snapshot: string; tabs: WebTab[]; active?: string; dialog?: WebDialog; events: string[] }
 export interface WebOpened { pid: number; version: string; url: string; title: string }
 /** Starts one owned browser; the session binds its native window. */
 export type WebLauncher = (options: WebLaunchOptions, signal?: AbortSignal) => Promise<{ browser: WebBrowser; opened: WebOpened }>;
@@ -109,7 +125,19 @@ const ACTIONS: Record<WebAction["action"], { fields: readonly string[]; target: 
   focus: { fields: [], target: "required" },
   scroll: { fields: ["delta_x", "delta_y"], target: "optional" },
   wait: { fields: ["state"], target: "required" },
+  wait_load: { fields: ["state"], target: "none" },
   navigate: { fields: ["url"], target: "none" },
+  back: { fields: [], target: "none" },
+  forward: { fields: [], target: "none" },
+  reload: { fields: [], target: "none" },
+  new_tab: { fields: ["url"], target: "none" },
+  switch_tab: { fields: ["tab"], target: "none" },
+  close_tab: { fields: ["tab"], target: "none" },
+  dialog: { fields: ["accept", "text"], target: "none" },
+};
+const tabId = (value: unknown): string => {
+  if (typeof value !== "string" || !/^t\d{1,6}$/.test(value)) throw Error("tab must be a tab id such as t2 from the tab list.");
+  return value;
 };
 /** Validate one Insert command on a DOM observation before anything reaches the browser. */
 export function validateWebAction(value: unknown): WebAction {
@@ -150,7 +178,22 @@ export function validateWebAction(value: unknown): WebAction {
     if (!["visible", "hidden", "attached", "detached"].includes(state as string)) throw Error("state must be visible, hidden, attached or detached.");
     action.state = state as WebAction["state"];
   }
-  if (name === "navigate") action.url = httpUrl(command.url);
+  if (name === "wait_load") {
+    const state = command.state ?? "load";
+    if (!["load", "domcontentloaded", "networkidle"].includes(state as string)) throw Error("wait_load state must be load, domcontentloaded or networkidle.");
+    action.state = state as WebAction["state"];
+  }
+  if (name === "navigate" || name === "new_tab" && command.url !== undefined) action.url = httpUrl(command.url);
+  if (name === "switch_tab") action.tab = tabId(command.tab);
+  if (name === "close_tab" && command.tab !== undefined) action.tab = tabId(command.tab);
+  if (name === "dialog") {
+    if (typeof command.accept !== "boolean") throw Error("dialog needs accept: true or false.");
+    action.accept = command.accept;
+    if (command.text !== undefined) {
+      if (!command.accept || typeof command.text !== "string" || command.text.length > 20_000) throw Error("dialog text answers an accepted prompt and must be a string of at most 20000 characters.");
+      action.text = command.text;
+    }
+  }
   return action;
 }
 

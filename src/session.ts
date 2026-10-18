@@ -72,8 +72,8 @@ export type Action = {
   /** Explicit opt-in to the trusted local reactive cursor-animation timing. */
   animation?: "reactive";
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
-/** Playwright aria snapshot ("ai" mode) of the page shown in an owned browser window. Refs belong to the latest snapshot. */
-export interface WebDom { url: string; title: string; snapshot: string; truncated: boolean; matches?: number }
+/** A stored Playwright snapshot of the active tab, with the tab list, any held dialog and events since the previous snapshot. */
+export interface WebDom extends WebPage { truncated: boolean; matches?: number }
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
 export interface ComputerResult {
   content: Content[];
@@ -125,8 +125,11 @@ export class ComputerSession {
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
-  /** Playwright browsers opened by this session, keyed by browser process id; rediscovered windows rebind by pid. */
-  private readonly browsers = new Map<number, WebBrowser>();
+  /**
+   * Playwright browsers opened by this session, keyed by `pid:window_id` of the window bound at launch.
+   * Popup windows of the same process are ordinary native windows; their pages are reached as tabs of this browser.
+   */
+  private readonly browsers = new Map<string, WebBrowser>();
 
   private get platform(): NativePlatform { return this.driver.platform ?? "windows"; }
 
@@ -256,7 +259,7 @@ export class ComputerSession {
       if (entry.target.pid === target.pid && entry.target.window_id === target.window_id && entry.identity === identity) return entry;
     }
     const entry: WindowEntry = { ref: "w-" + randomUUID(), target: { pid: target.pid, window_id: target.window_id }, identity, owned: false,
-      web: this.browsers.get(target.pid) };
+      web: this.browsers.get(`${target.pid}:${target.window_id}`) };
     this.entries.set(entry.ref, entry);
     return entry;
   }
@@ -325,7 +328,6 @@ export class ComputerSession {
       try {
         launched = await this.launchWeb(options, signal);
         const { pid } = launched.opened;
-        this.browsers.set(pid, launched.browser);
         // Chromium creates its native window asynchronously after Playwright sees the first page.
         let windows: Record<string, unknown>[] = [];
         for (let attempt = 0; attempt < 20 && !windows.length; attempt++) {
@@ -333,7 +335,9 @@ export class ComputerSession {
           windows = ((await this.state("list_windows", { pid }, signal)).windows as Record<string, unknown>[] ?? []).filter(window => window.pid === pid);
         }
         if (windows.length !== 1) throw Error(`Expected one native window for browser process ${pid}, found ${windows.length}.`);
-        const entry = await this.register(windows[0] as unknown as WindowTarget, signal);
+        const target = windows[0] as unknown as WindowTarget;
+        this.browsers.set(`${target.pid}:${target.window_id}`, launched.browser);
+        const entry = await this.register(target, signal);
         if (!entry) throw Error("The browser window lifetime could not be established.");
         entry.owned = true;
         return this.result("observed", "Opened a new visible browser with a disposable profile. Read its window with dom for page structure, or with image/ui/full for native pixels and Windows UI.",
@@ -341,7 +345,7 @@ export class ComputerSession {
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         if (!launched) return this.result("refused", `Browser launch failed: ${reason}`, { operation: "open_browser" });
-        this.browsers.delete(launched.opened.pid);
+        for (const [key, browser] of this.browsers) if (browser === launched.browser) this.browsers.delete(key);
         const cleanup = await launched.browser.close().then(() => "confirmed", () => "unconfirmed");
         return this.result(cleanup === "confirmed" ? "refused" : "unknown", `The browser started but its window could not be bound, so it was closed (cleanup ${cleanup}). ${reason}`,
           { operation: "open_browser", cleanup });
@@ -813,7 +817,7 @@ export class ComputerSession {
   /** Store a page snapshot as the window's only current DOM observation. */
   private webObservation(entry: WindowEntry, page: WebPage): { id: string; page: WebDom } {
     const truncated = page.snapshot.length > WEB_SNAPSHOT_LIMIT;
-    entry.dom = { id: randomUUID(), page: { url: page.url, title: page.title, truncated,
+    entry.dom = { id: randomUUID(), page: { ...page, truncated,
       snapshot: truncated ? page.snapshot.slice(0, WEB_SNAPSHOT_LIMIT) + "\n# Snapshot truncated; narrow it with dom:{\"target\":...,\"depth\":...}." : page.snapshot } };
     return entry.dom;
   }
@@ -886,7 +890,7 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.request<WebPage>("act", action, signal, 120_000));
-        return this.result("delivered", `Playwright performed ${action.action} after its actionability checks. Check the fresh snapshot below for the application's response.`,
+        return this.result("delivered", `Playwright performed ${action.action}${action.target ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
       } catch (error) { return this.webFailure(entry, error, true); }
     });
