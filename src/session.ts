@@ -829,7 +829,7 @@ export class ComputerSession {
       if (!("ref" in entry)) return entry;
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
-        const observed = this.webObservation(entry, await entry.web!.request<WebPage>("snapshot", options, signal));
+        const observed = this.webObservation(entry, await entry.web!.page("snapshot", options, signal));
         return this.result("observed", "Fresh Playwright aria snapshot. Use [ref=...] values as target.ref while this stays the latest snapshot of the window.",
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
       } catch (error) { return this.webFailure(entry, error); }
@@ -889,7 +889,7 @@ export class ComputerSession {
       if (entry.dom?.id !== id) return this.result("refused", "This DOM observation is no longer current. Read the window with dom again; nothing was sent.", undefined, this.addressed(entry));
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
-        const observed = this.webObservation(entry, await entry.web!.request<WebPage>("act", action, signal, 120_000));
+        const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
         return this.result("delivered", `Playwright performed ${action.action}${action.target ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
       } catch (error) { return this.webFailure(entry, error, true); }
