@@ -64,8 +64,6 @@ Vision debug mirrors the exact final PNG/JPEG and source/region/settings metadat
 npm test
 npm run typecheck
 npm run test:integration
-# Explicit permission to read all visible primary-display contents is required:
-node --experimental-transform-types scripts/verify-native-detail.mjs --allow-primary-display
 ```
 
-The opt-in check uses newly owned Calculator/browser fixtures, closes them and releases their runtimes. Private display artifacts remain in ignored `.tmp/native-zoom/`; only redacted metadata may be published.
+Check native detail live in a Pi session on newly opened disposable windows, such as Notepad or Calculator, and close them afterwards. Display detail needs explicit permission to read all visible primary-display contents. Keep private display artifacts in the ignored `.tmp/` directory; publish only redacted metadata.

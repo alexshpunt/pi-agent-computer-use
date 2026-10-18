@@ -5,47 +5,32 @@ description: Set up and clean up local Pi Agent Computer Use loading when develo
 
 # Develop computer use in a worktree
 
-Load exactly one copy. The global package is the default; a task session must temporarily load its own checkout instead. A second copy causes tool conflicts.
+Load exactly one copy. Normal sessions load the global checkout from personal settings. A task session swaps that one package path to its worktree for the check, then swaps it back. A second copy causes tool conflicts.
+
+Do not use a project `.pi/settings.json` override with `extensions: []` plus a project loader. Pi loads personal packages before it decides whether to trust the project, so the global copy still loads and the extension loads twice.
 
 ## Set up the task session
 
-1. Use Teleport to create and enter the task's branch/worktree. Read the installed Pi package and settings docs. Inspect personal and project settings to find the global computer-use package source. Resolve relative sources from their settings directory, not the working directory. Do not change personal settings.
-2. Record the contents and Git status of files you will touch. Keep backups in the ignored `.tmp/` directory and preserve unrelated settings and other agents' changes.
-3. In this worktree's `.pi/settings.json`, override the same global package source with `extensions: []`. Use a normal package entry, not `autoload: false`. Preserve its other resource filters and unrelated entries. For the current local-path install, the entry looks like this (find the actual source; do not copy a machine path blindly):
-
-   ```json
-   {
-     "packages": [
-       { "source": "/absolute/path/to/global/pi-agent-computer-use", "extensions": [] }
-     ]
-   }
-   ```
-
-4. Create or temporarily enable one `.pi/extensions/computer-use.ts` loader:
-
-   ```ts
-   export { default } from "../../src/index.ts";
-   ```
-
-   Disable any other computer-use loader or package entry that loads this checkout. Do not add `-e` on top of normal loading.
-5. Check dependencies in this worktree. A fresh Git worktree has no `node_modules`; loading the global checkout does not provide its dependencies. Run `npm ls --depth=0` and confirm `sharp` can be imported from the worktree. If dependencies are missing, run `npm ci --ignore-scripts` using the committed lockfile, then repeat the import check. Do not change dependency versions, global installs, native runtime selection, or machine settings for this setup.
-For this provider checkout, install with `npm ci --ignore-scripts --legacy-peer-deps`, then link its public SDK with `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This does not change IDE's checkout, settings or dependencies. Use the actual consumer in provider integration tests; do not require an unrelated fetch/cleanliness gate for standalone backend tests.
-6. Treat the settings and loader as temporary session setup. They are ignored by Git. Do not stage, commit, or push them; use explicit staging paths.
+1. Use Teleport to create and enter the task's branch/worktree. In `~/.pi/agent/settings.json`, find the `packages` entry for the global computer-use checkout (currently `/root/dev/pi/pi-agent-computer-use`). Resolve relative sources from the settings directory.
+2. Back up `~/.pi/agent/settings.json` in the worktree's ignored `.tmp/` directory and record its SHA-256. Other agents may change the file while you work, so restore only your own line later, never the whole backup.
+3. Replace only that package path with the absolute worktree path. Keep every other entry unchanged. Remove any leftover project loader (`.pi/extensions/computer-use.ts`) or project package override from older setups.
+4. Put the runtime selection the check needs in the worktree's ignored `.pi/computer-use.json` (`command`, `runtime`, `interop`). The global checkout's own `.pi/computer-use.json` may name a profile the worktree code no longer has, so do not start Pi from the global checkout while the path is swapped.
+5. Check dependencies in this worktree. A fresh Git worktree has no `node_modules`; the global checkout does not provide them. Install with `npm ci --ignore-scripts --legacy-peer-deps`, link the public IDE SDK with `npm run dev:ide -- /absolute/path/to/pi-agent-ide`, then confirm `npm ls --depth=0` is clean. Do not change dependency versions, global installs or machine settings for this setup.
 
 ## Verify before reloading
 
-7. Launch a separate Pi process from the worktree with its normal configuration, an in-memory session, and no model prompt. Do not use `--no-extensions` or an explicit entrypoint, which bypass the setup being checked. This startup-only probe requests command metadata and exits on EOF:
+6. Launch a separate Pi process from the worktree with its normal configuration, an in-memory session and no model prompt. Do not use `--no-extensions` or an explicit entrypoint, which bypass the setup being checked:
 
    ```sh
    printf '%s\n' '{"id":"startup","type":"get_commands"}' | \
      pi --mode rpc --no-session --approve --no-mcp --offline
    ```
 
-   Require exit code zero and no extension load errors. Inspect the `computer-mode` and `computer-debug` command origins: both must name this worktree's loader, not the global checkout. Missing or duplicate commands are a failure. This checks loading, not native Windows behavior.
-8. Only after startup passes, reload with `pi_extension_dev_reload_self` and explicit acceptance of state loss. Include the worktree and exact live verification steps in the continuation. Follow the `pi-feature-verification` skill: exercise the changed behavior, inspect agent-facing results, and capture the real viewport with `inspect_tui` when the result is visible. Do not rely on old runtime state or window references after reload.
+   Require exit code zero and no extension load errors. The `computer-mode` and `computer-debug` commands must each appear once and name the worktree's `src/index.ts`. Missing or duplicate commands are a failure. This checks loading, not native Windows behavior.
+7. Only after startup passes, reload with `pi_extension_dev_reload_self` and explicit acceptance of state loss. Put the worktree, the swapped settings line and the exact live verification steps in the continuation. Follow the `pi-feature-verification` skill: exercise the changed behavior, inspect agent-facing results, and capture the real viewport with `inspect_tui` when the result is visible. Do not rely on old runtime state or window references after reload.
 
 ## Restore global loading
 
-9. Before review, commit, push, or ending a paused/canceled task, remove your temporary loader and package override, or restore the previous contents. Restore only your own edits. Check both the diff and index for accidental setup changes; ignored files still affect Pi and must also be checked.
-10. Repeat the startup probe with restored settings. Require the commands to come from the global package and no extension errors. Reload Pi to return the task session to global loading before Git work or worktree removal. If the user requests more changes, repeat setup and cleanup.
-11. Remove disposable backups after useful evidence is recorded. Report any cleanup or startup blocker rather than leaving a broken local loader behind.
+8. Before review, commit, push, or ending a paused/canceled task, put the global checkout path back in that one settings line. Compare the file with the backup: only changes made by others since the backup may remain.
+9. Repeat the startup probe. The commands must come from the global checkout's `src/index.ts`, once each, with no extension errors. Reload Pi before Git work or worktree removal so the session itself returns to global loading. If the user requests more changes, repeat setup and cleanup.
+10. Delete the settings backup after restoration is confirmed. Report any cleanup or startup blocker rather than leaving the personal settings pointing at a worktree.

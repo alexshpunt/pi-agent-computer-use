@@ -2,7 +2,7 @@
 
 ## Status
 
-Native semantics and native window pixels can disagree. The exact cause and a no-focus fix are not established. After the controls below, the user explicitly approved automatic CUA foreground on the exact owned browser before every overview and zoom, accepting keyboard-focus switching. This compromise is implemented and verified in [the delivery report](../cua-browser-results.md); it is not a paint-readiness guarantee. Earlier sections retain the permissions and outcomes of each diagnostic run. No patched Driver was built, installed or tested. The official 0.33.1 runtime is unchanged.
+Native semantics and native window pixels can disagree. The exact cause and a no-focus fix are not established. After the controls below, the user explicitly approved automatic CUA foreground on the exact owned browser before every overview and zoom, accepting keyboard-focus switching. This compromise was implemented and verified for the CUA browser adapter, which LPT-767 replaced with Playwright; it is not a paint-readiness guarantee. Earlier sections retain the permissions and outcomes of each diagnostic run. No patched Driver was built, installed or tested. The official 0.33.1 runtime is unchanged.
 
 ## What we observed
 
@@ -20,7 +20,7 @@ The new repeat requested by the user behaved differently: both native window sta
 | Window/page comparison, 20 records | Old window frames; CUA page capture correct; following window capture current |
 | Fresh repeat, 20 records | Correct window frames at both stages before page capture |
 
-The failing window records, page/window comparison, successful repeat and selected actual PNGs are preserved separately in [the evidence directory](../evidence/cua-browser/): paint-window.json, paint-page-comparison.json and paint-repeat-correct.json. The repeat did not overwrite the failing run. Browser PID66036, owned Driver and profile entries were all absent after cleanup. No foreground change, existing document, personal profile or display capture was used.
+The failing window records, page/window comparison, successful repeat and selected actual PNGs were kept in `docs/evidence/cua-browser/` until LPT-767 removed the CUA browser adapter; they remain in Git history. The repeat did not overwrite the failing run. Browser PID66036, owned Driver and profile entries were all absent after cleanup. No foreground change, existing document, personal profile or display capture was used.
 
 ## Same-window control with the human
 
@@ -57,18 +57,7 @@ Actual records, human permission/answers, cleanup and selected images are saved 
 
 ## Reproduce
 
-Run from this repository using the qualified Windows runtime:
-
-```sh
-node --experimental-transform-types scripts/probe-cua-paint.mjs
-node --experimental-transform-types scripts/probe-cua-paint.mjs --compare-native-page
-# Interactive controls; each requires its own explicit user permission:
-node --experimental-transform-types scripts/probe-cua-paint.mjs --manual-background
-node --experimental-transform-types scripts/probe-cua-paint.mjs --raise-noactivate
-node --experimental-transform-types scripts/probe-cua-paint.mjs --driver-front
-```
-
-Each run uses a new owned browser, a local fixture and a timestamped ignored output directory. It records actual image bytes, SHA-256 hashes, semantic states, native calls and fixture callback times. It closes the owned browser and server. Read the PNGs: the completion message only means the script completed, not that pixels matched semantics or that the defect reproduced.
+The `scripts/probe-cua-paint.mjs` probe drove the CUA owned browser and was removed with it in LPT-767. Browser pages now use Playwright screenshots; native window paint lag can still be observed with ordinary window Reads.
 
 ## Similar public reports
 

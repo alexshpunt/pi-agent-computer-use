@@ -1,6 +1,6 @@
 # Vision debug viewer
 
-[LPT-373](https://linear.app/alexshpunt/issue/LPT-373) added the local observation viewer for the current Pi session. [The native CUA route](browser.md) now supplies exact PNG/JPEG captures and cap/scale controls. The old Sharp kernel trial and saved-original route are retired. It uses existing extension hooks, not a provider override, a second JavaScript executor or a new model-facing tool.
+[LPT-373](https://linear.app/alexshpunt/issue/LPT-373) added the local observation viewer for the current Pi session. [The native CUA route](computer-resources.md) now supplies exact PNG/JPEG captures and cap/scale controls. The old Sharp kernel trial and saved-original route are retired. It uses existing extension hooks, not a provider override, a second JavaScript executor or a new model-facing tool.
 
 ## Open and stop
 

@@ -1,6 +1,6 @@
 # Agent image size
 
-Historical pre-CUA route. Its code, runners and dependencies were retired by LPT-396; revision-linked results remain evidence, not current API guarantees. Use [the native CUA browser contract](browser.md) for current actions, scaling and fresh zoom.
+Historical pre-CUA route. Its code, runners and dependencies were retired by LPT-396; revision-linked results remain evidence, not current API guarantees. Use [the resource guide](computer-resources.md) for current actions, scaling and fresh zoom.
 
 [LPT-375](https://linear.app/alexshpunt/issue/LPT-375) adds physical PNG downsampling to the owned-browser tool path. It does not resize general desktop images or change cache, provider detail, model context or Safe/YOLO.
 
