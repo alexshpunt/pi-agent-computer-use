@@ -23,6 +23,11 @@ export interface DomElement {
   bounds_css: { x: number; y: number; width: number; height: number } | null;
   coordinate_space: "document_css_pixels";
 }
+/** Browser-generated shadow trees excluded from the attested authored-DOM collection scope. */
+export interface DomExclusions {
+  user_agent_shadow_roots: number;
+  user_agent_shadow_hosts: Record<"input" | "select" | "option" | "textarea" | "button" | "other", number>;
+}
 export interface DomSnapshot {
   id: string;
   complete: boolean;
@@ -32,6 +37,9 @@ export interface DomSnapshot {
   truncated: boolean;
   omitted: Record<string, number>;
   scope: "document" | "subtree";
+  /** Absent on older candidates; absence never proves the authored-DOM scope. */
+  collection_scope?: "author_dom_with_open_shadow";
+  excluded?: DomExclusions;
   page: { url: string; title: string };
   elements: DomElement[];
 }
@@ -107,6 +115,18 @@ export function validateDomSnapshot(value: unknown, binding: { target_id: string
   check(!snapshot.collection_complete || ["nodes", "depth", "frames", "metadata", "text"].every(key => omitted[key] === 0), "Incomplete collection cannot prove absence.");
   check(!snapshot.complete || snapshot.collection_complete && !snapshot.truncated, "Incomplete traversal cannot prove absence.");
   check(snapshot.scope === "document" || snapshot.scope === "subtree", "Unknown DOM scope.");
+  let collectionCoverage: Pick<DomSnapshot, "collection_scope" | "excluded"> = {};
+  if (Object.hasOwn(snapshot, "collection_scope") || Object.hasOwn(snapshot, "excluded")) {
+    check(snapshot.collection_scope === "author_dom_with_open_shadow", "Unknown DOM collection scope.");
+    const excluded = object(snapshot.excluded), hosts = object(excluded.user_agent_shadow_hosts);
+    const hostKeys = ["input", "select", "option", "textarea", "button", "other"];
+    check(Object.keys(excluded).length === 2 && Object.hasOwn(excluded, "user_agent_shadow_roots") &&
+      Object.hasOwn(excluded, "user_agent_shadow_hosts") && integer(excluded.user_agent_shadow_roots, 0, 2000) &&
+      Object.keys(hosts).length === hostKeys.length && hostKeys.every(key => integer(hosts[key], 0, 2000)) &&
+      hostKeys.reduce((total, key) => total + (hosts[key] as number), 0) === excluded.user_agent_shadow_roots,
+      "DOM browser-internal exclusions are malformed.");
+    collectionCoverage = { collection_scope: "author_dom_with_open_shadow", excluded: excluded as unknown as DomExclusions };
+  }
   check(Array.isArray(raw.elements) && raw.elements.length === snapshot.returned_count, "DOM returned counts disagree.");
   const refs = new Set<string>(), frames = new Map<string, string>();
   for (const value of raw.elements) {
@@ -141,5 +161,5 @@ export function validateDomSnapshot(value: unknown, binding: { target_id: string
       bounds_css: row.bounds_css === null ? null : pick(object(row.bounds_css), ["x", "y", "width", "height"]) };
   });
   return structuredClone({ ...pick(snapshot, ["id", "complete", "collection_complete", "matched_count", "returned_count", "truncated", "omitted", "scope"]),
-    page: pick(page, ["url", "title"]), elements }) as unknown as DomSnapshot;
+    ...collectionCoverage, page: pick(page, ["url", "title"]), elements }) as unknown as DomSnapshot;
 }

@@ -8,6 +8,8 @@ import { readFile } from "node:fs/promises";
 import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError } from "./computer-resources.ts";
 import { computerSource } from "./computer-address.ts";
 import { domPreview } from "./dom-resource.ts";
+import { computerActionRenderer } from "./computer-action-renderer.ts";
+import { computerReadRenderer } from "./computer-read-renderer.ts";
 import type { ComputerSession, ComputerResult, Content } from "./session.ts";
 
 const owns = (source: unknown): source is string => typeof source === "string" && source.startsWith("computer:");
@@ -51,7 +53,24 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     if (configuration.maxLongEdge !== undefined) lines.push(`Capture: maxLongEdge=${configuration.maxLongEdge}, scale=${configuration.scale}`);
   }
   if (d.source) lines.push(`Source: ${d.source.captured_at}; input=${d.source.capabilities.input}; paint freshness=${d.source.visibility.paint_freshness}`);
-  if (d.dom_geometry) {
+  const domProgress = d.dom_action?.progress ?? state.dom_progress;
+  if (domProgress) {
+    const prefix = record(domProgress);
+    lines.push(`DOM action: ${d.dom_action?.status ?? "unknown"}; trusted=false; atomic=false; effects=unverified`,
+      `Attempted steps: ${JSON.stringify(prefix.attempted_steps)}; acknowledged: ${JSON.stringify(prefix.acknowledged_steps)}`,
+      `In flight: ${prefix.in_flight ?? "none"}; progress=${prefix.status}; reason=${prefix.reason ?? "none"}; cleanup=${prefix.cleanup}`,
+      "No automatic retry. Programmatic events do not prove CSS hover, trusted key defaults or application success.");
+    if (d.dom_action?.refusal) lines.push(`DOM refusal: ${label(d.dom_action.refusal.code)}; ${label(d.dom_action.refusal.message)}`);
+    if (d.dom_action?.observed.length) lines.push(`Acknowledged samples: ${JSON.stringify(d.dom_action.observed)}`);
+  }
+  if (d.dom_native_detail) {
+    const detail = d.dom_native_detail;
+    lines.push(`DOM native ${detail.operation}: ${detail.hint}; atomic=${detail.atomic}; input=none; paint=${detail.paint_freshness}`,
+      `Physical region: ${JSON.stringify(detail.physical_enclosing_rect)}; screen_physical_pixels`,
+      `WGC frame: ${JSON.stringify(detail.frame_bounds)}; original pixels, scale=1, padding=0`,
+      `Raster scope: ${label(detail.qualification.browser.product)}; DPR=${detail.qualification.dpr}; native receipt=${detail.native_qualification}`,
+      "Runtime/browser/DPR qualification is explicit and separate from the native candidate flag. No input or nested-detail authority.");
+  } else if (d.dom_geometry) {
     const sample = d.dom_geometry;
     lines.push(`DOM CSS geometry: ${sample.hint}; readonly, input=none; native mapping=${sample.native_pixel_mapping}; atomic=${sample.atomic}`,
       `Frame: ${label(sample.frame.ref)} (${sample.frame.kind}); method=${sample.method}; received=${sample.received_at}`,
@@ -66,6 +85,7 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       if (typeof state.code === "string") lines.push(`code: ${state.code}`);
     }
     lines.push(`DOM: snapshot=${dom.snapshot_id}, complete=${dom.complete}, collection_complete=${dom.collection_complete}, truncated=${dom.truncated}; returned=${dom.returned_count}/${dom.matched_count}; projection_matches=${dom.matches}, projection_truncated=${dom.projection_truncated}; readonly, input=none`,
+      `Collection scope: ${dom.collection_scope ?? "unavailable"}; excluded browser internals: ${dom.excluded ? JSON.stringify(dom.excluded) : "unavailable"}`,
       `Page: ${label(dom.page.title)} | ${label(dom.page.url)}; scope=${dom.scope}`,
       `Omitted: ${JSON.stringify(dom.omitted)}; geometry=${dom.geometry_status}`,
       `Preview: ${dom.elements.length}/${d.dom.elements.length} collected records; use bounded Search or element:inspect for detail.`);
@@ -109,7 +129,7 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
   lines.push(d.dom_geometry ? "The source DOM snapshot remains cached. Read the window with dom for fresh metadata; sample geometry again only while its source stays current."
-    : d.dom ? "Read the window with dom view for a fresh bounded DOM query. Use Search or element:inspect on this snapshot; Write/Insert are unavailable."
+    : d.dom ? "Read the window with dom view for a fresh bounded DOM query. Use Search or element:inspect on this snapshot. For separately admitted DOM input, use Insert action:dom with source_hint, input_route and a locator request; do not use Write or ordinary input."
     : d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
     : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
@@ -129,6 +149,7 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
 
 /** Preserve uncertainty when a later refusal follows an already-delivered action prefix. */
 export function computerEffect(result: ComputerResult): "applied" | "not-applied" | "unknown" {
+  if (result.details.dom_action) return result.details.status === "refused" && !result.details.dom_action.progress.mutation_attempted ? "not-applied" : "unknown";
   if (!result.isError && ["delivered", "observed", "closed"].includes(result.details.status)) return "applied";
   const sequence = record(result.details.state?.sequence);
   return result.details.status === "refused" && !(typeof sequence.completed === "number" && sequence.completed > 0) ? "not-applied" : "unknown";
@@ -158,7 +179,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
   };
   await Promise.all([
     connectReadPlugin(pi, { protocol: READ_PROTOCOL, apiVersion: READ_API_VERSION, id: "computer", setup(api) {
-      api.addResolver({ resolver, priority: -250 });
+      api.addResolver({ resolver, priority: -250, renderResult: computerReadRenderer });
       for (const view of ["image", "ui", "full", "state", "dom", "backend", "region", "sequence", "frames", "capture", "element"])
         api.addView({ view, contentKind: "any", presenter: { id: `computer-${view}`, present: document => document } });
       api.addHandler({ stage: "read", when: { resolvedBy: resolver.id, contentKind: "any" }, async handler(context) {
@@ -200,6 +221,13 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
     } }),
     connectTextEditorPlugin(pi, { protocol: TEXT_EDITOR_PROTOCOL, apiVersion: TEXT_EDITOR_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ resolver, priority: -250 });
+      // Compose over IDE's default renderers after every plugin has finished loading.
+      let renderersRegistered = false;
+      pi.on("session_start", () => {
+        if (renderersRegistered) return;
+        for (const tool of ["write", "insert"] as const) api.addToolRenderer(computerActionRenderer(tool));
+        renderersRegistered = true;
+      });
       for (const tool of ["write", "insert"] as const) api.tool(tool).addSemanticHandler({
         matches: input => owns(record(input).path),
         async execute(context, input) {
@@ -211,10 +239,12 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
             if (typeof literal !== "string") throw new ComputerRequestError("Provide literal content for Write or one JSON command in Insert text.");
             const result = await resources.perform(requireComputerAddress(source), context.cwd, literal, tool, context.signal);
             const effect = computerEffect(result);
-            return { source, summary: presentComputerResult(resources, result), data: { kind: "computer-action", ok: effect === "applied",
+            // Completion of the native request is separate from application-effect certainty.
+            const ok = !result.isError && ["delivered", "observed", "closed"].includes(result.details.status);
+            return { source, summary: presentComputerResult(resources, result), data: { kind: "computer-action", ok,
               effect, ...result.details,
               receipt: computerResultText(result),
-              ...(effect !== "applied" ? { error: { code: typeof result.details.state?.code === "string" ? result.details.state.code : `COMPUTER_${effect.toUpperCase().replace("-", "_")}`,
+              ...(!ok ? { error: { code: typeof result.details.state?.code === "string" ? result.details.state.code : `COMPUTER_${effect.toUpperCase().replace("-", "_")}`,
                 message: computerResultText(result) } } : {}) } };
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -223,7 +253,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           }
         },
       });
-      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address; readonly DOM observations reject Write and Insert. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
+      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation, use only explicit Insert {\"action\":\"dom\",\"source_hint\":\"current hint\",\"input_route\":\"dom_event\",\"request\":{\"action\":\"fill\",\"locator\":{\"test_id\":\"name\"},\"text\":\"value\"}}. The hint supplies document context; the locator selects the target. The dom_event route is programmatic, not trusted input; trusted currently refuses without fallback. DOM hints grant no ordinary Write, coordinate or UIA authority. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
     } }),
   ]);
 }

@@ -1,4 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { validateNativeDomGeometry, assertNativeDomGeometryContinuity, assertNativeDomRasterQualification, validateNativeDomCrop,
+  type NativeDomRasterQualification, type NativeDomRuntimeIdentity, type NativeDomGeometry, type NativeDomCrop, type NativeDomRect } from "./dom-native-geometry.ts";
 import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./selected-displays.ts";
 import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
 import type { GuideMark } from "./image-guides.ts";
@@ -19,6 +22,7 @@ import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type Det
 import { validateDomRead, validateDomBinding, validateDomSnapshot, type DomReadOptions } from "./dom-inspection.ts";
 import { createDomResource, projectDom, domPreview, type DomResource, type DomObservation, type DomGeometryResource } from "./dom-resource.ts";
 import { validateDomGeometry } from "./dom-geometry.ts";
+import { validateDomActionCommand, validateDomActionResult, validateDomActionProgress, type DomActionCommand, type DomActionReceipt } from "./dom-action.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -58,6 +62,10 @@ export interface Driver {
   windowRestore?: boolean;
   /** True only for an explicitly selected byte-checked readonly DOM inspection candidate. */
   domInspection?: boolean;
+  /** Explicit byte/browser/DPR raster qualification supplied by trusted runtime selection, never an agent request. */
+  nativeDomRaster?: Readonly<{ runtime: NativeDomRuntimeIdentity; qualification: NativeDomRasterQualification }>;
+  /** True only for a separately byte-qualified native locator-action candidate. */
+  domActions?: boolean;
   /** True only for an exact byte-qualified Windows state-bound management runtime. */
   windowManagement?: boolean;
   /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
@@ -76,6 +84,25 @@ export type Action = {
   /** Explicit opt-in to the trusted local reactive cursor-animation timing. */
   animation?: "reactive";
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
+/** Fresh readonly DOM detail provenance. It carries no native DOM refs or application-input authority. */
+export interface NativeDomDetail {
+  operation: "crop" | "highlight";
+  window_ref: string;
+  observation_id: string;
+  hint: string;
+  received_at: string;
+  physical_enclosing_rect: NativeDomRect;
+  frame_bounds: NativeDomRect;
+  crop: NativeDomCrop;
+  qualification: NativeDomRasterQualification;
+  native_qualification: "candidate_not_raster_qualified";
+  atomic: false;
+  input_authority: false;
+  paint_freshness: "unverified";
+}
+/** Closed transaction phase only; native messages and private capabilities are never refusal diagnostics. */
+export type NativeDomDetailPhase = "admission" | "first_geometry" | "second_geometry" | "geometry_continuity" | "capture" |
+  "crop_validation" | "final_geometry" | "final_continuity" | "annotation" | "human_highlight" | "publication";
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
 export interface ComputerResult {
   content: Content[];
@@ -101,6 +128,12 @@ export interface ComputerResult {
     dom?: DomResource;
     /** Fresh layout-viewport CSS sample; never native pixels or input/crop authority. */
     dom_geometry?: DomGeometryResource;
+    /** Validated readonly native crop/highlight; never an ordinary observation or input context. */
+    dom_native_detail?: NativeDomDetail;
+    /** Closed failure phase, with no pixels, native exception prose or private source identifiers. */
+    dom_native_detail_refusal?: { phase: NativeDomDetailPhase; pixels_withheld: true; input_authority: false; fallback: false };
+    /** Bounded attempted/acknowledged DOM steps. Dispatch is not application success. */
+    dom_action?: DomActionReceipt;
     /** Fresh window capture parts; omitted for non-overview results. */
     granularity?: "image" | "ui" | "full";
     captured?: { image: boolean; ui: boolean };
@@ -880,6 +913,58 @@ export class ComputerSession {
     });
   }
 
+  /** Admit one explicit locator intent against an inspected document, never readonly-hint or coordinate input. */
+  actDom(ref: string, id: string, value: DomActionCommand, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      let command: DomActionCommand;
+      try { command = validateDomActionCommand(value); }
+      catch { return this.result("refused", "dom_action_invalid_request; no native input dispatched."); }
+      const entry = this.entries.get(ref), observed = entry?.dom;
+      if (!entry || !observed || observed.id !== id || !this.allowed(entry) || signal?.aborted ||
+        !this.driver.domInspection || !this.driver.domActions || !this.browserSession)
+        return this.result("refused", "Retired, revoked, cancelled or unqualified DOM action source. Read the window with dom first.");
+      const source = observed.refs.get(command.source_hint), row = observed.resource.elements.find(row => row.hint === command.source_hint);
+      if (!source || row?.frame.kind !== "main")
+        return this.result("refused", "DOM actions require an explicit current main/open-shadow source hint; child-frame actions are unavailable.");
+      let dispatched = false;
+      try {
+        if (await this.current(ref, signal) !== entry || signal?.aborted || !this.allowed(entry) || entry.dom !== observed || !this.driver.domActions)
+          return this.result("refused", "DOM source changed or was revoked before native dispatch.");
+        // Consume all observation authority before the mutating call. No automatic refresh or retry.
+        entry.dom = undefined; entry.observation = undefined; entry.detail = undefined; entry.windowState = undefined;
+        dispatched = true;
+        const native = await this.driver.call("browser_dom_action", { ...observed.binding, session: this.sessionId,
+          source_ref: source, input_route: command.input_route, request: command.request }, signal);
+        let receipt: DomActionReceipt;
+        try {
+          if (native.content.some(block => block.type === "image")) throw Error("Unexpected native pixels");
+          receipt = validateDomActionResult(native.structuredContent);
+          if (receipt.input_route !== command.input_route) throw Error("Native DOM route changed");
+        } catch {
+          // MCP errors may carry a checked prefix even when the full native receipt is unavailable.
+          let progress;
+          try { progress = validateDomActionProgress(native.structuredContent?.progress); } catch { /* Unknown remains unknown. */ }
+          return this.result("unknown", "DOM result unavailable or invalid. An effect may have occurred; no retry or fallback. Read fresh state.",
+            { execution_state: "unknown", ...(progress ? { dom_progress: progress } : {}) }, this.addressed(entry));
+        }
+        if (receipt.refusal) {
+          // Native diagnostics can echo private binding/source IDs. Expose the closed reason, not native prose.
+          receipt.refusal.message = "Native DOM action stopped. Read fresh state before deciding what to do next.";
+          if (receipt.action_result.error) (receipt.action_result.error as Record<string, unknown>).hint = receipt.refusal.message;
+        }
+        let revoked = signal?.aborted || !this.allowed(entry) || !this.driver.domActions;
+        try { revoked ||= await this.current(ref) !== entry; }
+        catch { revoked = true; }
+        const status = revoked || native.isError ? "unknown" : receipt.status === "dispatched" ? "delivered" : receipt.progress.mutation_attempted ? "unknown" : "refused";
+        return this.result(status, `DOM ${receipt.status}: attempted ${receipt.progress.attempted_steps.length}, acknowledged ${receipt.progress.acknowledged_steps.length}; effects unverified. No automatic retry. Read fresh state.`,
+          undefined, { ...this.addressed(entry), dom_action: receipt });
+      } catch {
+        return this.result(dispatched ? "unknown" : "refused", dispatched
+          ? "DOM transport interrupted after dispatch admission. An effect may have occurred; no retry or fallback. Read fresh state."
+          : "DOM admission failed before native dispatch.", undefined, this.addressed(entry));
+      }
+    });
+  }
   /** Read a cached DOM resource without querying the page or renewing native references. */
   checkDom(ref: string, id: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -903,12 +988,102 @@ export class ComputerSession {
           return this.result("refused", "Retired, revoked or cancelled DOM observation. Read the window again.");
         const dom = projectDom(entry.dom.resource, request);
         if (request.operation === "crop" || request.operation === "highlight")
-          return this.result("refused", "DOM CSS geometry has no qualified native-pixel correspondence on this source. No guessed crop or wider-source fallback.",
-            undefined, { ...this.addressed(entry), observation_id: id });
+          return this.nativeDomDetail(entry, entry.dom, request.operation, request.hint!, signal);
         return this.result("observed", "Cached readonly DOM projection. Empty matches do not prove absence beyond the reported collection coverage.", undefined,
           { ...this.addressed(entry), observation_id: id, dom });
       } catch (error) { return this.result("refused", error instanceof Error ? error.message : String(error)); }
     });
+  }
+  /** Keep native geometry, fresh WGC pixels and final source validation in one readonly queued transaction. */
+  private async nativeDomDetail(entry: WindowEntry, observed: DomObservation, operation: "crop" | "highlight", hint: string,
+    signal?: AbortSignal): Promise<ComputerResult> {
+    let phase: NativeDomDetailPhase = "admission";
+    const refusal = () => ({ phase, pixels_withheld: true, input_authority: false, fallback: false } as const);
+    const selectedPolicy = this.driver.nativeDomRaster;
+    if (!selectedPolicy)
+      return this.result("refused", "Native DOM detail refused during admission: CSS geometry has no qualified native-pixel correspondence. No guessed crop or wider-source fallback.",
+        undefined, { ...this.addressed(entry), observation_id: observed.id, dom_native_detail_refusal: refusal() });
+    const reference = observed.refs.get(hint), row = observed.resource.elements.find(row => row.hint === hint);
+    if (!reference || row?.frame.kind !== "main" || !this.browserSession || this.platform !== "windows")
+      return this.result("refused", "Native DOM detail refused during admission: a current main-document/open-shadow source is required. Child-frame mapping is not qualified.",
+        undefined, { ...this.addressed(entry), dom_native_detail_refusal: refusal() });
+    let started = false;
+    try {
+      const policy = structuredClone(selectedPolicy);
+      const admitted = async () => {
+        if (signal?.aborted || !this.driver.domInspection || !this.allowed(entry) || entry.dom !== observed ||
+          !isDeepStrictEqual(this.driver.nativeDomRaster, policy) || await this.current(entry.ref, signal) !== entry ||
+          signal?.aborted || !this.allowed(entry) || entry.dom !== observed || !isDeepStrictEqual(this.driver.nativeDomRaster, policy))
+          throw Error("Native DOM detail source changed, was revoked or was cancelled.");
+      };
+      const sample = async (samplePhase: "first_geometry" | "second_geometry" | "final_geometry"): Promise<NativeDomGeometry> => {
+        phase = samplePhase;
+        await admitted();
+        started = true;
+        const native = await this.driver.call("get_browser_state", { ...observed.binding, session: this.sessionId,
+          snapshot_format: "dom_inspect_v1", native_geometry_ref: reference }, signal);
+        await admitted();
+        if (native.isError || native.content.some(block => block.type === "image")) throw Error("Native DOM geometry refused.");
+        const geometry = validateNativeDomGeometry(native.structuredContent, observed.binding, reference, entry.target);
+        assertNativeDomRasterQualification(geometry, policy.qualification, policy.runtime);
+        return geometry;
+      };
+      const first = await sample("first_geometry"), second = await sample("second_geometry");
+      phase = "geometry_continuity";
+      assertNativeDomGeometryContinuity(first, second);
+      phase = "capture";
+      await admitted();
+      const rectangle = second.physical_enclosing_rect;
+      const native = await this.driver.call("zoom", { ...entry.target, session: this.sessionId, capture_backend: "wgc",
+        x1: rectangle.x, y1: rectangle.y, x2: rectangle.x + rectangle.width, y2: rectangle.y + rectangle.height }, signal);
+      await admitted();
+      const images = native.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
+      if (native.isError || images.length !== 1) throw Error("Native WGC detail refused or returned an ambiguous image.");
+      phase = "crop_validation";
+      const crop = validateNativeDomCrop(native.structuredContent, images[0], second, policy.qualification, policy.runtime);
+      const third = await sample("final_geometry");
+      phase = "final_continuity";
+      assertNativeDomGeometryContinuity(first, third);
+      await admitted();
+      let image: Content = images[0], annotation: unknown;
+      let highlight: HighlightResult | undefined;
+      if (operation === "highlight") {
+        phase = "annotation";
+        const empty = createUiResource({ elements: [] }, entry.ref, observed.id, 0);
+        const rendered = await annotateUi(image, empty, crop.width, crop.height, false, undefined, [],
+          { options: { grid: false, region: true, action: false }, region: { x: 0, y: 0, width: crop.width, height: crop.height } });
+        if (rendered.annotation.guides.region.status !== "shown") throw Error("Native DOM highlight could not be drawn.");
+        await admitted();
+        image = rendered.image; annotation = rendered.annotation;
+        phase = "human_highlight";
+        highlight = await notifyHighlight(this.observer, { target: { ...entry.target }, identity: entry.identity,
+          bounds: { ...third.native.window }, mark: { kind: "detail", region: { ...rectangle } } }, signal);
+        await admitted();
+        if (image !== images[0]) this.retainRaw?.(images[0]);
+      }
+      phase = "publication";
+      await admitted();
+      const source = this.source("window", { window_bounds: third.native.window, width: crop.width, height: crop.height,
+        screenshot_original_width: crop.source_dimensions.width, screenshot_original_height: crop.source_dimensions.height,
+        screenshot_scale: 1 }, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, true);
+      source.semantic_scope = "none";
+      source.capabilities = { read: true, input: "none", detail: "unsupported" };
+      source.image.coordinate_space = "detail_image_pixels";
+      if (image.type !== "image") throw Error("Native DOM annotation did not return pixels.");
+      const bytes = Buffer.from(image.data, "base64");
+      const detail: NativeDomDetail = { operation, window_ref: entry.ref, observation_id: observed.id, hint,
+        received_at: new Date().toISOString(), physical_enclosing_rect: { ...rectangle }, frame_bounds: { ...crop.frame_bounds }, crop,
+        qualification: policy.qualification, native_qualification: third.qualification, atomic: false, input_authority: false, paint_freshness: "unverified" };
+      return this.result("observed", `Fresh readonly native DOM ${operation}; WGC pixels use the explicitly qualified runtime/browser/DPR scope. Source and geometry were rechecked after capture; compositor paint remains unverified. No input or nested-detail authority.`,
+        undefined, { ...this.addressed(entry), observation_id: observed.id, source, dom_native_detail: detail, ...(highlight ? { highlight } : {}),
+          agent_image: { route: "cua_dom_crop", output: { width: crop.width, height: crop.height, bytes: bytes.length, mimeType: image.mimeType,
+            hash: createHash("sha256").update(bytes).digest("hex") }, coordinate_space: "detail_image_pixels", input_authority: false,
+            ...(annotation ? { annotation } : {}) } }, [image]);
+    } catch {
+      if (started && entry.dom === observed) entry.dom = undefined;
+      return this.result("refused", `Native DOM detail refused during ${phase}. Pixels withheld; no replay or fallback. Read fresh DOM before deciding.`,
+        undefined, { ...this.addressed(entry), dom_native_detail_refusal: refusal() });
+    }
   }
   /** Explicitly sample one current main/open-shadow DOM hint without resnapshotting or issuing input authority. */
   sampleDomGeometry(ref: string, id: string, hint: string, signal?: AbortSignal): Promise<ComputerResult> {
