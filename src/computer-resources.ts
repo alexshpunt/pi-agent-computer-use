@@ -3,7 +3,7 @@ import { parseComputerAddress, computerSource, type ComputerAddress } from "./co
 import { parseComputerViews } from "./computer-views.ts";
 import type { ComputerSession, ComputerResult, Action } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
-import { validateDomActionCommand } from "./dom-action.ts";
+import { validateWebAction, validateWebLaunch } from "./web-browser.ts";
 
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -48,7 +48,9 @@ export class ComputerResources {
   }
   private remember(target: ObservationTarget, result: ComputerResult): ComputerResult {
     const id = result.details.observation_id ?? result.details.agent_image?.image_id;
-    if (result.details.status !== "observed" || typeof id !== "string") return result;
+    // A delivered DOM action carries the page's next snapshot, which becomes the current observation.
+    const observed = result.details.status === "observed" || result.details.status === "delivered" && result.details.dom !== undefined;
+    if (!observed || typeof id !== "string") return result;
     for (const [old, entry] of this.snapshots)
       if (entry.target.window_ref === target.window_ref && entry.target.display === target.display) this.snapshots.delete(old);
     this.snapshots.set(id, { target, result });
@@ -70,7 +72,7 @@ export class ComputerResources {
       const source = snapshot.target.window_ref !== undefined ? computerSource("window", snapshot.target.window_ref)
         : computerSource("display", snapshot.target.display!);
       return `# Computer observation\nSource: ${source}\nObservation: ${computerSource("observation", address.ref)}\n` +
-        (snapshot.result.details.dom ? "Readonly DOM snapshot. Cached Read and Search perform no new DOM query or authority renewal. Use explicit Insert action:dom with source_hint, input_route and a locator request for separately admitted DOM actions. Write and ordinary input are unavailable. CSS bounds are not native image coordinates."
+        (snapshot.result.details.dom ? "Playwright DOM snapshot. Insert one JSON action with a target (aria ref or locator); Read element:crop|highlight,<ref> or image for page pixels. Search filters this snapshot. Write and native input are unavailable here."
           : snapshot.target.window_ref !== undefined ? "Input needs this still-current observation. Insert sends JSON commands; Write sends literal text."
           : "Display observation is readonly and grants no input authority.");
     }
@@ -140,27 +142,24 @@ export class ComputerResources {
       const ref = snapshot.target.window_ref;
       if (!ref) throw new ComputerRequestError("Readonly DOM requires a window source.");
       if (view.kind === "element") {
-        if (view.operation === "geometry") return session.sampleDomGeometry(ref, address.ref, view.hint, signal);
-        if (view.operation !== "scope") return session.inspectDom(ref, address.ref, { operation: view.operation, hint: view.hint }, signal);
-        this.retireWindow(ref);
-        return this.remember({ window_ref: ref }, await session.observeDom(ref, { scope: view.hint }, signal, address.ref));
+        if (view.operation !== "crop" && view.operation !== "highlight") throw new ComputerRequestError("A DOM observation supports element:crop|highlight,<aria ref>. Use dom:{\"target\":...} for a scoped snapshot.");
+        return session.webImage(ref, address.ref, view.operation, { ref: view.hint }, signal);
       }
       if (view.kind === "dom" && Object.keys(view.options).length) {
         this.retireWindow(ref);
-        return this.remember({ window_ref: ref }, await session.observeDom(ref, view.options, signal, address.ref));
+        return this.remember({ window_ref: ref }, await session.observeDom(ref, view.options, signal));
       }
+      if (view.kind === "overview" && view.capture.granularity === "image" && Object.keys(view.capture).length === 1)
+        return session.webImage(ref, address.ref, "page", undefined, signal);
       if (view.kind !== "dom" && (view.kind !== "overview" || views?.length))
-        throw new ComputerRequestError("Readonly DOM has no image/UI/state views or image-coordinate regions. Use a fresh window Read.");
+        throw new ComputerRequestError("A DOM observation supports dom, image (page screenshot) and element:crop|highlight. Read the window for native views.");
       const checked = await session.checkDom(ref, address.ref, signal);
-      if (checked.details.status !== "observed") { this.snapshots.delete(address.ref); return checked; }
-      return { ...snapshot.result, details: { ...snapshot.result.details, state: { ...snapshot.result.details.state, cached_dom: true } },
-        content: snapshot.result.content.map(block => block.type === "text" ? { ...block,
-          text: "Cached readonly DOM snapshot. No new DOM query or authority renewal.\n" + block.text } : block) };
+      if (checked.details.status !== "observed") this.snapshots.delete(address.ref);
+      return checked;
     }
     if (view.kind === "dom") throw new ComputerRequestError("This observation has no DOM scope. Read its window with dom view.");
     if (view.kind === "element") {
       if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations have no collected UI.");
-      if (view.operation === "geometry") throw new ComputerRequestError("CSS geometry requires a current readonly DOM observation, not UI hints or image coordinates.");
       if (view.operation === "crop") this.snapshots.delete(address.ref);
       return session.observe(snapshot.target.window_ref, signal, undefined, undefined,
         { operation: view.operation, observation_id: address.ref, hint: view.hint });
@@ -196,8 +195,7 @@ export class ComputerResources {
     if (address.hint || address.delivery || address.delayMs !== undefined) throw new ComputerRequestError("Input options do not select a Search scope.");
     const snapshot = this.snapshot(address.ref);
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display images have no native UI search scope.");
-    if (snapshot.result.details.dom) return session.inspectDom(snapshot.target.window_ref, address.ref,
-      { operation: "search", query, ...(limit !== undefined ? { limit } : {}) }, signal);
+    if (snapshot.result.details.dom) return session.searchDom(snapshot.target.window_ref, address.ref, query, limit, signal);
     return session.observe(snapshot.target.window_ref, signal, undefined, undefined,
       { operation: "search", observation_id: address.ref, query, ...(limit !== undefined ? { limit } : {}) });
   }
@@ -230,8 +228,10 @@ export class ComputerResources {
         return this.closeSession();
       }
       if (command.action === "open_browser" && address.kind === "session") {
-        only(command, ["action"]);
-        const result = await (await this.getSession(cwd)).openBrowser(signal);
+        let options;
+        try { options = validateWebLaunch(command); }
+        catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+        const result = await (await this.getSession(cwd)).openBrowser(options, signal);
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
       if (command.action !== "open") throw new ComputerRequestError("Use open for an app, or close to release the computer session; it does not close application documents.");
@@ -244,14 +244,14 @@ export class ComputerResources {
     if (address.kind !== "observation") throw new ComputerRequestError("Input needs the observation address returned by a fresh window Read.");
     const snapshot = this.snapshot(address.ref);
     if (snapshot.result.details.dom) {
-      const invalid = "Readonly DOM hints grant no ordinary input. Use one explicit Insert action:dom with source_hint, input_route and a locator request.";
       if (tool !== "insert" || address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined || !snapshot.target.window_ref)
-        throw new ComputerRequestError(invalid);
+        throw new ComputerRequestError("A DOM observation accepts one Insert JSON action with a target, not Write or address options.");
       let command;
-      try { command = validateDomActionCommand(commandObject(value)); }
-      catch { throw new ComputerRequestError(invalid); }
+      try { command = validateWebAction(commandObject(value)); }
+      catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
       this.snapshots.delete(address.ref);
-      return (await this.getSession(cwd)).actDom(snapshot.target.window_ref, address.ref, command, signal);
+      const result = await (await this.getSession(cwd)).actDom(snapshot.target.window_ref, address.ref, command, signal);
+      return result.details.dom ? this.remember({ window_ref: snapshot.target.window_ref }, result) : result;
     }
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations are readonly; choose a window overview for input.");
     let command: Record<string, unknown>;

@@ -1,7 +1,4 @@
 import { randomUUID, createHash } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
-import { validateNativeDomGeometry, assertNativeDomGeometryContinuity, assertNativeDomRasterQualification, validateNativeDomCrop,
-  type NativeDomRasterQualification, type NativeDomRuntimeIdentity, type NativeDomGeometry, type NativeDomCrop, type NativeDomRect } from "./dom-native-geometry.ts";
 import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./selected-displays.ts";
 import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
 import type { GuideMark } from "./image-guides.ts";
@@ -19,10 +16,7 @@ import { actionCapability, type ActionCapability } from "./action-capability.ts"
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
-import { validateDomRead, validateDomBinding, validateDomSnapshot, type DomReadOptions } from "./dom-inspection.ts";
-import { createDomResource, projectDom, domPreview, type DomResource, type DomObservation, type DomGeometryResource } from "./dom-resource.ts";
-import { validateDomGeometry } from "./dom-geometry.ts";
-import { validateDomActionCommand, validateDomActionResult, validateDomActionProgress, type DomActionCommand, type DomActionReceipt } from "./dom-action.ts";
+import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -60,12 +54,6 @@ export interface Driver {
   coordinateScroll?: boolean;
   /** True only for a byte-qualified Windows state admission and no-input restore runtime. */
   windowRestore?: boolean;
-  /** True only for an explicitly selected byte-checked readonly DOM inspection candidate. */
-  domInspection?: boolean;
-  /** Explicit byte/browser/DPR raster qualification supplied by trusted runtime selection, never an agent request. */
-  nativeDomRaster?: Readonly<{ runtime: NativeDomRuntimeIdentity; qualification: NativeDomRasterQualification }>;
-  /** True only for a separately byte-qualified native locator-action candidate. */
-  domActions?: boolean;
   /** True only for an exact byte-qualified Windows state-bound management runtime. */
   windowManagement?: boolean;
   /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
@@ -84,25 +72,8 @@ export type Action = {
   /** Explicit opt-in to the trusted local reactive cursor-animation timing. */
   animation?: "reactive";
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
-/** Fresh readonly DOM detail provenance. It carries no native DOM refs or application-input authority. */
-export interface NativeDomDetail {
-  operation: "crop" | "highlight";
-  window_ref: string;
-  observation_id: string;
-  hint: string;
-  received_at: string;
-  physical_enclosing_rect: NativeDomRect;
-  frame_bounds: NativeDomRect;
-  crop: NativeDomCrop;
-  qualification: NativeDomRasterQualification;
-  native_qualification: "candidate_not_raster_qualified";
-  atomic: false;
-  input_authority: false;
-  paint_freshness: "unverified";
-}
-/** Closed transaction phase only; native messages and private capabilities are never refusal diagnostics. */
-export type NativeDomDetailPhase = "admission" | "first_geometry" | "second_geometry" | "geometry_continuity" | "capture" |
-  "crop_validation" | "final_geometry" | "final_continuity" | "annotation" | "human_highlight" | "publication";
+/** Playwright aria snapshot ("ai" mode) of the page shown in an owned browser window. Refs belong to the latest snapshot. */
+export interface WebDom { url: string; title: string; snapshot: string; truncated: boolean; matches?: number }
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
 export interface ComputerResult {
   content: Content[];
@@ -124,16 +95,8 @@ export interface ComputerResult {
     agent_image?: Record<string, unknown>;
     highlight?: HighlightResult;
     ui?: UiResource;
-    /** Readonly browser metadata, isolated from UIA and pixel-input authority. */
-    dom?: DomResource;
-    /** Fresh layout-viewport CSS sample; never native pixels or input/crop authority. */
-    dom_geometry?: DomGeometryResource;
-    /** Validated readonly native crop/highlight; never an ordinary observation or input context. */
-    dom_native_detail?: NativeDomDetail;
-    /** Closed failure phase, with no pixels, native exception prose or private source identifiers. */
-    dom_native_detail_refusal?: { phase: NativeDomDetailPhase; pixels_withheld: true; input_authority: false; fallback: false };
-    /** Bounded attempted/acknowledged DOM steps. Dispatch is not application success. */
-    dom_action?: DomActionReceipt;
+    /** Fresh Playwright page structure for an owned browser window. */
+    dom?: WebDom;
     /** Fresh window capture parts; omitted for non-overview results. */
     granularity?: "image" | "ui" | "full";
     captured?: { image: boolean; ui: boolean };
@@ -144,9 +107,11 @@ export interface ComputerResult {
 }
 interface Observation { id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: DomObservation; detail?: DetailContext; lastAction?: GuideMark }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
+/** Aria snapshots above this many characters are cut; narrow them with a target or depth. */
+const WEB_SNAPSHOT_LIMIT = 80_000;
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
@@ -160,7 +125,8 @@ export class ComputerSession {
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
-  private browserSession = false;
+  /** Playwright browsers opened by this session, keyed by browser process id; rediscovered windows rebind by pid. */
+  private readonly browsers = new Map<number, WebBrowser>();
 
   private get platform(): NativePlatform { return this.driver.platform ?? "windows"; }
 
@@ -192,7 +158,8 @@ export class ComputerSession {
   constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo",
     private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" }),
     private readonly observer?: WindowObserver,
-    private readonly retainRaw?: (image: Content) => void) {}
+    private readonly retainRaw?: (image: Content) => void,
+    private readonly launchWeb?: WebLauncher) {}
 
   private overviewSettings(): CuaVisionSettings {
     const settings = this.settings();
@@ -213,7 +180,8 @@ export class ComputerSession {
       text_truncated: e.text_truncated || (e.name?.length ?? 0) > 128 || (e.value?.length ?? 0) > 128 })) };
     const projection = visibleUi && { ui_elements: visibleUi.elements.length, full_ui_elements: extra.ui!.elements.length,
       note: "Plain text shows at most 30 elements with 128-character names/values. Use structured ui or local search/scope for the rest." };
-    const display = extra.dom ? { ...details, dom: domPreview(extra.dom), text_projection: { note: "Readonly DOM preview only; structured dom retains bounded full records. CSS rectangles are not native pixels." } } : extra.sequence ? { ...details, sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source,
+    // The aria snapshot follows the JSON as plain YAML instead of an escaped string.
+    const display = extra.dom ? { ...details, dom: { ...extra.dom, snapshot: undefined } } : extra.sequence ? { ...details, sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source,
       frames: extra.sequence.frames.map(frameSummary) }, text_projection: { note: "Frame summaries only; full per-frame source metadata is in the structured sequence resource." } }
       : extra.selected_frames ? { ...details, source: extra.selected_frames[0]?.source, selected_frames: extra.selected_frames.map(frameSummary),
         text_projection: { note: "Frame summaries only; full per-frame source metadata accompanies each structured frame." } }
@@ -227,8 +195,6 @@ export class ComputerSession {
       ...(extra.sequence ? { sequence: { ...extra.sequence, source: extra.sequence.frames[0]?.source, frames: extra.sequence.frames.slice(0, 5).map(frameSummary) } } : {}),
       ...(extra.selected_frames ? { selected_frames: extra.selected_frames.slice(0, 5).map(frameSummary) } : {}),
       text_projection: { note: "Plain text shows five frame summaries. Full metadata is available in the structured result.", metadata_omitted: true } })
-      : extra.dom ? JSON.stringify({ status, mode: details.mode, window_ref: extra.window_ref, observation_id: extra.observation_id,
-        dom: domPreview(extra.dom, 0), text_projection: { note: "DOM records omitted from text; use the structured resource.", metadata_omitted: true } })
       : visibleUi ? JSON.stringify({ status, mode: details.mode,
       window_ref: extra.window_ref, observation_id: extra.observation_id,
       agent_image: extra.agent_image && { image_id: extra.agent_image.image_id, output: extra.agent_image.output },
@@ -239,7 +205,7 @@ export class ComputerSession {
     const where = mark?.region ? `; screen region ${mark.region.x},${mark.region.y} ${mark.region.width}x${mark.region.height}`
       : mark?.point ? `; screen point ${mark.point.x},${mark.point.y}` : "";
     const summary = mark ? `\nHuman mark: ${mark.kind ?? "target"} ${mark.status}${where}${mark.reason ? ` (${mark.reason})` : ""}.` : "";
-    return { content: [{ type: "text", text: `${message}${summary}\n${visible}` }, ...images], details,
+    return { content: [{ type: "text", text: `${message}${summary}\n${visible}${extra.dom ? `\n${extra.dom.snapshot}` : ""}` }, ...images], details,
       ...(["refused", "unknown"].includes(status) ? { isError: true } : {}) };
   }
 
@@ -259,7 +225,6 @@ export class ComputerSession {
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
     this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
-    this.browserSession = false;
     await this.driver.close().catch(() => undefined);
     const reason = error instanceof Error ? error.message : String(error);
     return this.result(dispatched ? "unknown" : "refused", dispatched
@@ -281,23 +246,6 @@ export class ComputerSession {
     throw new Error(`Driver returned no structured ${name} result.`);
   }
 
-  private async browserState(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
-    const arguments_ = { ...args, session: this.sessionId };
-    const result = signal === undefined ? await this.driver.call(name, arguments_) : await this.driver.call(name, arguments_, signal);
-    const state = result.structuredContent;
-    if (result.isError || result.content.some(block => block.type === "image") || !state || Array.isArray(state) ||
-      JSON.stringify(state).length > 65_536 || state.status === "refused" || state.refusal || state.error)
-      throw Error("Native browser lifecycle receipt is invalid or refused; no fallback or replay.");
-    return state;
-  }
-
-  private async startBrowserSession(signal?: AbortSignal): Promise<void> {
-    if (this.browserSession) return;
-    // An interrupted start may still own a native session. Keep it available for cleanup, never replay start.
-    this.browserSession = true;
-    const started = await this.browserState("start_session", {}, signal);
-    if (started.active !== true || started.session !== this.sessionId) throw Error("Native browser session was not admitted.");
-  }
   private async register(target: WindowTarget, signal?: AbortSignal): Promise<WindowEntry | undefined> {
     if (this.driver.windowLifetime === false) return undefined;
     if (!Number.isSafeInteger(target.pid) || target.pid <= 0 || !Number.isSafeInteger(target.window_id) || target.window_id <= 0)
@@ -307,7 +255,8 @@ export class ComputerSession {
     for (const entry of this.entries.values()) {
       if (entry.target.pid === target.pid && entry.target.window_id === target.window_id && entry.identity === identity) return entry;
     }
-    const entry: WindowEntry = { ref: "w-" + randomUUID(), target: { pid: target.pid, window_id: target.window_id }, identity, owned: false };
+    const entry: WindowEntry = { ref: "w-" + randomUUID(), target: { pid: target.pid, window_id: target.window_id }, identity, owned: false,
+      web: this.browsers.get(target.pid) };
     this.entries.set(entry.ref, entry);
     return entry;
   }
@@ -364,55 +313,38 @@ export class ComputerSession {
     });
   }
 
-  /** Explicitly open one new driver-owned isolated browser. No navigation, profile attachment or input is implied. */
-  openBrowser(signal?: AbortSignal): Promise<ComputerResult> {
+  /**
+   * Launch one new visible browser through Playwright with a disposable profile, then bind its native window.
+   * Personal browsers are never attached. Closing the session closes this browser and deletes its profile.
+   */
+  openBrowser(options: WebLaunchOptions = {}, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      if (signal?.aborted || !this.driver.domInspection || this.driver.windowLifetime === false)
-        return this.result("refused", "Isolated browser opening needs the qualified DOM runtime and live window identity; nothing was launched.");
-      let attempted = false;
-      const check = () => {
-        if (signal?.aborted || !this.driver.domInspection) throw Error("Browser opening cancelled or runtime admission revoked.");
-      };
+      if (signal?.aborted || !this.launchWeb || this.driver.windowLifetime === false)
+        return this.result("refused", "Opening a browser needs Windows window lifetime and the Playwright browser backend; nothing was launched.");
+      let launched: Awaited<ReturnType<WebLauncher>> | undefined;
       try {
-        await this.startBrowserSession(signal);
-        check();
-        attempted = true;
-        const prepared = await this.browserState("browser_prepare", { allow_launch: true, profile: { mode: "isolated_new" } }, signal);
-        check();
-        const pid = prepared.prepared_pid;
-        if (prepared.prepared !== true || !Number.isSafeInteger(pid) || (pid as number) <= 0)
-          throw Error("Browser preparation did not attest one owned process.");
-        const native = await this.driver.call("list_windows", { pid }, signal);
-        check();
-        const windows = native.structuredContent?.windows;
-        if (native.isError || native.content.some(block => block.type === "image") || !Array.isArray(windows) ||
-          windows.length !== 1 || JSON.stringify(windows).length > 65_536 || windows[0]?.pid !== pid)
-          throw Error("Owned browser has no unique exact native window.");
-        const target = windows[0] as WindowTarget;
-        const entry = await this.register(target, signal);
-        check();
-        if (!entry || await this.driver.identity(entry.target, false, signal) !== entry.identity)
-          throw Error("Owned browser lifetime could not be established.");
-        check();
-        entry.owned = true;
-        return this.result("observed", "New isolated browser opened in this runtime session. No navigation, pixels or input authority. Read its window explicitly. Session close releases this owned browser/profile; other application documents remain untouched.",
-          { operation: "open_browser", launch_attempted: true, prepared: true, isolated_profile: true },
-          { ...this.addressed(entry), opened: true });
-      } catch (error) {
-        // Cleanup is allowed after cancellation, but another launch is never attempted.
-        let cleanup = "not_needed";
-        if (this.browserSession) {
-          cleanup = "unknown";
-          try {
-            const ended = await this.browserState("end_session", {});
-            if (ended.active === false && ended.session === this.sessionId) cleanup = "confirmed";
-          } catch { /* The transport close below still releases this owned native peer. */ }
+        launched = await this.launchWeb(options, signal);
+        const { pid } = launched.opened;
+        this.browsers.set(pid, launched.browser);
+        // Chromium creates its native window asynchronously after Playwright sees the first page.
+        let windows: Record<string, unknown>[] = [];
+        for (let attempt = 0; attempt < 20 && !windows.length; attempt++) {
+          if (attempt) await delay(250, undefined, { signal });
+          windows = ((await this.state("list_windows", { pid }, signal)).windows as Record<string, unknown>[] ?? []).filter(window => window.pid === pid);
         }
-        const failed = await this.failed(error, attempted);
-        return this.result(failed.details.status, attempted
-          ? "Browser launch outcome is unknown. Owned cleanup was requested; discover before deciding and never replay the launch blindly."
-          : "Browser opening stopped before launch; owned native session cleanup was requested.",
-          { operation: "open_browser", launch_attempted: attempted, cleanup, reason: (error instanceof Error ? error.message : String(error)).slice(0, 1024) });
+        if (windows.length !== 1) throw Error(`Expected one native window for browser process ${pid}, found ${windows.length}.`);
+        const entry = await this.register(windows[0] as unknown as WindowTarget, signal);
+        if (!entry) throw Error("The browser window lifetime could not be established.");
+        entry.owned = true;
+        return this.result("observed", "Opened a new visible browser with a disposable profile. Read its window with dom for page structure, or with image/ui/full for native pixels and Windows UI.",
+          { operation: "open_browser", ...launched.opened }, { ...this.addressed(entry), opened: true });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (!launched) return this.result("refused", `Browser launch failed: ${reason}`, { operation: "open_browser" });
+        this.browsers.delete(launched.opened.pid);
+        const cleanup = await launched.browser.close().then(() => "confirmed", () => "unconfirmed");
+        return this.result(cleanup === "confirmed" ? "refused" : "unknown", `The browser started but its window could not be bound, so it was closed (cleanup ${cleanup}). ${reason}`,
+          { operation: "open_browser", cleanup });
       }
     });
   }
@@ -859,264 +791,104 @@ export class ComputerSession {
       agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
-  /** Readonly DOM acquisition for the selected tab of an existing exact driver-owned browser. */
-  observeDom(ref: string, options: DomReadOptions = {}, signal?: AbortSignal, sourceId?: string): Promise<ComputerResult> {
+  /** Resolve a permitted window bound to a browser this session opened through Playwright. */
+  private async webEntry(ref: string, signal?: AbortSignal): Promise<WindowEntry | ComputerResult> {
+    let entry: WindowEntry | undefined;
+    try { entry = await this.current(ref, signal); }
+    catch (error) { return this.result("refused", `Window lifetime check failed: ${error instanceof Error ? error.message : String(error)}`); }
+    if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window. Discover again.");
+    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened with Insert {\"action\":\"open_browser\"} into computer:session. Use image/ui/full Reads for other windows.",
+      undefined, this.addressed(entry));
+    return entry;
+  }
+
+  private webFailure(entry: WindowEntry, error: unknown, acting = false): ComputerResult {
+    const reason = error instanceof Error ? error.message : String(error);
+    const uncertain = acting && error instanceof WebError && (error.timeout || error.transport);
+    return this.result(uncertain ? "unknown" : "refused", uncertain
+      ? `The action may have reached the page. ${reason} Read the window with dom before deciding; never replay it blindly.`
+      : `Playwright refused: ${reason}`, undefined, this.addressed(entry));
+  }
+
+  /** Store a page snapshot as the window's only current DOM observation. */
+  private webObservation(entry: WindowEntry, page: WebPage): { id: string; page: WebDom } {
+    const truncated = page.snapshot.length > WEB_SNAPSHOT_LIMIT;
+    entry.dom = { id: randomUUID(), page: { url: page.url, title: page.title, truncated,
+      snapshot: truncated ? page.snapshot.slice(0, WEB_SNAPSHOT_LIMIT) + "\n# Snapshot truncated; narrow it with dom:{\"target\":...,\"depth\":...}." : page.snapshot } };
+    return entry.dom;
+  }
+
+  /** Fresh Playwright aria snapshot ("ai" mode, iframes included) of the page shown in an owned browser window. */
+  observeDom(ref: string, options: WebSnapshotOptions = {}, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      let request: DomReadOptions;
-      try { request = validateDomRead(options); }
-      catch (error) { return this.result("refused", String(error)); }
-      const entry = this.entries.get(ref);
-      if (!entry || !this.allowed(entry)) return entry ? this.denied(ref) : this.result("refused", "Unknown window. Discover again.");
-      const previous = entry.dom;
-      let scopeRef: string | undefined;
-      if (sourceId !== undefined && previous?.id !== sourceId) return this.result("refused", "Retired DOM snapshot. Read the window again.");
-      if (request.scope !== undefined) {
-        scopeRef = sourceId && previous?.refs.get(request.scope) || undefined;
-        if (!scopeRef) return this.result("refused", "Scope requires a hint from the current DOM observation.");
-      }
+      const entry = await this.webEntry(ref, signal);
+      if (!("ref" in entry)) return entry;
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
-        const admitted = async () => {
-          if (signal?.aborted || !this.driver.domInspection || !this.allowed(entry) || await this.current(ref, signal) !== entry)
-            throw Error("DOM source is cancelled, unqualified, closed, reused or outside the current mode.");
-          if (signal?.aborted || !this.allowed(entry)) throw Error("DOM admission revoked.");
-        };
-        await admitted();
-        const read = async (name: string, args: Record<string, unknown>) => {
-          await admitted();
-          const result = await this.driver.call(name, { ...args, session: this.sessionId }, signal);
-          await admitted();
-          if (result.isError || result.content.some(block => block.type === "image") || !result.structuredContent ||
-            result.structuredContent.status === "refused" || result.structuredContent.refusal)
-            throw Error("Native readonly DOM route refused or returned an invalid result. No fallback or replay.");
-          return result.structuredContent;
-        };
-        await this.startBrowserSession(signal);
-        await admitted();
-        const binding = previous?.binding ?? validateDomBinding(await read("get_browser_state", { ...entry.target }));
-        const { scope: _scope, ...nativeOptions } = request;
-        const state = await read("get_browser_state", { ...binding, snapshot_format: "dom_inspect_v1", include_screenshot: false,
-          ...nativeOptions, ...(scopeRef ? { scope_ref: scopeRef } : {}) });
-        const snapshot = validateDomSnapshot(state, binding, request.max_nodes ?? 200);
-        await admitted();
-        const id = randomUUID();
-        // Keep at most three bounded DOM snapshots; none confer input or native pixel authority.
-        const retained = [...this.entries.values()].filter(value => value.dom);
-        for (const old of retained.slice(0, Math.max(0, retained.length - 2))) old.dom = undefined;
-        entry.dom = createDomResource(snapshot, binding, ref, id, ++this.uiSerial);
-        return this.result("observed", "Fresh readonly DOM. Coverage applies only to this bounded collection; CSS bounds are not native pixels. No typing, pointer or action authority.",
-          undefined, { ...this.addressed(entry), observation_id: id, dom: structuredClone(entry.dom.resource) });
-      } catch (error) {
-        entry.dom = undefined;
-        return this.result("refused", `DOM unavailable: ${error instanceof Error ? error.message : String(error)}`, undefined, this.addressed(entry));
-      }
+        const observed = this.webObservation(entry, await entry.web!.request<WebPage>("snapshot", options, signal));
+        return this.result("observed", "Fresh Playwright aria snapshot. Use [ref=...] values as target.ref while this stays the latest snapshot of the window.",
+          undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
+      } catch (error) { return this.webFailure(entry, error); }
     });
   }
 
-  /** Admit one explicit locator intent against an inspected document, never readonly-hint or coordinate input. */
-  actDom(ref: string, id: string, value: DomActionCommand, signal?: AbortSignal): Promise<ComputerResult> {
-    return this.queue(async () => {
-      let command: DomActionCommand;
-      try { command = validateDomActionCommand(value); }
-      catch { return this.result("refused", "dom_action_invalid_request; no native input dispatched."); }
-      const entry = this.entries.get(ref), observed = entry?.dom;
-      if (!entry || !observed || observed.id !== id || !this.allowed(entry) || signal?.aborted ||
-        !this.driver.domInspection || !this.driver.domActions || !this.browserSession)
-        return this.result("refused", "Retired, revoked, cancelled or unqualified DOM action source. Read the window with dom first.");
-      const source = observed.refs.get(command.source_hint), row = observed.resource.elements.find(row => row.hint === command.source_hint);
-      if (!source || row?.frame.kind !== "main")
-        return this.result("refused", "DOM actions require an explicit current main/open-shadow source hint; child-frame actions are unavailable.");
-      let dispatched = false;
-      try {
-        if (await this.current(ref, signal) !== entry || signal?.aborted || !this.allowed(entry) || entry.dom !== observed || !this.driver.domActions)
-          return this.result("refused", "DOM source changed or was revoked before native dispatch.");
-        // Consume all observation authority before the mutating call. No automatic refresh or retry.
-        entry.dom = undefined; entry.observation = undefined; entry.detail = undefined; entry.windowState = undefined;
-        dispatched = true;
-        const native = await this.driver.call("browser_dom_action", { ...observed.binding, session: this.sessionId,
-          source_ref: source, input_route: command.input_route, request: command.request }, signal);
-        let receipt: DomActionReceipt;
-        try {
-          if (native.content.some(block => block.type === "image")) throw Error("Unexpected native pixels");
-          receipt = validateDomActionResult(native.structuredContent);
-          if (receipt.input_route !== command.input_route) throw Error("Native DOM route changed");
-        } catch {
-          // MCP errors may carry a checked prefix even when the full native receipt is unavailable.
-          let progress;
-          try { progress = validateDomActionProgress(native.structuredContent?.progress); } catch { /* Unknown remains unknown. */ }
-          return this.result("unknown", "DOM result unavailable or invalid. An effect may have occurred; no retry or fallback. Read fresh state.",
-            { execution_state: "unknown", ...(progress ? { dom_progress: progress } : {}) }, this.addressed(entry));
-        }
-        if (receipt.refusal) {
-          // Native diagnostics can echo private binding/source IDs. Expose the closed reason, not native prose.
-          receipt.refusal.message = "Native DOM action stopped. Read fresh state before deciding what to do next.";
-          if (receipt.action_result.error) (receipt.action_result.error as Record<string, unknown>).hint = receipt.refusal.message;
-        }
-        let revoked = signal?.aborted || !this.allowed(entry) || !this.driver.domActions;
-        try { revoked ||= await this.current(ref) !== entry; }
-        catch { revoked = true; }
-        const status = revoked || native.isError ? "unknown" : receipt.status === "dispatched" ? "delivered" : receipt.progress.mutation_attempted ? "unknown" : "refused";
-        return this.result(status, `DOM ${receipt.status}: attempted ${receipt.progress.attempted_steps.length}, acknowledged ${receipt.progress.acknowledged_steps.length}; effects unverified. No automatic retry. Read fresh state.`,
-          undefined, { ...this.addressed(entry), dom_action: receipt });
-      } catch {
-        return this.result(dispatched ? "unknown" : "refused", dispatched
-          ? "DOM transport interrupted after dispatch admission. An effect may have occurred; no retry or fallback. Read fresh state."
-          : "DOM admission failed before native dispatch.", undefined, this.addressed(entry));
-      }
-    });
-  }
-  /** Read a cached DOM resource without querying the page or renewing native references. */
+  /** Return the window's current DOM observation without querying the page. */
   checkDom(ref: string, id: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      try {
-        const entry = await this.current(ref, signal);
-        if (signal?.aborted || !this.driver.domInspection || !entry || entry.dom?.id !== id)
-          return this.result("refused", "Retired, revoked or cancelled DOM observation. Read the window again.");
-        return this.result("observed", "Cached readonly DOM; no native query, new snapshot or authority renewal.", undefined,
-          { ...this.addressed(entry), observation_id: id, dom: structuredClone(entry.dom.resource) });
-      } catch (error) { return this.failed(error, false); }
+      const entry = await this.webEntry(ref, signal);
+      if (!("ref" in entry)) return entry;
+      if (entry.dom?.id !== id) return this.result("refused", "This DOM observation is no longer current. Read the window with dom again.", undefined, this.addressed(entry));
+      return this.result("observed", "Cached Playwright aria snapshot; the page may have changed since.", undefined,
+        { ...this.addressed(entry), observation_id: id, dom: entry.dom.page });
     });
   }
 
-  /** Inspect or search collected DOM records. Native crops require a separate proven pixel transform. */
-  inspectDom(ref: string, id: string, request: { operation: "search" | "inspect" | "crop" | "highlight"; hint?: string; query?: string; limit?: number },
-    signal?: AbortSignal): Promise<ComputerResult> {
+  /** Filter the current snapshot's lines without querying the page. */
+  searchDom(ref: string, id: string, query: string, limit = 50, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      try {
-        const entry = await this.current(ref, signal);
-        if (signal?.aborted || !this.driver.domInspection || !entry || entry.dom?.id !== id)
-          return this.result("refused", "Retired, revoked or cancelled DOM observation. Read the window again.");
-        const dom = projectDom(entry.dom.resource, request);
-        if (request.operation === "crop" || request.operation === "highlight")
-          return this.nativeDomDetail(entry, entry.dom, request.operation, request.hint!, signal);
-        return this.result("observed", "Cached readonly DOM projection. Empty matches do not prove absence beyond the reported collection coverage.", undefined,
-          { ...this.addressed(entry), observation_id: id, dom });
-      } catch (error) { return this.result("refused", error instanceof Error ? error.message : String(error)); }
+      const entry = await this.webEntry(ref, signal);
+      if (!("ref" in entry)) return entry;
+      if (entry.dom?.id !== id) return this.result("refused", "This DOM observation is no longer current. Read the window with dom again.", undefined, this.addressed(entry));
+      const needle = query.toLowerCase();
+      const lines = entry.dom.page.snapshot.split("\n").filter(line => line.toLowerCase().includes(needle));
+      return this.result("observed", `${lines.length} snapshot lines match. Search covers only this snapshot${entry.dom.page.truncated ? ", which was truncated" : ""}.`, undefined,
+        { ...this.addressed(entry), observation_id: id, dom: { ...entry.dom.page, snapshot: lines.slice(0, limit).join("\n"), matches: lines.length } });
     });
   }
-  /** Keep native geometry, fresh WGC pixels and final source validation in one readonly queued transaction. */
-  private async nativeDomDetail(entry: WindowEntry, observed: DomObservation, operation: "crop" | "highlight", hint: string,
-    signal?: AbortSignal): Promise<ComputerResult> {
-    let phase: NativeDomDetailPhase = "admission";
-    const refusal = () => ({ phase, pixels_withheld: true, input_authority: false, fallback: false } as const);
-    const selectedPolicy = this.driver.nativeDomRaster;
-    if (!selectedPolicy)
-      return this.result("refused", "Native DOM detail refused during admission: CSS geometry has no qualified native-pixel correspondence. No guessed crop or wider-source fallback.",
-        undefined, { ...this.addressed(entry), observation_id: observed.id, dom_native_detail_refusal: refusal() });
-    const reference = observed.refs.get(hint), row = observed.resource.elements.find(row => row.hint === hint);
-    if (!reference || row?.frame.kind !== "main" || !this.browserSession || this.platform !== "windows")
-      return this.result("refused", "Native DOM detail refused during admission: a current main-document/open-shadow source is required. Child-frame mapping is not qualified.",
-        undefined, { ...this.addressed(entry), dom_native_detail_refusal: refusal() });
-    let started = false;
-    try {
-      const policy = structuredClone(selectedPolicy);
-      const admitted = async () => {
-        if (signal?.aborted || !this.driver.domInspection || !this.allowed(entry) || entry.dom !== observed ||
-          !isDeepStrictEqual(this.driver.nativeDomRaster, policy) || await this.current(entry.ref, signal) !== entry ||
-          signal?.aborted || !this.allowed(entry) || entry.dom !== observed || !isDeepStrictEqual(this.driver.nativeDomRaster, policy))
-          throw Error("Native DOM detail source changed, was revoked or was cancelled.");
-      };
-      const sample = async (samplePhase: "first_geometry" | "second_geometry" | "final_geometry"): Promise<NativeDomGeometry> => {
-        phase = samplePhase;
-        await admitted();
-        started = true;
-        const native = await this.driver.call("get_browser_state", { ...observed.binding, session: this.sessionId,
-          snapshot_format: "dom_inspect_v1", native_geometry_ref: reference }, signal);
-        await admitted();
-        if (native.isError || native.content.some(block => block.type === "image")) throw Error("Native DOM geometry refused.");
-        const geometry = validateNativeDomGeometry(native.structuredContent, observed.binding, reference, entry.target);
-        assertNativeDomRasterQualification(geometry, policy.qualification, policy.runtime);
-        return geometry;
-      };
-      const first = await sample("first_geometry"), second = await sample("second_geometry");
-      phase = "geometry_continuity";
-      assertNativeDomGeometryContinuity(first, second);
-      phase = "capture";
-      await admitted();
-      const rectangle = second.physical_enclosing_rect;
-      const native = await this.driver.call("zoom", { ...entry.target, session: this.sessionId, capture_backend: "wgc",
-        x1: rectangle.x, y1: rectangle.y, x2: rectangle.x + rectangle.width, y2: rectangle.y + rectangle.height }, signal);
-      await admitted();
-      const images = native.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
-      if (native.isError || images.length !== 1) throw Error("Native WGC detail refused or returned an ambiguous image.");
-      phase = "crop_validation";
-      const crop = validateNativeDomCrop(native.structuredContent, images[0], second, policy.qualification, policy.runtime);
-      const third = await sample("final_geometry");
-      phase = "final_continuity";
-      assertNativeDomGeometryContinuity(first, third);
-      await admitted();
-      let image: Content = images[0], annotation: unknown;
-      let highlight: HighlightResult | undefined;
-      if (operation === "highlight") {
-        phase = "annotation";
-        const empty = createUiResource({ elements: [] }, entry.ref, observed.id, 0);
-        const rendered = await annotateUi(image, empty, crop.width, crop.height, false, undefined, [],
-          { options: { grid: false, region: true, action: false }, region: { x: 0, y: 0, width: crop.width, height: crop.height } });
-        if (rendered.annotation.guides.region.status !== "shown") throw Error("Native DOM highlight could not be drawn.");
-        await admitted();
-        image = rendered.image; annotation = rendered.annotation;
-        phase = "human_highlight";
-        highlight = await notifyHighlight(this.observer, { target: { ...entry.target }, identity: entry.identity,
-          bounds: { ...third.native.window }, mark: { kind: "detail", region: { ...rectangle } } }, signal);
-        await admitted();
-        if (image !== images[0]) this.retainRaw?.(images[0]);
-      }
-      phase = "publication";
-      await admitted();
-      const source = this.source("window", { window_bounds: third.native.window, width: crop.width, height: crop.height,
-        screenshot_original_width: crop.source_dimensions.width, screenshot_original_height: crop.source_dimensions.height,
-        screenshot_scale: 1 }, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, true);
-      source.semantic_scope = "none";
-      source.capabilities = { read: true, input: "none", detail: "unsupported" };
-      source.image.coordinate_space = "detail_image_pixels";
-      if (image.type !== "image") throw Error("Native DOM annotation did not return pixels.");
-      const bytes = Buffer.from(image.data, "base64");
-      const detail: NativeDomDetail = { operation, window_ref: entry.ref, observation_id: observed.id, hint,
-        received_at: new Date().toISOString(), physical_enclosing_rect: { ...rectangle }, frame_bounds: { ...crop.frame_bounds }, crop,
-        qualification: policy.qualification, native_qualification: third.qualification, atomic: false, input_authority: false, paint_freshness: "unverified" };
-      return this.result("observed", `Fresh readonly native DOM ${operation}; WGC pixels use the explicitly qualified runtime/browser/DPR scope. Source and geometry were rechecked after capture; compositor paint remains unverified. No input or nested-detail authority.`,
-        undefined, { ...this.addressed(entry), observation_id: observed.id, source, dom_native_detail: detail, ...(highlight ? { highlight } : {}),
-          agent_image: { route: "cua_dom_crop", output: { width: crop.width, height: crop.height, bytes: bytes.length, mimeType: image.mimeType,
-            hash: createHash("sha256").update(bytes).digest("hex") }, coordinate_space: "detail_image_pixels", input_authority: false,
-            ...(annotation ? { annotation } : {}) } }, [image]);
-    } catch {
-      if (started && entry.dom === observed) entry.dom = undefined;
-      return this.result("refused", `Native DOM detail refused during ${phase}. Pixels withheld; no replay or fallback. Read fresh DOM before deciding.`,
-        undefined, { ...this.addressed(entry), dom_native_detail_refusal: refusal() });
-    }
-  }
-  /** Explicitly sample one current main/open-shadow DOM hint without resnapshotting or issuing input authority. */
-  sampleDomGeometry(ref: string, id: string, hint: string, signal?: AbortSignal): Promise<ComputerResult> {
+
+  /** Playwright screenshot of the page viewport, one element, or the viewport with that element highlighted. */
+  webImage(ref: string, id: string, kind: "page" | "crop" | "highlight", target?: WebTarget, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      const entry = this.entries.get(ref), observed = entry?.dom;
-      if (!entry || !observed || observed.id !== id || !this.allowed(entry) || signal?.aborted ||
-        !this.driver.domInspection || !this.browserSession)
-        return this.result("refused", "Retired, revoked or cancelled DOM source. Read the window with dom first.");
-      const reference = observed.refs.get(hint), row = observed.resource.elements.find(row => row.hint === hint);
-      if (!reference || !row || row.frame.kind !== "main")
-        return this.result("refused", "Geometry needs a current main-document/open-shadow DOM hint. Child-frame mapping is not qualified.");
+      const entry = await this.webEntry(ref, signal);
+      if (!("ref" in entry)) return entry;
+      if (entry.dom?.id !== id) return this.result("refused", "This DOM observation is no longer current. Read the window with dom again.", undefined, this.addressed(entry));
       try {
-        const admitted = async () => {
-          if (signal?.aborted || !this.driver.domInspection || !this.allowed(entry) || entry.dom !== observed ||
-            await this.current(ref, signal) !== entry || signal?.aborted || !this.allowed(entry))
-            throw Error("DOM geometry source is cancelled, revoked, closed or reused.");
-        };
-        await admitted();
-        const native = await this.driver.call("get_browser_state", { ...observed.binding, session: this.sessionId,
-          snapshot_format: "dom_inspect_v1", geometry_ref: reference }, signal);
-        await admitted();
-        if (native.isError || native.content.some(block => block.type === "image"))
-          throw Error("Native CSS geometry refused or returned pixels. No fallback or replay.");
-        const sample = validateDomGeometry(native.structuredContent, observed.binding, reference);
-        const geometry: DomGeometryResource = { ...sample, window_ref: ref, observation_id: id, hint,
-          frame: structuredClone(row.frame), received_at: new Date().toISOString() };
-        return this.result("observed", "Fresh readonly layout-viewport CSS geometry sample. Native-pixel mapping is unavailable; not visibility, atomic paint or input/crop authority.",
-          undefined, { ...this.addressed(entry), observation_id: id, dom_geometry: geometry });
-      } catch (error) {
-        entry.dom = undefined;
-        return this.result("refused", `DOM geometry unavailable: ${error instanceof Error ? error.message : String(error)}`,
-          undefined, this.addressed(entry));
-      }
+        const shot = await entry.web!.request<{ url: string; title: string; png: string; box?: unknown }>("screenshot",
+          { ...(target ? { target } : {}), highlight: kind === "highlight" }, signal);
+        const bytes = Buffer.from(shot.png, "base64");
+        if (bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error("Playwright did not return a PNG.");
+        return this.result("observed", `Playwright ${kind === "page" ? "page viewport" : kind === "crop" ? "element" : "highlighted viewport"} screenshot. These are page pixels, not native window coordinates; they grant no input.`,
+          { url: shot.url, title: shot.title, ...(shot.box ? { box_css: shot.box } : {}) },
+          { ...this.addressed(entry), observation_id: id, agent_image: { route: "playwright_screenshot", kind, coordinate_space: "page_image_pixels", input_authority: false,
+            output: { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), bytes: bytes.length, mimeType: "image/png",
+              hash: createHash("sha256").update(bytes).digest("hex") } } },
+          [{ type: "image", data: shot.png, mimeType: "image/png" }]);
+      } catch (error) { return this.webFailure(entry, error); }
+    });
+  }
+
+  /** Run one Playwright action against the current DOM observation and return the next snapshot. */
+  actDom(ref: string, id: string, action: WebAction, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = await this.webEntry(ref, signal);
+      if (!("ref" in entry)) return entry;
+      if (entry.dom?.id !== id) return this.result("refused", "This DOM observation is no longer current. Read the window with dom again; nothing was sent.", undefined, this.addressed(entry));
+      entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      try {
+        const observed = this.webObservation(entry, await entry.web!.request<WebPage>("act", action, signal, 120_000));
+        return this.result("delivered", `Playwright performed ${action.action} after its actionability checks. Check the fresh snapshot below for the application's response.`,
+          undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
+      } catch (error) { return this.webFailure(entry, error, true); }
     });
   }
 
@@ -1473,17 +1245,17 @@ export class ComputerSession {
     });
   }
 
-  /** Release owned runtime and isolated browser profiles. Other application windows/files are not closed or saved. */
+  /** Close session-opened browsers (deleting their profiles) and release the native runtime. Other windows/files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
       this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
-      try {
-        if (this.browserSession) {
-          const ended = await this.browserState("end_session", {});
-          if (ended.active !== false || ended.session !== this.sessionId) throw Error("Native browser cleanup was not confirmed.");
-        }
-      } finally { this.browserSession = false; await this.driver.close(); }
-      return this.result("closed", "Owned computer-use runtime and isolated browser profiles released. Other application documents were not closed or saved.");
+      const browsers = [...this.browsers.values()];
+      this.browsers.clear();
+      const cleanup = await Promise.allSettled(browsers.map(browser => browser.close()));
+      await this.driver.close();
+      const failed = cleanup.filter(result => result.status === "rejected").length;
+      if (failed) return this.result("unknown", `Native runtime released, but cleanup of ${failed} of ${browsers.length} owned browsers is unconfirmed.`);
+      return this.result("closed", "Owned computer-use runtime and session-opened browsers released. Other application documents were not closed or saved.");
     });
   }
 }

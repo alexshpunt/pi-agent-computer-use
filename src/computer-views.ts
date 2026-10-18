@@ -1,16 +1,16 @@
 import { validateUiCapture, type UiCaptureOptions } from "./ui-resources.ts";
 import { validateSequence, type SequenceOptions, type FrameSelection } from "./temporal-capture.ts";
-import { validateDomRead, type DomReadOptions } from "./dom-inspection.ts";
+import { validateWebSnapshot, type WebSnapshotOptions } from "./web-browser.ts";
 
 /** One native Read mode. Details and sampled frames never grant input authority. */
 export type ComputerViews =
   | { kind: "state" }
-  | { kind: "dom"; options: DomReadOptions }
+  | { kind: "dom"; options: WebSnapshotOptions }
   | { kind: "overview"; capture: UiCaptureOptions }
   | { kind: "region"; region: { x: number; y: number; width: number; height: number } }
   | { kind: "sequence"; options: SequenceOptions }
   | { kind: "frames"; selection: FrameSelection }
-  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop" | "geometry"; hint: string };
+  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop"; hint: string };
 
 function json(value: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(value);
@@ -25,8 +25,8 @@ function keys(value: Record<string, unknown>, allowed: readonly string[]): void 
 export function parseComputerViews(views: readonly string[] = []): ComputerViews {
   const first = views[0] ?? "";
   if (views.some(view => view === "dom" || view.startsWith("dom:"))) {
-    if (views.length !== 1) throw Error("Use dom alone: readonly DOM has no image, UI, state, backend or capture options.");
-    return { kind: "dom", options: validateDomRead(first === "dom" ? {} : json(first.slice(4))) };
+    if (views.length !== 1) throw Error("Use dom alone: a DOM snapshot has no image, UI, state, backend or capture options.");
+    return { kind: "dom", options: validateWebSnapshot(first === "dom" ? {} : json(first.slice(4))) };
   }
   if (views.includes("state")) {
     if (views.length !== 1) throw Error("Use state alone: window metadata has no pixels, UI or capture options.");
@@ -47,8 +47,9 @@ export function parseComputerViews(views: readonly string[] = []): ComputerViews
     }
     if (first.startsWith("element:")) {
       const [operation, hint, extra] = value.split(",");
-      if (extra !== undefined || !["inspect", "scope", "highlight", "crop", "geometry"].includes(operation) || !/^[a-z0-9]+:[a-z]+$/.test(hint ?? ""))
-        throw Error("Use element:inspect|scope|highlight|crop|geometry,current-hint. Geometry is readonly DOM CSS only; crop consumes its overview.");
+      // UI hints look like "3:ab"; Playwright aria refs look like "e12" or "f1e3".
+      if (extra !== undefined || !["inspect", "scope", "highlight", "crop"].includes(operation) || !/^[a-z0-9]+(:[a-z]+)?$/i.test(hint ?? ""))
+        throw Error("Use element:inspect|scope|highlight|crop,<UI hint>, or element:crop|highlight,<aria ref> on a DOM observation.");
       return { kind: "element", operation: operation as Extract<ComputerViews, { kind: "element" }>["operation"], hint };
     }
     if (["all", "first", "last", "endpoints", "changed"].includes(value)) return { kind: "frames", selection: value as FrameSelection };
