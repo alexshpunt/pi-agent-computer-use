@@ -29,19 +29,21 @@ Read views:
 
 Examples contain placeholder rectangles/hints. Choose actual targets from the current observation. `offset` and `limit` select text lines, never pixels or image-grid cells. Read a cached observation with `ui` to slice its collected text without another native walk. Acquisition options require a fresh window Read.
 
-Search an observation address to filter its collected UI without another native walk. Missing nodes in an incomplete tree remain unknown. Scope and highlight use stored overview pixels; they are not fresh captures.
+Search an observation address to filter its collected UI without another native walk. Missing nodes in an incomplete tree remain unknown. For native UI observations, scope and highlight use stored overview pixels; they are not fresh captures.
 
-Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Native WGC detail is unsupported: use an explicit default-route overview when detail is needed. Display detail, frames and text selections never grant input authority.
+Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Detail from an ordinary WGC overview is unsupported: use an explicit default-route overview for that path. Qualified DOM detail uses the separate readonly transaction below. Display detail, frames and text selections never grant input authority.
 
 ## Readonly browser DOM
 
-DOM inspection is opt-in through the explicitly selected, byte-checked `windows-dom-inspection` runtime. It is not the default runtime. The route requires an existing driver-owned browser endpoint and an exact window with one proven selected tab. It never prepares an endpoint, launches or replaces a browser/profile, or activates a tab. Other windows and ordinary `ui`/`image`/`full` Reads keep their existing behavior and policy.
+DOM inspection is opt-in through the explicitly selected, byte-checked `windows-dom-inspection` or `windows-dom-actions` runtime. It is not the default runtime. The route requires an existing driver-owned browser endpoint and an exact window with one proven selected tab. It never prepares an endpoint, launches or replaces a browser/profile, or activates a tab. Other windows and ordinary `ui`/`image`/`full` Reads keep their existing behavior and policy.
 
 To explicitly create a new isolated browser, Insert `{"action":"open_browser"}` into `computer:session`. This uses the same selected runtime and native session as later DOM reads, returns its exact window address, and admits it under Safe. It accepts no URL, existing profile or endpoint. Opening is separate from inspection; a refused DOM read never launches a replacement. Never replay an uncertain launch.
 
 Read the authorized window with `views:["dom"]`, or use one JSON view such as `dom:{"locator":{"role":"button","name":"Save"},"include_hidden":true,"max_nodes":100,"max_depth":16}`. Omit image, UI, state, backend and capture views. Locator fields are `role`, `name`, `label`, `text`, `test_id` and `css`. Semantic predicates are exact; `text` is a substring and `css` uses the native browser query. Combined predicates must all match; duplicate matches remain separate. Limits are `max_nodes` 1..200 and `max_depth` 1..32. Locators are bounded to 256 characters per field.
 
 The returned `dom` resource contains snapshot-local hints, frame identities, tags, attributes, accessible role/name, live value/states and visibility where available. Native layout units are not qualified as CSS pixels: `bounds_css` stays null and `geometry_status` reports that limitation. Missing metadata stays unavailable. Check `complete`, `collection_complete`, `truncated`, `omitted` and projection limits before interpreting absence. A finished or empty projection does not prove that an incomplete collection inspected every node or frame.
+
+Check `collection_scope` and `excluded` too. `author_dom_with_open_shadow` covers authored DOM and open shadow roots, not browser-generated user-agent shadow internals. `excluded.user_agent_shadow_roots` and `excluded.user_agent_shadow_hosts` report the excluded roots and fixed host counts separately. Authored closed or unknown shadow roots, missing children, unavailable frames and exhausted collection budgets still make coverage incomplete.
 
 Read the issued observation without views, or with `dom`, to inspect its cached records. Search that observation to filter collected text and attributes without another native query. Read `element:inspect,<actual-hint>` for one record. Read `element:scope,<actual-hint>`, or a nonempty `dom:{...}` options view on the observation, for a fresh bounded native query; `scope` accepts only a hint from that observation. A refresh retires older hints. Fresh window reads, close and reload also retire them. Do not borrow hints between DOM/UI snapshots or frames; stale and detached native sources refuse rather than silently rebind.
 
@@ -51,7 +53,45 @@ The returned `dom_geometry` identifies the window, source observation, hint, fra
 
 Geometry sampling does not overwrite cached `bounds_css:null`, create a new DOM snapshot or renew reference lifetime. Cached Read, Search and `element:inspect` keep their existing behavior. Read the window with `dom` for fresh metadata and new hints.
 
-DOM observations are readonly: Write and Insert refuse, and cached reads/searches do not renew native references. The reserved `document_css_pixels` domain never grants desktop or screenshot coordinates. DOM element crop/highlight currently refuses because native-pixel correspondence is not qualified. Do not guess a transform or use a page screenshot as native pixels. Read a fresh native window overview for ordinary image/UI inspection or input.
+DOM hints remain readonly: Write and ordinary input refuse, and cached reads/searches do not renew native references. A separate, explicit DOM action intent is described below. The reserved `document_css_pixels` domain never grants desktop or screenshot coordinates. Do not guess a transform or use a page screenshot as native pixels. Read a fresh native window overview for ordinary image/UI inspection or input.
+
+### Qualified native DOM crop and highlight
+
+Use `element:crop,<actual-hint>` or `element:highlight,<actual-hint>` on a current DOM observation for readonly native detail. This requires the exact byte-checked combined runtime selected by `windows-dom-inspection` or `windows-dom-actions`, plus the separate runtime/browser/revision/DPR policy in [the Driver](../src/driver.ts). The current raster scope is Chrome/155.0.8059.40 at DPR1.5 with that policy's exact Chromium revision. A matching version string alone is not enough. Other runtimes, browsers, revisions and DPRs refuse; selecting this profile does not adopt it as the installed default.
+
+Use a main-document or open-shadow hint whose whole rectangle fits the qualified native viewport and capture. Child-frame mapping is not qualified. The provider checks two equal ready native geometry samples, captures a fresh WGC crop, then checks a third source/layout/native sample before returning any pixels. Changed, stale, detached, revoked, cancelled or unqualified sources withhold pixels without rebinding, replay or fallback. Read fresh DOM before deciding what to do after a refusal.
+
+The crop is an unscaled, unpadded lossless PNG from original WGC pixels. Its reported capture-frame origin is not the window origin. Highlight adds a border to those validated crop pixels and may show the same proven physical region in the human-only overlay. Neither operation uses a saved overview, clips an unsupported rectangle, creates an input observation or grants nested-detail authority.
+
+Keep the two geometry contracts separate. CSS `element:geometry` still reports `native_pixel_mapping:"unavailable"`; that sample grants no native crop authority. Native detail has its own source-bound geometry and explicit raster policy. It does not change cached `bounds_css:null` or renew DOM hints. Its native receipt still says `candidate_not_raster_qualified`; the provider's narrow raster policy is separate, not a promotion of that flag. Treat `atomic:false`, `input_authority:false` and `paint_freshness:"unverified"` literally: these checks do not prove simultaneous DOM/paint state, fresh compositor paint or input targeting.
+
+## Locator-grounded DOM actions
+
+DOM actions require the explicitly selected, byte-checked `windows-dom-actions` candidate. It is not the default runtime, and its Windows build and metadata checks do not establish live application acceptance. The readonly `windows-dom-inspection` profile does not provide locator input. A different tool interface, version string or DOM hint does not qualify it.
+
+Read the authorized window with `dom`. Choose an actual main-document/open-shadow hint as document context, then Insert one explicit intent into that DOM observation address:
+
+```json
+{"action":"dom","source_hint":"<actual-hint>","input_route":"dom_event","request":{"action":"fill","locator":{"test_id":"name"},"text":"Ada","timeout_ms":5000}}
+```
+
+The source hint pins the inspected document, not the node to act on. The locator resolves the target within that same document. Omit native identities, coordinates, address query options, delivery, animation and sequences. Child-frame action sources refuse. Plain click/hint commands and literal Write do not become DOM actions.
+
+| Request action | Required extra fields |
+| --- | --- |
+| `click`, `double_click`, `right_click`, `check`, `uncheck`, `focus`, `scroll_into_view` | None |
+| `fill`, `type` | `text`, at most 2,000 characters; empty text is allowed |
+| `press` | `key`, a supported explicit chord such as `Enter` or `Control+A` |
+| `select_option` | `values`, 1..32 distinct exact option values |
+| `hover` | `dwell_ms`, integer 1..10000 |
+
+Use a nonempty locator with the same predicates as DOM Read. Each action accepts only its own extra fields. `timeout_ms` is an integer in 1..10000, default 5000, covering native readiness, serialization, dispatch and dwell. Readiness waits for the relevant visible/enabled/editable/stable/hit-test facts. Missing or unknown facts do not count as ready. Ambiguity, incomplete collection, document changes and stale sources refuse rather than choosing another target.
+
+Choose `dom_event` explicitly for programmatic DOM semantics. It does not produce trusted input: hover events do not prove CSS `:hover`, synthetic keys do not perform browser defaults, and a context-menu event does not prove a native menu opened. `input_route:"trusted"` currently refuses without downgrade. No route uses caller-supplied JavaScript or silently falls back to coordinates or another backend.
+
+Inspect `dom_action.progress`: attempted and acknowledged steps are separate, and `in_flight` identifies a step whose reply is unknown. `cleanup` reports only request-owned cleanup. Boolean `observed` samples describe acknowledged steps, not a fresh element snapshot or application success. A successful tool result means delivery completed, not that the application handled it. Application effects stay unknown/unverified even when every step is acknowledged. Cancellation can stop later steps but cannot undo a script already accepted by the browser.
+
+A valid intent consumes the observation even when native dispatch refuses. Read fresh DOM after each action and verify the intended state. Never replay a completed or uncertain prefix. For an explicit native UI/image fallback, Read a fresh overview of the same authorized window; DOM/CSS coordinates never ground that input.
 
 ## Restore a minimized window
 
