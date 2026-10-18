@@ -10,15 +10,15 @@ test("real Pi mirrors native provider image bytes and traces nested and captured
   const cwd = await mkdtemp(path.resolve(".tmp", "vision-contract-"));
   const programs = [
     { id: "program", name: "codemode", args: { code: `
-const view = await tools.browser_open({url:"https://example.test"});
+const view = await tools.sample_open({});
 image(view.image); text(view.text);
 ` } },
     { id: "captured-only", name: "codemode", args: { code: `
-await tools.browser_observe({});
+await tools.sample_observe({});
 text("Capture deliberately not forwarded.");
 ` } },
-    { id: "failed", name: "codemode", args: { code: 'await tools.browser_act({click:"notallocated"});' } },
-    { id: "close", name: "browser_close", args: {} },
+    { id: "failed", name: "codemode", args: { code: "await tools.sample_fail({});" } },
+    { id: "close", name: "sample_close", args: {} },
   ];
   const bodies: Record<string, unknown>[] = [];
   const provider = createServer(async (request, response) => {
@@ -41,18 +41,18 @@ text("Capture deliberately not forwarded.");
     const run = await new PiIntegrationTest({
       testName: "vision-debug-native-provider", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/vision-extension.ts")],
-      tools: ["codemode", "browser_open", "browser_observe", "browser_act", "browser_close"],
+      tools: ["codemode", "sample_open", "sample_observe", "sample_fail", "sample_close"],
       providerMode: "user", model: "vision-loopback/fixture", rawMode: true,
       environment: { VISION_TEST_PROVIDER: `http://127.0.0.1:${address.port}/v1` },
       isolateUserResources: true,
-    }).run("Exercise only the synthetic browser through Codemode, including captured-only output and a refusal.");
+    }).run("Exercise only the synthetic image tools through Codemode, including captured-only output and a refusal.");
     const state = JSON.parse(await readFile(path.join(cwd, "vision-trace.json"), "utf8"));
     await mkdir(run.artifacts.directory, { recursive: true });
     await writeFile(path.join(run.artifacts.directory, "vision-trace.json"), JSON.stringify(state, null, 2));
     await writeFile(path.join(run.artifacts.directory, "provider-bodies.json"), JSON.stringify(bodies, null, 2));
     expect(state.actions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "program/1", parentId: "program", tool: "browser_open", status: "observed" }),
-      expect.objectContaining({ id: "captured-only/1", parentId: "captured-only", tool: "browser_observe" }),
+      expect.objectContaining({ id: "program/1", parentId: "program", tool: "sample_open", status: "observed" }),
+      expect.objectContaining({ id: "captured-only/1", parentId: "captured-only", tool: "sample_observe" }),
       expect.objectContaining({ id: "failed/1", isError: true }),
     ]));
     expect(state.captures).toHaveLength(2);

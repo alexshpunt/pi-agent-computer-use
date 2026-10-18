@@ -1,9 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import browserFixture from "./cua-browser-extension.ts";
+import { Type } from "@earendil-works/pi-ai";
+import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerVisionDebug } from "../../src/vision-debug.ts";
 
+const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN2kAAAAASUVORK5CYII=";
+
+/** Real-Pi Vision debug fixture: synthetic image tools, no native UI or browser. */
 export default function visionFixture(pi: ExtensionAPI): void {
   const baseUrl = process.env.VISION_TEST_PROVIDER;
   if (baseUrl) {
@@ -15,7 +18,29 @@ export default function visionFixture(pi: ExtensionAPI): void {
     });
   }
   const debug = registerVisionDebug(pi);
-  browserFixture(pi);
+  createCodemodeExtension({ mode: "on" })(pi);
+  const image = { type: "image" as const, data: PIXEL, mimeType: "image/png" };
+  const imageTool = (name: string) => pi.registerTool({
+    name, label: name, description: "Return one synthetic PNG.",
+    outputSchema: Type.Object({ text: Type.String(), image: Type.Unknown() }, { additionalProperties: true }),
+    parameters: Type.Object({}, { additionalProperties: false }),
+    async execute() {
+      return { content: [{ type: "text" as const, text: "Synthetic image." }, image], details: { status: "observed" },
+        structuredContent: { status: "observed", text: "Synthetic image.", image } };
+    },
+  });
+  imageTool("sample_open");
+  imageTool("sample_observe");
+  pi.registerTool({
+    name: "sample_fail", label: "sample_fail", description: "Always refuse.",
+    parameters: Type.Object({}, { additionalProperties: false }),
+    async execute() { return { content: [{ type: "text" as const, text: "Refused." }], details: { status: "refused" }, isError: true }; },
+  });
+  pi.registerTool({
+    name: "sample_close", label: "sample_close", description: "Return text only.",
+    parameters: Type.Object({}, { additionalProperties: false }),
+    async execute() { return { content: [{ type: "text" as const, text: "Closed." }], details: { status: "closed" } }; },
+  });
   pi.on("session_start", async (_event, ctx) => {
     await writeFile(path.join(ctx.cwd, "vision-url.txt"), debug.url() ?? "");
   });
