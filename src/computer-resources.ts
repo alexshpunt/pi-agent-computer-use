@@ -59,6 +59,11 @@ export class ComputerResources {
     return result;
   }
 
+  /** Whether an observation or window-state address still grants its one-use authority. Other addresses grant none. */
+  grantsAuthority(address: ComputerAddress): boolean {
+    return address.kind === "observation" ? this.snapshots.has(address.ref)
+      : address.kind === "window-state" ? this.windowStates.has(address.ref) : false;
+  }
   /** Resolve an editor's readonly descriptor without native acquisition or target refresh. */
   descriptor(address: ComputerAddress): string {
     if (address.kind === "window-state") {
@@ -240,6 +245,18 @@ export class ComputerResources {
       if (typeof app !== "string" || !app.trim()) throw new ComputerRequestError("Open needs an installed app identifier or exact name.");
       const result = await (await this.getSession(cwd)).open(app, signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
+    }
+    if (address.kind === "window" && tool === "insert") {
+      const command = commandObject(value);
+      if (command.action !== "wait_for" && command.action !== "verify")
+        throw new ComputerRequestError("A window address accepts only wait_for or verify. Input needs the observation address returned by a fresh window Read.");
+      const session = await this.getSession(cwd);
+      let spec;
+      try { spec = session.waitSpec(address.ref, command); }
+      catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+      // A verification sample replaces the window's observations, like any fresh window Read.
+      this.retireWindow(address.ref);
+      return this.remember({ window_ref: address.ref }, await session.waitFor(address.ref, spec, signal));
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Input needs the observation address returned by a fresh window Read.");
     const snapshot = this.snapshot(address.ref);
