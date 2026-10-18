@@ -18,7 +18,7 @@ export function sourceIdentity(identity: SourceIdentity["identity"], monitorId: 
 }
 /** Common capture provenance. Unknown native fields stay null; image and semantic scopes are distinct. */
 export interface ObservationSource extends SourceIdentity {
-  kind: "display" | "window" | "browser";
+  kind: "display" | "window";
   captured_at: string;
   timestamp_boundary: "native_call_completed";
   image: {
@@ -30,9 +30,9 @@ export interface ObservationSource extends SourceIdentity {
     native_bounds: unknown;
     crop?: { requested: { x: number; y: number; width: number; height: number }; applied: { x: number; y: number; width: number; height: number }; coordinate_space: "uncropped_image_pixels" };
   };
-  semantic_scope: "none" | "native_window" | "owned_page";
+  semantic_scope: "none" | "native_window";
   scale: { native_scale_factor: number | null; screenshot_scale: number | null; dpi: null; device_pixel_ratio: null };
-  capabilities: { read: true; input: "none" | "window_observation" | "owned_browser"; detail: "unsupported" | "browser_window_zoom" | "window_zoom" | "display_crop" };
+  capabilities: { read: true; input: "none" | "window_observation"; detail: "unsupported" | "window_zoom" | "display_crop" };
   visibility: { minimized: boolean | null; occluded: null; paint_freshness: "unverified" };
 }
 const positive = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
@@ -50,10 +50,10 @@ export function observationSource(kind: ObservationSource["kind"], native: Recor
       original_dimensions: originalWidth && originalHeight ? { width: originalWidth, height: originalHeight } : null,
       origin: zoom ? null : { x: 0, y: 0, relative_to: kind === "display" ? "primary_display" : "window" },
       native_bounds: native.window_bounds ?? null },
-    semantic_scope: kind === "display" ? "none" : kind === "window" ? "native_window" : "owned_page",
+    semantic_scope: kind === "display" ? "none" : "native_window",
     scale: { native_scale_factor: positive(native.scale_factor), screenshot_scale: positive(native.screenshot_scale), dpi: null, device_pixel_ratio: null },
-    capabilities: { read: true, input: kind === "display" ? "none" : kind === "window" ? "window_observation" : "owned_browser",
-      detail: kind === "browser" ? "browser_window_zoom" : zoom ? "unsupported" : kind === "display" ? "display_crop" : "window_zoom" },
+    capabilities: { read: true, input: kind === "display" ? "none" : "window_observation",
+      detail: zoom ? "unsupported" : kind === "display" ? "display_crop" : "window_zoom" },
     visibility: { minimized: typeof native.minimized === "boolean" ? native.minimized : null, occluded: null, paint_freshness: "unverified" },
   };
 }
