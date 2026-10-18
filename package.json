@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.31.0",
+    "playwright-core": "1.64.1",
     "sharp": "0.35.5"
   },
   "peerDependencies": {
@@ -48,9 +49,9 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@alexshp/cua-runtime-win32-x64": "0.34.0-dev.819fa500b8bc",
-    "@alexshp/cua-runtime-linux-x64": "0.34.0-dev.819fa500b8bc",
+    "@alexshp/cua-runtime-darwin-arm64": "0.34.0-dev.819fa500b8bc",
     "@alexshp/cua-runtime-darwin-x64": "0.34.0-dev.819fa500b8bc",
-    "@alexshp/cua-runtime-darwin-arm64": "0.34.0-dev.819fa500b8bc"
+    "@alexshp/cua-runtime-linux-x64": "0.34.0-dev.819fa500b8bc",
+    "@alexshp/cua-runtime-win32-x64": "0.34.0-dev.819fa500b8bc"
   }
 }

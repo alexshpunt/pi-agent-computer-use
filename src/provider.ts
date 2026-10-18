@@ -7,7 +7,6 @@ import { connectAgentDocumentation } from "pi-agent-ide/api/documentation";
 import { readFile } from "node:fs/promises";
 import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError } from "./computer-resources.ts";
 import { computerSource } from "./computer-address.ts";
-import { domPreview } from "./dom-resource.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
 import type { ComputerSession, ComputerResult, Content } from "./session.ts";
@@ -46,54 +45,22 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       `Measured state: visible=${state.visible}; foreground=${state.foreground_at_target}, keyboard_focus=${state.keyboard_focus_at_target}`);
   }
   const id = d.observation_id ?? d.agent_image?.image_id;
-  if (typeof id === "string" && d.status === "observed") lines.push(`Observation: ${computerSource("observation", id)}`);
+  if (typeof id === "string" && (d.status === "observed" || d.dom && d.status === "delivered")) lines.push(`Observation: ${computerSource("observation", id)}`);
   if (d.agent_image) {
     const image = d.agent_image, output = record(image.output), configuration = record(image.configuration);
     lines.push(`Image: ${output.width}x${output.height} ${label(output.mimeType)}; ${label(image.route)}; ${label(image.coordinate_space)}`);
     if (configuration.maxLongEdge !== undefined) lines.push(`Capture: maxLongEdge=${configuration.maxLongEdge}, scale=${configuration.scale}`);
   }
   if (d.source) lines.push(`Source: ${d.source.captured_at}; input=${d.source.capabilities.input}; paint freshness=${d.source.visibility.paint_freshness}`);
-  const domProgress = d.dom_action?.progress ?? state.dom_progress;
-  if (domProgress) {
-    const prefix = record(domProgress);
-    lines.push(`DOM action: ${d.dom_action?.status ?? "unknown"}; trusted=false; atomic=false; effects=unverified`,
-      `Attempted steps: ${JSON.stringify(prefix.attempted_steps)}; acknowledged: ${JSON.stringify(prefix.acknowledged_steps)}`,
-      `In flight: ${prefix.in_flight ?? "none"}; progress=${prefix.status}; reason=${prefix.reason ?? "none"}; cleanup=${prefix.cleanup}`,
-      "No automatic retry. Programmatic events do not prove CSS hover, trusted key defaults or application success.");
-    if (d.dom_action?.refusal) lines.push(`DOM refusal: ${label(d.dom_action.refusal.code)}; ${label(d.dom_action.refusal.message)}`);
-    if (d.dom_action?.observed.length) lines.push(`Acknowledged samples: ${JSON.stringify(d.dom_action.observed)}`);
-  }
-  if (d.dom_native_detail) {
-    const detail = d.dom_native_detail;
-    lines.push(`DOM native ${detail.operation}: ${detail.hint}; atomic=${detail.atomic}; input=none; paint=${detail.paint_freshness}`,
-      `Physical region: ${JSON.stringify(detail.physical_enclosing_rect)}; screen_physical_pixels`,
-      `WGC frame: ${JSON.stringify(detail.frame_bounds)}; original pixels, scale=1, padding=0`,
-      `Raster scope: ${label(detail.qualification.browser.product)}; DPR=${detail.qualification.dpr}; native receipt=${detail.native_qualification}`,
-      "Runtime/browser/DPR qualification is explicit and separate from the native candidate flag. No input or nested-detail authority.");
-  } else if (d.dom_geometry) {
-    const sample = d.dom_geometry;
-    lines.push(`DOM CSS geometry: ${sample.hint}; readonly, input=none; native mapping=${sample.native_pixel_mapping}; atomic=${sample.atomic}`,
-      `Frame: ${label(sample.frame.ref)} (${sample.frame.kind}); method=${sample.method}; received=${sample.received_at}`,
-      `Bounds: ${JSON.stringify(sample.bounds)}; ${sample.coordinate_space}; viewport=${sample.viewport}`,
-      `Scroll: ${JSON.stringify(sample.scroll)}; visual viewport: ${JSON.stringify(sample.visual_viewport)}`,
-      "This sample is not visibility, native image coordinates, input or crop/highlight authority.");
-  } else if (d.dom) {
-    const dom = domPreview(d.dom);
+  if (d.dom) {
     if (d.status !== "observed") {
       const message = computerResultText(result).split("\n{", 1)[0];
       if (message) lines.push(message);
-      if (typeof state.code === "string") lines.push(`code: ${state.code}`);
     }
-    lines.push(`DOM: snapshot=${dom.snapshot_id}, complete=${dom.complete}, collection_complete=${dom.collection_complete}, truncated=${dom.truncated}; returned=${dom.returned_count}/${dom.matched_count}; projection_matches=${dom.matches}, projection_truncated=${dom.projection_truncated}; readonly, input=none`,
-      `Collection scope: ${dom.collection_scope ?? "unavailable"}; excluded browser internals: ${dom.excluded ? JSON.stringify(dom.excluded) : "unavailable"}`,
-      `Page: ${label(dom.page.title)} | ${label(dom.page.url)}; scope=${dom.scope}`,
-      `Omitted: ${JSON.stringify(dom.omitted)}; geometry=${dom.geometry_status}`,
-      `Preview: ${dom.elements.length}/${d.dom.elements.length} collected records; use bounded Search or element:inspect for detail.`);
-    if (state.cached_dom === true) lines.push("Cached DOM: no new DOM query or authority renewal; inspect the collected snapshot, not current page state.");
-    if (!dom.complete || !dom.collection_complete || dom.truncated || dom.projection_truncated) lines.push("Treat absence as unknown outside the returned bounded projection.");
-    for (const e of dom.elements) lines.push(`${e.hint} | frame=${label(e.frame.ref)} (${e.frame.kind}) | ${label(e.tag)} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | visibility=${e.visibility} | bounds=${JSON.stringify(e.bounds_css)} ${e.coordinate_space}`,
-      `  text=${label(e.text)}; text_truncated=${e.text_truncated}; states=${label(JSON.stringify(e.states))}; attributes=${label(JSON.stringify(e.attributes))}`);
-    lines.push("DOM hints are readonly. Never use CSS bounds as native image coordinates or input targets; native crop/highlight needs an independent geometry proof.");
+    lines.push(`Page: ${label(d.dom.title)} | ${label(d.dom.url)}`);
+    if (d.dom.matches !== undefined) lines.push(`Matching snapshot lines: ${d.dom.matches}`);
+    if (d.dom.truncated) lines.push("Snapshot truncated; narrow it with dom:{\"target\":...,\"depth\":...}.");
+    lines.push(...d.dom.snapshot.split("\n"));
   } else if (d.ui) {
     lines.push(`UI: collected=${d.ui.collected}, complete=${d.ui.complete}, truncated=${d.ui.truncated || d.ui.projection_truncated}`);
     for (const e of d.ui.elements) lines.push(`${e.hint} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | enabled=${e.enabled} | image_bounds=${JSON.stringify(e.bounds.window_image ?? null)}`);
@@ -128,15 +95,14 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
-  lines.push(d.dom_geometry ? "The source DOM snapshot remains cached. Read the window with dom for fresh metadata; sample geometry again only while its source stays current."
-    : d.dom ? "Read the window with dom view for a fresh bounded DOM query. Use Search or element:inspect on this snapshot. For separately admitted DOM input, use Insert action:dom with source_hint, input_route and a locator request; do not use Write or ordinary input."
+  lines.push(d.dom ? "Insert one JSON action into this observation, e.g. {\"action\":\"click\",\"target\":{\"ref\":\"e2\"}}. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
     : d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
     : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
   const text = lines.join("\n");
   if (!d.dom || Buffer.byteLength(text) <= 24_000) return text;
   // Read and Search share the same byte budget; retain whole lines and never split Unicode.
-  const notice = "DOM text preview reached its byte limit. Use bounded Search or element:inspect; omitted text is not absence or input authority.";
+  const notice = "DOM text preview reached its byte limit. Search this observation or Read a narrower dom:{\"target\":...,\"depth\":...} snapshot; omitted lines are not absence.";
   const preview: string[] = [];
   let bytes = Buffer.byteLength(notice) + 1;
   for (const line of lines) {
@@ -149,7 +115,6 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
 
 /** Preserve uncertainty when a later refusal follows an already-delivered action prefix. */
 export function computerEffect(result: ComputerResult): "applied" | "not-applied" | "unknown" {
-  if (result.details.dom_action) return result.details.status === "refused" && !result.details.dom_action.progress.mutation_attempted ? "not-applied" : "unknown";
   if (!result.isError && ["delivered", "observed", "closed"].includes(result.details.status)) return "applied";
   const sequence = record(result.details.state?.sequence);
   return result.details.status === "refused" && !(typeof sequence.completed === "number" && sequence.completed > 0) ? "not-applied" : "unknown";
@@ -201,7 +166,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           script: { kind: "native", source: address.source, blocks: canonical } } };
       } });
       api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id, window-state/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
-        views: "Computer: image/ui/full; dom alone or dom:{locator:{role,name,label,text,test_id,css},scope,include_hidden,max_nodes,max_depth} on a window returns fresh readonly DOM; cached DOM Read/Search performs no new query or authority renewal. Use element:scope,hint on a DOM observation for a fresh subtree query. DOM hints grant no Write/Insert or image-coordinate authority. state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
+        views: "Computer: image/ui/full; dom alone or dom:{target,boxes,depth} on a window opened by open_browser returns a fresh Playwright aria snapshot with [ref=...] values; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
     } }),
     connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],

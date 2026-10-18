@@ -12,6 +12,7 @@ import { registerComputerMode } from "./mode.ts";
 import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
+import { WebBrowser } from "./web-browser.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
@@ -131,7 +132,8 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     if (!loading) loading = loadComputerConfig(cwd).then(async config => {
       const driver = new ReactiveAnimationDriver(new McpDriver(config), await loadReactiveAnimationConfig(cwd));
       overviewKernel = driver.overviewKernel ?? "lanczos3";
-      session = new ComputerSession(driver, getMode, () => images.settings(), driver.platform === "windows" ? highlights.flash : undefined, image => debug.trace.retainOriginal(image));
+      session = new ComputerSession(driver, getMode, () => images.settings(), driver.platform === "windows" ? highlights.flash : undefined, image => debug.trace.retainOriginal(image),
+        driver.platform === "windows" ? (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal) : undefined);
       return session;
     });
     try { return await loading; }
