@@ -16,6 +16,7 @@ import { actionCapability, type ActionCapability } from "./action-capability.ts"
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
+import type { StateDiff } from "./successor.ts";
 import { combine, evaluateNative, validateWait, type ConditionResult, type WaitResult, type WaitSpec } from "./ui-conditions.ts";
 import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
 
@@ -105,16 +106,27 @@ export interface ComputerResult {
     selected_frames?: Omit<SequenceFrame, "image">[];
     /** Outcome of a bounded wait_for/verify; the conditions as requested, in order. */
     verification?: WaitResult & { spec: WaitSpec };
+    /** Declared postcondition of an action: verified now, already true before, not reached, or undecidable. */
+    postcondition?: { status: "verified" | "preexisting" | "failed" | "unknown"; reason?: string; verification?: WaitResult & { spec: WaitSpec } };
+    /** The observation taken after an action and its compact difference from the action's input observation. */
+    successor?: { observation_id?: string; diff?: StateDiff; reason?: string };
+    /** Complete text of one native element from its observation. */
+    element_text?: { hint: string; role: string | null; name: string | null; text: string; cut: boolean };
+    /** Per-step outcome of a mixed batch; the batch stops at the first step that is not delivered or satisfied. */
+    batch?: { total: number; completed: number; stop_reason: string; elapsed_ms: number;
+      steps: { index: number; action: string; outcome: string; reason?: string; verdict?: string }[] };
   };
   isError?: boolean;
 }
-interface Observation { id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
+interface Observation { texts?: Map<string, string>; id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
-/** Aria snapshots above this many characters are cut; narrow them with a target or depth. */
-const WEB_SNAPSHOT_LIMIT = 80_000;
+/** Aria snapshots above this many characters are cut. Read pages stored snapshots with offset/limit. */
+const WEB_SNAPSHOT_LIMIT = 400_000;
+/** Longest native element text retained for element:text reads; the walk shows 1024 characters per element. */
+const ELEMENT_TEXT_LIMIT = 200_000;
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
@@ -171,7 +183,7 @@ export class ComputerSession {
     const settings = this.settings();
     return { ...settings, kernel: this.driver.overviewKernel ?? settings.kernel };
   }
-  private queue(work: () => Promise<ComputerResult>): Promise<ComputerResult> {
+  private queue<T = ComputerResult>(work: () => Promise<T>): Promise<T> {
     const result = this.tail.then(work, work);
     this.tail = result.catch(() => undefined);
     return result;
@@ -753,8 +765,14 @@ export class ComputerSession {
     if (ui && !hasImage) for (const element of ui.elements) {
       delete element.bounds.window_image; element.hint_display = "off";
     }
-    const elements = hasUi ? state.elements as { element_token?: unknown; frame?: unknown }[] : [];
-    entry.observation = { id, ui, settings, ...(wgc ? { backend: "wgc" as const } : {}),
+    const elements = hasUi ? state.elements as { element_token?: unknown; frame?: unknown; label?: unknown; value?: unknown }[] : [];
+    // The UI resource cuts each text at 1024 characters; keep longer texts privately for element:text reads.
+    const texts = new Map<string, string>();
+    if (ui) elements.filter(element => typeof element.element_token === "string").forEach((element, index) => {
+      const full = [element.label, element.value].filter((item): item is string => typeof item === "string" && item.length > 1024);
+      if (full.length && ui.elements[index]) texts.set(ui.elements[index].hint, full.join("\n").slice(0, ELEMENT_TEXT_LIMIT));
+    });
+    entry.observation = { id, ui, settings, ...(texts.size ? { texts } : {}), ...(wgc ? { backend: "wgc" as const } : {}),
       width: hasImage && typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: hasImage && typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
       tokens: new Set(elements.map(element => element.element_token).filter((token): token is string => typeof token === "string")),
@@ -942,7 +960,7 @@ export class ComputerSession {
             return finish("unknown", false, undefined, why);
           }
           last = sample;
-          results = evaluateNative(sample.details.ui, spec.conditions);
+          results = evaluateNative(sample.details.ui, spec.conditions, entry.observation?.texts);
         }
         samples++;
         const verdict = combine(results);
@@ -956,6 +974,50 @@ export class ComputerSession {
       }
       if (entry.web) last = await this.webFinal(entry, signal);
       return finish("satisfied", false, last);
+    });
+  }
+
+  /**
+   * The complete text of one element in the current native observation, without another walk. Texts longer
+   * than the walk's 1024-character cut come from the same capture, up to 200,000 characters.
+   */
+  elementText(ref: string, id: string, hint: string): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = this.entries.get(ref);
+      if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
+      if (!this.allowed(entry)) return this.denied(entry.ref);
+      const observed = entry.observation;
+      if (!observed || observed.id !== id || !observed.ui) return this.result("refused", "This observation is no longer current or has no UI. Read the window again.", undefined, this.addressed(entry));
+      let element;
+      try { element = resolveUi(observed.ui, hint); }
+      catch (error) { return this.result("refused", (error as Error).message, undefined, this.addressed(entry)); }
+      const text = observed.texts?.get(hint) ?? [element.name, element.value].filter(item => item).join("\n");
+      const cut = text.length >= ELEMENT_TEXT_LIMIT;
+      return this.result("observed", `Element ${hint} text from this observation: ${text.length} characters${cut ? ", cut at the 200,000-character limit" : ""}. Page it with offset/limit.`,
+        undefined, { ...this.addressed(entry), observation_id: id, element_text: { hint, role: element.role, name: element.name, text, cut } });
+    });
+  }
+
+  /** Sample browser conditions once without changing the window's observations. Non-browser windows refuse. */
+  webCheck(ref: string, conditions: WaitSpec["conditions"], signal?: AbortSignal): Promise<ConditionResult[] | undefined> {
+    return this.queue<ConditionResult[] | undefined>(async () => {
+      const entry = this.entries.get(ref);
+      if (!entry?.web || !this.allowed(entry)) return undefined;
+      try { return await entry.web.request<ConditionResult[]>("check", { conditions }, signal); }
+      catch { return undefined; }
+    });
+  }
+
+  /** A fresh UI-only observation without the human frame, for successors and batch steps. */
+  observeQuiet(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
+      try {
+        const entry = await this.current(ref, signal);
+        if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        if (!this.allowed(entry)) return this.denied(entry.ref);
+        return await this.capture(entry, signal, undefined, { granularity: "ui" }, true);
+      } catch (error) { return this.failed(error, false); }
     });
   }
 

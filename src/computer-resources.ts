@@ -3,7 +3,9 @@ import { parseComputerAddress, computerSource, type ComputerAddress } from "./co
 import { parseComputerViews } from "./computer-views.ts";
 import type { ComputerSession, ComputerResult, Action } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
-import { validateWebAction, validateWebLaunch } from "./web-browser.ts";
+import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
+import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
+import { diffDom, diffUi } from "./successor.ts";
 
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -11,6 +13,10 @@ function commandObject(value: string): Record<string, unknown> {
   try { return object(JSON.parse(value)); }
   catch { throw new ComputerRequestError("Use one valid JSON command object."); }
 }
+/** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
+const NATIVE_BATCH_ACTIONS = ["click", "double_click", "right_click", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value"];
+/** An action's optional postcondition and successor request. */
+interface FollowUp { expect?: WaitSpec; successor: boolean; preexisting?: boolean }
 type ObservationTarget = { window_ref: string; display?: never } | { display: string; window_ref?: never };
 interface Snapshot { target: ObservationTarget; result: ComputerResult }
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
@@ -165,6 +171,7 @@ export class ComputerResources {
     if (view.kind === "dom") throw new ComputerRequestError("This observation has no DOM scope. Read its window with dom view.");
     if (view.kind === "element") {
       if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations have no collected UI.");
+      if (view.operation === "text") return session.elementText(snapshot.target.window_ref, address.ref, view.hint);
       if (view.operation === "crop") this.snapshots.delete(address.ref);
       return session.observe(snapshot.target.window_ref, signal, undefined, undefined,
         { operation: view.operation, observation_id: address.ref, hint: view.hint });
@@ -260,6 +267,34 @@ export class ComputerResources {
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Input needs the observation address returned by a fresh window Read.");
     const snapshot = this.snapshot(address.ref);
+    const window = snapshot.target.window_ref;
+    let input = value;
+    let follow: FollowUp | undefined;
+    if (tool === "insert" && window) {
+      const command = commandObject(value);
+      if (command.expect !== undefined || command.successor !== undefined) {
+        follow = await this.followUpSpec(window, command, cwd);
+        // Was the postcondition already true before anything is sent? Browsers sample now; native uses the input walk.
+        if (follow.expect) {
+          const session = await this.getSession(cwd);
+          const earlier = snapshot.result.details.dom ? await session.webCheck(window, follow.expect.conditions, signal)
+            : snapshot.result.details.ui ? evaluateNative(snapshot.result.details.ui, follow.expect.conditions) : undefined;
+          follow.preexisting = earlier !== undefined && combine(earlier) === "satisfied";
+        }
+        delete command.expect; delete command.successor;
+        input = JSON.stringify(command);
+      }
+      if (command.action === "batch") {
+        const result = await this.batch(address, snapshot, command, cwd, signal);
+        return follow ? this.followUp(window, snapshot, result, follow, cwd, signal) : result;
+      }
+    }
+    const result = await this.act(address, snapshot, input, tool, cwd, signal);
+    return follow && window ? this.followUp(window, snapshot, result, follow, cwd, signal) : result;
+  }
+
+  /** Dispatch one action against its observation: Playwright for DOM observations, CUA otherwise. */
+  private async act(address: Extract<ComputerAddress, { kind: "observation" }>, snapshot: Snapshot, value: string, tool: "write" | "insert", cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
     if (snapshot.result.details.dom) {
       if (tool !== "insert" || address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined || !snapshot.target.window_ref)
         throw new ComputerRequestError("A DOM observation accepts one Insert JSON action with a target, not Write or address options.");
@@ -291,6 +326,151 @@ export class ComputerResources {
     const action = { ...command, window_ref: snapshot.target.window_ref, observation_id: address.ref } as Action;
     this.snapshots.delete(address.ref);
     return (await this.getSession(cwd)).act(action, signal);
+  }
+
+  /** Validate an action's optional `expect` postcondition and `successor` request before anything is dispatched. */
+  private async followUpSpec(window: string, command: Record<string, unknown>, cwd: string): Promise<FollowUp> {
+    if (command.successor !== undefined && typeof command.successor !== "boolean") throw new ComputerRequestError("successor must be boolean.");
+    let expect: WaitSpec | undefined;
+    if (command.expect !== undefined) {
+      const raw = command.expect;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ComputerRequestError("expect must be an object with conditions and optional timeout_ms, interval_ms and stable.");
+      try { expect = (await this.getSession(cwd)).waitSpec(window, { ...raw as Record<string, unknown>, action: "wait_for" }); }
+      catch (error) { throw new ComputerRequestError(`expect: ${error instanceof Error ? error.message : String(error)}`); }
+    }
+    return { ...(expect ? { expect } : {}), successor: command.successor === true || expect !== undefined };
+  }
+
+  /**
+   * After an action, wait for its declared postcondition and attach the successor observation with a compact
+   * diff from the action's input observation. A refused or unknown action never yields a verified postcondition.
+   */
+  private async followUp(window: string, before: Snapshot, result: ComputerResult, follow: FollowUp, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+    const session = await this.getSession(cwd);
+    const status = result.details.status;
+    const preexisting = follow.preexisting === true;
+    let successor: ComputerResult | undefined;
+    let postcondition: ComputerResult["details"]["postcondition"];
+    if (follow.expect && status !== "refused") {
+      // Unknown delivery is sampled once for information, but never reported as verified.
+      const spec = status === "unknown" ? { ...follow.expect, timeout_ms: 0, stable: 1 } : follow.expect;
+      this.retireWindow(window);
+      successor = this.remember({ window_ref: window }, await session.waitFor(window, spec, signal));
+      const verification = successor.details.verification;
+      const verdict = verification?.verdict ?? "unknown";
+      postcondition = { status: status === "unknown" ? "unknown" : verdict === "satisfied" ? (preexisting ? "preexisting" : "verified") : verdict === "unsatisfied" ? "failed" : "unknown",
+        ...(status === "unknown" ? { reason: "The action outcome is unknown, so its postcondition cannot be attributed to it." } : {}),
+        ...(verification ? { verification } : {}) };
+    } else if (follow.expect) {
+      postcondition = { status: preexisting ? "preexisting" : "failed", reason: "The action was refused; nothing was sent." };
+    } else if (status !== "refused") {
+      if (result.details.dom) successor = result;
+      else { this.retireWindow(window); successor = this.remember({ window_ref: window }, await session.observeQuiet(window, signal)); }
+    }
+    const after = successor?.details;
+    const diff = before.result.details.dom && after?.dom ? diffDom(before.result.details.dom, after.dom)
+      : before.result.details.ui && after?.ui ? diffUi(before.result.details.ui, after.ui) : undefined;
+    // The successor replaces the action's own observation as the current one; a wait retired the earlier snapshot.
+    const details = { ...result.details, ...(after?.observation_id ? { observation_id: after.observation_id, ...(after.dom ? { dom: after.dom } : {}) } : {}),
+      ...(postcondition ? { postcondition } : {}),
+      successor: after?.observation_id ? { observation_id: after.observation_id, ...(diff ? { diff } : { reason: "The input observation had no comparable UI or DOM." }) }
+        : { reason: status === "refused" ? "The action was refused; the input observation is unchanged but consumed." : "No successor observation could be taken." } };
+    return { ...result, details };
+  }
+
+  /**
+   * Run up to 16 known steps in one call and stop at the first step that is not delivered or satisfied.
+   * Browser steps are Playwright actions and conditions. Native steps re-resolve `target` {role,name,text}
+   * against a fresh UI walk before each step; only the first step may use a hint or pixels of the current observation.
+   */
+  private async batch(address: Extract<ComputerAddress, { kind: "observation" }>, snapshot: Snapshot, command: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+    only(command, ["action", "steps"]);
+    const window = snapshot.target.window_ref!;
+    if (address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined) throw new ComputerRequestError("A batch takes its targets and delivery from its steps, not the address.");
+    if (!Array.isArray(command.steps) || command.steps.length < 1 || command.steps.length > 16) throw new ComputerRequestError("batch needs steps: 1..16 step objects.");
+    const session = await this.getSession(cwd);
+    const browser = snapshot.result.details.dom !== undefined;
+    type Step = { kind: "wait"; spec: WaitSpec; action: string } | { kind: "dom"; action: WebAction } | { kind: "native"; command: Record<string, unknown>; target?: Record<string, string> };
+    const steps: Step[] = command.steps.map((raw, index): Step => {
+      const step = object(raw);
+      const label = `steps[${index}]`;
+      try {
+        if (step.action === "wait_for" || step.action === "verify") return { kind: "wait", spec: session.waitSpec(window, step), action: String(step.action) };
+        if (browser) return { kind: "dom", action: validateWebAction(step) };
+        if (!NATIVE_BATCH_ACTIONS.includes(String(step.action))) throw Error(`action must be one of ${NATIVE_BATCH_ACTIONS.join(", ")}, wait_for or verify.`);
+        if (["window_ref", "observation_id", "sequence"].some(key => key in step)) throw Error("identity fields and nested sequences are not allowed.");
+        const pinned = ["hint", "element_token", "x", "y"].some(key => key in step);
+        if (pinned && index > 0) throw Error("only the first step may use a hint, token or pixels; later steps use target {role,name,text}.");
+        let target: Record<string, string> | undefined;
+        if (step.target !== undefined) {
+          if (pinned) throw Error("choose target or a hint/pixel target, not both.");
+          const value = object(step.target);
+          if (!Object.keys(value).length || Object.entries(value).some(([key, item]) => !["role", "name", "text"].includes(key) || typeof item !== "string" || !item))
+            throw Error("target needs non-empty role, name and/or text.");
+          target = value as Record<string, string>;
+        }
+        const { target: _target, ...nativeStep } = step;
+        return { kind: "native", command: nativeStep, ...(target ? { target } : {}) };
+      } catch (error) { throw new ComputerRequestError(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
+    });
+    this.snapshots.delete(address.ref);
+    const started = performance.now();
+    const rows: NonNullable<ComputerResult["details"]["batch"]>["steps"] = [];
+    // `issued` holds the latest result whose observation is still current; a native action consumes it.
+    let issued: ComputerResult | undefined, observation = address.ref, last: ComputerResult = snapshot.result, stop = "";
+    for (const [index, step] of steps.entries()) {
+      if (signal?.aborted) { stop = "Cancelled before the next step."; break; }
+      if (step.kind === "wait") {
+        this.retireWindow(window);
+        last = this.remember({ window_ref: window }, await session.waitFor(window, step.spec, signal));
+        issued = last.details.observation_id ? last : undefined;
+        const verdict = last.details.verification?.verdict ?? "unknown";
+        rows.push({ index, action: step.action, outcome: last.details.status, verdict });
+        observation = last.details.observation_id ?? observation;
+        if (last.details.status !== "observed" || verdict !== "satisfied") { stop = `Condition ${verdict} at step ${index}.`; break; }
+        continue;
+      }
+      if (step.kind === "dom") {
+        last = await session.actDom(window, observation, step.action, signal);
+        issued = undefined;
+        if (last.details.dom) { this.remember({ window_ref: window }, last); observation = last.details.observation_id!; issued = last; }
+      } else {
+        let element: string | undefined;
+        if (index > 0 || step.target) {
+          // Never reuse a stale observation: take a fresh UI walk and resolve the target in it.
+          this.retireWindow(window);
+          const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
+          if (fresh.details.status !== "observed" || !fresh.details.ui) { last = fresh; rows.push({ index, action: String(step.command.action), outcome: "refused", reason: "No current UI sample." }); stop = `No current UI before step ${index}.`; break; }
+          issued = fresh; observation = fresh.details.observation_id!;
+          if (step.target) {
+            const found = fresh.details.ui.elements.filter(item => (!step.target!.role || item.role?.toLowerCase() === step.target!.role.toLowerCase())
+              && (!step.target!.name || item.name === step.target!.name) && (!step.target!.text || `${item.name ?? ""}\n${item.value ?? ""}`.includes(step.target!.text)));
+            if (found.length !== 1) {
+              rows.push({ index, action: String(step.command.action), outcome: "refused", reason: found.length ? `${found.length} elements match the target.` : "No element matches the target in the current UI walk." });
+              stop = `Target not resolved at step ${index}; nothing was sent for it.`; break;
+            }
+            element = found[0].element_token;
+          }
+        }
+        this.snapshots.delete(observation);
+        issued = undefined;
+        last = await session.act({ ...step.command, ...(element ? { element_token: element } : {}), window_ref: window, observation_id: observation } as Action, signal);
+      }
+      const outcome = last.details.status;
+      rows.push({ index, action: step.kind === "dom" ? step.action.action : String(step.command.action), outcome,
+        ...(outcome !== "delivered" ? { reason: computerResultText(last).split("\n{", 1)[0].slice(0, 300) } : {}) });
+      if (outcome !== "delivered") { stop = `Step ${index} ${outcome}; later steps were not sent.`; break; }
+    }
+    const completed = rows.filter(row => row.outcome === "delivered" || row.verdict === "satisfied").length;
+    const failed = rows.at(-1)?.outcome;
+    // A stop at a condition leaves every sent action delivered; computerEffect marks a refusal after delivered steps as unknown.
+    const status: ComputerResult["details"]["status"] = failed === "unknown" || failed === "refused" ? failed : "delivered";
+    const message = `Batch ${stop ? "stopped" : "completed"}: ${completed}/${steps.length} steps in ${Math.round(performance.now() - started)} ms. ${stop || "Every action was delivered and every condition held."} Never replay completed or uncertain steps.`;
+    // The current observation is whatever the last step left: a successor snapshot or verification sample.
+    const base = issued ? issued.details : { ...last.details, dom: undefined, ui: undefined, observation_id: undefined, verification: undefined };
+    const details = { ...base, status, ...(last.details.window_ref ? { window_ref: last.details.window_ref } : {}),
+      batch: { total: steps.length, completed, stop_reason: stop, elapsed_ms: Math.round(performance.now() - started), steps: rows } };
+    return { content: [{ type: "text", text: message }], details, ...(status === "delivered" ? {} : { isError: true }) };
   }
 }
 
