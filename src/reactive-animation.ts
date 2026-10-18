@@ -41,6 +41,8 @@ export class ReactiveAnimationDriver implements Driver {
   get windowRestore() { return this.base.windowRestore; }
   get windowManagement() { return this.base.windowManagement; }
   get domInspection() { return this.base.domInspection; }
+  get domActions() { return this.base.domActions; }
+  get nativeDomRaster() { return this.base.nativeDomRaster; }
   get persistentWgc() { return this.base.persistentWgc; }
   get overviewKernel() { return this.base.overviewKernel; }
 

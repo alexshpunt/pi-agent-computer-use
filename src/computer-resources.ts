@@ -3,6 +3,7 @@ import { parseComputerAddress, computerSource, type ComputerAddress } from "./co
 import { parseComputerViews } from "./computer-views.ts";
 import type { ComputerSession, ComputerResult, Action } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
+import { validateDomActionCommand } from "./dom-action.ts";
 
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -69,7 +70,7 @@ export class ComputerResources {
       const source = snapshot.target.window_ref !== undefined ? computerSource("window", snapshot.target.window_ref)
         : computerSource("display", snapshot.target.display!);
       return `# Computer observation\nSource: ${source}\nObservation: ${computerSource("observation", address.ref)}\n` +
-        (snapshot.result.details.dom ? "Readonly DOM snapshot. Cached Read and Search perform no new DOM query or authority renewal. Write and Insert are unavailable. CSS bounds are not native image coordinates."
+        (snapshot.result.details.dom ? "Readonly DOM snapshot. Cached Read and Search perform no new DOM query or authority renewal. Use explicit Insert action:dom with source_hint, input_route and a locator request for separately admitted DOM actions. Write and ordinary input are unavailable. CSS bounds are not native image coordinates."
           : snapshot.target.window_ref !== undefined ? "Input needs this still-current observation. Insert sends JSON commands; Write sends literal text."
           : "Display observation is readonly and grants no input authority.");
     }
@@ -242,7 +243,16 @@ export class ComputerResources {
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Input needs the observation address returned by a fresh window Read.");
     const snapshot = this.snapshot(address.ref);
-    if (snapshot.result.details.dom) throw new ComputerRequestError("Readonly DOM observations grant no Write or Insert authority. Read a fresh window UI/image overview for input.");
+    if (snapshot.result.details.dom) {
+      const invalid = "Readonly DOM hints grant no ordinary input. Use one explicit Insert action:dom with source_hint, input_route and a locator request.";
+      if (tool !== "insert" || address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined || !snapshot.target.window_ref)
+        throw new ComputerRequestError(invalid);
+      let command;
+      try { command = validateDomActionCommand(commandObject(value)); }
+      catch { throw new ComputerRequestError(invalid); }
+      this.snapshots.delete(address.ref);
+      return (await this.getSession(cwd)).actDom(snapshot.target.window_ref, address.ref, command, signal);
+    }
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations are readonly; choose a window overview for input.");
     let command: Record<string, unknown>;
     if (tool === "write") {

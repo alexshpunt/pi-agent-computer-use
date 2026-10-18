@@ -9,6 +9,8 @@ import type { ComputerConfig } from "./config.ts";
 import { WindowIdentity } from "./window-identity.ts";
 import { verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
+import { hasDomActionSchema } from "./dom-action.ts";
+import { hasNativeDomRasterSchemas } from "./dom-native-geometry.ts";
 
 /** Exact Windows CI artifact qualified for held paths; selection is trusted config, never a tool argument. */
 export const HELD_PATH_RUNTIME = {
@@ -81,12 +83,15 @@ export const WINDOW_MANAGEMENT_RUNTIME = {
   source: "4379acbd422a822e75a02c4951b45a276a2293a7", version: "0.34.0",
   sha256: "18ed1b8d97f364de5e5eb70aa7ad95e96e2b3a3554a6a9ab1fbf16d349461458",
 } as const;
-/** Exact CI candidate only; Windows live qualification and installed-runtime adoption are separate. */
+/** Combined Windows candidate; readonly raster scope is separately pinned below, not installed adoption. */
 export const DOM_INSPECTION_RUNTIME = {
-  source: "d0d1fee851737b9576aeb5574e14d46bb279a27b", version: "0.34.0",
-  sha256: "8e7ecb67c2eb359e5369c3c976b004f8f19f3bf0684a58cacc097f9adc38be4d",
+  source: "91989b6309884473e07c6cdb136ae6092a40eff3", version: "0.34.0",
+  sha256: "8ed27ba88b082b4c04f7a2bed88fcbcf48a29ed03205db8eeb0a5ab54279e9cc",
 } as const;
+/** Same combined bytes, with locator input admitted only by the explicit action profile. */
+export const DOM_ACTION_RUNTIME = DOM_INSPECTION_RUNTIME;
 const forkRuntimes = {
+  "windows-dom-actions": DOM_ACTION_RUNTIME,
   "windows-dom-inspection": DOM_INSPECTION_RUNTIME,
   "windows-window-management": WINDOW_MANAGEMENT_RUNTIME,
   "windows-window-restore": WINDOW_RESTORE_RUNTIME,
@@ -154,26 +159,35 @@ export class McpDriver implements Driver {
 
   /** Custom held paths remain Windows-only and require checked fork bytes or a pinned bundle. */
   get heldPaths(): boolean { return this.bundledWindows || this.forkRuntime !== undefined; }
-  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
-  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
-  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
+  get heldKeys(): boolean { return this.bundledWindows || ["windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
+  get selectedDisplays(): boolean { return this.bundledWindows || ["windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
+  get captureBoundDrag(): boolean { return this.bundledWindows || ["windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
 
   /** Experimental strict UIA can change focus; only the checked Windows fork supplies this route. */
-  get semanticActions(): boolean { return this.bundledWindows || ["windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
+  get semanticActions(): boolean { return this.bundledWindows || ["windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
   /** Only these byte-checked candidates supply real movement; live qualification is separate. */
-  get nativePointer(): boolean { return ["windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
+  get nativePointer(): boolean { return ["windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
   /** Capture-bound wheel input requires the exact selected candidate; old profiles cannot borrow it. */
-  get coordinateScroll(): boolean { return ["windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
+  get coordinateScroll(): boolean { return ["windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
   /** Metadata-only state and restore require this exact byte-checked Windows candidate. */
-  get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
+  get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
   /** Old profiles cannot borrow state-bound management from matching version numbers. */
-  get windowManagement(): boolean { return ["windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
+  get windowManagement(): boolean { return ["windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
   /** Readonly DOM inspection requires explicit candidate selection and startup schema checks. */
-  get domInspection(): boolean { return this.config.runtime === "windows-dom-inspection"; }
+  get domInspection(): boolean { return ["windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
+  /** Only the separate byte-checked action candidate can admit locator input. */
+  get domActions(): boolean { return this.config.runtime === "windows-dom-actions"; }
+  /** Readonly raster release is limited to the byte-checked DOM profiles and tested browser/DPR. */
+  get nativeDomRaster(): Driver["nativeDomRaster"] {
+    if (!["windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? "")) return undefined;
+    const { source, sha256 } = this.forkRuntime!;
+    return { runtime: { source, sha256 }, qualification: { runtime: { source, sha256 },
+      browser: { product: "Chrome/155.0.8059.40", revision: "@cfaadc5a132d78e1828635aa8405a499f3e14864" }, dpr: 1.5 } };
+  }
   /** Retained capture is opt-in and never inferred from an unqualified bundle or version. */
-  get persistentWgc(): boolean { return ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? ""); }
+  get persistentWgc(): boolean { return ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? ""); }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
-  get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
+  get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-dom-inspection", "windows-dom-actions"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
   }
@@ -241,15 +255,22 @@ export class McpDriver implements Driver {
         throw new Error(`This backend requires cua-driver ${version}. Requalify before changing the pin.`);
       if (this.envelopes && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
         throw new Error("The native fork runtime did not acknowledge its EOF-aware receiver.");
-      if (this.config.bundled || this.domInspection) {
+      if (this.config.bundled || this.domInspection || this.domActions) {
         const { tools, nextCursor } = await client.listTools({}, { signal, timeout: 15_000 });
-        if (this.domInspection && nextCursor !== undefined)
+        if ((this.domInspection || this.domActions) && nextCursor !== undefined)
           throw new Error("native_runtime_schema_incomplete: tools/list must be complete");
         if (this.domInspection) {
           const candidates = tools.filter(tool => tool.name === "get_browser_state");
           if (candidates.length !== 1 || !hasDomInspectionSchema(candidates[0]!.inputSchema))
             throw new Error("native_runtime_schema_missing: get_browser_state dom_inspect_v1");
         }
+        if (this.domActions) {
+          const candidates = tools.filter(tool => tool.name === "browser_dom_action");
+          if (candidates.length !== 1 || !hasDomActionSchema(candidates[0]!.inputSchema))
+            throw new Error("native_runtime_schema_missing: browser_dom_action");
+        }
+        if ((this as Driver).nativeDomRaster && !hasNativeDomRasterSchemas(tools))
+          throw new Error("native_runtime_schema_missing: readonly native DOM geometry/WGC crop");
         this.nativeTools = new Set(tools.map(tool => tool.name));
         if (this.config.bundled)
           for (const name of ["list_apps", "list_windows", "get_window_state", "get_desktop_state"])
@@ -265,6 +286,8 @@ export class McpDriver implements Driver {
 
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
+    if (name === "browser_dom_action" && !this.domActions)
+      return { content: [], isError: true, structuredContent: { status: "refused", code: "dom_actions_unavailable", attempted: false, fallback: false } };
     if (name === "get_browser_state" && args.snapshot_format === "dom_inspect_v1" && !this.domInspection)
       return { content: [], isError: true, structuredContent: { status: "refused", code: "dom_inspection_unavailable",
         attempted: false, input_authority: false, fallback: false } };
