@@ -18,4 +18,4 @@ The focused four tests and typecheck pass. New tests passed against the current 
 
 These checks do not complete LPT-374. The original acceptance also requests live structural/annotation toggles. The approved native migration explicitly did not adopt those extra controls. LPT-379 owns the model-facing annotation decision; human Qt window frames do not satisfy it. LPT-374 remains open rather than pretending native size controls cover every original requirement.
 
-Existing live control evidence is in [the CUA browser report](cua-browser-results.md) and [native detail report](native-detail.md). The current tests add concurrent-session and rejected-write contracts; they do not claim provider delivery, atomic screenshot/tree readiness or untested platform parity.
+Existing live control evidence is in the [native detail report](native-detail.md). The current tests add concurrent-session and rejected-write contracts; they do not claim provider delivery, atomic screenshot/tree readiness or untested platform parity.

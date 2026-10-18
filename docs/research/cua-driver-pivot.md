@@ -1,6 +1,6 @@
 # Context research: Cua Driver as the shared backend
 
-This is the pre-implementation inventory at revision 6cb3e15. The later [CUA delivery report](../cua-browser-results.md) records which routes were actually qualified and the accepted foreground compromise.
+This is the pre-implementation inventory at revision 6cb3e15. Its browser routes were later replaced by Playwright (LPT-767); see [Browser pages](../computer-resources.md#browser-pages).
 
 ## Question
 
@@ -72,7 +72,7 @@ Windows `zoom` uses the scale from the session's prior window screenshot, then t
 
 It does not provide our no-recapture, exact-bounds, nested retained-original PNG crop contract. It addresses a native window, not a CDP tab viewport. Calling it after a browser snapshot is not an established browser crop route.
 
-**Evidence:** `ZoomTool` in [0.32.0 Windows tools](https://github.com/trycua/cua/blob/58aba84b5b83d77e7e2b0f006547699eb594e50d/libs/cua-driver/rust/crates/platform-windows/src/tools/impl_.rs), [crop/JPEG helper](https://github.com/trycua/cua/blob/58aba84b5b83d77e7e2b0f006547699eb594e50d/libs/cua-driver/rust/crates/cursor-overlay/src/capture_utils.rs), [screen reference](https://cua.ai/docs/cua-driver/reference/mcp-tools/screen), our [crop contract](../browser-crop.md).
+**Evidence:** `ZoomTool` in [0.32.0 Windows tools](https://github.com/trycua/cua/blob/58aba84b5b83d77e7e2b0f006547699eb594e50d/libs/cua-driver/rust/crates/platform-windows/src/tools/impl_.rs), [crop/JPEG helper](https://github.com/trycua/cua/blob/58aba84b5b83d77e7e2b0f006547699eb594e50d/libs/cua-driver/rust/crates/cursor-overlay/src/capture_utils.rs), [screen reference](https://cua.ai/docs/cua-driver/reference/mcp-tools/screen), our former browser crop contract (removed in LPT-767).
 
 ### Browser tab and key parity is not established
 

@@ -1,6 +1,6 @@
 # What we learned from Codex Computer Use
 
-Historical comparison. The inspected source notes remain useful, but the proposed DOM registry/overlay below is not the current implementation. LPT-396 uses native CUA snapshots and cursor; see [the current contract](../browser.md).
+Historical comparison. The inspected source notes remain useful, but the proposed DOM registry/overlay below is not the current implementation. LPT-767 now uses Playwright for web pages; see [Browser pages](../computer-resources.md#browser-pages).
 
 Checked on 2026-10-03 after the user's side-by-side game test. This is an implementation comparison, not a claim that our agent performs as well as Codex.
 
@@ -83,4 +83,4 @@ Its screenshots and coordinate actions share viewport coordinates. Its `zoom` is
 The user has now made completing the full game the final acceptance goal. Continue beyond Level 5, add missing browser input capabilities when an observed task needs them, and verify each addition end-to-end. Do not count a difficult puzzle as an input-tool blocker. Browser ownership and the ban on hidden-state solutions remain unchanged.
 ## Verification still needed
 
-The adapted [owned-browser-use skill](../../skills/owned-browser-use/SKILL.md) must be exercised after Pi reload, with actual TUI inspection and the live game restored to Level 5 if necessary. A better API and passing fixture do not prove equal game-solving ability. Record the observed game outcome and remaining tool gaps separately.
+The adapted owned-browser-use skill (since removed) had to be exercised after Pi reload, with actual TUI inspection and the live game restored to Level 5 if necessary. A better API and passing fixture do not prove equal game-solving ability. Record the observed game outcome and remaining tool gaps separately.

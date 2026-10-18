@@ -52,6 +52,4 @@ The [region/action results](region-highlight-results.md) cover protocol 2, nativ
 
 Unit contracts cover lazy startup, generations, cancellation, mode restoration, ownership, failure isolation and confirmed/unknown cleanup. The real-Pi browser contract checks unchanged PNG/JPEG delivery and frame acknowledgements without exposing private lifetime markers. Pipe tests verify EOF and malformed replies without request replay.
 
-`node --experimental-transform-types scripts/verify-window-overlay.mjs` is an opt-in native probe on one owned synthetic browser. It checks bounds, focus, expiry, native capture exclusion and cleanup. Private full-display pixels remain ignored local artifacts, never Git or Linear uploads. `--show` is a separate human demo that repeats flashes until finished; it is not production timing or an automatic pass.
-
-`node --experimental-transform-types scripts/verify-region-highlights.mjs --allow-primary-display` checks the production session's window/display overview, requested detail/crop and AX/pixel action marks on an owned synthetic page. It checks each renderer style, unchanged captured pixels, native focus checks, expiry, stale geometry and cleanup. `--human` cycles styles for a person to inspect; this is separate from normal two-second behavior.
+Check overlay bounds, focus, expiry, capture exclusion and cleanup live in a Pi session on newly opened disposable windows. Private full-display pixels stay in ignored local artifacts, never Git or Linear uploads.
