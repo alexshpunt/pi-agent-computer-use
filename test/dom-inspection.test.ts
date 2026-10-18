@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { validateDomRead, validateDomSnapshot } from "../src/dom-inspection.ts";
 import { validateDomBinding } from "../src/dom-inspection.ts";
+import { createDomResource, domPreview, projectDom } from "../src/dom-resource.ts";
 
 const binding = { target_id: "owned-target", tab_id: "owned-tab" };
 const boundWindow = () => ({ status: "ok", mode: "bind", binding_quality: "exact", endpoint_access_class: "driver_owned",
@@ -88,4 +89,59 @@ test("foreign tabs, malformed frame records, duplicate refs, oversized data and 
   ];
   for (const change of changes) { const value = native(); change(value); expect(() => validateDomSnapshot(value, binding, 100)).toThrow(); }
   expect(() => validateDomSnapshot(native(), binding, 1)).toThrow();
+});
+
+const authorCoverage = () => ({ collection_scope: "author_dom_with_open_shadow", excluded: {
+  user_agent_shadow_roots: 5, user_agent_shadow_hosts: { input: 1, select: 1, option: 3, textarea: 0, button: 0, other: 0 },
+} });
+const authorNative = () => { const value = native(); return { ...value, snapshot: { ...value.snapshot, ...authorCoverage() } }; };
+
+test("authored DOM coverage retains browser-internal exclusions through cached projections", () => {
+  const snapshot = validateDomSnapshot(authorNative(), binding, 100);
+  expect(snapshot).toMatchObject(authorCoverage());
+  // Native layout coordinates remain withheld independently of the collection scope.
+  snapshot.elements.forEach(row => { row.bounds_css = null; });
+  const resource = createDomResource(snapshot, binding, "owned-window", "owned-observation", 1).resource;
+  expect(resource).toMatchObject({ ...authorCoverage(), complete: true, collection_complete: true });
+  const projected = projectDom(resource, { operation: "search", query: "Choice", limit: 1 });
+  expect(projected).toMatchObject({ ...authorCoverage(), matches: 2, projection_truncated: true });
+  expect(domPreview(projected)).toMatchObject(authorCoverage());
+});
+
+test("legacy DOM output does not invent an authored collection scope or exclusion proof", () => {
+  const snapshot = validateDomSnapshot(native(), binding, 100);
+  expect(snapshot).not.toHaveProperty("collection_scope");
+  expect(snapshot).not.toHaveProperty("excluded");
+});
+
+test("unknown scopes and malformed browser-internal exclusion diagnostics refuse", () => {
+  const changes = [
+    (value: any) => value.snapshot.collection_scope = "all_dom",
+    (value: any) => Reflect.deleteProperty(value.snapshot, "collection_scope"),
+    (value: any) => Reflect.deleteProperty(value.snapshot, "excluded"),
+    (value: any) => value.snapshot.excluded = null,
+    (value: any) => value.snapshot.excluded.user_agent_shadow_roots = -1,
+    (value: any) => value.snapshot.excluded.user_agent_shadow_roots = 5.5,
+    (value: any) => value.snapshot.excluded.user_agent_shadow_roots = 6,
+    (value: any) => value.snapshot.excluded.user_agent_shadow_hosts.option = 3.5,
+    (value: any) => value.snapshot.excluded.user_agent_shadow_hosts.option = -1,
+    (value: any) => value.snapshot.excluded.user_agent_shadow_hosts.option = 2001,
+    (value: any) => value.snapshot.excluded.user_agent_shadow_hosts.private_host = 0,
+    (value: any) => Reflect.deleteProperty(value.snapshot.excluded.user_agent_shadow_hosts, "other"),
+    (value: any) => value.snapshot.excluded.raw_native_document = "private native data",
+    (value: any) => { value.snapshot.excluded.user_agent_shadow_roots = 2001;
+      value.snapshot.excluded.user_agent_shadow_hosts = { input: 2001, select: 0, option: 0, textarea: 0, button: 0, other: 0 }; },
+  ];
+  for (const change of changes) {
+    const value = authorNative(); change(value);
+    expect(() => validateDomSnapshot(value, binding, 100)).toThrow();
+  }
+});
+
+test("excluding browser internals never hides incomplete authored DOM coverage", () => {
+  const value = authorNative(); value.snapshot.omitted.nodes = 1;
+  expect(() => validateDomSnapshot(value, binding, 100)).toThrow();
+  value.snapshot.complete = value.snapshot.collection_complete = false;
+  expect(validateDomSnapshot(value, binding, 100)).toMatchObject({ ...authorCoverage(), complete: false,
+    collection_complete: false, omitted: { nodes: 1 } });
 });

@@ -28,6 +28,7 @@ function fixture() {
     observe: vi.fn(async () => observed(`ui-${++serial}`, false)),
     checkObservation: vi.fn(async () => observed("checked-ui", false)),
     observeWindowState: vi.fn(async () => ({ content: [], details: { status: "observed", mode: "yolo", window_state_id: "state-1" } })),
+    actDom: vi.fn(async () => ({ content: [], details: { status: "delivered", mode: "yolo" } })),
     act: vi.fn(), manageWindow: vi.fn(), restoreWindow: vi.fn(), captureSequence: vi.fn(),
   };
   const getSession = vi.fn(async () => session as unknown as ComputerSession);
@@ -141,6 +142,15 @@ describe("readonly DOM resource routing", () => {
     expect(f.resources.descriptor(f.address())).toMatch(/readonly DOM/i);
   });
 
+  test("explicit DOM Insert routes only its chosen document and consumes the provider handle", async () => {
+    const f = fixture();
+    await f.resources.read(f.window, "/fixture", ["dom"]);
+    const command = { action: "dom", source_hint: "1:a", input_route: "dom_event", request: { action: "fill", locator: { test_id: "name" }, text: "value" } };
+    await f.resources.perform(f.address(), "/fixture", JSON.stringify(command), "insert");
+    expect(f.session.actDom).toHaveBeenCalledExactlyOnceWith("fixture", "dom-1", command, undefined);
+    expect(f.session.act).not.toHaveBeenCalled();
+    await expect(f.resources.perform(f.address(), "/fixture", JSON.stringify(command), "insert")).rejects.toThrow(/expired/);
+  });
   test("fresh DOM/UI/state/sequence retire old handles even if later acquisition refuses", async () => {
     const f = fixture();
     await f.resources.read(f.window, "/fixture", ["state"]);
@@ -159,6 +169,20 @@ describe("readonly DOM resource routing", () => {
     expect(() => f.resources.descriptor(f.address("dom-5"))).toThrow(/expired/i);
   });
 
+  test("collection scope and browser-internal exclusions stay visible before DOM record previews", () => {
+    const result = observed("dom-scoped"), dom = result.details.dom!;
+    dom.collection_scope = "author_dom_with_open_shadow";
+    dom.excluded = { user_agent_shadow_roots: 5,
+      user_agent_shadow_hosts: { input: 1, select: 1, option: 3, textarea: 0, button: 0, other: 0 } };
+    const output = presentComputerResult({ appSource: id => id }, result);
+    expect(output).toContain("Collection scope: author_dom_with_open_shadow");
+    expect(output).toContain(`excluded browser internals: ${JSON.stringify(dom.excluded)}`);
+    expect(output.indexOf("Collection scope:")).toBeLessThan(output.indexOf("Preview:"));
+    expect(output).toMatch(/collection_complete=false/);
+    const legacy = presentComputerResult({ appSource: id => id }, observed("dom-legacy"));
+    expect(legacy).toContain("Collection scope: unavailable; excluded browser internals: unavailable");
+    expect(legacy).not.toContain("author_dom_with_open_shadow");
+  });
   test("DOM presentation bounds rows and text without hiding geometry uncertainty", () => {
     const result = observed("dom-large");
     const dom = result.details.dom!;

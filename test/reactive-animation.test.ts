@@ -148,3 +148,18 @@ test("animation setup defaults to1ms and invalid settings fail instead of select
     expect(await loadReactiveAnimationConfig(dir)).toEqual({ glide_duration_ms: 2 });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("readonly raster qualification follows the native driver through animation wrapping and revocation", () => {
+  let policy: Driver["nativeDomRaster"] = {
+    runtime: { source: "a".repeat(40), sha256: "b".repeat(64) },
+    qualification: { runtime: { source: "a".repeat(40), sha256: "b".repeat(64) },
+      browser: { product: "Chrome/tested", revision: "@tested" }, dpr: 1.5 },
+  };
+  const base: Driver = { get nativeDomRaster() { return policy; },
+    identity: async () => "owned", close: async () => {}, call: async () => { throw Error("Metadata forwarding must not call native"); } };
+  const wrapped: Driver = new ReactiveAnimationDriver(base, { glide_duration_ms: 1 });
+  expect(wrapped.nativeDomRaster).toEqual(policy);
+  policy = undefined;
+  expect(wrapped.nativeDomRaster).toBeUndefined();
+  expect(fixture().driver.nativeDomRaster).toBeUndefined();
+});
