@@ -64,3 +64,5 @@ Images stay in normal Pi context, including user attachments, tool/Codemode imag
 [External source research](docs/research/external-implementations.md) is available. Automatic YOLO opening is tracked in [LPT-363](https://linear.app/alexshpunt/issue/LPT-363). [Safe access](https://linear.app/alexshpunt/issue/LPT-365) follows YOLO; [sandbox research](https://linear.app/alexshpunt/issue/LPT-364) is separate. Further extraction of IDE-owned legacy capabilities is separate from this provider's ordinary-tool integration.
 
 Agents can work in a disposable Windows Sandbox instead of the human's desktop; see [Work in a Windows Sandbox](docs/computer-resources.md#work-in-a-windows-sandbox). [Sandbox boundary research](docs/research/sandbox-boundaries.md) compares Windows Sandbox, a Windows VM and a private Linux desktop in WSL.
+
+Agents can also operate another Windows machine with WSL over SSH, including a browser and a sandbox on it; see [Work on another machine](docs/computer-resources.md#work-on-another-machine).

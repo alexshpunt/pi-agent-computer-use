@@ -19,6 +19,8 @@ For web pages, Insert `{"action":"open_browser"}` (optional `browser`, `url`) in
 
 When the work should not touch the human's desktop or another agent's windows, and no existing host window is needed, Insert `{"action":"open_sandbox"}` into `computer:session` to start a disposable Windows Sandbox. Use the returned `computer:sandbox/...` address to Search guest windows, open guest apps and close the sandbox; operate guest windows with ordinary Reads and input. Pass host folders only through `import` and `export`. Close the sandbox when the work is done. Read `docs:computer` for its limits.
 
+When the task is on another configured machine, Insert `{"action":"connect","machine":"<name>"}` into `computer:session`. Use the returned `computer:machine/...` address to Search its windows, Read its displays, and open apps, a browser or a sandbox there; operate its windows with ordinary Reads and input. `computer:windows`, `computer:apps` and `computer:displays` still mean this machine. Disconnect when the work is done. Read `docs:computer` for setup and limits.
+
 For ordinary native UI detail, choose rectangles from the overview already seen. Read `region:x,y,width,height` on its observation, or crop one actual UI element hint. Detail consumes the overview. It is readonly and cannot nest. For another detail or any later input, Read a fresh window overview. Window movement alone does not change local coordinates; detail retains its original local rectangle/scale and clips smaller bounds without expanding on growth.
 
 Read displays only within authorized YOLO scope. Display pixels start at zero, even if host bounds are negative. Neither display pixels nor detail/text selections grant input authority. Never add desktop offsets or convert a display/detail/CSS point into a window input point.
@@ -51,6 +53,6 @@ Codemode may compose ordinary tools but is not required. Keep compact issued add
 
 ## Access and cleanup
 
-Only the user changes Safe/YOLO with `/computer-mode`. Safe limits UI access to session-opened windows and forbids displays; YOLO permits authorized existing windows. Neither mode is OS isolation or permission for unrelated tasks. Current live support is Windows controlled from WSL.
+Only the user changes Safe/YOLO with `/computer-mode`. Safe limits UI access to session-opened windows and forbids displays; YOLO permits authorized existing windows. Neither mode is OS isolation or permission for unrelated tasks. Current live support is Windows controlled from WSL, on this machine or on a configured machine over SSH.
 
-Close only task-owned disposable windows through grounded input first. Insert the session close command to release runtime/references. It closes the browsers this session opened, deletes their profiles and destroys its sandboxes; it does not save or close unrelated documents. Discard stored references after close/reload. Preserve paused user tasks, personal windows and documents.
+Close only task-owned disposable windows through grounded input first. Insert the session close command to release runtime/references. It closes the browsers this session opened, deletes their profiles, destroys its sandboxes and disconnects its machines; it does not save or close unrelated documents. Discard stored references after close/reload. Preserve paused user tasks, personal windows and documents.
