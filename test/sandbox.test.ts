@@ -1,4 +1,4 @@
-import { mkdtemp, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test, vi } from "vitest";
@@ -52,6 +52,11 @@ async function fakeHost(failAt: "session" | "id") {
       if (script.includes("Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) {")) return "aaaaaaaa-0000-0000-0000-000000000000\n";
       return "";
     },
+    mkdir: async dir => { await mkdir(dir, { recursive: true }); },
+    writeFile: (file, content) => writeFile(file, content),
+    readFile: file => readFile(file, "utf8").catch(() => ""),
+    remove: dir => rm(dir, { recursive: true, force: true }),
+    forward: async port => ({ port, close: () => {} }),
   };
   return { host, scripts, local };
 }
