@@ -18,7 +18,8 @@ function json(value: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 function keys(value: Record<string, unknown>, allowed: readonly string[]): void {
-  if (Object.keys(value).some(key => !allowed.includes(key))) throw Error("Read view contains unsupported options.");
+  const unknown = Object.keys(value).filter(key => !allowed.includes(key));
+  if (unknown.length) throw Error(`Read view contains unsupported options: ${unknown.join(", ")}. Allowed: ${allowed.join(", ")}.`);
 }
 
 /** Validate owned views before capturing; text offsets are never image coordinates. */
@@ -79,16 +80,21 @@ export function parseComputerViews(views: readonly string[] = []): ComputerViews
     }
     if (view.startsWith("capture:")) {
       const options = json(view.slice(8));
-      keys(options, ["maxLongEdge", "scale", "max_elements", "max_depth", "hints", "guides"]);
-      if (Object.keys(options).some(key => key in capture)) throw Error("Duplicate capture option.");
+      // granularity and backend may also come from the image/ui/full and backend:* views; both forms mean the same.
+      keys(options, ["granularity", "backend", "maxLongEdge", "scale", "max_elements", "max_depth", "hints", "guides"]);
+      const duplicate = Object.keys(options).filter(key => key in capture);
+      if (duplicate.length) throw Error(`${duplicate.join(", ")} is given twice: once as a view and once in capture.`);
       Object.assign(capture, options);
-    } else if (["image", "ui", "full"].includes(view) && capture.granularity === undefined)
+    } else if (["image", "ui", "full"].includes(view)) {
+      if (capture.granularity !== undefined) throw Error(`Choose one of image, ui or full; got ${capture.granularity} and ${view}.`);
       capture.granularity = view as UiCaptureOptions["granularity"];
-    else if ((view === "backend:default" || view === "backend:wgc") && capture.backend === undefined)
+    } else if (view === "backend:default" || view === "backend:wgc") {
+      if (capture.backend !== undefined) throw Error(`Choose one backend; got backend:${capture.backend} and ${view}.`);
       capture.backend = view.slice(8) as UiCaptureOptions["backend"];
-    else throw Error("Choose image/ui/full with optional backend/capture options, or one region/element/sequence/frames view.");
+    } else throw Error(`Unknown view ${view}. Choose image/ui/full with optional backend/capture options, or one region/element/sequence/frames view.`);
   }
-  if (capture.granularity === "ui" && capture.backend !== undefined) throw Error("UI-only Read has no image backend.");
+  if (capture.granularity === "ui" && capture.backend !== undefined)
+    throw Error(`The ui view collects no pixels, so backend:${capture.backend} does not apply. Drop the backend, or use full for UI and pixels.`);
   validateUiCapture(capture);
   return { kind: "overview", capture };
 }

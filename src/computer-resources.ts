@@ -7,6 +7,7 @@ import { validateWebAction, validateWebLaunch, type WebAction } from "./web-brow
 import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
 import { diffDom, diffUi } from "./successor.ts";
 import { displayMode } from "./display-mode.ts";
+import { isSemanticAction } from "./semantic-actions.ts";
 
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -245,8 +246,11 @@ export class ComputerResources {
       return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture));
     }
     if (address.kind === "display") {
-      if (view.kind !== "overview" || Object.keys(view.capture).length) throw new ComputerRequestError("Read the display overview without capture options, then use its observation for region detail.");
-      return this.remember({ display: address.ref }, await session.observeDisplay(address.ref, signal));
+      if (view.kind !== "overview" || Object.keys(view.capture).some(key => key !== "maxLongEdge" && key !== "scale"))
+        throw new ComputerRequestError("A display overview accepts only capture:{\"maxLongEdge\":...,\"scale\":...}; use its observation for region detail.");
+      const { maxLongEdge, scale } = view.capture;
+      return this.remember({ display: address.ref }, await session.observeDisplay(address.ref, signal, undefined,
+        { ...(maxLongEdge !== undefined ? { maxLongEdge } : {}), ...(scale !== undefined ? { scale } : {}) }));
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Use an existing supported computer resource.");
     const snapshot = this.snapshot(address.ref);
@@ -484,7 +488,8 @@ export class ComputerResources {
         throw new ComputerRequestError("Choose the address hint or a JSON target, not both.");
       command.hint = address.hint;
     }
-    if (address.delivery !== undefined) {
+    // The address delivery is a preference for pointer and keyboard input. Semantic actions always use accessibility.
+    if (address.delivery !== undefined && !isSemanticAction(String(command.action))) {
       if ("delivery_mode" in command) throw new ComputerRequestError("Choose delivery in the address or JSON, not both.");
       command.delivery_mode = address.delivery;
     }

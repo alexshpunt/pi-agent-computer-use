@@ -13,11 +13,11 @@ import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
 import { WebBrowser } from "./web-browser.ts";
-import { ComputerRequestError, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
+import { ComputerRequestError, type SandboxFactory } from "./computer-resources.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { localRunner, sshRunner } from "./runner.ts";
 import { displayModes } from "./display-mode.ts";
-import type { ComputerConfig } from "./config.ts";
+import { machineConfig, machineFactory } from "./machine.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
@@ -145,12 +145,6 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     try { return await loading; }
     finally { loading = undefined; }
   }
-  /** The configured machine for a connect command; unknown names refuse before any SSH work. */
-  const machineConfig = async (cwd: string, name: string): Promise<NonNullable<ComputerConfig["machines"]>[string]> => {
-    const machine = (await loadComputerConfig(cwd)).machines?.[name];
-    if (!machine) throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json.`);
-    return machine;
-  };
   // Each sandbox gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
   // On another machine the sandbox host and its files are reached over SSH, and the guest relays through SSH tunnels.
   const openSandbox: SandboxFactory = async (cwd, command, signal, machineName) => {
@@ -170,25 +164,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
       close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
   };
-  // Another machine's desktop gets its own driver and session over SSH. Safe/YOLO is the user's choice there too;
-  // the host overlay is not shown, and browsers start on that machine.
-  const connectMachine: MachineFactory = async (cwd, name, signal) => {
-    const machine = await machineConfig(cwd, name);
-    const runner = sshRunner(machine.ssh);
-    const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh });
-    try { await waitForGuestDriver(driver, signal, 30_000); }
-    catch (error) { await driver.close().catch(() => undefined); throw error; }
-    const launchWeb = machine.node && machine.package
-      ? (options: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) =>
-        WebBrowser.launch({ ...options, remote: { runner, node: machine.node!, worker: `${machine.package}/src/web-worker.ts` } }, webSignal)
-      : undefined;
-    const remote = new ComputerSession(driver, getMode, () => images.settings(), undefined, image => debug.trace.retainOriginal(image), launchWeb, displayModes(runner));
-    return { ref: name, session: remote,
-      describe: source => [`# Remote machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
-        `Browser: ${launchWeb ? "available" : "not configured (node and package)"}`,
-        "Search this address for that machine's windows; Read it for its displays, and Insert resize into a display address to change its resolution. Insert open, open_browser, open_sandbox or disconnect."].join("\n"),
-      close: () => remote.close().then(() => undefined) };
-  };
+  const connectMachine = machineFactory({ getMode, settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
   await registerComputerProvider(pi, getSession, async () => {
     await closeClassifier();
     const result: ComputerResult = session ? await session.close() : {

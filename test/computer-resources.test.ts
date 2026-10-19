@@ -6,7 +6,7 @@ import { ComputerSession, type ComputerMode, type Content, type Driver, type Dri
 
 const cwd = "/synthetic-computer-fixture";
 const address = requireComputerAddress;
-const inputNames = new Set(["type_text", "click", "press_key", "hotkey", "scroll", "drag"]);
+const inputNames = new Set(["type_text", "click", "press_key", "hotkey", "scroll", "drag", "semantic_action"]);
 
 async function fixture() {
   let mode: ComputerMode = "yolo", lifetime: string | undefined = "native-life", serial = 0;
@@ -209,4 +209,24 @@ test.each(["native-partial", "in-flight-cancel"] as const)("%s preserves the att
   expect(f.inputs()).toHaveLength(1); expect(f.inputs()[0][1]).toMatchObject({ text: "first prefix" });
   await expect(f.resources.perform(view.observation, cwd, command, "insert")).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(1);
+});
+
+test("an address delivery preference does not block semantic actions", async () => {
+  const f = await fixture();
+  (f.driver as Driver & { semanticActions: boolean }).semanticActions = true;
+  const view = await f.read();
+  const hinted = address(`${view.source}?hint=${encodeURIComponent(view.hint!)}&delivery=foreground`);
+  await f.resources.perform(hinted, cwd, JSON.stringify({ action: "set_value", text: "13" }), "insert");
+  expect(f.inputs().map(([name]) => name)).toEqual(["semantic_action"]);
+  expect(f.inputs()[0][1]).toMatchObject({ operation: "set_value", value: "13" });
+  expect(f.inputs()[0][1]).not.toHaveProperty("delivery_mode");
+});
+
+test("a display overview accepts a size for that Read only", async () => {
+  const f = await fixture(), display = address("computer:display/primary");
+  await f.resources.read(display, cwd, ['capture:{"maxLongEdge":320}']);
+  expect(f.captures().at(-1)).toEqual(["get_desktop_state", { max_image_dimension: 320 }, undefined]);
+  await f.resources.read(display, cwd);
+  expect(f.captures().at(-1)).toEqual(["get_desktop_state", { max_image_dimension: 1280 }, undefined]);
+  await expect(f.resources.read(display, cwd, ['capture:{"max_elements":5}'])).rejects.toThrow(/accepts only capture/);
 });
