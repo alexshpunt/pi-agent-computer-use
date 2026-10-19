@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ComputerConfig } from "./config.ts";
+import { ComputerRequestError } from "./computer-resources.ts";
 
 /** Host-side commands for the sandbox lifecycle; replaced by a fake in tests. */
 export interface SandboxHost {
@@ -149,15 +150,16 @@ export class WindowsSandbox {
     const shares: SandboxShare[] = [];
     for (const share of this.shares) {
       const windows = /^[A-Za-z]:\\/.test(share.host) ? share.host : await this.host.path(share.host, "windows");
-      if (!/^[A-Za-z]:\\/.test(windows)) throw new Error(`Shared folder ${share.host} must be on a Windows drive; Windows Sandbox cannot map ${windows}.`);
+      if (!/^[A-Za-z]:\\/.test(windows)) throw new ComputerRequestError(`Shared folder ${share.host} must be on a Windows drive; Windows Sandbox cannot map ${windows}.`);
       shares.push({ ...share, host: windows });
     }
-    if (!/^[A-Za-z]:\\/.test(runtime)) throw new Error("The driver runtime must be on a Windows drive to map it into the sandbox.");
+    if (!/^[A-Za-z]:\\/.test(runtime)) throw new ComputerRequestError("The driver runtime must be on a Windows drive to map it into the sandbox.");
     const check = await this.ps(`$missing = @(${shares.map(share => psString(share.host)).join(",")}) | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Container) }
 "sandbox=" + (Test-Path 'C:\\Windows\\System32\\WindowsSandbox.exe') + ";wsb=" + (Test-Path (Join-Path $env:LOCALAPPDATA 'Microsoft\\WindowsApps\\wsb.exe')) + ";missing=" + ($missing -join '|') + ";local=" + $env:LOCALAPPDATA`, signal);
     const facts = Object.fromEntries(check.trim().split(";").map(part => part.split("=") as [string, string]));
-    if (facts.sandbox !== "True" || facts.wsb !== "True") throw new Error("Windows Sandbox and its wsb command are not available on this host. Enable the Windows Sandbox feature first.");
-    if (facts.missing) throw new Error(`Shared host folders do not exist: ${facts.missing}`);
+    // Nothing has started yet: these are refusals, not unknown outcomes.
+    if (facts.sandbox !== "True" || facts.wsb !== "True") throw new ComputerRequestError("Windows Sandbox and its wsb command are not available on this host. Enable the Windows Sandbox feature first.");
+    if (facts.missing) throw new ComputerRequestError(`Shared host folders do not exist: ${facts.missing}`);
 
     const windows = `${facts.local}\\PiComputerUse\\sandboxes\\${this.ref}`;
     const unix = await this.host.path(windows.replace(/\\[^\\]+$/, ""), "unix").then(parent => `${parent}/${this.ref}`);
