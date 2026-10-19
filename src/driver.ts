@@ -2,11 +2,13 @@ import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { Content, Driver, DriverResult, WindowTarget } from "./session.ts";
 
 import type { ComputerConfig } from "./config.ts";
-import { WindowIdentity } from "./window-identity.ts";
+import { WindowIdentity, hostIdentityPeer, remoteIdentityPeer } from "./window-identity.ts";
+import { SingleConnectionHttpTransport } from "./http-transport.ts";
 import { verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
 
@@ -101,7 +103,7 @@ const forkRuntimes = {
 /** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
   private client?: Client;
-  private transport?: StdioClientTransport;
+  private transport?: Transport;
   private stderr = "";
 
   private readonly windowIdentity?: WindowIdentity;
@@ -109,7 +111,8 @@ export class McpDriver implements Driver {
 
   private get forkRuntime() { return this.config.runtime ? forkRuntimes[this.config.runtime] : undefined; }
   private get bundledWindows() { return this.config.bundled?.target === "win32-x64"; }
-  private get envelopes() { return !!this.config.bundled || this.forkRuntime !== undefined; }
+  /** Envelopes are the stdio EOF-aware receiver; a sandbox guest is reached over HTTP without them. */
+  private get envelopes() { return !this.config.endpoint && (!!this.config.bundled || this.forkRuntime !== undefined); }
 
   /** The native execution platform is independent of the npm host, especially in WSL. */
   get platform(): NativePlatform {
@@ -118,6 +121,9 @@ export class McpDriver implements Driver {
     return this.config.runtime || /\.exe$/i.test(this.config.command) || process.platform === "win32"
       ? "windows" : process.platform === "darwin" ? "macos" : "linux";
   }
+
+  /** A sandbox guest reports its own source domain. */
+  get sourceDomain(): "windows-sandbox" | undefined { return this.config.endpoint ? "windows-sandbox" : undefined; }
 
   /** Linux/macOS window lifetime binding is explicitly deferred, not replaced with pid/window_id. */
   get windowLifetime(): boolean { return this.platform === "windows"; }
@@ -138,12 +144,16 @@ export class McpDriver implements Driver {
   get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
   /** Old profiles cannot borrow state-bound management from matching version numbers. */
   get windowManagement(): boolean { return ["windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
-  /** Retained capture is opt-in and never inferred from an unqualified bundle or version. */
-  get persistentWgc(): boolean { return ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
+  /**
+   * Retained capture is opt-in and never inferred from an unqualified bundle or version.
+   * A sandbox guest (no vGPU) misses WGC's first frames, so its windows use the default capture route.
+   */
+  get persistentWgc(): boolean { return !this.config.endpoint && ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
   get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
-    if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.interop ?? process.env.WSL_INTEROP);
+    if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort)
+      : hostIdentityPeer(config.interop ?? process.env.WSL_INTEROP));
   }
 
   /** Bind a native lifetime only where supported. Unsupported platforms never start a Windows peer. */
@@ -175,29 +185,9 @@ export class McpDriver implements Driver {
       if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
     }
     signal?.throwIfAborted();
-    const interop = this.platform === "windows" ? this.config.interop ?? process.env.WSL_INTEROP : undefined;
-    if (process.platform === "linux" && this.config.command.endsWith(".exe")) {
-      if (!interop || !(await stat(interop).catch(() => undefined))?.isSocket())
-        throw new Error("WSL interop endpoint is missing. Configure a live interop socket; do not install a Linux Driver for a Windows desktop.");
-    }
-    const transport = new StdioClientTransport({
-      command: this.config.command,
-      args: this.envelopes ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"],
-      stderr: "pipe",
-      env: {
-        ...Object.fromEntries(["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"].flatMap(name => process.env[name] === undefined ? [] : [[name, process.env[name]!]])),
-        ...(interop ? { WSL_INTEROP: interop } : {}),
-        WSLENV: [process.env.WSLENV, "CUA_DRIVER_RS_TELEMETRY_ENABLED", "CUA_DRIVER_RS_UPDATE_CHECK", ...(this.envelopes ? ["CUA_DRIVER_MCP_ENVELOPES"] : []), "DO_NOT_TRACK"].filter(Boolean).join(":"),
-        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
-        CUA_DRIVER_RS_UPDATE_CHECK: "false",
-        ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}),
-        DO_NOT_TRACK: "1",
-      },
-    });
-    this.stderr = "";
-    transport.stderr?.on("data", (chunk: Buffer) => {
-      this.stderr = (this.stderr + chunk.toString()).slice(-4000);
-    });
+    const transport = this.config.endpoint
+      ? new SingleConnectionHttpTransport(new URL(this.config.endpoint.url), this.config.endpoint.token)
+      : await this.stdioTransport();
     this.transport = transport;
     const client = new Client({ name: "pi-agent-computer-use-poc", version: "0.0.0" });
     this.client = client;
@@ -224,6 +214,33 @@ export class McpDriver implements Driver {
     }
   }
 
+  /** The owned native child; Windows-host control runs through WSL interop. */
+  private async stdioTransport(): Promise<StdioClientTransport> {
+    const interop = this.platform === "windows" ? this.config.interop ?? process.env.WSL_INTEROP : undefined;
+    if (process.platform === "linux" && this.config.command.endsWith(".exe")) {
+      if (!interop || !(await stat(interop).catch(() => undefined))?.isSocket())
+        throw new Error("WSL interop endpoint is missing. Configure a live interop socket; do not install a Linux Driver for a Windows desktop.");
+    }
+    const transport = new StdioClientTransport({
+      command: this.config.command,
+      args: this.envelopes ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"],
+      stderr: "pipe",
+      env: {
+        ...Object.fromEntries(["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"].flatMap(name => process.env[name] === undefined ? [] : [[name, process.env[name]!]])),
+        ...(interop ? { WSL_INTEROP: interop } : {}),
+        WSLENV: [process.env.WSLENV, "CUA_DRIVER_RS_TELEMETRY_ENABLED", "CUA_DRIVER_RS_UPDATE_CHECK", ...(this.envelopes ? ["CUA_DRIVER_MCP_ENVELOPES"] : []), "DO_NOT_TRACK"].filter(Boolean).join(":"),
+        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
+        CUA_DRIVER_RS_UPDATE_CHECK: "false",
+        ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}),
+        DO_NOT_TRACK: "1",
+      },
+    });
+    this.stderr = "";
+    transport.stderr?.on("data", (chunk: Buffer) => {
+      this.stderr = (this.stderr + chunk.toString()).slice(-4000);
+    });
+    return transport;
+  }
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
     if (["get_window_control_state", "manage_window"].includes(name) && !this.windowManagement)

@@ -13,6 +13,8 @@ import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
 import { WebBrowser } from "./web-browser.ts";
+import { ComputerRequestError, type SandboxFactory } from "./computer-resources.ts";
+import { WindowsSandbox, interopHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
@@ -139,6 +141,20 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     try { return await loading; }
     finally { loading = undefined; }
   }
+  // Each sandbox gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
+  const openSandbox: SandboxFactory = async (cwd, command, signal) => {
+    let options;
+    try { options = sandboxOptions(command); }
+    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    const config = await loadComputerConfig(cwd);
+    const sandbox = await WindowsSandbox.open(interopHost(config.interop), config.command, options, signal);
+    const driver = new McpDriver({ ...config, endpoint: sandbox.endpoint });
+    try { await waitForGuestDriver(driver, signal); }
+    catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
+    const guest = new ComputerSession(driver, () => "yolo", () => images.settings(), undefined, image => debug.trace.retainOriginal(image));
+    return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source),
+      close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
+  };
   await registerComputerProvider(pi, getSession, async () => {
     await closeClassifier();
     const result: ComputerResult = session ? await session.close() : {
@@ -150,7 +166,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     catch { return { content: [{ type: "text", text: "Qt frame shutdown is unconfirmed." }],
       details: { status: "unknown", mode: getMode() }, isError: true }; }
     return result;
-  });
+  }, openSandbox);
   pi.on("session_shutdown", async () => {
     await closeClassifier();
     if (loading) await loading.catch(() => undefined);

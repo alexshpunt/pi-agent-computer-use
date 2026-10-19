@@ -1,11 +1,11 @@
 /** A namespaced computer resource; references are session-issued, never native PIDs. */
 export type ComputerAddress =
   | { kind: "session" | "apps" | "windows" | "displays"; source: string }
-  | { kind: "app" | "window" | "display" | "sequence" | "window-state"; source: string; ref: string }
+  | { kind: "app" | "window" | "display" | "sequence" | "window-state" | "sandbox"; source: string; ref: string }
   | { kind: "observation"; source: string; ref: string; hint?: string; delivery?: "background" | "foreground"; delayMs?: number };
 
 const directories = new Set(["session", "apps", "windows", "displays"]);
-const references = new Set(["app", "window", "display", "observation", "sequence", "window-state"]);
+const references = new Set(["app", "window", "display", "observation", "sequence", "window-state", "sandbox"]);
 
 /** Resolve this namespace or reject malformed owned addresses before any native work. */
 export function parseComputerAddress(source: string): ComputerAddress | undefined {
@@ -26,7 +26,7 @@ export function parseComputerAddress(source: string): ComputerAddress | undefine
   if (!/^[a-zA-Z0-9_-]{1,160}$/.test(ref)) return invalid();
   if (kind !== "observation") {
     if (query !== undefined) return invalid();
-    return { kind: kind as "app" | "window" | "display" | "sequence" | "window-state", ref, source };
+    return { kind: kind as "app" | "window" | "display" | "sequence" | "window-state" | "sandbox", ref, source };
   }
   const result: Extract<ComputerAddress, { kind: "observation" }> = { kind, ref, source };
   const params = new URLSearchParams(query);
@@ -43,7 +43,7 @@ export function parseComputerAddress(source: string): ComputerAddress | undefine
 }
 
 /** Build a computer address from an opaque session-issued reference. */
-export function computerSource(kind: "app" | "window" | "display" | "observation" | "sequence" | "window-state", ref: string): string {
+export function computerSource(kind: "app" | "window" | "display" | "observation" | "sequence" | "window-state" | "sandbox", ref: string): string {
   const source = `computer:${kind}/${encodeURIComponent(ref)}`;
   parseComputerAddress(source);
   return source;

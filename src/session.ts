@@ -38,6 +38,8 @@ export interface Driver {
   platform?: NativePlatform;
   /** False where native lifetime binding is not implemented; never substitute reusable IDs. */
   windowLifetime?: boolean;
+  /** Source domain override: a sandbox guest's windows are not host windows. */
+  sourceDomain?: "windows-sandbox";
   /** True only for a backend qualified for held paths and graceful in-flight release. */
   heldPaths?: boolean;
   /** True only for a qualified native runtime with bounded keyboard ownership. */
@@ -81,6 +83,8 @@ export interface ComputerResult {
   content: Content[];
   details: {
     status: "listed" | "observed" | "delivered" | "refused" | "unknown" | "closed";
+    /** The sandbox an open_sandbox command started. */
+    sandbox_ref?: string;
     mode: ComputerMode;
     target?: WindowTarget;
     window_ref?: string;
@@ -147,9 +151,14 @@ export class ComputerSession {
   private readonly browsers = new Map<string, WebBrowser>();
 
   private get platform(): NativePlatform { return this.driver.platform ?? "windows"; }
+  /** Label sources from a sandbox guest so they never pass for host windows or displays. */
+  private domained<T extends { domain: SourceIdentity["domain"] }>(value: T): T {
+    if (this.driver.sourceDomain) value.domain = this.driver.sourceDomain;
+    return value;
+  }
 
   private source(kind: ObservationSource["kind"], native: Record<string, unknown>, identity: ObservationSource["identity"], zoom = false): ObservationSource {
-    return observationSource(kind, native, identity, zoom, this.platform);
+    return this.domained(observationSource(kind, native, identity, zoom, this.platform));
   }
   private geometry(state: Record<string, unknown>, display: boolean): string {
     if (display) return JSON.stringify([state.topology_id, state.display, state.screen_width, state.screen_height, state.scale_factor]);
@@ -238,7 +247,7 @@ export class ComputerSession {
 
   private addressed(entry: WindowEntry, nativeDesktop?: unknown): Partial<ComputerResult["details"]> {
     return { target: entry.target, window_ref: entry.ref,
-      source_identity: sourceIdentity({ session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, null, nativeDesktop, this.platform) };
+      source_identity: this.domained(sourceIdentity({ session_id: this.sessionId, window_ref: entry.ref, ...entry.target }, null, nativeDesktop, this.platform)) };
   }
 
   private async failed(error: unknown, dispatched: boolean): Promise<ComputerResult> {
@@ -309,7 +318,7 @@ export class ComputerSession {
             : await this.register(native as unknown as WindowTarget, signal);
           if (this.getMode() === "safe" && (!entry || !entry.owned)) continue;
           windows.push({ ...native, ...(entry ? { ...this.addressed(entry, native.virtual_desktop), owned: entry.owned } : { unavailable: this.driver.windowLifetime === false ? `window_lifetime_unavailable: ${this.platform}. Window control is deferred; no reusable-ID substitute.` : "Cannot establish window lifetime identity.",
-            source_identity: sourceIdentity({ session_id: this.sessionId, pid: native.pid as number, window_id: native.window_id as number }, null, undefined, this.platform) }) });
+            source_identity: this.domained(sourceIdentity({ session_id: this.sessionId, pid: native.pid as number, window_id: native.window_id as number }, null, undefined, this.platform)) }) });
         }
         return this.result("listed", "Permitted window discovery. Safe lists session-opened windows only. Use window_ref only where native lifetime is supported; Linux/macOS currently expose metadata without control. Native desktop membership is sampled and incomplete; discovery does not activate or switch desktops.",
           { windows: this.getMode() === "safe" ? windows.filter(window => "owned" in window && window.owned) : windows });
@@ -554,7 +563,7 @@ export class ComputerSession {
           let entry = [...this.displayEntries.values()].find(e => e.topology === topology && e.native.display_id === d.display_id);
           if (!entry) { entry = { ref: "d-" + randomUUID(), topology, native: d }; this.displayEntries.set(entry.ref, entry); }
           current.add(entry.ref);
-          return { ...d, display_ref: entry.ref, source_identity: sourceIdentity({ session_id: this.sessionId, display_ref: entry.ref, display_id: d.display_id, topology_id: topology }, d.display_id) };
+          return { ...d, display_ref: entry.ref, source_identity: this.domained(sourceIdentity({ session_id: this.sessionId, display_ref: entry.ref, display_id: d.display_id, topology_id: topology }, d.display_id)) };
         });
         for (const ref of this.displayEntries.keys()) if (!current.has(ref)) this.displayEntries.delete(ref);
         return this.result("listed", "Native connected Windows displays. Use display_ref with computer_observe. Image pixels start at zero; bounds are host-global. No input authority.",
@@ -696,7 +705,7 @@ export class ComputerSession {
       const window = windows.find(w => w.pid === entry.target.pid && w.window_id === entry.target.window_id);
       if (!window) return this.result("refused", "Window closed during detail; pixels withheld.");
       const bounds = screenRect(window.bounds);
-      Object.assign(source, sourceIdentity(source.identity, null, window.virtual_desktop, this.platform));
+      Object.assign(source, this.domained(sourceIdentity(source.identity, null, window.virtual_desktop, this.platform)));
       const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
         { kind: "detail", region: bounds ? windowRegion(request, overview!.windowMapping, bounds) : undefined });
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Window detail revoked or cancelled during frame; pixels withheld.");
@@ -1381,6 +1390,9 @@ export class ComputerSession {
       }
     });
   }
+
+  /** Whether this session issued a still-registered window reference. */
+  hasWindow(ref: string): boolean { return this.entries.has(ref); }
 
   /** Close session-opened browsers (deleting their profiles) and release the native runtime. Other windows/files are not closed or saved. */
   close(): Promise<ComputerResult> {
