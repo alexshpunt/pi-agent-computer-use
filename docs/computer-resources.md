@@ -22,7 +22,7 @@ Read views:
 | `backend:default`, `backend:wgc` | Explicit window image route. WGC requires a qualified runtime, with no fallback. |
 | `capture:{"max_elements":500,"max_depth":20,"hints":true}` | Fresh bounded walk/hints. Optional `guides` takes grid/region/action booleans. `maxLongEdge` (64..4096) and `scale` (0.05..1) set this window Read’s native image cap without changing session defaults. |
 | `region:100,80,120,60` | Fresh readonly detail in local pixels of the addressed observation image. Consumes its overview. |
-| `element:inspect,1:a` | Inspect an actual collected UI hint. Also scope/highlight/crop; crop consumes the overview. On a DOM observation, `element:crop,<ref>` and `element:highlight,<ref>` return Playwright element images. |
+| `element:inspect,1:a` | Inspect an actual collected UI hint. Also scope/highlight/crop; crop consumes the overview. `element:text,<hint>` returns one native element's full text. On a DOM observation, `element:crop,<ref>` and `element:highlight,<ref>` return Playwright element images. |
 | `sequence:{"duration_ms":2000,"fps":4}` | Bounded temporal capture from a window or primary display. Returns metadata and a sequence address, not frames. |
 | `frames:endpoints` | Explicit readonly selection from a sequence. Also all/first/last/changed, `frames:{"indexes":[0,2]}` or inclusive `frames:{"from":0,"to":2}`. |
 
@@ -135,6 +135,67 @@ Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabi
 Start with background. After an observed background refusal, Read a fresh overview before requesting explicit foreground delivery. Foreground may activate the window and disturb the real pointer. Delivery is not an application postcondition: Read again to verify the actual effect. Unsupported modes refuse rather than silently falling back.
 
 Input consumes its observation even on refusal after admission. Interrupted batches retain their attempted/completed prefix. A later refusal does not erase prior input; the overall effect remains unknown. Never replay completed or uncertain steps. Cancellation stops future dispatch, but in-flight native input may still finish.
+
+## Receipts in Codemode
+
+In Codemode, every computer Write and Insert resolves to a receipt object, also when the action was refused or its outcome is unknown, so scripts branch without try/catch or text parsing:
+
+```js
+const r = await tools.insert({ path: obs, text: JSON.stringify({ action: "click", target: { role: "button", name: "Save" } }) });
+if (r.outcome === "unknown") { /* read again; never replay */ }
+else if (r.outcome === "refused") { /* nothing was sent */ }
+else { /* r.observation is the current observation, if one was issued */ }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `outcome` | `delivered`, `refused`, `unknown`, `observed` or `closed`. `refused` sent nothing; `unknown` may have reached the target |
+| `effect` | `applied`, `not-applied` or `unknown`; a refusal after an already delivered step stays `unknown` |
+| `stage` | `validation` when the request was rejected before reaching the browser, session or driver, otherwise `target` |
+| `observation`, `window` | The new current observation (a DOM snapshot, successor or verification sample) and the window |
+| `input_consumed` | Whether the addressed observation or window state can no longer be used for input |
+| `application_effect` | Always `unverified`: delivery is not proof of the application's response |
+| `reason`, `code` | Why a refused or unknown action ended |
+| `page`, `evaluation`, `verification`, `postcondition`, `changes`, `steps`, `stopped` | Present when the action produced them |
+| `text` | The same receipt the model sees |
+
+Files and other resources keep returning text.
+
+## Verify and wait
+
+Insert `{"action":"wait_for","conditions":[...],"timeout_ms":3000}` into a **window** address to wait until every condition holds, or `{"action":"verify","conditions":[...]}` for one sample. Nothing is sent to the window. Optional `interval_ms` (50..5000, default 250) sets the sample spacing and `stable` (1..10) how many consecutive samples must agree; `timeout_ms` is 0..60000 (default 5000). Up to 16 conditions; each has one check:
+
+| Check | Native windows | Browser pages |
+| --- | --- | --- |
+| `target` + `is` | `exists`, `absent`, `enabled`, `disabled`, `selected` | also `visible`, `hidden`, `checked`, `unchecked`, `focused` |
+| `target` + `value` / `contains` | the element's value, or name if it has none | a field's value, or an element's text |
+| `url_contains`, `title` (no target) | — | the active tab |
+
+Native targets match `role` and exact `name`, or `text` contained in name or value; browser pages take any Playwright target. Each condition reports `satisfied`, `unsatisfied` or `unknown`, and so does the whole result: any `unsatisfied` decides it, otherwise any `unknown` keeps it unknown. Several matching elements are `unknown`; narrow the target. A native element missing from a partial UI walk is `unknown`, because only a complete walk proves absence. A held JavaScript dialog makes browser conditions `unknown`. The last sample becomes the window's current observation, so the next action can use it directly.
+
+## Follow an action
+
+Add `"expect":{"conditions":[...],"timeout_ms":3000}` to an Insert action to wait for its postcondition, and/or `"successor":true` to get the state after it. The result names the successor observation (now current) and a compact change list from the action's input observation instead of a full snapshot: `~` changed, `+` added and `-` removed elements, plus URL, title or tab changes. An empty list means nothing visible changed yet. Read the successor observation for the full state. A native list from a partial walk may show walk limits rather than real removals.
+
+The postcondition is `verified` when the conditions came true after the action, `preexisting` when they already held before it, `failed` when they did not hold in time, and `unknown` otherwise. An action whose own outcome is unknown never reports `verified`.
+
+## Read long text in pages
+
+Read an observation with `offset` and `limit` to page through its text. Each page ends with `[Lines A-B of N. Continue with offset=…]` or `End of this observation's text.` Pages come from the stored observation: they never capture again or renew input authority. A truncated preview says to continue this way. Read `element:text,<hint>` on a native observation for one element's full text from the same capture, up to 200,000 characters; the UI listing shows at most 1,024 characters per element. Browser snapshots keep up to 400,000 characters.
+
+## Batches
+
+Insert `{"action":"batch","steps":[...]}` into an observation to run up to 16 known steps in one call. The whole list is validated before anything is sent. A batch stops at the first step that is refused or unknown, or whose `wait_for`/`verify` condition does not hold, and later steps are not sent. The result lists each step's outcome and why it stopped; never replay completed or uncertain steps.
+
+On a browser observation, steps are the DOM actions above plus `wait_for` and `verify`. On a native window, steps are `click`, `double_click`, `right_click`, `type_text`, `key`, `hotkey`, `scroll` and the semantic actions, plus `wait_for` and `verify`. Only the first native step may use a hint or pixels of the current observation; later steps name `"target":{"role":"Document"}` (role, exact name and/or contained text), which is resolved in a fresh UI walk right before the step. A target that does not match exactly one element refuses that step with nothing sent.
+
+```json
+{"action":"batch","steps":[
+  {"action":"fill","target":{"label":"Name"},"text":"Ada"},
+  {"action":"click","target":{"role":"button","name":"Save"}},
+  {"action":"wait_for","conditions":[{"target":{"role":"status"},"value":"saved Ada"}],"timeout_ms":3000}
+]}
+```
 
 ## Cleanup and development
 
