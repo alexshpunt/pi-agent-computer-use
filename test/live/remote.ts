@@ -2,7 +2,8 @@ import { computerSource } from "../../src/computer-address.ts";
 import type { ComputerAddress } from "../../src/computer-address.ts";
 import { ComputerResources, requireComputerAddress } from "../../src/computer-resources.ts";
 import { CuaImageSettings } from "../../src/cua-image-settings.ts";
-import { machineFactory } from "../../src/machine.ts";
+import { machineConfig, machineFactory } from "../../src/machine.ts";
+import { sshRunner, WINDOWS_POWERSHELL } from "../../src/runner.ts";
 import type { ComputerResult } from "../../src/session.ts";
 
 /**
@@ -17,11 +18,16 @@ export async function connectLive(cwd = process.cwd()) {
     machineFactory({ getMode: () => "yolo", settings: () => images.settings() }));
   const connected = await resources.perform(at("computer:session"), cwd, JSON.stringify({ action: "connect", machine: name }), "insert");
   const machine = computerSource("machine", connected.details.machine_ref!);
+  const runner = sshRunner((await machineConfig(cwd, name)).ssh);
   return {
     resources, machine, cwd,
     read: (path: string, views?: string[]) => resources.read(at(path), cwd, views) as Promise<ComputerResult>,
     search: (path: string, query: string) => resources.search(at(path), cwd, query),
-    insert: (path: string, command: unknown) => resources.perform(at(path), cwd, JSON.stringify(command), "insert"),
+    insert: (path: string, command: unknown, signal?: AbortSignal) => resources.perform(at(path), cwd, JSON.stringify(command), "insert", signal),
+    /** Force-close a process this check opened, for example a modified test document. */
+    /** Run a Windows PowerShell command on the machine, like a human changing something outside the session. */
+    powershell: (command: string) => runner.run(WINDOWS_POWERSHELL, ["-NoProfile", "-Command", command]),
+    kill: (pid: number) => runner.run(WINDOWS_POWERSHELL, ["-NoProfile", "-Command", `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`]).catch(() => ""),
     write: (path: string, text: string) => resources.perform(at(path), cwd, text, "write"),
     close: () => resources.perform(at("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert").catch(() => undefined),
   };

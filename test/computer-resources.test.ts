@@ -12,6 +12,7 @@ async function fixture() {
   let mode: ComputerMode = "yolo", lifetime: string | undefined = "native-life", serial = 0;
   let outcome: DriverResult = { content: [], structuredContent: { effect: "confirmed" } };
   let afterInput: (() => void) | undefined;
+  let liveBounds = { x: 80, y: 90, width: 500, height: 320 };
   const raw = await sharp({ create: { width: 500, height: 320, channels: 3, background: "#eef4ff" } }).png().toBuffer();
   const image: Content = { type: "image", mimeType: "image/png", data: raw.toString("base64") };
   const jpeg: Content = { type: "image", mimeType: "image/jpeg", data: (await sharp(raw).extract({ left: 80, top: 60, width: 40, height: 20 }).jpeg().toBuffer()).toString("base64") };
@@ -29,6 +30,7 @@ async function fixture() {
         display: "primary", platform: "windows", capture_id: "private-display-capture", screen_width: 500, screen_height: 320,
         screenshot_width: 500, screenshot_height: 320, screenshot_original_width: 500, screenshot_original_height: 320, scale_factor: 1,
       } };
+      if (name === "get_window_control_state") return { content: [], structuredContent: { state: { bounds: liveBounds, minimized: false, visible: true } } };
       if (name === "zoom") return { content: [jpeg], structuredContent: { width: 40, height: 20, x_offset: 80, y_offset: 60 } };
       if (inputNames.has(name)) { afterInput?.(); return outcome; }
       throw Error(`Unexpected native call ${name}: ${JSON.stringify(args)}`);
@@ -50,7 +52,8 @@ async function fixture() {
   };
   return { session, resources, driver, window, native, inputs, captures, read,
     setMode(value: ComputerMode) { mode = value; }, setLifetime(value: string | undefined) { lifetime = value; },
-    setOutcome(value: DriverResult) { outcome = value; }, afterInput(value: () => void) { afterInput = value; } };
+    setOutcome(value: DriverResult) { outcome = value; }, afterInput(value: () => void) { afterInput = value; },
+    setBounds(value: typeof liveBounds) { liveBounds = value; } };
 }
 
 test("literal Write preserves all text and descriptor/UI reads do not refresh native grounding", async () => {
@@ -204,8 +207,9 @@ test.each(["native-partial", "in-flight-cancel"] as const)("%s preserves the att
     { action: "key", key: "return" },
   ] });
   const result = await f.resources.perform(view.observation, cwd, command, "insert", cancellation.signal);
-  expect(result.details.status).toBe("unknown");
-  expect(result.details.state).toMatchObject({ sequence: { total: 2, attempted: 1, completed: 0, steps: [{ action: "type_text" }] } });
+  // A cancelled sequence lets its current step finish and reports it; a native partial step stays unknown.
+  expect(result.details.status).toBe(interruption === "native-partial" ? "unknown" : "refused");
+  expect(result.details.state).toMatchObject({ sequence: { total: 2, attempted: 1, completed: interruption === "native-partial" ? 0 : 1, steps: [{ action: "type_text" }] } });
   expect(f.inputs()).toHaveLength(1); expect(f.inputs()[0][1]).toMatchObject({ text: "first prefix" });
   await expect(f.resources.perform(view.observation, cwd, command, "insert")).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(1);
@@ -229,4 +233,27 @@ test("a display overview accepts a size for that Read only", async () => {
   await f.resources.read(display, cwd);
   expect(f.captures().at(-1)).toEqual(["get_desktop_state", { max_image_dimension: 1280 }, undefined]);
   await expect(f.resources.read(display, cwd, ['capture:{"max_elements":5}'])).rejects.toThrow(/accepts only capture/);
+});
+
+test("pixel-only input keeps the observation until the window size changes; UI hints and other input spend it", async () => {
+  const f = await fixture();
+  (f.driver as Driver & { windowManagement: boolean }).windowManagement = true;
+  const view = await f.read();
+  const click = (x: number) => f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x, y: 40 }), "insert");
+  for (const x of [10, 20, 30]) expect((await click(x)).details.status).toBe("delivered");
+  expect(f.captures()).toHaveLength(1);
+  // The native capture is single-use; kept observations send window-local pixels without it.
+  expect(f.inputs()[0][1]).toMatchObject({ capture_id: "capture-1" });
+  expect(f.inputs()[1][1]).not.toHaveProperty("capture_id");
+  const hinted = await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", hint: view.hint }), "insert");
+  expect(hinted.details.status).toBe("refused");
+  expect(hinted.content[0]).toMatchObject({ text: expect.stringContaining("UI hints of this observation expired") });
+  const again = await f.read();
+  f.setBounds({ x: 300, y: 90, width: 500, height: 320 });
+  expect((await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5 }), "insert")).details.status).toBe("delivered");
+  f.setBounds({ x: 300, y: 90, width: 640, height: 320 });
+  const resized = await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5 }), "insert");
+  expect(resized.details.status).toBe("refused");
+  expect(resized.content[0]).toMatchObject({ text: expect.stringContaining("resized from 500x320 to 640x320") });
+  await expect(f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5 }), "insert")).rejects.toThrow(/expired/i);
 });

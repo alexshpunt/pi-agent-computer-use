@@ -125,7 +125,9 @@ export interface ComputerResult {
   };
   isError?: boolean;
 }
-interface Observation { texts?: Map<string, string>; id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"] }
+interface Observation { texts?: Map<string, string>; id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"];
+  /** Kept after pixel-only input: coordinates stay valid until a freshness check finds a changed size or state; UI tokens and the native capture are spent. */
+  pixelsOnly?: boolean }
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
@@ -142,6 +144,12 @@ export function textMatcher(query?: string): (text: string) => boolean {
   return text => text.toLowerCase().includes(needle);
 }
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
+/** One input sequence: enough for a long drawing or form program in one call, still bounded so a runaway program stops. */
+export const SEQUENCE_STEPS = 2000;
+/** Requested waits, typing and drag durations of one sequence. */
+export const SEQUENCE_REQUESTED_MS = 15 * 60_000;
+/** Wall-clock budget of one sequence, including native call overhead. */
+export const SEQUENCE_ELAPSED_MS = 30 * 60_000;
 /** Aria snapshots above this many characters are cut. Read pages stored snapshots with offset/limit. */
 const WEB_SNAPSHOT_LIMIT = 400_000;
 /** Longest native element text retained for element:text reads; the walk shows 1024 characters per element. */
@@ -150,6 +158,12 @@ const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+
 /** File name of a Win32 launch path without directory and extension; packaged shell:appsFolder paths have none. */
 const executableName = (path: string) => /^shell:/i.test(path) ? "" : appName(path.split(/[\\/]/).pop() ?? "");
 
+/** A WGC refusal that a short retry or the default route can recover: no frame, a failed capture or a capture timeout. */
+const wgcFailure = (native: DriverResult) => {
+  const state = native.structuredContent ?? {};
+  const text = native.content.filter(block => block.type === "text").map(block => block.text).join(" ");
+  return /wgc|capture/i.test(String(state.code ?? "")) || /did not finish within|Windows Graphics Capture/i.test(`${text} ${String(state.message ?? "")}`);
+};
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
 export class ComputerSession {
   private tail: Promise<unknown> = Promise.resolve();
@@ -774,7 +788,7 @@ export class ComputerSession {
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
-    const wgc = options.backend === "wgc" || (options.backend === undefined && hasImage && this.driver.persistentWgc === true);
+    let wgc = options.backend === "wgc" || (options.backend === undefined && hasImage && this.driver.persistentWgc === true);
     if (wgc && this.driver.persistentWgc !== true) return this.result("refused", "WGC needs an explicitly selected, qualified Windows runtime. Default capture is unchanged.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined; entry.detail = undefined;
@@ -783,13 +797,25 @@ export class ComputerSession {
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
     const settings = structuredClone({ ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
       ...(options.scale !== undefined ? { scale: options.scale } : {}), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
-    const native = await this.driver.call("get_window_state", {
+    const read = (route: boolean) => this.driver.call("get_window_state", {
       ...entry.target,
       ...(hasUi ? { max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000, ...(query ? { query } : {}) }
         : { include_accessibility_tree: false }),
       ...(hasImage ? { max_image_dimension: nativeImageCap(settings) } : { include_screenshot: false }),
-      ...(wgc ? { capture_backend: "wgc" } : {}),
+      ...(route ? { capture_backend: "wgc" } : {}),
     }, signal);
+    let native = await read(wgc);
+    let routeNote = "";
+    // WGC can fail for a moment right after input or a launch. Retry once; when WGC was only the runtime default, say so and use the default route.
+    if (wgc && native.isError && wgcFailure(native)) {
+      await delay(150, undefined, { signal }).catch(() => undefined);
+      if (!signal?.aborted) native = await read(true);
+      if (native.isError && wgcFailure(native) && options.backend === undefined && !signal?.aborted) {
+        routeNote = ` WGC capture failed (${String(native.structuredContent?.code ?? "no frame")}); this overview used the default capture route.`;
+        wgc = false;
+        native = await read(false);
+      }
+    }
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (signal?.aborted) return this.result("refused", "Cancelled during observation; captured data withheld.");
     if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry, native.structuredContent?.virtual_desktop));
@@ -874,7 +900,7 @@ export class ComputerSession {
     const message = hasUi
       ? `Fresh full window observation: ${ui!.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui!.complete === true ? "complete" : ui!.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`
       : "Fresh image-only window observation. Accessibility was not collected; no current UI hints/tokens. Pixel input uses this window image; paint freshness is unverified.";
-    return this.result("observed", `${message}${wgc ? " Retained WGC capture; native detail is not supported on this route." : ""}`, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
+    return this.result("observed", `${message}${wgc ? " Retained WGC capture; native detail is not supported on this route." : ""}${routeNote}`, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
       agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
@@ -1290,6 +1316,10 @@ export class ComputerSession {
       const observed = entry?.observation;
       if (!entry || !observed || action.observation_id !== observed.id)
         return this.result("refused", "Stale or missing observation_id/window_ref. Observe again.");
+      if (observed.pixelsOnly) {
+        const change = await this.observationChange(entry, observed, signal).catch((error: unknown) => `the window state could not be read (${error instanceof Error ? error.message : error})`);
+        if (change) { entry.observation = undefined; return this.result("refused", `Observation expired: ${change}. Read the window again; no input was dispatched.`); }
+      }
       const { window_ref: _ref, observation_id: _id, delivery_mode, animation, ...command } = action;
       const batch = command.action === "sequence";
       let commands: InputStep[];
@@ -1298,8 +1328,8 @@ export class ComputerSession {
         if (animation !== undefined && (animation !== "reactive" || !this.driver.reactiveAnimation))
           throw Error("Reactive animation requires the scoped native cursor adapter; no input was dispatched.");
         if (batch) {
-          if (Object.keys(command).some(key => !["action", "sequence"].includes(key)) || !Array.isArray(command.sequence) || command.sequence.length < 1 || command.sequence.length > 32)
-            throw new Error("A sequence needs 1..32 steps and no conflicting top-level action fields.");
+          if (Object.keys(command).some(key => !["action", "sequence"].includes(key)) || !Array.isArray(command.sequence) || command.sequence.length < 1 || command.sequence.length > SEQUENCE_STEPS)
+            throw new Error(`A sequence needs 1..${SEQUENCE_STEPS} steps and no conflicting top-level action fields.`);
           commands = command.sequence;
         } else commands = [command];
         commands = commands.map(step => {
@@ -1308,6 +1338,7 @@ export class ComputerSession {
             if (typeof hint !== "string" || step.element_token !== undefined || step.x !== undefined || step.y !== undefined)
               throw Error("Use exactly one current hint or native token/pixel target.");
             if (!observed.ui) throw Error("Image-only observation has no current hints.");
+            if (observed.pixelsOnly) throw Error("UI hints of this observation expired with the previous input. Use pixel coordinates, or Read the window again.");
             nativeStep.element_token = resolveUi(observed.ui, hint).element_token;
           }
           const element = observed.ui?.elements.find(e => e.element_token === nativeStep.element_token);
@@ -1335,14 +1366,16 @@ export class ComputerSession {
           }
           return nativeStep;
         });
-        if (this.driver.captureBoundDrag && !observed.captureId && commands.some(step => step.action === "drag" && step.via === undefined))
+        if (observed.pixelsOnly && commands.some(step => step.element_token !== undefined || isSemanticAction(step.action)))
+          throw new Error("UI tokens of this observation expired with the previous input. Use pixel coordinates, or Read the window again.");
+        if (this.driver.captureBoundDrag && !observed.captureId && !observed.pixelsOnly && commands.some(step => step.action === "drag" && step.via === undefined))
           throw new Error("Straight drag requires this overview's native capture. Observe again; no batch input was dispatched.");
         if (commands.some(step => step.action === "hold") && !this.driver.heldKeys)
           throw new Error("Key holds require the explicitly selected qualified Windows key-hold runtime. No input was dispatched.");
         if (commands.some(step => step.via !== undefined) && !this.driver.heldPaths)
           throw new Error("Continuous paths require the explicitly selected qualified Windows fork. No batch input was dispatched.");
-        if (batch && commands.reduce((ms, step) => ms + requestedInputTime(step), 0) > 30000)
-          throw new Error("A sequence exceeds 30 seconds of requested waits/typing/drags.");
+        if (batch && commands.reduce((ms, step) => ms + requestedInputTime(step), 0) > SEQUENCE_REQUESTED_MS)
+          throw new Error(`A sequence exceeds ${SEQUENCE_REQUESTED_MS / 60000} minutes of requested waits/typing/drags.`);
         commands = commands.map(step => ({ ...step, ...(step.keys ? { keys: [...step.keys] } : {}), ...(step.modifiers ? { modifiers: [...step.modifiers] } : {}), ...(step.via ? { via: step.via.map(point => ({ ...point })) } : {}), ...(step.actions ? { actions: step.actions.map(pointer => ({ ...pointer, ...(pointer.via ? { via: pointer.via.map(point => ({ ...point })) } : {}) })) } : {}) }));
       } catch (error) { return this.result("refused", (error as Error).message); }
 
@@ -1361,7 +1394,7 @@ export class ComputerSession {
         for (const [index, step] of commands.entries()) {
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before the next dispatch.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
-          if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached; no more steps dispatched.");
+          if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached; no more steps dispatched.`);
           if (step.wait_ms) await delay(step.wait_ms, undefined, { signal });
           const current = await this.current(entry.ref, signal);
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
@@ -1373,7 +1406,7 @@ export class ComputerSession {
           let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
-          if (batch && performance.now() - started >= 45000) return finish(this.result("refused", "Sequence time budget reached."), "45s elapsed budget reached during admission; no more steps dispatched.");
+          if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
           entry.observation = undefined; entry.detail = undefined;
           const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
           if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
@@ -1384,11 +1417,14 @@ export class ComputerSession {
           const row: Record<string, unknown> = { index, action: step.action, native_tool: name, requested,
             requested_wait_ms: step.wait_ms ?? 0, dispatch_ms: performance.now() - started, status: "unknown" };
           trace.steps.push(row); trace.attempted++; inFlight = true;
+          // A sequence stops between steps: its current step finishes and releases its own keys and buttons,
+          // and the driver connection survives the cancellation. A single action stays cancellable in flight.
+          const nativeSignal = batch ? undefined : signal;
           const native = animation
-            ? await this.driver.call(name, args, signal, { animation })
-            : await this.driver.call(name, args, signal);
+            ? await this.driver.call(name, args, nativeSignal, { animation })
+            : await this.driver.call(name, args, nativeSignal);
           row.completion_ms = performance.now() - started;
-          if (!this.allowed(entry) || signal?.aborted) return finish(this.result("unknown",
+          if (!this.allowed(entry) || (!batch && signal?.aborted)) return finish(this.result("unknown",
             "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),
             "In-flight outcome withheld after revocation/cancellation.");
           const state = native.structuredContent ?? {};
@@ -1421,7 +1457,7 @@ export class ComputerSession {
             const point = resolvedPoint;
             highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, { kind: "action", point });
           }
-          if (!this.allowed(entry) || signal?.aborted) {
+          if (!this.allowed(entry) || (!batch && signal?.aborted)) {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
           }
@@ -1432,8 +1468,12 @@ export class ComputerSession {
             ...(native.isError || !native.structuredContent ? {
               native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
             } : {}) }, { ...this.addressed(entry), action_capability: capability, ...(highlight ? { highlight } : {}) });
-          if (!batch || status !== "delivered" || index === commands.length - 1)
+          if (!batch || status !== "delivered" || index === commands.length - 1) {
+            // Pixel-only input keeps the overview usable: the next call checks the window size instead of capturing again.
+            if (status === "delivered" && this.driver.windowManagement && observed.bounds && commands.every(item => item.element_token === undefined && !isSemanticAction(item.action)))
+              entry.observation = { ...observed, captureId: undefined, pixelsOnly: true };
             return finish(result, status === "delivered" ? "" : `Stopped after native ${status}; later steps were not dispatched.`);
+          }
         }
         throw new Error("No complete input step.");
       } catch (error) {
@@ -1443,6 +1483,19 @@ export class ComputerSession {
     });
   }
 
+  /** Why a kept pixel observation no longer matches its window, or undefined while it still does. Movement keeps window-local points valid. */
+  private async observationChange(entry: WindowEntry, observed: Observation, signal?: AbortSignal): Promise<string | undefined> {
+    const native = await this.driver.call("get_window_control_state", { pid: entry.target.pid, window_id: entry.target.window_id }, signal);
+    const state = native.structuredContent?.state as { bounds?: ScreenRect; minimized?: boolean; visible?: boolean } | undefined;
+    if (native.isError || !state?.bounds) return "the window state could not be read";
+    if (state.minimized) return "the window was minimized";
+    if (state.visible === false) return "the window is no longer visible";
+    const before = observed.bounds!, now = state.bounds;
+    if (now.width !== before.width || now.height !== before.height) return `the window was resized from ${before.width}x${before.height} to ${now.width}x${now.height}`;
+    return undefined;
+  }
+  /** Whether a window still holds this observation for input. */
+  holdsObservation(windowRef: string, id: string): boolean { return this.entries.get(windowRef)?.observation?.id === id; }
   /** Whether this session issued a still-registered window reference. */
   hasWindow(ref: string): boolean { return this.entries.has(ref); }
   /** Whether this session issued a still-registered display reference. */

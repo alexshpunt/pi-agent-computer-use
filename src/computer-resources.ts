@@ -15,6 +15,8 @@ function commandObject(value: string): Record<string, unknown> {
   try { return object(JSON.parse(value)); }
   catch { throw new ComputerRequestError("Use one valid JSON command object."); }
 }
+/** Steps of one mixed batch; each native step after the first walks the UI again, so batches stay shorter than sequences. */
+const BATCH_STEPS = 200;
 /** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
 const NATIVE_BATCH_ACTIONS = ["click", "double_click", "right_click", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value"];
 /** An action's optional postcondition and successor request. */
@@ -494,8 +496,11 @@ export class ComputerResources {
       command.delivery_mode = address.delivery;
     }
     const action = { ...command, window_ref: snapshot.target.window_ref, observation_id: address.ref } as Action;
-    this.snapshots.delete(address.ref);
-    return (await this.sessionFor(cwd, snapshot.target)).act(action, signal);
+    const session = await this.sessionFor(cwd, snapshot.target);
+    const result = await session.act(action, signal);
+    // Delivered pixel-only input keeps the observation usable; anything else, including a refusal, spends it.
+    if (result.details.status !== "delivered" || !session.holdsObservation(snapshot.target.window_ref!, address.ref)) this.snapshots.delete(address.ref);
+    return result;
   }
 
   /** Validate an action's optional `expect` postcondition and `successor` request before anything is dispatched. */
@@ -557,7 +562,7 @@ export class ComputerResources {
     only(command, ["action", "steps"]);
     const window = snapshot.target.window_ref!;
     if (address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined) throw new ComputerRequestError("A batch takes its targets and delivery from its steps, not the address.");
-    if (!Array.isArray(command.steps) || command.steps.length < 1 || command.steps.length > 16) throw new ComputerRequestError("batch needs steps: 1..16 step objects.");
+    if (!Array.isArray(command.steps) || command.steps.length < 1 || command.steps.length > BATCH_STEPS) throw new ComputerRequestError(`batch needs steps: 1..${BATCH_STEPS} step objects.`);
     const session = await this.sessionFor(cwd, { window_ref: window });
     const browser = snapshot.result.details.dom !== undefined;
     type Step = { kind: "wait"; spec: WaitSpec; action: string } | { kind: "dom"; action: WebAction } | { kind: "native"; command: Record<string, unknown>; target?: Record<string, string> };
