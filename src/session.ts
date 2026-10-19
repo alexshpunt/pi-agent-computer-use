@@ -13,7 +13,8 @@ import { notifyWindowObserver, notifyHighlight, type WindowObserver, type Highli
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
 import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
-import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
+import { DEFAULT_MAX_LONG_EDGE, nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
+import type { DisplayMode, DisplayModes } from "./display-mode.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import type { StateDiff } from "./successor.ts";
@@ -143,6 +144,8 @@ export class ComputerSession {
   private readonly sessionId = randomUUID();
   private displayOverview?: DetailContext;
   private readonly displayEntries = new Map<string, DisplayEntry>();
+  /** Modes this session replaced, by display device; close puts them back. */
+  private readonly replacedModes = new Map<string, DisplayMode>();
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
@@ -185,10 +188,11 @@ export class ComputerSession {
   }
 
   constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo",
-    private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" }),
+    private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: DEFAULT_MAX_LONG_EDGE, scale: 1, version: 0, route: "cua_native" }),
     private readonly observer?: WindowObserver,
     private readonly retainRaw?: (image: Content) => void,
-    private readonly launchWeb?: WebLauncher) {}
+    private readonly launchWeb?: WebLauncher,
+    private readonly displayModes?: DisplayModes) {}
 
   private overviewSettings(): CuaVisionSettings {
     const settings = this.settings();
@@ -576,6 +580,31 @@ export class ComputerSession {
         if (signal?.aborted) return this.result("refused", "Cancelled during display discovery; metadata withheld.");
         return this.result("refused", `Native display discovery failed. ${error instanceof Error ? error.message : error}`);
       }
+    });
+  }
+
+  /** Change a discovered display's resolution in YOLO. Closing the session restores the mode it replaced. */
+  resizeDisplay(display: string, mode: DisplayMode, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display changes. Only the user can select YOLO with /computer-mode.");
+      if (!this.displayModes) return this.result("refused", "Display resizing is not available for this desktop.");
+      const entry = this.displayEntries.get(display);
+      if (!entry) return this.result("refused", "Unknown or outdated display reference. Read the displays again.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before the display change.");
+      let change;
+      try { change = await this.displayModes.set(entry.native.monitor_handle, mode, signal); }
+      catch (error) {
+        // A cancelled or timed-out change may still have reached Windows.
+        if (signal?.aborted) return this.result("unknown", "Cancelled during the display change; the resolution may have changed. Read the displays again.");
+        return this.result("refused", `Display not changed. ${error instanceof Error ? error.message : error}`);
+      }
+      if (!this.replacedModes.has(change.device)) this.replacedModes.set(change.device, change.previous);
+      const original = this.replacedModes.get(change.device)!;
+      if (original.width === change.current.width && original.height === change.current.height) this.replacedModes.delete(change.device);
+      // New geometry: display references and window coordinates from before no longer hold.
+      this.displayEntries.clear(); this.displayOverview = undefined;
+      return this.result("delivered", `Display ${change.device} is now ${change.current.width}x${change.current.height} (was ${change.previous.width}x${change.previous.height}). ` +
+        `Read the displays and windows again before acting; old display references are gone. Closing the computer session restores ${original.width}x${original.height}.`);
     });
   }
 
@@ -1405,8 +1434,13 @@ export class ComputerSession {
       const browsers = [...this.browsers.values()];
       this.browsers.clear();
       const cleanup = await Promise.allSettled(browsers.map(browser => browser.close()));
+      const modes = [...this.replacedModes];
+      this.replacedModes.clear();
+      const restored = await Promise.allSettled(modes.map(([device, mode]) => this.displayModes!.restore(device, mode)));
       await this.driver.close();
       const failed = cleanup.filter(result => result.status === "rejected").length;
+      const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);
+      if (unrestored.length) return this.result("unknown", `Native runtime released, but restoring the display mode of ${unrestored.join(", ")} failed. Signing out of Windows also restores it.`);
       if (failed) return this.result("unknown", `Native runtime released, but cleanup of ${failed} of ${browsers.length} owned browsers is unconfirmed.`);
       return this.result("closed", "Owned computer-use runtime and session-opened browsers released. Other application documents were not closed or saved.");
     });

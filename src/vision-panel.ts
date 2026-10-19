@@ -8,10 +8,10 @@ export const visionPanel = `<!doctype html>
 <p class="notice"><strong>Final delivery is unconfirmed.</strong> These are exact image bytes at Pi's existing application-boundary hook, not confirmed wire payloads or model embeddings.</p>
 <p id="session"></p>
 <section class="controls"><h2>Agent image size</h2>
-<p class="muted" id="route-note">Native CUA window/display PNG overviews; browser captures include chrome. The selected native runtime fixes the overview filter (Lanczos3 or Bilinear); default long edge is 500px. Window detail is fresh padded JPEG; display detail crops fresh full-resolution CUA pixels in the adapter. Raw returned PNGs are retained only for private hint comparison; no full-resolution originals. These controls apply to the next overview, not per-request detail settings.</p>
+<p class="muted" id="route-note">Native CUA window/display PNG overviews; browser captures include chrome. The selected native runtime fixes the overview filter (Lanczos3 or Bilinear); default long edge is 1280px. Window detail is fresh padded JPEG; display detail crops fresh full-resolution CUA pixels in the adapter. Raw returned PNGs are retained only for private hint comparison; no full-resolution originals. These controls apply to the next overview, not per-request detail settings.</p>
 <form id="image-settings">
 <label>Driver kernel <select id="kernel" disabled><option value="lanczos3" selected>Lanczos3</option><option value="bilinear">Bilinear</option></select></label>
-<label>Max long edge (px) <input id="long-edge" type="text" inputmode="numeric" pattern="[0-9]+" value="500" required></label>
+<label>Max long edge (px) <input id="long-edge" type="text" inputmode="numeric" pattern="[0-9]+" value="1280" required></label>
 <label>Scale slider <input id="scale" type="range" min="0.05" max="1" step="any" value="1"><output id="scale-value">1</output></label>
 <label>Scale exact <input id="scale-number" type="text" inputmode="decimal" value="1" required></label>
 <button type="submit">Apply to next capture</button>
