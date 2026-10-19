@@ -75,6 +75,16 @@ export class MachineHost {
     return out ? JSON.parse(out) as ProcessHealth : undefined;
   }
 
+  /** The clipboard's image as PNG bytes, or undefined when it holds no image. */
+  async clipboardImage(): Promise<Buffer | undefined> {
+    const folder = await this.files();
+    const name = `clipboard-${Date.now()}.png`;
+    const saved = await this.powershell(`Add-Type -AssemblyName System.Windows.Forms, System.Drawing; $i = [Windows.Forms.Clipboard]::GetImage(); if ($i) { $i.Save('${folder.windows.replace(/'/g, "''")}\\${name}', [Drawing.Imaging.ImageFormat]::Png); 'saved' }`, undefined, 20_000);
+    if (saved !== "saved") return undefined;
+    try { return await this.get(name); }
+    finally { await this.runner.run("rm", ["-f", "--", `${folder.wsl}/${name}`]).catch(() => undefined); }
+  }
+
   /**
    * Recognise text with Windows.Media.Ocr in the user's languages. Boxes are in the given image's pixels;
    * a region is cut from it, enlarged up to 2x for small glyphs, and its boxes are mapped back.

@@ -624,6 +624,37 @@ export class ComputerSession {
     });
   }
 
+  /**
+   * Read the controlled machine's clipboard in YOLO: its formats, text and, when asked, its image as PNG.
+   * The clipboard is shared with the user, so it is read only on this explicit call.
+   */
+  clipboardRead(image: boolean, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids clipboard access: it is shared with the user's own apps. Only the user can select YOLO with /computer-mode.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before reading the clipboard.");
+      try {
+        if (image && !this.host) return this.result("refused", "Clipboard images need the machine host, which this desktop does not have.");
+        const state = await this.state("clipboard_read", { include_text: true }, signal);
+        const png = image ? await this.host!.clipboardImage() : undefined;
+        const text = typeof state.text === "string" ? state.text : undefined;
+        return this.result("observed", `Clipboard formats: ${JSON.stringify(state.types ?? state.available_types ?? [])}.${text !== undefined ? `\nText (${text.length} characters):\n${text}` : " No text."}${image ? png ? " Image attached." : " No image." : ""}`,
+          { types: state.types ?? state.available_types, ...(text !== undefined ? { text } : {}) }, {}, png ? [{ type: "image", mimeType: "image/png", data: png.toString("base64") }] : []);
+      } catch (error) { return this.result("refused", `Clipboard read failed: ${error instanceof Error ? error.message : error}`); }
+    });
+  }
+
+  /** Replace the controlled machine's clipboard in YOLO with text or an image file already on that machine. */
+  clipboardWrite(value: { text: string } | { imagePath: string }, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids clipboard access: it is shared with the user's own apps. Only the user can select YOLO with /computer-mode.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before writing the clipboard.");
+      try {
+        const state = await this.state("clipboard_write", "text" in value ? { text: value.text } : { image_path: value.imagePath }, signal);
+        return this.result("delivered", `Clipboard replaced with ${"text" in value ? `text (${value.text.length} characters)` : "an image"}. Paste with ctrl+v in the target window.`, state);
+      } catch (error) { return this.result("refused", `Clipboard write failed: ${error instanceof Error ? error.message : error}`); }
+    });
+  }
+
   /** Change a discovered display's resolution in YOLO. Closing the session restores the mode it replaced. */
   resizeDisplay(display: string, mode: DisplayMode, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {

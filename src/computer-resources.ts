@@ -49,10 +49,11 @@ export interface OpenedMachine {
 /** Connect to a configured machine by name; unknown names refuse before any SSH work. */
 export type MachineFactory = (cwd: string, name: string, signal?: AbortSignal) => Promise<OpenedMachine>;
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
-const FILE_ACTIONS = ["put", "get", "files"];
+const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write"];
 /**
- * Move files between the workspace and the session's own folder on the controlled machine.
+ * Move files between the workspace and the session's own folder on the controlled machine, and use its clipboard.
  * put copies a workspace file in, get copies one out, files lists the folder; closing the session removes it.
+ * clipboard_read/clipboard_write are explicit YOLO-only calls on the clipboard the user also uses.
  */
 async function fileCommand(session: ComputerSession, command: Record<string, unknown>, cwd: string): Promise<ComputerResult> {
   if (!session.host) throw new ComputerRequestError("This desktop has no owned file folder.");
@@ -63,6 +64,21 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
   };
   const done = (text: string, state: Record<string, unknown>): ComputerResult => ({ content: [{ type: "text", text }], details: { status: "delivered", mode: "yolo", state } });
   try {
+    if (command.action === "clipboard_read") {
+      only(command, ["action", "image"]);
+      if (command.image !== undefined && typeof command.image !== "boolean") throw new ComputerRequestError("clipboard_read image must be true or false.");
+      return await session.clipboardRead(command.image === true);
+    }
+    if (command.action === "clipboard_write") {
+      only(command, ["action", "text", "image"]);
+      if ((command.text === undefined) === (command.image === undefined)) throw new ComputerRequestError("clipboard_write needs exactly one of text or image (a workspace image path).");
+      if (command.text !== undefined) {
+        if (typeof command.text !== "string") throw new ComputerRequestError("clipboard_write text must be a string.");
+        return await session.clipboardWrite({ text: command.text });
+      }
+      const from = local(command.image, "image");
+      return await session.clipboardWrite({ imagePath: await host.put(checkedName(`clipboard-${basename(from)}`), await readFile(from)) });
+    }
     if (command.action === "files") {
       only(command, ["action"]);
       const folder = await host.files();

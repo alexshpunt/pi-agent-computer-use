@@ -47,6 +47,14 @@ Each computer session owns a folder in the controlled machine's Windows temp dir
 
 Names are plain file names inside that folder; nothing outside it is read or written there. Save app documents into this folder rather than the user's own folders. Closing the computer session removes the folder.
 
+The same addresses take clipboard commands, in YOLO only, because the clipboard is shared with the user's own apps and is never read without one of these calls:
+
+| Command | Effect |
+| --- | --- |
+| `{"action":"clipboard_write","text":"..."}` | Replace the clipboard with text; paste with ctrl+v in the target window |
+| `{"action":"clipboard_write","image":"art/in.png"}` | Replace it with a workspace image |
+| `{"action":"clipboard_read"}` | Its formats and text; add `"image":true` to also get its image |
+
 Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Detail from an ordinary WGC overview is unsupported: use an explicit default-route overview for that path. Display detail, frames and text selections never grant input authority.
 
 ## Browser pages
