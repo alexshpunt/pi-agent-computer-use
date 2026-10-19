@@ -1,8 +1,8 @@
 import { loadComputerConfig, type ComputerConfig } from "./config.ts";
 import { ComputerRequestError, type MachineFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
-import { displayModes } from "./display-mode.ts";
 import { McpDriver } from "./driver.ts";
+import { MachineHost } from "./machine-host.ts";
 import { sshRunner } from "./runner.ts";
 import { waitForGuestDriver } from "./sandbox.ts";
 import { ComputerSession, type ComputerMode, type Content } from "./session.ts";
@@ -30,7 +30,7 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
       ? (launch: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) =>
         WebBrowser.launch({ ...launch, remote: { runner, node: machine.node!, worker: `${machine.package}/src/web-worker.ts` } }, webSignal)
       : undefined;
-    const remote = new ComputerSession(driver, options.getMode, options.settings, undefined, options.retainRaw, launchWeb, displayModes(runner));
+    const remote = new ComputerSession(driver, options.getMode, options.settings, undefined, options.retainRaw, launchWeb, new MachineHost(runner));
     return { ref: name, session: remote,
       describe: source => [`# Remote machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
         `Browser: ${launchWeb ? "available" : "not configured (node and package)"}`,

@@ -19,11 +19,12 @@ Read views:
 | View | Meaning |
 | --- | --- |
 | `full` (default), `image`, `ui` | Fresh full window, pixels without a UI walk, or current UI without pixels. |
-| `state` | Fresh native metadata without pixels or a UI walk. Use alone on a window. The selected runtime issues restore-only or management state; management also reports bounds, maximized state and independent virtual-desktop queries. |
+| `state` | Fresh native metadata without pixels or a UI walk. Use alone on a window. The selected runtime issues restore-only or management state; management also reports bounds, maximized state and independent virtual-desktop queries. It also reports the window's process: whether Windows considers the window hung, its memory and CPU time (`process`). |
 | `dom`, `dom:{"target":{"role":"button","name":"Save"},"depth":4}` | Fresh Playwright aria snapshot of a browser opened with `open_browser`. Use alone; add `"log":true` for the retained console and network log. See [Browser pages](#browser-pages). |
 | `backend:default`, `backend:wgc` | Explicit window image route. WGC requires a qualified runtime. When WGC is only the runtime default and fails twice (it can, right after input or a launch), the overview uses the default route and says so; an explicit `backend:wgc` never falls back. |
 | `capture:{"max_elements":500,"max_depth":20,"hints":true}` | Fresh bounded walk/hints. Optional `guides` takes grid/region/action booleans. `maxLongEdge` (64..4096) and `scale` (0.05..1) set this window Read’s native image cap without changing session defaults. |
 | `region:100,80,120,60` | Fresh readonly detail in local pixels of the addressed observation image. Consumes its overview. |
+| `ocr` | Windows OCR of the overview pixels, without UI hint labels. Alone or with capture options on a window, alone on its observation, or with `region:x,y,w,h` on an observation to read only that part (no native call; the observation stays usable). Lines and words come with boxes in the observation's overview pixels (`text_lines`). Small text needs a larger overview, for example `capture:{"granularity":"image","maxLongEdge":3840}`. Recognised text can be wrong: confirm with pixels or UI before acting on it. |
 | `element:inspect,1:a` | Inspect an actual collected UI hint. Also scope/highlight/crop; crop consumes the overview. `element:text,<hint>` returns one native element's full text. On a DOM observation, `element:crop,<ref>` and `element:highlight,<ref>` return Playwright element images. |
 | `sequence:{"duration_ms":2000,"fps":4}` | Bounded temporal capture from a window or primary display. Returns metadata and a sequence address, not frames. |
 | `frames:endpoints` | Explicit readonly selection from a sequence. Also all/first/last/changed, `frames:{"indexes":[0,2]}` or inclusive `frames:{"from":0,"to":2}`. |
@@ -31,6 +32,20 @@ Read views:
 Examples contain placeholder rectangles/hints. Choose actual targets from the current observation. `offset` and `limit` select text lines, never pixels or image-grid cells. Read a cached observation with `ui` to slice its collected text without another native walk. Acquisition options require a fresh window Read.
 
 Search an observation address to filter its collected UI without another native walk. Missing nodes in an incomplete tree remain unknown. For native UI observations, scope and highlight use stored overview pixels; they are not fresh captures.
+
+When a capture refuses and the window's process is hung, the refusal says so with its memory; waiting or closing the app is the remedy, not another capture.
+
+## Files on the controlled machine
+
+Each computer session owns a folder in the controlled machine's Windows temp directory. Insert into `computer:session` (this machine) or `computer:machine/<name>`:
+
+| Command | Effect |
+| --- | --- |
+| `{"action":"put","from":"art/in.png"}` | Copy a workspace file into the folder (optional `name`) and return its Windows path, for an app's Open dialog |
+| `{"action":"get","name":"in.png","to":"art/out.png"}` | Copy a file from the folder into the workspace |
+| `{"action":"files"}` | List the folder and its Windows path |
+
+Names are plain file names inside that folder; nothing outside it is read or written there. Save app documents into this folder rather than the user's own folders. Closing the computer session removes the folder.
 
 Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Detail from an ordinary WGC overview is unsupported: use an explicit default-route overview for that path. Display detail, frames and text selections never grant input authority.
 
@@ -202,6 +217,8 @@ Write `content` literally. Use an observed hint in the address, for example `com
 Insert one JSON command in `text`, for example `{"action":"click","hint":"<actual-hint>"}` or `{"action":"hotkey","keys":["ctrl","a"]}`. Omit `window_ref` and `observation_id`; the address binds them. Choose one target form: hint/token or local overview-image pixels. Do not use image-detail, display, CSS or desktop coordinates.
 
 For coordinate scroll, Insert `{"action":"scroll","x":<observed-x>,"y":<observed-y>,"delta_x":1,"delta_y":-2,"unit":"wheel_detents"}` into the current observation. Replace the point placeholders with local overview pixels inside the intended scroll surface. Deltas are signed integer wheel detents in -50..50; omit a zero axis, but provide at least one nonzero axis. Positive X means right and positive Y means down. One detent is 120 native wheel units, not a promised distance in content pixels. The `windows-coordinate-scroll` and inherited `windows-window-restore` / `windows-window-management` profiles are explicitly selected and byte-checked; other runtimes refuse this form. Background refuses without motion. After that refusal, Read a fresh window overview before adding `"delivery_mode":"foreground"`. Foreground moves the real pointer and leaves the window active. The native receipt preserves pointer and Y-then-X axis prefixes; inspect an interrupted prefix without replay. Do not combine coordinate scroll with hints, accessibility scroll fields, modifiers, animation or sequences. Existing hint-based accessibility scroll is unchanged.
+
+For input that needs exact timing, held buttons or keys across moves, wheel during a drag, raw motion for pointer-locked apps or a pen, Insert `{"action":"timeline","events":[...]}` with `delivery=foreground`. Each event has `at_ms` (non-decreasing, up to 120000) and a `type`: `key_down`/`key_up` (`key`), `button_down`/`button_up` (`button`: left, right, middle, x1, x2), `move` (`x`,`y` in overview pixels), `move_relative` (`dx`,`dy` raw mouse counts, not pixels), `wheel` (`dx`/`dy` detents) and `pen_down`/`pen_move`/`pen_up` (`x`,`y`, optional `pressure` 0..1, `tilt_x`/`tilt_y` degrees, `eraser`, `barrel`). Presses must be balanced: the whole program is checked before any input, and whatever is still held is released when the call ends, fails or the window loses the foreground. It needs a runtime with `input_timeline`; others refuse it.
 
 Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabilities retain their runtime gates and native limits. A sequence contains up to 2000 known keyboard, click and stroke steps, up to 15 minutes of requested work and a 30-minute elapsed budget; a long drawing program fits into one call. Cancelling a sequence lets the current step finish and release its keys and buttons, then stops; the receipt reports the completed prefix. No cross-call held buttons/keys exist. See [complete input](complete-input.md), [strict semantics](semantic-actions.md) and [native pointer limits](research/native-hover-results.md) for backend contracts; their older standalone tool examples are historical.
 

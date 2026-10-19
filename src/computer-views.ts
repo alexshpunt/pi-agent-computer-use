@@ -22,8 +22,17 @@ function keys(value: Record<string, unknown>, allowed: readonly string[]): void 
   if (unknown.length) throw Error(`Read view contains unsupported options: ${unknown.join(", ")}. Allowed: ${allowed.join(", ")}.`);
 }
 
-/** Validate owned views before capturing; text offsets are never image coordinates. */
-export function parseComputerViews(views: readonly string[] = []): ComputerViews {
+/** Validate owned views before capturing; text offsets are never image coordinates.
+ * `ocr` adds Windows text recognition to a window overview, an observation or a region detail. */
+export function parseComputerViews(views: readonly string[] = []): ComputerViews & { ocr?: true } {
+  if (!views.includes("ocr")) return parseView(views);
+  const view = parseView(views.filter(view => view !== "ocr"));
+  if (view.kind !== "overview" && view.kind !== "region") throw Error("Use ocr alone or with region:x,y,width,height or capture options; it reads text from pixels.");
+  if (view.kind === "overview" && view.capture.granularity === "ui") throw Error("ocr needs pixels; use image or full granularity.");
+  return { ...view, ocr: true };
+}
+
+function parseView(views: readonly string[]): ComputerViews {
   const first = views[0] ?? "";
   if (views.some(view => view === "dom" || view.startsWith("dom:"))) {
     if (views.length !== 1) throw Error("Use dom alone: a DOM snapshot has no image, UI, state, backend or capture options.");

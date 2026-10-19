@@ -14,7 +14,8 @@ import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClic
 import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
 import { DEFAULT_MAX_LONG_EDGE, nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
-import type { DisplayMode, DisplayModes } from "./display-mode.ts";
+import type { DisplayMode } from "./display-mode.ts";
+import type { MachineHost, ProcessHealth, TextLine } from "./machine-host.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import type { StateDiff } from "./successor.ts";
@@ -117,6 +118,10 @@ export interface ComputerResult {
     postcondition?: { status: "verified" | "preexisting" | "failed" | "unknown"; reason?: string; verification?: WaitResult & { spec: WaitSpec } };
     /** The observation taken after an action and its compact difference from the action's input observation. */
     successor?: { observation_id?: string; diff?: StateDiff; reason?: string };
+    /** Text recognised by Windows OCR in this result's image, boxes in the observation's overview pixels. */
+    text_lines?: TextLine[];
+    /** The window's process: whether it responds, its memory and CPU time. */
+    process?: ProcessHealth;
     /** Complete text of one native element from its observation. */
     element_text?: { hint: string; role: string | null; name: string | null; text: string; cut: boolean };
     /** Per-step outcome of a mixed batch; the batch stops at the first step that is not delivered or satisfied. */
@@ -220,7 +225,8 @@ export class ComputerSession {
     private readonly observer?: WindowObserver,
     private readonly retainRaw?: (image: Content) => void,
     private readonly launchWeb?: WebLauncher,
-    private readonly displayModes?: DisplayModes) {}
+    /** Display modes, the owned file folder, process health and OCR on this desktop's machine; absent in a sandbox guest. */
+    readonly host?: MachineHost) {}
 
   private overviewSettings(): CuaVisionSettings {
     const settings = this.settings();
@@ -622,12 +628,12 @@ export class ComputerSession {
   resizeDisplay(display: string, mode: DisplayMode, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display changes. Only the user can select YOLO with /computer-mode.");
-      if (!this.displayModes) return this.result("refused", "Display resizing is not available for this desktop.");
+      if (!this.host) return this.result("refused", "Display resizing is not available for this desktop.");
       const entry = this.displayEntries.get(display);
       if (!entry) return this.result("refused", "Unknown or outdated display reference. Read the displays again.");
       if (signal?.aborted) return this.result("refused", "Cancelled before the display change.");
       let change;
-      try { change = await this.displayModes.set(entry.native.monitor_handle, mode, signal); }
+      try { change = await this.host.displayModes.set(entry.native.monitor_handle, mode, signal); }
       catch (error) {
         // A cancelled or timed-out change may still have reached Windows.
         if (signal?.aborted) return this.result("unknown", "Cancelled during the display change; the resolution may have changed. Read the displays again.");
@@ -1147,6 +1153,28 @@ export class ComputerSession {
     });
   }
 
+  /** The native target of a known window, read before work that may forget the window. */
+  windowTarget(ref: string): WindowTarget | undefined { return this.entries.get(ref)?.target; }
+
+  /** Whether a window still responds, with its process's memory and CPU; undefined when unknown or not measurable here. */
+  processHealth(target: WindowTarget | undefined): Promise<ProcessHealth | undefined> {
+    return target === undefined || !this.host ? Promise.resolve(undefined) : this.host.processHealth(target.pid, target.window_id).catch(() => undefined);
+  }
+
+  /** The unannotated overview pixels of a window observation, for text recognition in its own coordinates. */
+  observationImage(ref: string, id: string): Content | undefined {
+    const observed = this.entries.get(ref)?.observation;
+    return observed?.id === id && !observed.pixelsOnly ? observed.rawImage : undefined;
+  }
+
+  /** Recognise text with Windows OCR on this desktop's machine; boxes are in the given image's pixels, a region only reads that part. */
+  async recognizeText(image: Content, region?: ScreenRect, signal?: AbortSignal): Promise<TextLine[]> {
+    if (!this.host) throw new Error("Text recognition is not available for this desktop.");
+    if (image.type !== "image") throw new Error("Text recognition needs an image.");
+    if (signal?.aborted) throw new Error("Cancelled before text recognition.");
+    return this.host.ocr(Buffer.from(image.data, "base64"), region);
+  }
+
   /** Check cached state authority without acquiring metadata or renewing its one-use native lease. */
   checkWindowState(ref: string, id: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -1391,6 +1419,7 @@ export class ComputerSession {
           { ...(result.details.state ?? {}), sequence: trace }, { ...this.addressed(entry), ...(result.details.highlight ? { highlight: result.details.highlight } : {}) });
       };
       try {
+        let capture = observed.captureId;
         for (const [index, step] of commands.entries()) {
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before the next dispatch.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
@@ -1400,7 +1429,9 @@ export class ComputerSession {
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
           if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
-          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", observed.captureId, this.driver.captureBoundDrag);
+          // The native capture is single-use: the first step that binds to it spends it, later pixel steps use the window's current mapping.
+          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", capture, this.driver.captureBoundDrag);
+          if (args.capture_id !== undefined) capture = undefined;
           // AX bounds are native. Only native click receipts establish an exact pixel action mark.
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
           let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);
@@ -1510,11 +1541,13 @@ export class ComputerSession {
       const cleanup = await Promise.allSettled(browsers.map(browser => browser.close()));
       const modes = [...this.replacedModes];
       this.replacedModes.clear();
-      const restored = await Promise.allSettled(modes.map(([device, mode]) => this.displayModes!.restore(device, mode)));
+      const restored = await Promise.allSettled(modes.map(([device, mode]) => this.host!.displayModes.restore(device, mode)));
+      const files = await this.host?.removeFiles().then(() => true, () => false) ?? true;
       await this.driver.close();
       const failed = cleanup.filter(result => result.status === "rejected").length;
       const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);
       if (unrestored.length) return this.result("unknown", `Native runtime released, but restoring the display mode of ${unrestored.join(", ")} failed. Signing out of Windows also restores it.`);
+      if (!files) return this.result("unknown", "Native runtime released, but removing the session's file folder failed.");
       if (failed) return this.result("unknown", `Native runtime released, but cleanup of ${failed} of ${browsers.length} owned browsers is unconfirmed.`);
       return this.result("closed", "Owned computer-use runtime and session-opened browsers released. Other application documents were not closed or saved.");
     });
