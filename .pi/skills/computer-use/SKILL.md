@@ -23,7 +23,7 @@ When the task is on another configured machine, Insert `{"action":"connect","mac
 
 For ordinary native UI detail, choose rectangles from the overview already seen. Read `region:x,y,width,height` on its observation, or crop one actual UI element hint. Detail consumes the overview. It is readonly and cannot nest. For another detail or any later input, Read a fresh window overview. Window movement alone does not change local coordinates; detail retains its original local rectangle/scale and clips smaller bounds without expanding on growth.
 
-Read displays only within authorized YOLO scope. Display pixels start at zero, even if host bounds are negative. Neither display pixels nor detail/text selections grant input authority. Never add desktop offsets or convert a display/detail/CSS point into a window input point.
+Read displays only within authorized YOLO scope. If a high-resolution display makes overviews too dense, Insert `{"action":"resize","width":...,"height":...}` into its display address; the session restores the old mode on close, and earlier display and window observations stop working. Display pixels start at zero, even if host bounds are negative. Neither display pixels nor detail/text selections grant input authority. Never add desktop offsets or convert a display/detail/CSS point into a window input point.
 
 ## Plan and act
 

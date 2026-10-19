@@ -8,6 +8,8 @@ The current desktop scope is Windows controlled from WSL, on this machine or on 
 
 Search `computer:apps` or `computer:windows` with a name/title query. Results include the available native process metadata and addressable app/window resources. Discovery launches nothing. Read `computer:displays` for connected-monitor metadata when the selected runtime supports it; display discovery takes no text predicate.
 
+Overviews have a 1280 px long edge by default; smaller windows are not enlarged. Add `capture:{"maxLongEdge":...}` to one window Read for another size; `/computer-debug` changes the session default.
+
 Insert into `computer:session` with `text` containing `{"action":"open","app":"Exact installed name"}` to open a genuinely new window. Alternatively, Insert `{"action":"open"}` into an app address returned by Search. Never replay an unknown launch.
 
 Read a returned `computer:window/...` for its native accessibility structure and small overview PNG. Read `computer:display/primary`, or a returned display address, for readonly display pixels. Successful overviews issue `computer:observation/...` addresses. References are session-local and disappear on close/reload.
@@ -126,7 +128,7 @@ Insert `{"action":"connect","machine":"zinpc"}` into `computer:session`. It star
 | On the machine address | Effect |
 | --- | --- |
 | Search with a title query | That machine's windows, as `computer:window/...` addresses |
-| Read | That machine's displays, as `computer:display/...` addresses |
+| Read | That machine's displays, as `computer:display/...` addresses; Insert `resize` into one to change its resolution |
 | Insert `{"action":"open","app":"notepad"}` | Start an app there and return its window |
 | Insert `{"action":"open_browser"}` | Launch an owned browser there (optional `browser`, `url`), as `open_browser` does locally |
 | Insert `{"action":"open_sandbox"}` | Start a Windows Sandbox on that machine (with `import`/`export` folders of that machine) |
@@ -155,6 +157,14 @@ Closing the computer session or Pi disconnects every machine, and a cancelled `c
 ```
 
 All paths are on the remote WSL. Without `node` and `package`, the machine works without a browser. Run the script again after updating this package so the remote browser worker matches.
+
+## Change a display's resolution
+
+A high-resolution display at a large Windows scale gives small, dense overviews. In YOLO, Insert `{"action":"resize","width":2160,"height":1440}` into a display address returned by `computer:displays` or by a machine address. It works on this machine and on a connected one; Safe refuses.
+
+Only modes the graphics driver lists are used, keeping the colour depth and preferring the current refresh rate. An unsupported size refuses and lists the supported ones; keep the display's aspect ratio to avoid stretching. The change also affects what the human sees on that display.
+
+Windows does not save the change. Closing the computer session, or disconnecting the machine, restores the mode the session replaced; signing out also restores it. After a change, read the displays and windows again: earlier display addresses, display observations and window observations of that session no longer work.
 
 ## Restore a minimized window
 

@@ -9,7 +9,7 @@ Historical pre-CUA route. Its code, runners and dependencies were retired by LPT
 Open the session's Vision debug URL (`/computer-debug status`). The panel has:
 
 - **Downsampling:** Lanczos2, Lanczos3, Mitchell or MKS2021.
-- **Max long edge:** 64–4096 pixels; initial value 500.
+- **Max long edge:** 64–4096 pixels; initial value 1280.
 - **Scale:** 0.05–1; initial value 1. A slider and synchronized numeric box accept precise values such as 0.625.
 - **Apply to next capture:** validate and apply the whole tuple together.
 
