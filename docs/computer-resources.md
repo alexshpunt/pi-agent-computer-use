@@ -2,7 +2,7 @@
 
 Load Pi Agent IDE and this extension together, in either order. Computer use owns the native backend; IDE owns the ordinary tool surfaces. Normal loading exposes no duplicate `computer_*` tools except `computer_classify`. The `/computer-mode` and `/computer-debug` commands remain user controls.
 
-The current desktop scope is Windows controlled from WSL. A different interface does not qualify a new runtime or platform. The production `windows-desktop` profile selects the same checked bytes as `windows-window-management`, so it qualifies wherever this guide names that profile or one it inherits. Safe permits session-opened windows and forbids display reads. YOLO permits task-authorized existing windows; it is not OS isolation.
+The current desktop scope is Windows controlled from WSL, on this machine or on another one over SSH. A different interface does not qualify a new runtime or platform. The production `windows-desktop` profile selects the same checked bytes as `windows-window-management`, so it qualifies wherever this guide names that profile or one it inherits. Safe permits session-opened windows and forbids display reads. YOLO permits task-authorized existing windows; it is not OS isolation.
 
 ## Discover and read
 
@@ -117,6 +117,45 @@ Only explicit host folders are shared. Add them to `open_sandbox`:
 
 A missing feature, folder or Windows-drive path refuses before anything starts. Closing the computer session or Pi destroys every sandbox it opened, and a cancelled `open_sandbox` stops the sandbox it was starting.
 
+## Work on another machine
+
+Another Windows machine with WSL can be operated from this one over SSH: its windows, displays, an owned browser and a sandbox on it. Only machines named under `machines` in `.pi/computer-use.json` can be reached; the agent passes a name, never a host or path, and an unknown name refuses before any SSH work.
+
+Insert `{"action":"connect","machine":"zinpc"}` into `computer:session`. It starts that machine's CUA driver over SSH and returns its address: in Codemode `machine` is `computer:machine/<name>`. Connecting again reuses the open connection.
+
+| On the machine address | Effect |
+| --- | --- |
+| Search with a title query | That machine's windows, as `computer:window/...` addresses |
+| Read | That machine's displays, as `computer:display/...` addresses |
+| Insert `{"action":"open","app":"notepad"}` | Start an app there and return its window |
+| Insert `{"action":"open_browser"}` | Launch an owned browser there (optional `browser`, `url`), as `open_browser` does locally |
+| Insert `{"action":"open_sandbox"}` | Start a Windows Sandbox on that machine (with `import`/`export` folders of that machine) |
+| Insert `{"action":"disconnect"}` | Close its sandboxes and browsers and stop its driver; its addresses expire |
+
+Read, Write and Insert work on its window, display and observation addresses as on local ones, and never act on this machine. Their sources report the `windows-remote` domain, and `computer:windows`, `computer:apps` and `computer:displays` list only this machine. The current Safe/YOLO mode applies there too. A `url` for a remote browser is opened on that machine, so `127.0.0.1` means that machine. The remote user's Windows session must be active, at the console or in an open Remote Desktop window; a disconnected session returns white screenshots.
+
+Closing the computer session or Pi disconnects every machine, and a cancelled `connect` stops what it started. The helpers run as SSH children and exit when SSH ends; no ports are opened on either machine.
+
+### Set up a machine
+
+1. Make the machine reachable with an SSH alias from `~/.ssh/config` that logs in to its WSL by key, without a password prompt. Its host key must already be known.
+2. Run `scripts/setup-remote-machine.sh <alias> <local runtime folder> [name]` from this repository after `npm ci`. It copies the CUA runtime and checks its hash, installs a checksum-verified portable Windows Node in the remote user's folder, copies the browser worker, and prints the `machines` entry. It changes nothing system-wide.
+3. Add that entry to `machines` in `.pi/computer-use.json`:
+
+```json
+"machines": {
+  "zinpc": {
+    "ssh": "zinpc-benchmark",
+    "runtime": "windows-desktop",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.34.0-desktop-4379acbd/runtime/cua-driver.exe",
+    "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
+    "package": "/home/user/.local/share/pi-computer-use/package"
+  }
+}
+```
+
+All paths are on the remote WSL. Without `node` and `package`, the machine works without a browser. Run the script again after updating this package so the remote browser worker matches.
+
 ## Restore a minimized window
 
 If an authorized window is minimized, Read its window address with `views:["state"]`. This collects only fresh native state and returns a one-use `computer:window-state/...` address. Reading that issued address checks its existing lifetime and permissions; it does not sample new state or renew authority. A fresh window Read, temporal capture, close or reload retires older authority.
@@ -178,6 +217,7 @@ else { /* r.observation is the current observation, if one was issued */ }
 | `stage` | `validation` when the request was rejected before reaching the browser, session or driver, otherwise `target` |
 | `observation`, `window` | The new current observation (a DOM snapshot, successor or verification sample) and the window |
 | `sandbox` | The `computer:sandbox/...` address an `open_sandbox` started |
+| `machine` | The `computer:machine/...` address a `connect` opened or a `disconnect` closed |
 | `input_consumed` | Whether the addressed observation or window state can no longer be used for input |
 | `application_effect` | Always `unverified`: delivery is not proof of the application's response |
 | `reason`, `code` | Why a refused or unknown action ended |
@@ -224,6 +264,6 @@ On a browser observation, steps are the DOM actions above plus `wait_for` and `v
 
 ## Cleanup and development
 
-Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into `computer:session` to release the runtime and references. This does not close unrelated application documents or save them. It does close the browsers this session opened and delete their profiles, and destroys its sandboxes; a failed or uncertain cleanup is reported rather than called complete.
+Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into `computer:session` to release the runtime and references. This does not close unrelated application documents or save them. It does close the browsers this session opened and delete their profiles, destroys its sandboxes and disconnects its machines; a failed or uncertain cleanup is reported rather than called complete.
 
 For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This links the public peer SDK without modifying IDE or its dependencies. Normal loading still needs both extensions installed. Use the [development skill](../.pi/skills/develop-computer-use/SKILL.md) for isolated task loading and restoration. Installation/interface switching and new native runtime adoption are separate decisions.
