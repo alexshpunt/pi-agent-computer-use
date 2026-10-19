@@ -524,9 +524,14 @@ export class ComputerResources {
     }
     if (address.kind === "window" && tool === "insert") {
       const command = commandObject(value);
-      if (command.action !== "wait_for" && command.action !== "verify")
-        throw new ComputerRequestError("A window address accepts only wait_for or verify. Input needs the observation address returned by a fresh window Read.");
       const session = await this.sessionFor(cwd, { window_ref: address.ref });
+      if (command.action === "kill") {
+        only(command, ["action"]);
+        this.retireWindow(address.ref);
+        return session.killOwned(address.ref, signal);
+      }
+      if (command.action !== "wait_for" && command.action !== "verify")
+        throw new ComputerRequestError("A window address accepts only wait_for, verify or kill. Input needs the observation address returned by a fresh window Read.");
       let spec;
       try { spec = session.waitSpec(address.ref, command); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }

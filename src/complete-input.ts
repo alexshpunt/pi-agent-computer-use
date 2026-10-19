@@ -4,7 +4,7 @@ import { isCoordinateScroll } from "./scroll-actions.ts";
 
 /** Complete CUA operations. None exposes a key or button held between calls. */
 export interface InputCommand {
-  action: "move" | "hover" | "invoke" | "select" | "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold" | "timeline";
+  action: "move" | "hover" | "invoke" | "select" | "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold" | "timeline" | "menu";
   element_token?: string;
   /** Snapshot-scoped UI alias; ComputerSession resolves it before native validation. */
   hint?: string;
@@ -28,6 +28,8 @@ export interface InputCommand {
   actions?: HoldPointer[];
   /** Timed key, button, motion, wheel and pen events; everything still held is released when the call ends. */
   events?: TimelineEvent[];
+  /** Menu labels from the top-level menu to the item, resolved and invoked through accessibility. */
+  path?: string[];
 }
 /** One event of an input timeline, at_ms after its start. Points are overview pixels; move_relative is raw mouse motion. */
 export interface TimelineEvent {
@@ -46,7 +48,7 @@ export type HoldPointer = Pick<InputCommand, "x" | "y" | "from_x" | "from_y" | "
 /** Wait before a complete step, measured from the previous step's completion. */
 export interface InputStep extends InputCommand { wait_ms?: number }
 
-const names = ["move", "hover", "invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold", "timeline"] as const;
+const names = ["move", "hover", "invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold", "timeline", "menu"] as const;
 const modifiers = ["ctrl", "shift", "alt", "win"];
 const enumSchema = (values: readonly string[]) => Type.Union(values.map(value => Type.Literal(value)));
 const optional = {
@@ -87,6 +89,8 @@ export const actionParameters = Type.Object({
   }, { additionalProperties: false }), { minItems: 1, maxItems: 32,
     description: "hold only: complete left clicks/drags inside this key hold. Pixel targets from this overview; total pointer time must fit duration_ms. No tokens, modifiers or nested holds." })),
   ...optional,
+  path: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { minItems: 1, maxItems: 16,
+    description: "menu only: exact labels from the top-level menu to the item, e.g. [\"File\",\"Save As...\"]; invoked through accessibility, never pixels." })),
   events: Type.Optional(Type.Array(Type.Object({
     at_ms: Type.Integer({ minimum: 0, maximum: 120000 }),
     type: enumSchema(["key_down", "key_up", "button_down", "button_up", "move", "move_relative", "wheel", "pen_down", "pen_move", "pen_up"]),
@@ -112,6 +116,7 @@ const fields: Record<InputCommand["action"], string[]> = {
   select_all: [], invoke: [], select: [],
   hold: ["keys", "duration_ms", "actions"],
   timeline: ["events"],
+  menu: ["path"],
 };
 const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
 const integer = (value: unknown, min: number, max: number) => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
@@ -121,7 +126,7 @@ const SEQUENCE_ACTIONS: readonly string[] = ["key", "hotkey", "type_text", "sele
 /** Validate complete commands against the original window overview before any member of a batch runs. */
 export function validateInput(command: InputStep, observed: { tokens: Set<string>; width?: number; height?: number }, sequence = false): void {
   if (!command || !fields[command.action]) throw new Error("Unsupported complete action.");
-  const allowed = new Set(["action", ...fields[command.action], ...(isSemanticAction(command.action) ? ["element_token"] : ["drag", "hold", "timeline"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
+  const allowed = new Set(["action", ...fields[command.action], ...(isSemanticAction(command.action) ? ["element_token"] : ["drag", "hold", "timeline", "menu"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
   if (Object.keys(command).some(key => !allowed.has(key))) throw new Error("This action has unsupported or conflicting fields.");
   if (sequence && !SEQUENCE_ACTIONS.includes(command.action)) throw new Error(`Sequences accept only complete keyboard actions, clicks and drags: ${SEQUENCE_ACTIONS.join(", ")}.`);
   if (command.action === "hold") {
@@ -174,6 +179,8 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
     }
   }
   if (command.action === "timeline") validateTimeline(command.events, point);
+  if (command.action === "menu" && (!Array.isArray(command.path) || command.path.length < 1 || command.path.length > 16 || command.path.some(label => typeof label !== "string" || !label.trim() || label.length > 200)))
+    throw new Error("menu needs path: 1..16 menu labels from the top-level menu to the item.");
   if (command.action === "drag") {
     point(command.from_x, command.from_y); point(command.to_x, command.to_y);
     if (command.duration_ms !== undefined && !integer(command.duration_ms, 0, 10000)) throw new Error("duration_ms must be 0..10000.");
@@ -253,6 +260,7 @@ export function nativeInput(command: InputCommand, target: { pid: number; window
     ...(command.element_token !== undefined ? { element_token: command.element_token } : { capture_id: captureId, x: command.x, y: command.y }),
   } };
   if (command.action === "timeline") return { name: "input_timeline", args: { ...target, events: command.events, delivery_mode: delivery } };
+  if (command.action === "menu") return { name: "invoke_menu", args: { ...target, path: command.path } };
   if (isSemanticAction(command.action)) return { name: "semantic_action", args: { ...target, element_token: command.element_token,
     operation: command.action, ...(command.action === "set_value" ? { value: command.text } : {}) } };
   const name = command.action === "hold" ? "hold_keys" : command.action === "select_all" ? "hotkey" : command.action === "key" ? "press_key" : command.action;

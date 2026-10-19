@@ -1184,6 +1184,29 @@ export class ComputerSession {
     });
   }
 
+  /**
+   * Force-close the process of a window this session opened, when every window of that process is session-owned.
+   * Unsaved work in it is lost; a process that also shows other windows is never killed.
+   */
+  killOwned(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = this.entries.get(ref);
+      if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
+      if (!entry.owned) return this.result("refused", "Only windows this session opened can be force-closed; close other windows through their own UI.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before closing the process.");
+      try {
+        const windows = (await this.state("list_windows", { pid: entry.target.pid }, signal)).windows as WindowTarget[] ?? [];
+        const owned = new Set([...this.entries.values()].filter(e => e.owned).map(e => `${e.target.pid}:${e.target.window_id}`));
+        const foreign = windows.filter(w => w.pid === entry.target.pid && !owned.has(`${w.pid}:${w.window_id}`));
+        if (foreign.length) return this.result("refused", `Process ${entry.target.pid} also shows ${foreign.length} window(s) this session did not open; it was not killed. Close this window through its own UI.`);
+        const native = await this.driver.call("kill_app", { pid: entry.target.pid }, signal);
+        if (native.isError) return this.result("refused", `The process was not killed: ${native.content.filter(c => c.type === "text").map(c => c.text).join(" ")}`, native.structuredContent);
+        for (const [key, other] of this.entries) if (other.target.pid === entry.target.pid) this.entries.delete(key);
+        return this.result("delivered", `Process ${entry.target.pid} was force-closed; unsaved work in it is lost and its window addresses expired.`, native.structuredContent);
+      } catch (error) { return this.failed(error, true); }
+    });
+  }
+
   /** The native target of a known window, read before work that may forget the window. */
   windowTarget(ref: string): WindowTarget | undefined { return this.entries.get(ref)?.target; }
 
