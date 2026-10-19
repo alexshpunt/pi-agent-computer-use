@@ -10,7 +10,7 @@ export type ComputerViews =
   | { kind: "region"; region: { x: number; y: number; width: number; height: number } }
   | { kind: "sequence"; options: SequenceOptions }
   | { kind: "frames"; selection: FrameSelection }
-  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop"; hint: string };
+  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop" | "text"; hint: string };
 
 function json(value: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(value);
@@ -48,8 +48,8 @@ export function parseComputerViews(views: readonly string[] = []): ComputerViews
     if (first.startsWith("element:")) {
       const [operation, hint, extra] = value.split(",");
       // UI hints look like "3:ab"; Playwright aria refs look like "e12" or "f1e3".
-      if (extra !== undefined || !["inspect", "scope", "highlight", "crop"].includes(operation) || !/^[a-z0-9]+(:[a-z]+)?$/i.test(hint ?? ""))
-        throw Error("Use element:inspect|scope|highlight|crop,<UI hint>, or element:crop|highlight,<aria ref> on a DOM observation.");
+      if (extra !== undefined || !["inspect", "scope", "highlight", "crop", "text"].includes(operation) || !/^[a-z0-9]+(:[a-z]+)?$/i.test(hint ?? ""))
+        throw Error("Use element:inspect|scope|highlight|crop|text,<UI hint>, or element:crop|highlight,<aria ref> on a DOM observation.");
       return { kind: "element", operation: operation as Extract<ComputerViews, { kind: "element" }>["operation"], hint };
     }
     if (["all", "first", "last", "endpoints", "changed"].includes(value)) return { kind: "frames", selection: value as FrameSelection };

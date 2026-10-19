@@ -17,7 +17,7 @@ const record = (value: unknown): Record<string, unknown> => value !== null && ty
 const label = (value: unknown) => typeof value === "string" ? value.replace(/[\r\n\t]/g, " ").slice(0, 1024) : "";
 
 /** Present native resources without dumping provenance; full receipts remain in structured data. */
-export function presentComputerResult(resources: Pick<ComputerResources, "appSource">, result: ComputerResult): string {
+export function presentComputerResult(resources: Pick<ComputerResources, "appSource">, result: ComputerResult, full = false): string {
   const d = result.details, state = d.state ?? {};
   const lines = [`Computer ${d.status} (${d.mode})`];
   if (d.window_ref) lines.push(`Window: ${computerSource("window", d.window_ref)}`);
@@ -46,14 +46,17 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       `Measured state: visible=${state.visible}; foreground=${state.foreground_at_target}, keyboard_focus=${state.keyboard_focus_at_target}`);
   }
   const id = d.observation_id ?? d.agent_image?.image_id;
-  if (typeof id === "string" && (d.status === "observed" || d.dom && d.status === "delivered")) lines.push(`Observation: ${computerSource("observation", id)}`);
+  if (typeof id === "string" && (d.status === "observed" || (d.dom || d.batch) && d.status === "delivered")) lines.push(`Observation: ${computerSource("observation", id)}`);
   if (d.agent_image) {
     const image = d.agent_image, output = record(image.output), configuration = record(image.configuration);
     lines.push(`Image: ${output.width}x${output.height} ${label(output.mimeType)}; ${label(image.route)}; ${label(image.coordinate_space)}`);
     if (configuration.maxLongEdge !== undefined) lines.push(`Capture: maxLongEdge=${configuration.maxLongEdge}, scale=${configuration.scale}`);
   }
   if (d.source) lines.push(`Source: ${d.source.captured_at}; input=${d.source.capabilities.input}; paint freshness=${d.source.visibility.paint_freshness}`);
-  if (d.verification) {
+  if (d.element_text) {
+    const e = d.element_text;
+    lines.push(computerResultText(result).split("\n{", 1)[0], `Element: ${e.hint} | ${label(e.role)} | ${label(e.name)}`, ...e.text.split(/\r?\n/));
+  } else if (d.verification) {
     const v = d.verification;
     lines.push(computerResultText(result).split("\n{", 1)[0]);
     if (d.dom) lines.push(`Page: ${label(d.dom.title)} | ${label(d.dom.url)} | tab ${d.dom.active ?? "none"}`);
@@ -61,7 +64,8 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       const spec = v.spec.conditions[i];
       const check = spec.is ? `is ${spec.is}` : spec.value !== undefined ? `value = ${JSON.stringify(spec.value)}` : spec.contains !== undefined ? `contains ${JSON.stringify(spec.contains)}`
         : spec.title !== undefined ? `title = ${JSON.stringify(spec.title)}` : `url contains ${JSON.stringify(spec.url_contains)}`;
-      lines.push(`Condition ${i + 1}: ${spec.target ? JSON.stringify(spec.target) + " " : ""}${check} → ${condition.verdict}${condition.observed != null ? ` (observed ${JSON.stringify(label(condition.observed))})` : ""}${condition.reason ? `; ${label(condition.reason)}` : ""}`);
+      const seen = condition.observed == null ? "" : label(condition.observed).length > 200 ? label(condition.observed).slice(0, 200) + "…" : label(condition.observed);
+      lines.push(`Condition ${i + 1}: ${spec.target ? JSON.stringify(spec.target) + " " : ""}${check} → ${condition.verdict}${condition.observed != null ? ` (observed ${JSON.stringify(seen)})` : ""}${condition.reason ? `; ${label(condition.reason)}` : ""}`);
     });
     if (d.ui) lines.push(`UI: collected=${d.ui.collected}, complete=${d.ui.complete}, truncated=${d.ui.truncated}. Read or Search the observation for elements and hints.`);
   } else if (d.dom) {
@@ -89,7 +93,8 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     }
     if (d.dom.matches !== undefined) lines.push(`Matching snapshot lines: ${d.dom.matches}`);
     if (d.dom.truncated) lines.push("Snapshot truncated; narrow it with dom:{\"target\":...,\"depth\":...}.");
-    lines.push(...d.dom.snapshot.split("\n"));
+    // With a successor, the compact change list replaces the full snapshot; Read the observation for all of it.
+    if (!d.successor) lines.push(...d.dom.snapshot.split("\n"));
   } else if (d.ui) {
     lines.push(`UI: collected=${d.ui.collected}, complete=${d.ui.complete}, truncated=${d.ui.truncated || d.ui.projection_truncated}`);
     for (const e of d.ui.elements) lines.push(`${e.hint} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | enabled=${e.enabled} | image_bounds=${JSON.stringify(e.bounds.window_image ?? null)}`);
@@ -123,31 +128,58 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     lines.push(`Sequence: ${computerSource("sequence", sequence.sequence_id)}`,
       `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
   }
+  if (d.batch) for (const step of d.batch.steps)
+    lines.push(`Step ${step.index}: ${step.action} → ${step.outcome}${step.verdict ? ` (${step.verdict})` : ""}${step.reason ? `; ${label(step.reason)}` : ""}`);
+  if (d.postcondition) {
+    const p = d.postcondition;
+    lines.push(`Postcondition: ${p.status}${p.reason ? `; ${p.reason}` : ""}`);
+    p.verification?.conditions.forEach((condition, i) => lines.push(`  Condition ${i + 1} → ${condition.verdict}${condition.observed != null ? ` (observed ${JSON.stringify(label(condition.observed))})` : ""}${condition.reason ? `; ${label(condition.reason)}` : ""}`));
+  }
+  if (d.successor) {
+    const s = d.successor, diff = s.diff;
+    lines.push(s.observation_id ? `Successor: ${computerSource("observation", s.observation_id)}` : `Successor: none. ${s.reason ?? ""}`);
+    if (diff) {
+      const page = diff.page ?? {};
+      for (const [key, change] of Object.entries(page)) lines.push(`Changed ${key}: ${JSON.stringify(change![0])} → ${JSON.stringify(change![1])}`);
+      lines.push(`Changes: ${diff.counts.changed} changed, ${diff.counts.added} added, ${diff.counts.removed} removed${diff.counts.changed + diff.counts.added + diff.counts.removed === 0 && !Object.keys(page).length ? " (no visible change yet)" : ""}`);
+      lines.push(...diff.changed.map(line => `~ ${label(line)}`), ...diff.added.map(line => `+ ${label(line)}`), ...diff.removed.map(line => `- ${label(line)}`));
+      if (diff.note) lines.push(diff.note);
+    } else if (s.reason) lines.push(s.reason);
+  }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
-  lines.push(d.verification ? (d.verification.verdict === "satisfied" ? "Conditions held; this observation is current for input." : "Not verified: neither proof of success nor of failure beyond the listed verdicts. Never replay uncertain input blindly.")
+  lines.push(d.successor?.observation_id ? "Read the successor observation for the full state; it is current for input."
+    : d.batch && d.observation_id ? "The batch left this observation current for input. Never replay completed or uncertain steps."
+    : d.verification ? (d.verification.verdict === "satisfied" ? "Conditions held; this observation is current for input." : "Not verified: neither proof of success nor of failure beyond the listed verdicts. Never replay uncertain input blindly.")
     : d.dom ? "Insert one JSON action into this observation, e.g. {\"action\":\"click\",\"target\":{\"ref\":\"e2\"}}. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
     : d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
     : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
   const text = lines.join("\n");
-  if (!d.dom || Buffer.byteLength(text) <= 24_000) return text;
+  if (full || !d.dom || Buffer.byteLength(text) <= 24_000) return text;
   // Read and Search share the same byte budget; retain whole lines and never split Unicode.
-  const notice = "DOM text preview reached its byte limit. Search this observation or Read a narrower dom:{\"target\":...,\"depth\":...} snapshot; omitted lines are not absence.";
-  const preview: string[] = [];
-  let bytes = Buffer.byteLength(notice) + 1;
+  const preview = fittingLines(lines, 24_000 - 300);
+  // A Read of the observation renders slightly different header lines, so page it there rather than by these numbers.
+  return `${preview.join("\n")}\nDOM text preview reached its byte limit after ${preview.length} of ${lines.length} lines. Read this observation with offset and limit to page through it (each page names the next offset), or Search it; omitted lines are not absence.`;
+}
+
+/** Whole lines from the start that fit a byte budget, never splitting Unicode. */
+function fittingLines(lines: readonly string[], budget: number): string[] {
+  const kept: string[] = [];
+  let bytes = 0;
   for (const line of lines) {
     const size = Buffer.byteLength(line) + 1;
-    if (bytes + size > 24_000) break;
-    preview.push(line); bytes += size;
+    if (bytes + size > budget) break;
+    kept.push(line); bytes += size;
   }
-  return `${preview.join("\n")}\n${notice}`;
+  return kept;
 }
 
 /** Preserve uncertainty when a later refusal follows an already-delivered action prefix. */
 export function computerEffect(result: ComputerResult): "applied" | "not-applied" | "unknown" {
   if (!result.isError && ["delivered", "observed", "closed"].includes(result.details.status)) return "applied";
   const sequence = record(result.details.state?.sequence);
-  return result.details.status === "refused" && !(typeof sequence.completed === "number" && sequence.completed > 0) ? "not-applied" : "unknown";
+  const delivered = (typeof sequence.completed === "number" && sequence.completed > 0) || (result.details.batch?.steps.some(step => step.outcome === "delivered") ?? false);
+  return result.details.status === "refused" && !delivered ? "not-applied" : "unknown";
 }
 
 /**
@@ -177,8 +209,15 @@ export interface ComputerReceipt {
   /** Verdict of a wait_for/verify command, with one entry per requested condition. */
   verification?: { verdict: "satisfied" | "unsatisfied" | "unknown"; timed_out: boolean; samples: number; elapsed_ms: number; reason?: string;
     conditions: { index: number; verdict: "satisfied" | "unsatisfied" | "unknown"; observed?: string | null; reason?: string }[] };
-  /** Per-step results of a sequence. */
-  steps?: { index: number; action: unknown; status: unknown }[];
+  /** Per-step results of a sequence or batch. */
+  steps?: { index: number; action: unknown; status: unknown; verdict?: string; reason?: string }[];
+  /** Why a batch stopped before its last step. */
+  stopped?: string;
+  /** Declared postcondition: verified by this action, already true before it, not reached, or undecidable. */
+  postcondition?: { status: "verified" | "preexisting" | "failed" | "unknown"; reason?: string; verdicts?: string[] };
+  /** Compact change list from the action's input observation to `observation`. */
+  changes?: { kind: string; changed: string[]; added: string[]; removed: string[]; counts: { changed: number; added: number; removed: number };
+    page?: Record<string, unknown>; note?: string };
   /** The same receipt the model sees. */
   text: string;
 }
@@ -194,13 +233,14 @@ export function computerReceipt(source: string, action: string | null, outcome: 
   }
   const d = outcome.result.details, state = d.state ?? {};
   const id = d.observation_id ?? d.agent_image?.image_id;
-  const issued = typeof id === "string" && (d.status === "observed" || d.status === "delivered" && d.dom !== undefined);
+  const issued = typeof id === "string" && d.status !== "refused" && d.status !== "unknown" && (d.status === "observed" || d.dom !== undefined || d.ui !== undefined);
+  const next = d.successor?.observation_id ?? (issued ? id : undefined);
   const sequence = record(state.sequence);
   const failed = d.status === "refused" || d.status === "unknown";
   return {
     outcome: d.status === "listed" ? "observed" : d.status, effect: computerEffect(outcome.result), stage: "target", action, source,
     window: typeof d.window_ref === "string" ? computerSource("window", d.window_ref) : null,
-    observation: issued ? computerSource("observation", id) : null,
+    observation: next ? computerSource("observation", next) : null,
     input_consumed: outcome.inputConsumed, application_effect: "unverified",
     reason: failed ? computerResultText(outcome.result).split("\n{", 1)[0] : null,
     code: typeof state.code === "string" ? state.code : null,
@@ -209,6 +249,11 @@ export function computerReceipt(source: string, action: string | null, outcome: 
     ...(d.verification ? { verification: { verdict: d.verification.verdict, timed_out: d.verification.timed_out, samples: d.verification.samples,
       elapsed_ms: d.verification.elapsed_ms, ...(d.verification.reason ? { reason: d.verification.reason } : {}), conditions: d.verification.conditions } } : {}),
     ...(Array.isArray(sequence.steps) ? { steps: (sequence.steps as Record<string, unknown>[]).map(step => ({ index: step.index as number, action: step.action, status: step.status })) } : {}),
+    ...(d.batch ? { steps: d.batch.steps.map(step => ({ index: step.index, action: step.action, status: step.outcome, ...(step.verdict ? { verdict: step.verdict } : {}), ...(step.reason ? { reason: step.reason } : {}) })),
+      ...(d.batch.stop_reason ? { stopped: d.batch.stop_reason } : {}) } : {}),
+    ...(d.postcondition ? { postcondition: { status: d.postcondition.status, ...(d.postcondition.reason ? { reason: d.postcondition.reason } : {}),
+      ...(d.postcondition.verification ? { verdicts: d.postcondition.verification.conditions.map(condition => condition.verdict) } : {}) } } : {}),
+    ...(d.successor?.diff ? { changes: d.successor.diff } : {}),
     text: outcome.text,
   };
 }
@@ -247,22 +292,28 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         const { request, resolverContext } = context;
         const address = requireComputerAddress(context.state!.source);
         const result = await resources.read(address, resolverContext.cwd, request.views, resolverContext.signal);
-        let body = result ? presentComputerResult(resources, result) : resources.descriptor(address);
+        const paged = request.offset !== undefined || request.limit !== undefined;
+        let body = result ? presentComputerResult(resources, result, paged) : resources.descriptor(address);
         const lines = body.split("\n"), offset = request.offset ?? 1;
         const start = offset < 0 ? Math.max(0, lines.length + offset) : Math.max(0, offset - 1);
         if (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 0)) throw new ComputerRequestError("limit must be a nonnegative text line count.");
         if (!Number.isSafeInteger(offset)) throw new ComputerRequestError("offset must be an integer text line offset.");
-        body = lines.slice(start, request.limit === undefined ? undefined : start + request.limit).join("\n");
+        const end = request.limit === undefined ? lines.length : Math.min(lines.length, start + request.limit);
+        body = lines.slice(start, end).join("\n");
+        // Paging reads cached text only; the footer gives a deterministic next offset or end.
+        if (paged)
+          body += `\n[Lines ${start + 1}-${end} of ${lines.length}. ${end < lines.length ? `Continue with offset=${end + 1}.` : "End of this observation's text."} The text belongs to this observation; Read the window again for a fresh one.]`;
         const uiOnly = !!result?.details.dom && !result.details.agent_image || (request.views?.includes("ui") ?? false);
         const canonical = nativeBlocks(body, result, uiOnly);
         const truncated = context.audience !== "script" && Buffer.byteLength(body) > 24_000;
-        const preview = truncated ? Buffer.from(body).subarray(0, 24_000).toString("utf8") + "\n[Presentation truncated; narrow UI Search or use text offset/limit. Native script data retains the requested projection.]" : body;
+        const kept = truncated ? fittingLines(body.split("\n"), 24_000 - 300) : [];
+        const preview = truncated ? `${kept.join("\n")}\n[Presentation truncated after ${kept.length} lines. Read again with offset=${start + kept.length + 1} to continue, or narrow with Search. Native script data retains the requested projection.]` : body;
         return { kind: "return", result: { content: nativeBlocks(preview, result, uiOnly), isError: result?.isError,
           details: { source: address.source, resolvedBy: resolver.id, presentationTruncated: truncated, ...(result ? { computer: result.details } : {}) },
           script: { kind: "native", source: address.source, blocks: canonical } } };
       } });
       api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id, window-state/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
-        views: "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a window opened by open_browser returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop,hint on an observation. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
+        views: "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a window opened by open_browser returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI. backend:default|wgc; capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop|text,hint on an observation; element:text returns one element's full text. sequence:{duration_ms,fps,max_frames,timeout_ms,maxLongEdge,scale,region} on window/display; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
     } }),
     connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],
@@ -321,7 +372,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           }
         },
       });
-      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation of a browser opened with Insert {\"action\":\"open_browser\"}, Insert one Playwright action such as {\"action\":\"fill\",\"target\":{\"label\":\"Name\"},\"text\":\"value\"}; actions target the active tab, and tab/navigation/dialog actions are listed in docs:computer. Use no Write or native input on a DOM observation. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
+      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation of a browser opened with Insert {\"action\":\"open_browser\"}, Insert one Playwright action such as {\"action\":\"fill\",\"target\":{\"label\":\"Name\"},\"text\":\"value\"}; actions target the active tab, and tab/navigation/dialog actions are listed in docs:computer. Insert {\"action\":\"wait_for\"|\"verify\",\"conditions\":[...]} into a window address to check UI state; add \"expect\" or \"successor\":true to an action for a postcondition and change list, or Insert {\"action\":\"batch\",\"steps\":[...]} into an observation for a fail-stop chain (docs:computer). Use no Write or native input on a DOM observation. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
     } }),
   ]);
 }
