@@ -93,6 +93,30 @@ Insert `{"action":"evaluate","expression":"document.title"}` to run JavaScript i
 
 Every snapshot shows `Log` lines for console errors, warnings and assertions, uncaught page errors (`page_error`), failed requests (`request_failed`) and HTTP responses of 400 or more (`http_error`) since the previous snapshot. Each line has a sequence number, time, tab and URL. Read `dom:{"log":true}` for the browser's whole retained log, including console log/info/debug; it keeps the latest 200 entries and reports how many older ones were dropped. Use these lines to tell an application failure from an action failure: a refused or `unknown` action is reported on the action itself, not in the log.
 
+## Work in a Windows Sandbox
+
+Use a sandbox when the work should not touch the human's desktop or another agent's windows: no shared focus, pointer, windows or clipboard. It is a separate disposable Windows environment, not a security boundary against hostile code. The host needs the Windows Sandbox feature and its `wsb` command, and the human's Windows session must be active, at the console or in an open Remote Desktop window.
+
+Insert `{"action":"open_sandbox"}` into `computer:session`. It starts a new sandbox with its own CUA driver, which takes about 15–20 seconds, and returns its address: in Codemode `sandbox` is `computer:sandbox/<ref>`. The sandbox window stays minimized on the host without taking focus; do not close it, because that stops the sandbox.
+
+| On the sandbox address | Effect |
+| --- | --- |
+| Search with a title query | Guest windows, as `computer:window/...` addresses |
+| Insert `{"action":"open","app":"Command Prompt"}` | Start an app in the guest and return its window |
+| Insert `{"action":"close"}` | Destroy the sandbox; its window and observation addresses expire |
+
+Read, Write and Insert work on guest window and observation addresses as on host ones. Their sources report the `windows-sandbox` domain, and `computer:windows` and `computer:apps` list only host windows. The guest has no Notepad; use apps the sandbox ships with, or bring your own through a shared folder. Guest windows use the default capture route, and console windows may need `delivery=foreground`, which brings the window forward inside the guest only.
+
+Only explicit host folders are shared. Add them to `open_sandbox`:
+
+```json
+{"action":"open_sandbox","import":["C:\\data\\inputs",{"host":"C:\\repo","guest":"D:\\repo","writable":true}],"export":"C:\\out"}
+```
+
+`import` lists up to 8 host folders, read-only unless `writable` is true; without `guest` they appear as `C:\pi\import\<folder name>`. `export` is one host folder the guest can write, at `C:\pi\export`. Host folders must exist on a Windows drive. Clipboard, audio, video input and printers are never shared.
+
+A missing feature, folder or Windows-drive path refuses before anything starts. Closing the computer session or Pi destroys every sandbox it opened, and a cancelled `open_sandbox` stops the sandbox it was starting.
+
 ## Restore a minimized window
 
 If an authorized window is minimized, Read its window address with `views:["state"]`. This collects only fresh native state and returns a one-use `computer:window-state/...` address. Reading that issued address checks its existing lifetime and permissions; it does not sample new state or renew authority. A fresh window Read, temporal capture, close or reload retires older authority.
@@ -153,6 +177,7 @@ else { /* r.observation is the current observation, if one was issued */ }
 | `effect` | `applied`, `not-applied` or `unknown`; a refusal after an already delivered step stays `unknown` |
 | `stage` | `validation` when the request was rejected before reaching the browser, session or driver, otherwise `target` |
 | `observation`, `window` | The new current observation (a DOM snapshot, successor or verification sample) and the window |
+| `sandbox` | The `computer:sandbox/...` address an `open_sandbox` started |
 | `input_consumed` | Whether the addressed observation or window state can no longer be used for input |
 | `application_effect` | Always `unverified`: delivery is not proof of the application's response |
 | `reason`, `code` | Why a refused or unknown action ended |
@@ -199,6 +224,6 @@ On a browser observation, steps are the DOM actions above plus `wait_for` and `v
 
 ## Cleanup and development
 
-Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into `computer:session` to release the runtime and references. This does not close unrelated application documents or save them. It does close the browsers this session opened and delete their profiles; a failed or uncertain cleanup is reported rather than called complete.
+Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into `computer:session` to release the runtime and references. This does not close unrelated application documents or save them. It does close the browsers this session opened and delete their profiles, and destroys its sandboxes; a failed or uncertain cleanup is reported rather than called complete.
 
 For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This links the public peer SDK without modifying IDE or its dependencies. Normal loading still needs both extensions installed. Use the [development skill](../.pi/skills/develop-computer-use/SKILL.md) for isolated task loading and restoration. Installation/interface switching and new native runtime adoption are separate decisions.
