@@ -35,7 +35,7 @@ Insert sends one JSON action to that observation address. Omit `window_ref` and 
 
 Start with background. After its observed refusal, Read a fresh overview before explicitly requesting foreground. Foreground can activate the window and disturb the real pointer. Native move/hover, held paths/keys and strict semantic input are available only on their qualified selected runtimes; never replace a refusal with global input, another backend or a browser script.
 
-Batch only known keyboard/stroke steps. Stop at navigation, a new dialog, changed layout or an effect requiring a new decision. A bounded sequence consumes one overview, validates the whole list and runs serially without intermediate captures. Every drag releases its button; no keys/buttons remain held across calls.
+For canvases and other pixel work, keep using the same observation after pixel-only input: it stays valid until the window is resized, and a refusal says why. Put long known programs (hundreds of strokes and clicks) into one `sequence`. Batch only known keyboard/stroke steps. Stop at navigation, a new dialog, changed layout or an effect requiring a new decision. A bounded sequence consumes one overview, validates the whole list and runs serially without intermediate captures. Every drag releases its button; no keys/buttons remain held across calls.
 
 Discard the used observation after input, including refusal. Stop on uncertainty/cancellation and inspect the retained attempted/completed prefix. Never replay completed or uncertain input. A later refused step cannot erase earlier delivered steps. Native input already in flight may still finish after cancellation.
 

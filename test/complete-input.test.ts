@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { ComputerSession, type Action, type ComputerMode, type Driver } from "../src/session.ts";
+import { ComputerSession, SEQUENCE_ELAPSED_MS, type Action, type ComputerMode, type Driver } from "../src/session.ts";
 
 async function fixture() {
   let mode: ComputerMode = "yolo", lifetime = "alive";
@@ -55,9 +55,9 @@ test.each([
   { action: "key", key: "a", duration_ms: 1000 }, { action: "click", x: 10, y: 10, keys: ["ctrl", "a"] },
   { action: "sequence", sequence: [] },
   { action: "sequence", sequence: [{ action: "key", key: "a" }, { action: "drag", from_x: 1, from_y: 1, to_x: NaN, to_y: 2 }] },
-  { action: "sequence", sequence: [{ action: "click", x: 10, y: 10 }] },
-  { action: "sequence", sequence: Array.from({ length: 33 }, () => ({ action: "key", key: "a" })) },
-  { action: "sequence", sequence: [{ action: "key", key: "a", wait_ms: 30001 }] },
+  { action: "sequence", sequence: [{ action: "hover", x: 10, y: 10 }] },
+  { action: "sequence", sequence: Array.from({ length: 2001 }, () => ({ action: "key", key: "a" })) },
+  { action: "sequence", sequence: Array.from({ length: 181 }, () => ({ action: "key", key: "a", wait_ms: 5000 })) },
 ])("rejects the entire unsupported or ungrounded command before input: %j", async command => {
   const f = await fixture();
   expect((await f.send(command)).details.status).toBe("refused"); expect(f.input()).toHaveLength(0);
@@ -218,7 +218,7 @@ test("sequence stops if admission uses the remaining elapsed budget", async () =
   const f = await fixture(); let now = 0, checks = 0;
   const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
   const identity = f.driver.identity;
-  f.driver.identity = vi.fn<Driver["identity"]>(async (...args) => { if (++checks === 2) now = 45000; return identity(...args); });
+  f.driver.identity = vi.fn<Driver["identity"]>(async (...args) => { if (++checks === 2) now = SEQUENCE_ELAPSED_MS; return identity(...args); });
   try {
     const result = await f.send({ action: "sequence", sequence: [{ action: "key", key: "a" }, { action: "key", key: "b" }] });
     expect(result.details.status).toBe("refused");

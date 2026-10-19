@@ -74,10 +74,10 @@ export const actionParameters = Type.Object({
     description: "hold only: complete left clicks/drags inside this key hold. Pixel targets from this overview; total pointer time must fit duration_ms. No tokens, modifiers or nested holds." })),
   ...optional,
   sequence: Type.Optional(Type.Array(Type.Object({
-    action: enumSchema(["key", "hotkey", "type_text", "select_all", "drag"]), ...optional,
+    action: enumSchema(["key", "hotkey", "type_text", "select_all", "drag", "click", "double_click", "right_click"]), ...optional,
     wait_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 5000 })),
-  }, { additionalProperties: false }), { minItems: 1, maxItems: 32,
-    description: "Known-target keyboard/stroke steps. Each drag releases the button. Up to 30s requested waits/typing/drags; no nested sequence or pointer clicks." })),
+  }, { additionalProperties: false }), { minItems: 1, maxItems: 2000,
+    description: "Known-target keyboard, click and stroke steps. Each step releases its keys and buttons. Up to 2000 steps and 15 minutes of requested waits/typing/drags; no nested sequence." })),
 }, { additionalProperties: false });
 
 const fields: Record<InputCommand["action"], string[]> = {
@@ -91,12 +91,14 @@ const fields: Record<InputCommand["action"], string[]> = {
 const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
 const integer = (value: unknown, min: number, max: number) => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
 
+/** Complete steps a sequence may contain; each releases its keys and buttons before the next starts. */
+const SEQUENCE_ACTIONS: readonly string[] = ["key", "hotkey", "type_text", "select_all", "drag", "click", "double_click", "right_click"];
 /** Validate complete commands against the original window overview before any member of a batch runs. */
 export function validateInput(command: InputStep, observed: { tokens: Set<string>; width?: number; height?: number }, sequence = false): void {
   if (!command || !fields[command.action]) throw new Error("Unsupported complete action.");
   const allowed = new Set(["action", ...fields[command.action], ...(isSemanticAction(command.action) ? ["element_token"] : ["drag", "hold"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
   if (Object.keys(command).some(key => !allowed.has(key))) throw new Error("This action has unsupported or conflicting fields.");
-  if (sequence && !["key", "hotkey", "type_text", "select_all", "drag"].includes(command.action)) throw new Error("Sequences accept only complete keyboard actions and drags.");
+  if (sequence && !SEQUENCE_ACTIONS.includes(command.action)) throw new Error(`Sequences accept only complete keyboard actions, clicks and drags: ${SEQUENCE_ACTIONS.join(", ")}.`);
   if (command.action === "hold") {
     if (!Array.isArray(command.keys) || command.keys.length < 1 || command.keys.length > 8 || new Set(command.keys).size !== command.keys.length || command.keys.some(key => !validKey(key) && !modifiers.includes(key))) throw new Error("hold needs 1..8 unique ordinary keys or modifiers.");
     if (!integer(command.duration_ms, 1, 10000)) throw new Error("hold duration_ms must be 1..10000.");
