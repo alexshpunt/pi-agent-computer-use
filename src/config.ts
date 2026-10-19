@@ -9,6 +9,15 @@ export interface ComputerConfig {
   interop?: string;
   runtime?: "windows-held-paths" | "windows-key-holds" | "windows-selected-displays" | "windows-capture-drag" | "windows-shell-desktops" | "windows-single-png" | "windows-semantic-actions" | "windows-fast-bilinear" | "windows-direct-process" | "windows-persistent-wgc" | "windows-native-pointer" | "windows-coordinate-scroll" | "windows-window-restore" | "windows-window-management" | "windows-desktop";
   bundled?: BundledRuntime;
+  /** A sandbox guest's driver behind a host loopback relay. Set by the sandbox lifecycle, never read from config files. */
+  endpoint?: GuestEndpoint;
+}
+
+/** Host loopback ports that relay to one sandbox guest's driver and window identity peer. */
+export interface GuestEndpoint {
+  url: string;
+  token: string;
+  identityPort: number;
 }
 
 /** Read trusted overrides, otherwise select the native package installed with this extension. */

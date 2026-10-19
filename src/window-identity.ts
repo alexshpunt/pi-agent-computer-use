@@ -1,32 +1,71 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { connect } from "node:net";
 import { createInterface } from "node:readline";
+import type { Readable, Writable } from "node:stream";
 import type { WindowTarget } from "./session.ts";
 
-/** One owned PowerShell peer binds references to window lifetimes, not just reusable HWNDs. */
-export class WindowIdentity {
-  private child?: ChildProcessWithoutNullStreams;
-  private pending?: { resolve(value: string | undefined): void; reject(error: Error): void };
-  private stderr = "";
+/** A line-oriented connection to one window identity peer. Ending input makes the peer remove its markers and exit. */
+export interface IdentityChannel {
+  input: Writable;
+  output: Readable;
+  /** Called once when the peer is gone. */
+  onExit(listener: () => void): void;
+  /** Stop forcibly after a graceful end did not finish. */
+  kill(): void;
+  /** Recent diagnostic output, if any. */
+  diagnostics(): string;
+}
+export type IdentityConnector = () => Promise<IdentityChannel>;
 
-  constructor(private readonly interop?: string) {}
-
-  private async start(): Promise<void> {
-    if (this.child) return;
+/** Start the identity peer as a host PowerShell child, through WSL interop when needed. */
+export function hostIdentityPeer(interop?: string): IdentityConnector {
+  return async () => {
     const script = await readFile(new URL("../scripts/window-identity.ps1", import.meta.url), "utf8");
     const child = spawn(process.platform === "win32" ? "powershell.exe" : "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", [
       "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64"),
-    ], { stdio: "pipe", env: { ...process.env, ...(this.interop ? { WSL_INTEROP: this.interop } : {}) } });
-    this.child = child;
-    this.stderr = "";
-    child.stderr.on("data", (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString()).slice(-2000); });
-    const fail = (error: Error) => { this.pending?.reject(error); this.pending = undefined; };
-    child.on("error", fail);
-    child.on("exit", () => {
-      if (this.child === child) this.child = undefined;
-      fail(new Error(`Window identity peer exited. ${this.stderr}`));
+    ], { stdio: "pipe", env: { ...process.env, ...(interop ? { WSL_INTEROP: interop } : {}) } });
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-2000); });
+    return {
+      input: child.stdin, output: child.stdout,
+      onExit: listener => { child.on("error", listener); child.on("exit", listener); },
+      kill: () => child.kill(),
+      diagnostics: () => stderr,
+    };
+  };
+}
+
+/** Reach an identity peer that a sandbox guest starts for each TCP connection. */
+export function remoteIdentityPeer(port: number, host = "127.0.0.1"): IdentityConnector {
+  return () => new Promise((resolve, reject) => {
+    const socket = connect({ host, port }, () => {
+      socket.off("error", reject);
+      resolve({ input: socket, output: socket, onExit: listener => socket.on("close", listener), kill: () => socket.destroy(), diagnostics: () => "" });
     });
-    createInterface({ input: child.stdout }).on("line", (line) => {
+    socket.once("error", reject);
+  });
+}
+
+/** One owned identity peer binds references to window lifetimes, not just reusable HWNDs. */
+export class WindowIdentity {
+  private channel?: IdentityChannel;
+  private exited?: Promise<void>;
+  private pending?: { resolve(value: string | undefined): void; reject(error: Error): void };
+
+  constructor(private readonly connect: IdentityConnector) {}
+
+  private async start(): Promise<void> {
+    if (this.channel) return;
+    const channel = await this.connect();
+    this.channel = channel;
+    const fail = (error: Error) => { this.pending?.reject(error); this.pending = undefined; };
+    this.exited = new Promise(resolve => channel.onExit(() => {
+      if (this.channel === channel) this.channel = undefined;
+      fail(new Error(`Window identity peer exited. ${channel.diagnostics()}`));
+      resolve();
+    }));
+    createInterface({ input: channel.output }).on("line", (line) => {
       const pending = this.pending;
       this.pending = undefined;
       if (!pending) return;
@@ -56,7 +95,7 @@ export class WindowIdentity {
         const timer = setTimeout(() => finish(new Error("Window identity check timed out.")), 15_000);
         this.pending = { resolve: value => finish(undefined, value), reject: error => finish(error) };
         signal?.addEventListener("abort", abort, { once: true });
-        this.child!.stdin.write(JSON.stringify({ ...target, create }) + "\n", error => {
+        this.channel!.input.write(JSON.stringify({ ...target, create }) + "\n", error => {
           if (error) finish(error);
         });
       });
@@ -66,17 +105,18 @@ export class WindowIdentity {
     }
   }
 
-  /** EOF removes this peer's surviving markers and exits; never kills applications. */
+  /** End input so the peer removes its surviving markers and exits; never kills applications. */
   async close(): Promise<void> {
-    const child = this.child;
-    this.child = undefined;
-    if (!child || child.exitCode !== null) return;
+    const channel = this.channel;
+    const exited = this.exited;
+    this.channel = undefined;
+    if (!channel) return;
     this.pending?.reject(new Error("Window identity peer closed."));
     this.pending = undefined;
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => { child.kill(); resolve(); }, 5000);
-      child.once("exit", () => { clearTimeout(timer); resolve(); });
-      child.stdin.end();
+      const timer = setTimeout(() => { channel.kill(); resolve(); }, 5000);
+      void exited?.then(() => { clearTimeout(timer); resolve(); });
+      channel.input.end();
     });
   }
 }
