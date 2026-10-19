@@ -39,7 +39,7 @@ export interface Driver {
   /** False where native lifetime binding is not implemented; never substitute reusable IDs. */
   windowLifetime?: boolean;
   /** Source domain override: a sandbox guest's windows are not host windows. */
-  sourceDomain?: "windows-sandbox";
+  sourceDomain?: "windows-sandbox" | "windows-remote";
   /** True only for a backend qualified for held paths and graceful in-flight release. */
   heldPaths?: boolean;
   /** True only for a qualified native runtime with bounded keyboard ownership. */
@@ -85,6 +85,8 @@ export interface ComputerResult {
     status: "listed" | "observed" | "delivered" | "refused" | "unknown" | "closed";
     /** The sandbox an open_sandbox command started. */
     sandbox_ref?: string;
+    /** The machine a connect command reached. */
+    machine_ref?: string;
     mode: ComputerMode;
     target?: WindowTarget;
     window_ref?: string;
@@ -1393,6 +1395,8 @@ export class ComputerSession {
 
   /** Whether this session issued a still-registered window reference. */
   hasWindow(ref: string): boolean { return this.entries.has(ref); }
+  /** Whether this session issued a still-registered display reference. */
+  hasDisplay(ref: string): boolean { return this.displayEntries.has(ref); }
 
   /** Close session-opened browsers (deleting their profiles) and release the native runtime. Other windows/files are not closed or saved. */
   close(): Promise<ComputerResult> {

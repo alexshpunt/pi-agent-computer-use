@@ -9,6 +9,7 @@ import type { Content, Driver, DriverResult, WindowTarget } from "./session.ts";
 import type { ComputerConfig } from "./config.ts";
 import { WindowIdentity, hostIdentityPeer, remoteIdentityPeer } from "./window-identity.ts";
 import { SingleConnectionHttpTransport } from "./http-transport.ts";
+import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts";
 import { verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
 
@@ -122,8 +123,8 @@ export class McpDriver implements Driver {
       ? "windows" : process.platform === "darwin" ? "macos" : "linux";
   }
 
-  /** A sandbox guest reports its own source domain. */
-  get sourceDomain(): "windows-sandbox" | undefined { return this.config.endpoint ? "windows-sandbox" : undefined; }
+  /** A sandbox guest or another machine reports its own source domain. */
+  get sourceDomain(): "windows-sandbox" | "windows-remote" | undefined { return this.config.endpoint ? "windows-sandbox" : this.config.ssh ? "windows-remote" : undefined; }
 
   /** Linux/macOS window lifetime binding is explicitly deferred, not replaced with pid/window_id. */
   get windowLifetime(): boolean { return this.platform === "windows"; }
@@ -153,7 +154,7 @@ export class McpDriver implements Driver {
   get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort)
-      : hostIdentityPeer(config.interop ?? process.env.WSL_INTEROP));
+      : hostIdentityPeer(config.ssh ? sshRunner(config.ssh) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
 
   /** Bind a native lifetime only where supported. Unsupported platforms never start a Windows peer. */
@@ -181,7 +182,8 @@ export class McpDriver implements Driver {
       if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
       await verifyBundledRuntime(this.config.bundled, signal);
     } else if (this.forkRuntime) {
-      const hash = createHash("sha256").update(await readFile(this.config.command)).digest("hex");
+      const hash = this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
+        : createHash("sha256").update(await readFile(this.config.command)).digest("hex");
       if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
     }
     signal?.throwIfAborted();
@@ -214,8 +216,18 @@ export class McpDriver implements Driver {
     }
   }
 
-  /** The owned native child; Windows-host control runs through WSL interop. */
+  /** The owned native child; Windows-host control runs through WSL interop, on another machine over SSH. */
   private async stdioTransport(): Promise<StdioClientTransport> {
+    if (this.config.ssh) {
+      // The remote WSL supplies its own interop; the driver exits on stdin EOF when SSH ends.
+      const env = { WSLENV: ["CUA_DRIVER_RS_TELEMETRY_ENABLED", "CUA_DRIVER_RS_UPDATE_CHECK", ...(this.envelopes ? ["CUA_DRIVER_MCP_ENVELOPES"] : []), "DO_NOT_TRACK"].join(":"),
+        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false", ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1" };
+      const transport = new StdioClientTransport({ command: "ssh", stderr: "pipe",
+        args: [...SSH_OPTIONS, this.config.ssh, remoteCommand(this.config.command, this.envelopes ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"], env)] });
+      this.stderr = "";
+      transport.stderr?.on("data", (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString()).slice(-4000); });
+      return transport;
+    }
     const interop = this.platform === "windows" ? this.config.interop ?? process.env.WSL_INTEROP : undefined;
     if (process.platform === "linux" && this.config.command.endsWith(".exe")) {
       if (!interop || !(await stat(interop).catch(() => undefined))?.isSocket())

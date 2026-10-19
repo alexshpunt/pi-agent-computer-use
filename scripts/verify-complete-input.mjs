@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { openCompleteInputWindow } from "./complete-input-window.mjs";
 import { McpDriver } from "../src/driver.ts";
 import { WindowIdentity, hostIdentityPeer } from "../src/window-identity.ts";
+import { localRunner } from "../src/runner.ts";
 import { openForkArtifact } from "./check-cua-fork-artifact.mjs";
 import { loadComputerConfig } from "../src/config.ts";
 import { ComputerSession } from "../src/session.ts";
@@ -22,7 +23,7 @@ const config = await loadComputerConfig(process.cwd()), site = await createCompl
 async function createBackend() {
   if (!forkDirectory) return new McpDriver(config);
   const artifact = await openForkArtifact(forkDirectory, forkSource);
-  const identity = new WindowIdentity(hostIdentityPeer(config.interop ?? process.env.WSL_INTEROP));
+  const identity = new WindowIdentity(hostIdentityPeer(localRunner(config.interop ?? process.env.WSL_INTEROP)));
   return { call: artifact.call, identity: (...args) => identity.identify(...args),
     close: async () => { try { await artifact.close(); } finally { await identity.close(); } } };
 }

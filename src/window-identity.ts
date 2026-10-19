@@ -1,9 +1,9 @@
-import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import type { WindowTarget } from "./session.ts";
+import { WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
 
 /** A line-oriented connection to one window identity peer. Ending input makes the peer remove its markers and exit. */
 export interface IdentityChannel {
@@ -18,13 +18,13 @@ export interface IdentityChannel {
 }
 export type IdentityConnector = () => Promise<IdentityChannel>;
 
-/** Start the identity peer as a host PowerShell child, through WSL interop when needed. */
-export function hostIdentityPeer(interop?: string): IdentityConnector {
+/** Start the identity peer as a Windows PowerShell child of the runner: this host, or another machine over SSH. */
+export function hostIdentityPeer(runner: CommandRunner): IdentityConnector {
   return async () => {
     const script = await readFile(new URL("../scripts/window-identity.ps1", import.meta.url), "utf8");
-    const child = spawn(process.platform === "win32" ? "powershell.exe" : "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", [
+    const child = runner.spawn(process.platform === "win32" && !runner.ssh ? "powershell.exe" : WINDOWS_POWERSHELL, [
       "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64"),
-    ], { stdio: "pipe", env: { ...process.env, ...(interop ? { WSL_INTEROP: interop } : {}) } });
+    ]);
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-2000); });
     return {

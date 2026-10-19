@@ -26,9 +26,21 @@ export interface OpenedSandbox {
   describe(source: string): string;
   /** Release the guest session and destroy the sandbox. */
   close(): Promise<void>;
+  /** The machine whose Windows hosts this sandbox; undefined for this host. */
+  machine?: string;
 }
 /** Start a sandbox for open_sandbox; validation errors are reported before any host work. */
-export type SandboxFactory = (cwd: string, command: Record<string, unknown>, signal?: AbortSignal) => Promise<OpenedSandbox>;
+export type SandboxFactory = (cwd: string, command: Record<string, unknown>, signal?: AbortSignal, machine?: string) => Promise<OpenedSandbox>;
+/** Another machine's desktop, driven over SSH by its own session. */
+export interface OpenedMachine {
+  ref: string;
+  session: ComputerSession;
+  describe(source: string): string;
+  /** Release the remote session and everything it started on that machine. */
+  close(): Promise<void>;
+}
+/** Connect to a configured machine by name; unknown names refuse before any SSH work. */
+export type MachineFactory = (cwd: string, name: string, signal?: AbortSignal) => Promise<OpenedMachine>;
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ComputerRequestError("Use a JSON command object.");
@@ -44,7 +56,8 @@ export class ComputerResources {
   private readonly windowStates = new Map<string, { window_ref: string; result: ComputerResult }>();
   private readonly apps = new Map<string, string>();
   private readonly sandboxes = new Map<string, OpenedSandbox>();
-  /** Sandbox launches still in progress; a cancelled launch finishes its own cleanup before it settles. */
+  private readonly machines = new Map<string, OpenedMachine>();
+  /** Sandbox launches and connections still in progress; a cancelled one finishes its own cleanup before it settles. */
   private readonly opening = new Set<Promise<unknown>>();
 
   /** Give installed paths opaque addresses; paths themselves are not session references. */
@@ -54,17 +67,56 @@ export class ComputerResources {
     return computerSource("app", ref);
   }
   constructor(private readonly getSession: (cwd: string) => Promise<ComputerSession>,
-    private readonly closeSession: () => Promise<ComputerResult>, private readonly openSandbox?: SandboxFactory) {}
+    private readonly closeSession: () => Promise<ComputerResult>, private readonly openSandbox?: SandboxFactory,
+    private readonly connectMachine?: MachineFactory) {}
 
-  /** The session that issued a window reference: a sandbox guest's, otherwise the host's. */
-  private async sessionFor(cwd: string, window?: string): Promise<ComputerSession> {
-    if (window) for (const sandbox of this.sandboxes.values()) if (sandbox.session.hasWindow(window)) return sandbox.session;
+  /** The session that issued a window or display reference: a sandbox's or another machine's, otherwise this host's. */
+  private async sessionFor(cwd: string, target?: ObservationTarget | { window_ref?: string; display?: string }): Promise<ComputerSession> {
+    for (const environment of [...this.sandboxes.values(), ...this.machines.values()])
+      if (target?.window_ref ? environment.session.hasWindow(target.window_ref) : target?.display && environment.session.hasDisplay(target.display)) return environment.session;
     return this.getSession(cwd);
   }
-  private windowOf(address: ComputerAddress): string | undefined {
-    return address.kind === "window" ? address.ref
-      : address.kind === "window-state" ? this.windowStates.get(address.ref)?.window_ref
-      : address.kind === "observation" ? this.snapshots.get(address.ref)?.target.window_ref : undefined;
+  private windowOf(address: ComputerAddress): { window_ref?: string; display?: string } | undefined {
+    return address.kind === "window" ? { window_ref: address.ref }
+      : address.kind === "display" ? { display: address.ref }
+      : address.kind === "window-state" ? { window_ref: this.windowStates.get(address.ref)?.window_ref }
+      : address.kind === "observation" ? this.snapshots.get(address.ref)?.target : undefined;
+  }
+  private machine(ref: string): OpenedMachine {
+    const machine = this.machines.get(ref);
+    if (!machine) throw new ComputerRequestError("Machine reference expired. Connect again; it was disconnected or this session was released.");
+    return machine;
+  }
+  /** Forget a released session's observations and window states. */
+  private forget(session: ComputerSession): void {
+    for (const [id, entry] of this.snapshots)
+      if (entry.target.window_ref ? session.hasWindow(entry.target.window_ref) : session.hasDisplay(entry.target.display!)) this.snapshots.delete(id);
+    for (const [id, entry] of this.windowStates) if (session.hasWindow(entry.window_ref)) this.windowStates.delete(id);
+  }
+  private async disconnect(machine: OpenedMachine): Promise<ComputerResult> {
+    this.machines.delete(machine.ref);
+    await Promise.allSettled([...this.sandboxes.values()].filter(sandbox => sandbox.machine === machine.ref).map(sandbox => this.closeSandbox(sandbox)));
+    this.forget(machine.session);
+    await machine.close();
+    return { content: [{ type: "text", text: `Disconnected ${computerSource("machine", machine.ref)}. Its windows, observations, browsers and sandboxes are gone.` }],
+      details: { status: "closed", mode: "yolo", machine_ref: machine.ref } };
+  }
+  /** Run one launch so session close and Pi shutdown can wait for it; a launch cancelled after success is undone. */
+  private async launch<T extends { close(): Promise<void> }>(start: Promise<T>, signal?: AbortSignal): Promise<T> {
+    this.opening.add(start);
+    let opened: T;
+    try { opened = await start; } finally { this.opening.delete(start); }
+    // Nobody will receive the address of something finished after cancellation, so undo it.
+    if (signal?.aborted) { await opened.close(); throw new Error("Cancelled; nothing was kept."); }
+    return opened;
+  }
+  private async startSandbox(cwd: string, command: Record<string, unknown>, signal?: AbortSignal, machine?: string): Promise<ComputerResult> {
+    if (!this.openSandbox) throw new ComputerRequestError("Sandboxes are not available in this runtime.");
+    const sandbox = await this.launch(this.openSandbox(cwd, command, signal, machine), signal);
+    this.sandboxes.set(sandbox.ref, sandbox);
+    const source = computerSource("sandbox", sandbox.ref);
+    return { content: [{ type: "text", text: `Sandbox ready: ${source}\n${sandbox.describe(source)}` }],
+      details: { status: "delivered", mode: "yolo", sandbox_ref: sandbox.ref } };
   }
   private sandbox(ref: string): OpenedSandbox {
     const sandbox = this.sandboxes.get(ref);
@@ -73,16 +125,16 @@ export class ComputerResources {
   }
   private async closeSandbox(sandbox: OpenedSandbox): Promise<ComputerResult> {
     this.sandboxes.delete(sandbox.ref);
-    for (const [id, entry] of this.snapshots) if (entry.target.window_ref && sandbox.session.hasWindow(entry.target.window_ref)) this.snapshots.delete(id);
-    for (const [id, entry] of this.windowStates) if (sandbox.session.hasWindow(entry.window_ref)) this.windowStates.delete(id);
+    this.forget(sandbox.session);
     await sandbox.close();
     return { content: [{ type: "text", text: `Sandbox ${computerSource("sandbox", sandbox.ref)} destroyed. Its windows and observations are gone.` }],
       details: { status: "closed", mode: "yolo", sandbox_ref: sandbox.ref } };
   }
-  /** Destroy every sandbox this session opened; used when the computer session closes or Pi shuts down. */
-  async closeSandboxes(): Promise<void> {
+  /** Destroy every sandbox and machine connection this session opened; used when the computer session closes or Pi shuts down. */
+  async closeEnvironments(): Promise<void> {
     await Promise.allSettled([...this.opening]);
     await Promise.allSettled([...this.sandboxes.values()].map(sandbox => this.closeSandbox(sandbox)));
+    await Promise.allSettled([...this.machines.values()].map(machine => this.disconnect(machine)));
   }
 
   private snapshot(id: string): Snapshot {
@@ -130,12 +182,17 @@ export class ComputerResources {
           : "Display observation is readonly and grants no input authority.");
     }
     if (address.kind === "sandbox") return this.sandbox(address.ref).describe(address.source);
+    if (address.kind === "machine") return this.machine(address.ref).describe(address.source);
     return `# Computer resource\nSource: ${address.source}\nUse Read for native observation, Search for discovery, and Insert for explicit commands. No native capture occurred during descriptor resolution.`;
   }
 
   /** Acquire a requested native projection, or inspect one explicitly issued observation. */
   async read(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
     const view = parseComputerViews(views);
+    if (address.kind === "machine") {
+      if (views?.length) throw new ComputerRequestError("A machine address has no image views. Read a returned window or display address.");
+      return this.machine(address.ref).session.displays(signal);
+    }
     if (address.kind === "session" || address.kind === "app" || address.kind === "sandbox") {
       if (views?.length) throw new ComputerRequestError("This resource has no native image views.");
       if (address.kind === "sandbox") this.sandbox(address.ref);
@@ -243,6 +300,7 @@ export class ComputerResources {
   /** Search permitted discovery metadata or the current collected UI without another native walk. */
   async search(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind === "sandbox") return this.sandbox(address.ref).session.windows(signal, query);
+    if (address.kind === "machine") return this.machine(address.ref).session.windows(signal, query);
     const session = await this.sessionFor(cwd, this.windowOf(address));
     if (address.kind === "windows" || address.kind === "apps") return session[address.kind](signal, query);
     if (address.kind === "displays") {
@@ -272,7 +330,7 @@ export class ComputerResources {
       const state = this.windowStates.get(address.ref);
       if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
       this.windowStates.delete(address.ref);
-      const session = await this.sessionFor(cwd, state.window_ref);
+      const session = await this.sessionFor(cwd, { window_ref: state.window_ref });
       return management ? session.manageWindow(state.window_ref, address.ref, management, signal)
         : session.restoreWindow(state.window_ref, address.ref, signal);
     }
@@ -287,24 +345,44 @@ export class ComputerResources {
       const result = await sandbox.session.open(command.app, signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
+    if (address.kind === "machine") {
+      const machine = this.machine(address.ref);
+      if (tool !== "insert") throw new ComputerRequestError("A machine address accepts Insert commands, not literal Write.");
+      const command = commandObject(value);
+      if (command.action === "disconnect") { only(command, ["action"]); return this.disconnect(machine); }
+      if (command.action === "open_sandbox") return this.startSandbox(cwd, command, signal, machine.ref);
+      if (command.action === "open_browser") {
+        let options;
+        try { options = validateWebLaunch(command); }
+        catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+        const result = await machine.session.openBrowser(options, signal);
+        return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
+      }
+      if (command.action !== "open") throw new ComputerRequestError("A machine address accepts open, open_browser, open_sandbox or disconnect.");
+      only(command, ["action", "app"]);
+      if (typeof command.app !== "string" || !command.app.trim()) throw new ComputerRequestError("Open needs an app name installed on that machine.");
+      const result = await machine.session.open(command.app, signal);
+      return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
+    }
     if (tool === "insert" && (address.kind === "session" || address.kind === "app")) {
       const command = commandObject(value);
-      if (command.action === "open_sandbox" && address.kind === "session") {
-        if (!this.openSandbox) throw new ComputerRequestError("Sandboxes are not available in this runtime.");
-        const opening = this.openSandbox(cwd, command, signal);
-        this.opening.add(opening);
-        let sandbox: OpenedSandbox;
-        try { sandbox = await opening; } finally { this.opening.delete(opening); }
-        // Cancelled after the sandbox became ready: nobody will receive its address, so destroy it.
-        if (signal?.aborted) { await sandbox.close(); throw new Error("Cancelled; the sandbox was destroyed."); }
-        this.sandboxes.set(sandbox.ref, sandbox);
-        const source = computerSource("sandbox", sandbox.ref);
-        return { content: [{ type: "text", text: `Sandbox ready: ${source}\n${sandbox.describe(source)}` }],
-          details: { status: "delivered", mode: "yolo", sandbox_ref: sandbox.ref } };
+      if (command.action === "open_sandbox" && address.kind === "session") return this.startSandbox(cwd, command, signal);
+      if (command.action === "connect" && address.kind === "session") {
+        only(command, ["action", "machine"]);
+        if (typeof command.machine !== "string" || !command.machine) throw new ComputerRequestError("connect needs a configured machine name.");
+        if (!this.connectMachine) throw new ComputerRequestError("Remote machines are not available in this runtime.");
+        let machine = this.machines.get(command.machine);
+        if (!machine) {
+          machine = await this.launch(this.connectMachine(cwd, command.machine, signal), signal);
+          this.machines.set(machine.ref, machine);
+        }
+        const source = computerSource("machine", machine.ref);
+        return { content: [{ type: "text", text: `Connected: ${source}\n${machine.describe(source)}` }],
+          details: { status: "delivered", mode: "yolo", machine_ref: machine.ref } };
       }
       if (command.action === "close" && address.kind === "session") {
         only(command, ["action"]);
-        await this.closeSandboxes();
+        await this.closeEnvironments();
         this.snapshots.clear();
         this.windowStates.clear();
         this.apps.clear();
@@ -328,7 +406,7 @@ export class ComputerResources {
       const command = commandObject(value);
       if (command.action !== "wait_for" && command.action !== "verify")
         throw new ComputerRequestError("A window address accepts only wait_for or verify. Input needs the observation address returned by a fresh window Read.");
-      const session = await this.sessionFor(cwd, address.ref);
+      const session = await this.sessionFor(cwd, { window_ref: address.ref });
       let spec;
       try { spec = session.waitSpec(address.ref, command); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
@@ -347,7 +425,7 @@ export class ComputerResources {
         follow = await this.followUpSpec(window, command, cwd);
         // Was the postcondition already true before anything is sent? Browsers sample now; native uses the input walk.
         if (follow.expect) {
-          const session = await this.sessionFor(cwd, window);
+          const session = await this.sessionFor(cwd, { window_ref: window });
           const earlier = snapshot.result.details.dom ? await session.webCheck(window, follow.expect.conditions, signal)
             : snapshot.result.details.ui ? evaluateNative(snapshot.result.details.ui, follow.expect.conditions) : undefined;
           follow.preexisting = earlier !== undefined && combine(earlier) === "satisfied";
@@ -373,7 +451,7 @@ export class ComputerResources {
       try { command = validateWebAction(commandObject(value)); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
       this.snapshots.delete(address.ref);
-      const result = await (await this.sessionFor(cwd, snapshot.target.window_ref)).actDom(snapshot.target.window_ref, address.ref, command, signal);
+      const result = await (await this.sessionFor(cwd, snapshot.target)).actDom(snapshot.target.window_ref, address.ref, command, signal);
       return result.details.dom ? this.remember({ window_ref: snapshot.target.window_ref }, result) : result;
     }
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations are readonly; choose a window overview for input.");
@@ -396,7 +474,7 @@ export class ComputerResources {
     }
     const action = { ...command, window_ref: snapshot.target.window_ref, observation_id: address.ref } as Action;
     this.snapshots.delete(address.ref);
-    return (await this.sessionFor(cwd, snapshot.target.window_ref)).act(action, signal);
+    return (await this.sessionFor(cwd, snapshot.target)).act(action, signal);
   }
 
   /** Validate an action's optional `expect` postcondition and `successor` request before anything is dispatched. */
@@ -406,7 +484,7 @@ export class ComputerResources {
     if (command.expect !== undefined) {
       const raw = command.expect;
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ComputerRequestError("expect must be an object with conditions and optional timeout_ms, interval_ms and stable.");
-      try { expect = (await this.sessionFor(cwd, window)).waitSpec(window, { ...raw as Record<string, unknown>, action: "wait_for" }); }
+      try { expect = (await this.sessionFor(cwd, { window_ref: window })).waitSpec(window, { ...raw as Record<string, unknown>, action: "wait_for" }); }
       catch (error) { throw new ComputerRequestError(`expect: ${error instanceof Error ? error.message : String(error)}`); }
     }
     return { ...(expect ? { expect } : {}), successor: command.successor === true || expect !== undefined };
@@ -417,7 +495,7 @@ export class ComputerResources {
    * diff from the action's input observation. A refused or unknown action never yields a verified postcondition.
    */
   private async followUp(window: string, before: Snapshot, result: ComputerResult, follow: FollowUp, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
-    const session = await this.sessionFor(cwd, window);
+    const session = await this.sessionFor(cwd, { window_ref: window });
     const status = result.details.status;
     const preexisting = follow.preexisting === true;
     let successor: ComputerResult | undefined;
@@ -459,7 +537,7 @@ export class ComputerResources {
     const window = snapshot.target.window_ref!;
     if (address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined) throw new ComputerRequestError("A batch takes its targets and delivery from its steps, not the address.");
     if (!Array.isArray(command.steps) || command.steps.length < 1 || command.steps.length > 16) throw new ComputerRequestError("batch needs steps: 1..16 step objects.");
-    const session = await this.sessionFor(cwd, window);
+    const session = await this.sessionFor(cwd, { window_ref: window });
     const browser = snapshot.result.details.dom !== undefined;
     type Step = { kind: "wait"; spec: WaitSpec; action: string } | { kind: "dom"; action: WebAction } | { kind: "native"; command: Record<string, unknown>; target?: Record<string, string> };
     const steps: Step[] = command.steps.map((raw, index): Step => {

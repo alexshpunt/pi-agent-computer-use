@@ -1,9 +1,11 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { connect, createServer, type AddressInfo } from "node:net";
 import path from "node:path";
 import type { ComputerConfig } from "./config.ts";
 import { ComputerRequestError } from "./computer-resources.ts";
+import { SSH_OPTIONS, WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
 
 /** Host-side commands for the sandbox lifecycle; replaced by a fake in tests. */
 export interface SandboxHost {
@@ -11,6 +13,13 @@ export interface SandboxHost {
   powershell(script: string, signal?: AbortSignal, timeoutMs?: number): Promise<string>;
   /** Convert a WSL path to a Windows path, or the reverse with `unix`. */
   path(value: string, to: "windows" | "unix"): Promise<string>;
+  /** Files in the host's WSL. readFile returns "" for a missing file. */
+  mkdir(path: string): Promise<void>;
+  writeFile(path: string, content: string): Promise<void>;
+  readFile(path: string): Promise<string>;
+  remove(path: string): Promise<void>;
+  /** Reach a port on the host's loopback from this machine: the same port locally, an SSH tunnel for another machine. */
+  forward(port: number, signal?: AbortSignal): Promise<{ port: number; close(): void }>;
 }
 
 /** One host folder shared with the guest. Import is read-only unless requested; export is writable. */
@@ -72,26 +81,47 @@ export function sandboxConfig(runtime: string, config: string, out: string, shar
     "  </MappedFolders>", "</Configuration>", ""].join("\n");
 }
 
-/** Run host commands through WSL interop. */
-export function interopHost(interop?: string): SandboxHost {
-  const env = { ...process.env, ...(interop ? { WSL_INTEROP: interop } : {}) };
-  const run = (file: string, args: string[], signal?: AbortSignal, timeout = 60_000) => new Promise<string>((resolve, reject) => {
-    const child = execFile(file, args, { env, signal, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) reject(new Error(`${path.basename(file)} failed: ${(stderr || error.message).toString().trim().slice(0, 500)}`));
-      else resolve(stdout.toString().replace(/\r/g, ""));
-    });
-    child.stdin?.end();
-  });
+/** Run the sandbox host through a command runner: this machine's Windows, or another machine's over SSH. */
+export function runnerHost(runner: CommandRunner): SandboxHost {
+  const run = async (file: string, args: string[], signal?: AbortSignal, timeoutMs = 60_000, input?: string) =>
+    (await runner.run(file, args, { signal, timeoutMs, input })).replace(/\r/g, "");
   return {
     // Plain-text errors: an encoded command otherwise reports progress and errors as CLIXML on stderr.
-    powershell: (script, signal, timeout) => run("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    powershell: (script, signal, timeout) => run(WINDOWS_POWERSHELL,
       ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(
         // Continue: under Stop, Windows PowerShell turns redirected native stderr into exceptions. Scripts throw real failures.
         // Explicit exit 0: -Command otherwise exits 1 when the last command only set $? to false.
         `$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Continue'\ntry {\n${script}\nexit 0\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,
         "utf16le").toString("base64")], signal, timeout),
     path: async (value, to) => (await run("wslpath", [to === "windows" ? "-w" : "-u", value])).trim(),
+    mkdir: async dir => { await run("mkdir", ["-p", dir]); },
+    writeFile: async (file, content) => { await run("dd", ["status=none", `of=${file}`], undefined, 60_000, content); },
+    readFile: file => run("cat", [file]).catch(() => ""),
+    remove: async dir => { await run("rm", ["-rf", dir]); },
+    forward: async (port, signal) => runner.ssh ? tunnel(runner.ssh, port, signal) : { port, close: () => {} },
   };
+}
+
+/** Forward a free local port to a port on the remote machine's loopback over SSH. */
+async function tunnel(alias: string, remotePort: number, signal?: AbortSignal): Promise<{ port: number; close(): void }> {
+  const local = await new Promise<number>((resolve, reject) => {
+    const server = createServer().listen(0, "127.0.0.1", () => { const { port } = server.address() as AddressInfo; server.close(() => resolve(port)); });
+    server.on("error", reject);
+  });
+  const child = spawn("ssh", [...SSH_OPTIONS, "-N", "-o", "ExitOnForwardFailure=yes", "-L", `127.0.0.1:${local}:127.0.0.1:${remotePort}`, alias], { stdio: "ignore" });
+  const close = () => { if (child.exitCode === null) child.kill(); };
+  for (let i = 0; i < 100; i++) {
+    if (child.exitCode !== null) throw new Error("The SSH tunnel to the sandbox did not start.");
+    if (signal?.aborted) { close(); throw new Error("Cancelled while starting the sandbox."); }
+    const open = await new Promise<boolean>(resolve => {
+      const socket = connect({ host: "127.0.0.1", port: local }, () => { socket.destroy(); resolve(true); });
+      socket.on("error", () => resolve(false));
+    });
+    if (open) return { port: local, close };
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  close();
+  throw new Error("The SSH tunnel to the sandbox did not start.");
 }
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -126,6 +156,7 @@ export class WindowsSandbox {
   id?: string;
   endpoint?: NonNullable<ComputerConfig["endpoint"]>;
   private relays: Relay[] = [];
+  private tunnels: { port: number; close(): void }[] = [];
   /** Sandboxes that existed before this launch; after a launch without a known id, newer ones are this sandbox. */
   private before: string[] = [];
   private launched = false;
@@ -164,14 +195,14 @@ export class WindowsSandbox {
     const windows = `${facts.local}\\PiComputerUse\\sandboxes\\${this.ref}`;
     const unix = await this.host.path(windows.replace(/\\[^\\]+$/, ""), "unix").then(parent => `${parent}/${this.ref}`);
     this.workdir = { windows, unix };
-    await mkdir(`${unix}/config`, { recursive: true });
-    await mkdir(`${unix}/out`, { recursive: true });
+    await this.host.mkdir(`${unix}/config`);
+    await this.host.mkdir(`${unix}/out`);
     for (const name of ["guest-setup.ps1", "guest-start.ps1", "guest-identity-bridge.ps1", "host-relay.ps1"])
-      await copyFile(new URL(name, SCRIPTS), `${unix}/config/${name}`);
-    await copyFile(IDENTITY_SCRIPT, `${unix}/config/window-identity.ps1`);
+      await this.host.writeFile(`${unix}/config/${name}`, await readFile(new URL(name, SCRIPTS), "utf8"));
+    await this.host.writeFile(`${unix}/config/window-identity.ps1`, await readFile(IDENTITY_SCRIPT, "utf8"));
     const token = randomBytes(32).toString("hex");
-    await writeFile(`${unix}/config/token.txt`, token);
-    await writeFile(`${unix}/sandbox.wsb`, sandboxConfig(runtime, `${windows}\\config`, `${windows}\\out`, shares));
+    await this.host.writeFile(`${unix}/config/token.txt`, token);
+    await this.host.writeFile(`${unix}/sandbox.wsb`, sandboxConfig(runtime, `${windows}\\config`, `${windows}\\out`, shares));
 
     // A WindowsSandboxServer started by wsb.exe or WindowsSandbox.exe from WSL/SSH fails; launch through the user's shell
     // and call wsb only once a sandbox VM exists.
@@ -222,7 +253,7 @@ ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoPr
       // No stdio redirection: it would inherit the interop pipes and keep this call waiting.
       await this.ps(`Start-Process powershell.exe -WindowStyle Hidden -ArgumentList ${psString(`-NoProfile -ExecutionPolicy Bypass -File "${windows}\\config\\host-relay.ps1" -GuestIp ${ip} -GuestPort ${guestPort} -PortFile "${file}"`)}`, signal);
       for (let i = 0; i < 40; i++) {
-        const text = await readFile(`${unix}/out/relay-${guestPort}.txt`, "utf8").catch(() => "");
+        const text = await this.host.readFile(`${unix}/out/relay-${guestPort}.txt`);
         const [port, pid] = text.trim().split(/\s+/).map(Number);
         if (port > 0 && pid > 0) return { port, pid };
         await sleep(250, signal);
@@ -231,7 +262,9 @@ ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoPr
     };
     this.relays.push(await relay(DRIVER_GUEST_PORT));
     this.relays.push(await relay(IDENTITY_GUEST_PORT));
-    this.endpoint = { url: `http://127.0.0.1:${this.relays[0].port}/mcp`, token, identityPort: this.relays[1].port };
+    // Another machine's relays listen on its loopback; reach them through SSH tunnels.
+    this.tunnels = [await this.host.forward(this.relays[0].port, signal), await this.host.forward(this.relays[1].port, signal)];
+    this.endpoint = { url: `http://127.0.0.1:${this.tunnels[0].port}/mcp`, token, identityPort: this.tunnels[1].port };
   }
 
   /** Stop the sandbox, its relays and its host folder. Safe to call more than once. */
@@ -240,6 +273,8 @@ ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoPr
     this.closed = true;
     const pids = this.relays.map(relay => relay.pid);
     this.relays = [];
+    for (const tunnel of this.tunnels) tunnel.close();
+    this.tunnels = [];
     // A cancelled launch may have started a sandbox before its id was known: stop every sandbox newer than the launch.
     // Call wsb only once a VM exists (see start).
     const unknown = this.launched && !this.id ? [`$before = @(${this.before.map(psString).join(",")}); $ids = @()`,
@@ -251,7 +286,7 @@ ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoPr
       ...(pids.length ? [`Stop-Process -Id ${pids.join(",")} -Force -ErrorAction SilentlyContinue`] : []),
       "exit 0",
     ].join("\n"), undefined, 120_000).catch(() => undefined);
-    if (this.workdir) await rm(this.workdir.unix, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }).catch(() => undefined);
+    if (this.workdir) await this.host.remove(this.workdir.unix).catch(() => undefined);
   }
 
   /** Readable description for the sandbox address. */

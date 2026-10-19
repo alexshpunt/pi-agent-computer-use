@@ -13,8 +13,10 @@ import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
 import { WebBrowser } from "./web-browser.ts";
-import { ComputerRequestError, type SandboxFactory } from "./computer-resources.ts";
-import { WindowsSandbox, interopHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
+import { ComputerRequestError, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
+import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
+import { localRunner, sshRunner } from "./runner.ts";
+import type { ComputerConfig } from "./config.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
@@ -141,19 +143,49 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     try { return await loading; }
     finally { loading = undefined; }
   }
+  /** The configured machine for a connect command; unknown names refuse before any SSH work. */
+  const machineConfig = async (cwd: string, name: string): Promise<NonNullable<ComputerConfig["machines"]>[string]> => {
+    const machine = (await loadComputerConfig(cwd)).machines?.[name];
+    if (!machine) throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json.`);
+    return machine;
+  };
   // Each sandbox gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
-  const openSandbox: SandboxFactory = async (cwd, command, signal) => {
+  // On another machine the sandbox host and its files are reached over SSH, and the guest relays through SSH tunnels.
+  const openSandbox: SandboxFactory = async (cwd, command, signal, machineName) => {
     let options;
     try { options = sandboxOptions(command); }
     catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
     const config = await loadComputerConfig(cwd);
-    const sandbox = await WindowsSandbox.open(interopHost(config.interop), config.command, options, signal);
-    const driver = new McpDriver({ ...config, endpoint: sandbox.endpoint });
+    const machine = machineName ? await machineConfig(cwd, machineName) : undefined;
+    const runner = machine ? sshRunner(machine.ssh) : localRunner(config.interop);
+    const sandbox = await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, options, signal);
+    // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
+    const driver = new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
+      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) });
     try { await waitForGuestDriver(driver, signal); }
     catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
     const guest = new ComputerSession(driver, () => "yolo", () => images.settings(), undefined, image => debug.trace.retainOriginal(image));
-    return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source),
+    return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
       close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
+  };
+  // Another machine's desktop gets its own driver and session over SSH. Safe/YOLO is the user's choice there too;
+  // the host overlay is not shown, and browsers start on that machine.
+  const connectMachine: MachineFactory = async (cwd, name, signal) => {
+    const machine = await machineConfig(cwd, name);
+    const runner = sshRunner(machine.ssh);
+    const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh });
+    try { await waitForGuestDriver(driver, signal, 30_000); }
+    catch (error) { await driver.close().catch(() => undefined); throw error; }
+    const launchWeb = machine.node && machine.package
+      ? (options: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) =>
+        WebBrowser.launch({ ...options, remote: { runner, node: machine.node!, worker: `${machine.package}/src/web-worker.ts` } }, webSignal)
+      : undefined;
+    const remote = new ComputerSession(driver, getMode, () => images.settings(), undefined, image => debug.trace.retainOriginal(image), launchWeb);
+    return { ref: name, session: remote,
+      describe: source => [`# Remote machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
+        `Browser: ${launchWeb ? "available" : "not configured (node and package)"}`,
+        "Search this address for that machine's windows; Read it for its displays. Insert open, open_browser, open_sandbox or disconnect."].join("\n"),
+      close: () => remote.close().then(() => undefined) };
   };
   await registerComputerProvider(pi, getSession, async () => {
     await closeClassifier();
@@ -166,7 +198,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     catch { return { content: [{ type: "text", text: "Qt frame shutdown is unconfirmed." }],
       details: { status: "unknown", mode: getMode() }, isError: true }; }
     return result;
-  }, openSandbox);
+  }, openSandbox, connectMachine);
   pi.on("session_shutdown", async () => {
     await closeClassifier();
     if (loading) await loading.catch(() => undefined);

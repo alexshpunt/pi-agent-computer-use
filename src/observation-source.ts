@@ -3,8 +3,8 @@ import { shellDesktop, type ShellDesktop } from "./shell-desktop.ts";
 export type NativePlatform = "windows" | "linux" | "macos";
 /** Session-scoped address, not an input grant. session_id is the agent session, not a Windows login session. */
 export interface SourceIdentity {
-  /** windows-sandbox: a Windows Sandbox guest, never the host desktop. */
-  domain: "windows-host" | "linux-host" | "macos-host" | "windows-sandbox";
+  /** windows-sandbox: a Windows Sandbox guest; windows-remote: another machine over SSH. Never the local host desktop. */
+  domain: "windows-host" | "linux-host" | "macos-host" | "windows-sandbox" | "windows-remote";
   identity: Record<string, string | number>;
   membership: { windows_session_id?: null; virtual_desktop_id: string | null; monitor_id: string | null };
   virtual_desktop?: ShellDesktop;

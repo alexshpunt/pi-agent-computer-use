@@ -1,6 +1,7 @@
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import type { CommandRunner } from "./runner.ts";
 
 const run = promisify(execFile);
 const WINDOWS_NODE = "/mnt/c/Program Files/nodejs/node.exe";
@@ -278,7 +279,7 @@ export class WebBrowser {
   private readonly exited: Promise<void>;
   private alive = true;
 
-  private constructor(private readonly child: ChildProcessWithoutNullStreams) {
+  private constructor(private readonly child: ChildProcessWithoutNullStreams, private readonly runner?: CommandRunner) {
     this.exited = new Promise(resolve => child.once("close", () => {
       this.alive = false;
       this.fail(new WebError(`Browser worker exited. ${this.stderr.trim()}`.trim(), false, true));
@@ -309,20 +310,30 @@ export class WebBrowser {
     });
   }
 
-  /** Spawn the worker with Windows Node (directly on Windows, through interop from WSL) and open the browser. */
-  static async launch(options: WebLaunchOptions & { interop?: string }, signal?: AbortSignal): Promise<{ browser: WebBrowser; opened: WebOpened }> {
+  /**
+   * Spawn the worker with Windows Node (directly on Windows, through interop from WSL) and open the browser.
+   * With a remote runner the worker runs on that machine: `node` and `worker` are its WSL paths.
+   */
+  static async launch(options: WebLaunchOptions & { interop?: string; remote?: { runner: CommandRunner; node: string; worker: string } }, signal?: AbortSignal): Promise<{ browser: WebBrowser; opened: WebOpened }> {
     let command = process.execPath;
     let worker = fileURLToPath(new URL("./web-worker.ts", import.meta.url));
-    if (process.platform === "linux") {
-      command = WINDOWS_NODE;
-      worker = (await run("wslpath", ["-w", worker], { timeout: 5000 })).stdout.trim();
-    } else if (process.platform !== "win32") throw new WebError("The Playwright browser backend runs only on Windows or WSL.");
-    signal?.throwIfAborted();
-    const child = spawn(command, ["--disable-warning=ExperimentalWarning", worker], {
-      stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
-      env: { ...process.env, ...(options.interop ? { WSL_INTEROP: options.interop } : {}) },
-    });
-    const browser = new WebBrowser(child);
+    let child: ChildProcessWithoutNullStreams;
+    if (options.remote) {
+      const { runner } = options.remote;
+      worker = (await runner.run("wslpath", ["-w", options.remote.worker], { signal, timeoutMs: 10_000 })).trim();
+      child = runner.spawn(options.remote.node, ["--disable-warning=ExperimentalWarning", worker]);
+    } else {
+      if (process.platform === "linux") {
+        command = WINDOWS_NODE;
+        worker = (await run("wslpath", ["-w", worker], { timeout: 5000 })).stdout.trim();
+      } else if (process.platform !== "win32") throw new WebError("The Playwright browser backend runs only on Windows or WSL.");
+      signal?.throwIfAborted();
+      child = spawn(command, ["--disable-warning=ExperimentalWarning", worker], {
+        stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
+        env: { ...process.env, ...(options.interop ? { WSL_INTEROP: options.interop } : {}) },
+      });
+    }
+    const browser = new WebBrowser(child, options.remote?.runner);
     try {
       const opened = await browser.request<WebOpened>("open", { browser: options.browser ?? "chrome", ...(options.url ? { url: options.url } : {}) }, signal, 60_000);
       if (!Number.isSafeInteger(opened.pid) || opened.pid <= 0) throw new WebError("Browser launch did not report a process id.");
@@ -340,8 +351,10 @@ export class WebBrowser {
   async page(op: "snapshot", args: WebSnapshotOptions, signal?: AbortSignal): Promise<WebPage>;
   async page(op: "act", args: WebAction, signal?: AbortSignal): Promise<WebPage>;
   async page(op: "snapshot" | "act", args: WebSnapshotOptions | WebAction, signal?: AbortSignal): Promise<WebPage> {
-    const wsl = process.platform === "linux";
-    const convert = async (from: string, flag: "-w" | "-u") => (await run("wslpath", [flag, from], { timeout: 5000 })).stdout.trim();
+    // Paths are converted in the WSL beside the browser: this one, or the remote machine's.
+    const wsl = process.platform === "linux" || this.runner !== undefined;
+    const convert = async (from: string, flag: "-w" | "-u") => this.runner ? (await this.runner.run("wslpath", [flag, from], { timeoutMs: 10_000 })).trim()
+      : (await run("wslpath", [flag, from], { timeout: 5000 })).stdout.trim();
     const action = args as WebAction;
     const sent = wsl && action.files
       ? { ...action, files: await Promise.all(action.files.map(file => file.startsWith("/") ? convert(file, "-w") : file)) } : args;

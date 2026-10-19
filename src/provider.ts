@@ -5,7 +5,7 @@ import { connectTextEditorPlugin, TEXT_EDITOR_PROTOCOL, TEXT_EDITOR_API_VERSION 
 import type { ResourceResolver } from "pi-agent-ide/api/resource";
 import { connectAgentDocumentation } from "pi-agent-ide/api/documentation";
 import { readFile } from "node:fs/promises";
-import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError, type SandboxFactory } from "./computer-resources.ts";
+import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError, type SandboxFactory, type MachineFactory } from "./computer-resources.ts";
 import { computerSource } from "./computer-address.ts";
 import type { WebLogEntry } from "./web-browser.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
@@ -198,6 +198,8 @@ export interface ComputerReceipt {
   window: string | null;
   /** The sandbox address an open_sandbox command started. */
   sandbox?: string;
+  /** The machine address a connect command reached. */
+  machine?: string;
   /** The new current observation issued by this call, such as a DOM action's next snapshot. */
   observation: string | null;
   /** Whether the addressed observation or window state can no longer be used for input. */
@@ -243,6 +245,7 @@ export function computerReceipt(source: string, action: string | null, outcome: 
     outcome: d.status === "listed" ? "observed" : d.status, effect: computerEffect(outcome.result), stage: "target", action, source,
     window: typeof d.window_ref === "string" ? computerSource("window", d.window_ref) : null,
     ...(typeof d.sandbox_ref === "string" ? { sandbox: computerSource("sandbox", d.sandbox_ref) } : {}),
+    ...(typeof d.machine_ref === "string" ? { machine: computerSource("machine", d.machine_ref) } : {}),
     observation: next ? computerSource("observation", next) : null,
     input_consumed: outcome.inputConsumed, application_effect: "unverified",
     reason: failed ? computerResultText(outcome.result).split("\n{", 1)[0] : null,
@@ -266,13 +269,13 @@ function nativeBlocks(body: string, result: ComputerResult | undefined, uiOnly: 
 }
 /** Extend ordinary IDE tools; CUA and ComputerSession remain the sole native backend and policy owner. */
 export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
-  closeSession: () => Promise<ComputerResult>, openSandbox?: SandboxFactory): Promise<void> {
+  closeSession: () => Promise<ComputerResult>, openSandbox?: SandboxFactory, connectMachine?: MachineFactory): Promise<void> {
   connectAgentDocumentation(pi, [{ id: "computer", description: "Native computer resources, readonly vision and observation-bound input through ordinary IDE tools",
     markdown: await readFile(new URL("../docs/computer-resources.md", import.meta.url), "utf8"),
     triggers: ["read", "search", "write", "insert"].map(tool => ({ tool, resourcePrefixes: ["computer:"] })) }]);
-  const resources = new ComputerResources(getSession, closeSession, openSandbox);
+  const resources = new ComputerResources(getSession, closeSession, openSandbox, connectMachine);
   // Pi shutdown destroys every sandbox this session opened.
-  pi.on("session_shutdown", () => resources.closeSandboxes());
+  pi.on("session_shutdown", () => resources.closeEnvironments());
   const resolver: ResourceResolver = {
     id: "computer",
     async tryResolve(source) {
@@ -377,7 +380,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           }
         },
       });
-      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation of a browser opened with Insert {\"action\":\"open_browser\"}, Insert one Playwright action such as {\"action\":\"fill\",\"target\":{\"label\":\"Name\"},\"text\":\"value\"}; actions target the active tab, and tab/navigation/dialog actions are listed in docs:computer. Insert {\"action\":\"open_sandbox\"} into computer:session to work in a separate disposable Windows Sandbox that does not touch the human's desktop; use the returned computer:sandbox/... address for Search, open and close (docs:computer). Insert {\"action\":\"wait_for\"|\"verify\",\"conditions\":[...]} into a window address to check UI state; add \"expect\" or \"successor\":true to an action for a postcondition and change list, or Insert {\"action\":\"batch\",\"steps\":[...]} into an observation for a fail-stop chain (docs:computer). Use no Write or native input on a DOM observation. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
+      api.describe("Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation of a browser opened with Insert {\"action\":\"open_browser\"}, Insert one Playwright action such as {\"action\":\"fill\",\"target\":{\"label\":\"Name\"},\"text\":\"value\"}; actions target the active tab, and tab/navigation/dialog actions are listed in docs:computer. Insert {\"action\":\"open_sandbox\"} into computer:session to work in a separate disposable Windows Sandbox that does not touch the human's desktop; use the returned computer:sandbox/... address for Search, open and close (docs:computer). Insert {\"action\":\"connect\",\"machine\":\"<configured name>\"} into computer:session to work on another machine's desktop over SSH; use the returned computer:machine/... address for Search, Read (displays), open, open_browser, open_sandbox and disconnect. Insert {\"action\":\"wait_for\"|\"verify\",\"conditions\":[...]} into a window address to check UI state; add \"expect\" or \"successor\":true to an action for a postcondition and change list, or Insert {\"action\":\"batch\",\"steps\":[...]} into an observation for a fail-stop chain (docs:computer). Use no Write or native input on a DOM observation. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} / {\"action\":\"close\"} to computer:session. Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; refresh with Read. Never replay unknown prefixes. Foreground input requires an observed background refusal; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.");
     } }),
   ]);
 }
