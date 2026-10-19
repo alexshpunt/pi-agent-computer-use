@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { nativeImageCap } from "./cua-image-settings.ts";
+import { DEFAULT_MAX_LONG_EDGE, nativeImageCap } from "./cua-image-settings.ts";
 import { imageGuides, guideOptions, type GuideOptions, type ImageGuides, type GuideAnnotation } from "./image-guides.ts";
 import { clipRect, screenRect, type ScreenRect } from "./highlight-geometry.ts";
 import type { Content } from "./session.ts";
@@ -53,7 +53,7 @@ export function validateUiCapture(options: UiCaptureOptions): void {
     (options.hints !== undefined && typeof options.hints !== "boolean")) throw Error("Capture needs backend default/wgc, granularity image/ui/full, max_elements 1..2000, max_depth 1..50 and boolean hints.");
   if (options.backend === "wgc" && options.granularity === "ui") throw Error("WGC needs an image or full window observation; UI-only never starts pixel capture.");
   if (options.guides !== undefined) guideOptions(options.guides);
-  nativeImageCap({ maxLongEdge: options.maxLongEdge ?? 500, scale: options.scale ?? 1 });
+  nativeImageCap({ maxLongEdge: options.maxLongEdge ?? DEFAULT_MAX_LONG_EDGE, scale: options.scale ?? 1 });
   if (options.granularity === "ui" && (options.maxLongEdge !== undefined || options.scale !== undefined))
     throw Error("UI-only observation has no image size or scale.");
   if (options.granularity === "image" && (options.max_elements !== undefined || options.max_depth !== undefined || options.hints === true))

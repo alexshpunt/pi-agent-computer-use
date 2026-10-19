@@ -6,6 +6,7 @@ import { parseWindowManagement, type WindowManagementCommand } from "./window-ma
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
 import { diffDom, diffUi } from "./successor.ts";
+import { displayMode } from "./display-mode.ts";
 
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -401,6 +402,21 @@ export class ComputerResources {
       if (typeof app !== "string" || !app.trim()) throw new ComputerRequestError("Open needs an installed app identifier or exact name.");
       const result = await (await this.getSession(cwd)).open(app, signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
+    }
+    if (address.kind === "display" && tool === "insert") {
+      const command = commandObject(value);
+      if (command.action !== "resize") throw new ComputerRequestError("A display address accepts only resize. Read it for pixels.");
+      only(command, ["action", "width", "height"]);
+      let mode;
+      try { mode = displayMode(command); }
+      catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+      const session = await this.sessionFor(cwd, { display: address.ref });
+      // Window and display coordinates from before the change no longer hold. Collect them now:
+      // a successful change also retires the display references used to recognize them.
+      const stale = [...this.snapshots].filter(([, entry]) => entry.target.window_ref ? session.hasWindow(entry.target.window_ref) : session.hasDisplay(entry.target.display!)).map(([id]) => id);
+      const result = await session.resizeDisplay(address.ref, mode, signal);
+      if (result.details.status !== "refused") { for (const id of stale) this.snapshots.delete(id); this.forget(session); }
+      return result;
     }
     if (address.kind === "window" && tool === "insert") {
       const command = commandObject(value);

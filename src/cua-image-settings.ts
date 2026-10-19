@@ -3,7 +3,9 @@ import { guideOptions, type GuideOptions } from "./image-guides.ts";
 export interface CuaVisionSettings {
   kernel: "lanczos3" | "bilinear"; maxLongEdge: number; scale: number; version: number; route: "cua_native"; hints?: boolean; guides?: GuideOptions;
 }
-const defaults = (): CuaVisionSettings => ({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0, route: "cua_native" });
+/** Default overview long edge (HD): large enough to read UI text, small enough for model image budgets. */
+export const DEFAULT_MAX_LONG_EDGE = 1280;
+const defaults = (): CuaVisionSettings => ({ kernel: "lanczos3", maxLongEdge: DEFAULT_MAX_LONG_EDGE, scale: 1, version: 0, route: "cua_native" });
 
 /** Validate and freeze the native cap; returned raster sizes are never adjusted by the extension. */
 export function nativeImageCap(settings: Pick<CuaVisionSettings, "maxLongEdge" | "scale">): number {
