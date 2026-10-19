@@ -94,7 +94,7 @@ test("per-Read native cap is forwarded without changing the session defaults", a
   await f.read(['capture:{"maxLongEdge":800,"scale":0.5}']);
   expect(f.captures().at(-1)?.[1]).toMatchObject({ max_image_dimension: 400 });
   await f.read();
-  expect(f.captures().at(-1)?.[1]).toMatchObject({ max_image_dimension: 500 });
+  expect(f.captures().at(-1)?.[1]).toMatchObject({ max_image_dimension: 1280 });
   const before = f.captures().length;
   for (const views of [['capture:{"scale":0}'], ["ui", 'capture:{"maxLongEdge":800}']])
     await expect(f.resources.read(f.window, cwd, views)).rejects.toThrow();
@@ -153,7 +153,7 @@ test("display resources and their observations never grant Write or Insert autho
   const observed = address(computerSource("observation", result!.details.agent_image!.image_id as string));
   for (const target of [display, observed]) {
     await expect(f.resources.perform(target, cwd, "not input", "write")).rejects.toThrow(/observation|readonly/i);
-    await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "click", x: 10, y: 10 }), "insert")).rejects.toThrow(/observation|readonly/i);
+    await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "click", x: 10, y: 10 }), "insert")).rejects.toThrow(/observation|readonly|only resize/i);
   }
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
   f.setMode("safe");

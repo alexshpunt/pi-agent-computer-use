@@ -55,7 +55,7 @@ test("the private hints toggle is same-origin, session-local and does not rewrit
 });
 test("native settings freeze captures, reject unsupported kernels and reset without originals", () => {
   const images = new CuaImageSettings(); const first = images.settings();
-  expect(first).toMatchObject({ kernel: "lanczos3", maxLongEdge: 500, scale: 1, version: 0 });
+  expect(first).toMatchObject({ kernel: "lanczos3", maxLongEdge: 1280, scale: 1, version: 0 });
   expect(images.update({ kernel: "lanczos3", maxLongEdge: 800, scale: 0.625 })).toMatchObject({ version: 1, scale: 0.625 });
   expect(first.scale).toBe(1);
   for (const input of [{ kernel: "mks2021", maxLongEdge: 500, scale: 1 }, { kernel: "lanczos3", maxLongEdge: 500, scale: 0 }, { kernel: "lanczos3", maxLongEdge: 500, scale: 1, mode: "yolo" }])
@@ -93,7 +93,7 @@ test("concurrent native settings stay session-local and preserve a frame's captu
     expect(replies.map(value => value.version).sort()).toEqual([1, 2]);
     const last = replies.find(value => value.version === 2);
     expect(first.settings()).toEqual(last);
-    expect(second.settings()).toMatchObject({ maxLongEdge: 500, scale: 1, version: 0 });
+    expect(second.settings()).toMatchObject({ maxLongEdge: 1280, scale: 1, version: 0 });
     trace.finishAction("capture", [{ type: "image", data: bytes.toString("base64"), mimeType: "image/jpeg" }],
       { status: "observed", agent_image: { configuration: frozen } }, false);
     const state = await (await fetch(new URL("state", a.url))).json();

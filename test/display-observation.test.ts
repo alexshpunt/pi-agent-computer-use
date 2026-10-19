@@ -20,7 +20,7 @@ function fixture() {
 test("YOLO display reading preserves native bytes, dimensions and a read-only Windows source", async () => {
   const f = fixture(); const result = await f.session.observeDisplay("primary");
   expect(result.details.status).toBe("observed"); expect(result.content).toContainEqual(image);
-  expect(f.driver.call).toHaveBeenCalledExactlyOnceWith("get_desktop_state", { max_image_dimension: 500 }, undefined);
+  expect(f.driver.call).toHaveBeenCalledExactlyOnceWith("get_desktop_state", { max_image_dimension: 1280 }, undefined);
   expect(result.details.source).toMatchObject({ kind: "display", domain: "windows-host", identity: { display_id: "primary" },
     image: { dimensions: { width: 499, height: 333 }, original_dimensions: { width: 3840, height: 2560 },
       coordinate_space: "display_image_pixels", origin: { x: 0, y: 0, relative_to: "primary_display" } },

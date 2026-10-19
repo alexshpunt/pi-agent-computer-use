@@ -51,7 +51,7 @@ test("window observations use the shared cap and keep current host geometry sepa
     image: { native_bounds: bounds, dimensions: { width: 500, height: 350 }, original_dimensions: null },
     scale: { native_scale_factor: null, dpi: null, device_pixel_ratio: null } });
   expect(observed.content).toContainEqual({ type: "image", mimeType: "image/png", data: "cG5n" });
-  expect(vi.mocked(f.driver.call).mock.calls.find(([name]) => name === "get_window_state")?.[1]).toMatchObject({ max_image_dimension: 500 });
+  expect(vi.mocked(f.driver.call).mock.calls.find(([name]) => name === "get_window_state")?.[1]).toMatchObject({ max_image_dimension: 1280 });
   bounds = { x: 200, y: 300, width: 1000, height: 700 };
   expect((await f.session.observe(ref)).details.source?.image.native_bounds).toEqual(bounds);
 });

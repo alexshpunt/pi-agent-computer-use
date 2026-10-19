@@ -110,7 +110,7 @@ test("display detail extracts fresh native pixels, reports mapping and never enl
   expect(JSON.stringify(detail)).not.toContain("private-display-id");
   expect(detail.details.agent_image).toMatchObject({ route: "cua_fresh_display_crop", configuration: { maxLongEdge: 1200, scale: 1 }, region: { native: { left: 200, top: 160, width: 200, height: 160 } } });
   expect((await f.session.observeDisplay("primary", undefined, { ...rect, image_id: imageId(overview) })).details.status).toBe("refused");
-  const again = await f.session.observeDisplay("primary"); expect(again.details.agent_image).toMatchObject({ configuration: { maxLongEdge: 500, scale: 1 } });
+  const again = await f.session.observeDisplay("primary"); expect(again.details.agent_image).toMatchObject({ configuration: { maxLongEdge: 1280, scale: 1 } });
 });
 
 test("invalid, missing and retired display regions are rejected before native work", async () => {

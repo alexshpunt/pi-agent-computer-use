@@ -40,7 +40,7 @@ test("native discovery and selected pixels keep monitor identity, negative origi
   expect(listed.details.state!.displays).toHaveLength(2);
   const overview = await f.session.observeDisplay(ref);
   expect(overview.details.status).toBe("observed");
-  expect(f.driver.call).toHaveBeenLastCalledWith("get_display_state", { display_id: left.display_id, topology_id: "native-topology", max_image_dimension: 500 }, undefined);
+  expect(f.driver.call).toHaveBeenLastCalledWith("get_display_state", { display_id: left.display_id, topology_id: "native-topology", max_image_dimension: 1280 }, undefined);
   expect(overview.details.source).toMatchObject({ identity: { display_ref: ref, display_id: left.display_id }, membership: { monitor_id: left.display_id },
     image: { scope: "selected_display", origin: { x: 0, y: 0, relative_to: "display" }, native_bounds: left.bounds, coordinate_space: "display_image_pixels" },
     scale: { native_scale_factor: 1.5, dpi: null }, capabilities: { input: "none" } });
