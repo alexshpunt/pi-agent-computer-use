@@ -35,6 +35,17 @@ const pages = {
 <p role="status" id="out">idle</p>
 <ul id="items"><li>alpha</li><li>beta</li></ul>
 <script>function out(text) { document.querySelector('#out').textContent = text; }</script>`),
+  "/wait": page("Wait", `<h1>Wait</h1>
+<label>Name <input id="name" aria-label="Name"></label>
+<button onclick="const name = document.querySelector('#name').value; out('saving'); setTimeout(() => { out('saved ' + name); log('saved', { name }) }, 800)">Save</button>
+<button id="later" disabled>Continue</button>
+<button onclick="setTimeout(() => document.querySelector('#later').disabled = false, 600)">Unlock later</button>
+<button onclick="setTimeout(() => document.querySelector('#banner')?.remove(), 600)">Dismiss banner</button>
+<p id="banner" role="alert">Welcome banner</p>
+<button onclick="let n = 0; const t = setInterval(() => { out('tick ' + (++n)); if (n === 20) clearInterval(t) }, 150)">Flicker</button>
+<p role="status" id="out">idle</p>
+<script>function out(text) { document.querySelector('#out').textContent = text; }</script>`),
+  "/long": page("Long list", `<h1>Long list</h1><ol>${Array.from({ length: 1500 }, (_, i) => `<li>Item ${i + 1}</li>`).join("")}</ol><p role="status">end of list</p>`),
   "/files": page("Files", `<h1>Files</h1>
 <label>Attachment <input type="file" id="direct" multiple></label>
 <input type="file" id="hidden" hidden>
