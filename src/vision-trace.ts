@@ -51,7 +51,7 @@ function metadata(value: unknown): unknown {
   try {
     const json = JSON.stringify(value, function (key, item) {
       // A source's image field is geometry, not an image payload.
-      if (key === "image" && ["windows-host", "linux-host", "macos-host", "windows-sandbox"].includes(this.domain) && ["display", "window"].includes(this.kind)) return item;
+      if (key === "image" && ["windows-host", "linux-host", "macos-host", "windows-sandbox", "windows-remote"].includes(this.domain) && ["display", "window"].includes(this.kind)) return item;
       return ["image", "png", "data", "authorization", "apiKey", "access_token", "refresh_token", "password"].includes(key) ? undefined : item;
     });
     if (json === undefined) return undefined;
