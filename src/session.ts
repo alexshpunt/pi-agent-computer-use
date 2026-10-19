@@ -129,12 +129,26 @@ interface Observation { texts?: Map<string, string>; id: string; backend?: "wgc"
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
+/** A discovery query: `regex:<pattern>` is a case-insensitive regular expression, anything else a case-insensitive substring. */
+export function textMatcher(query?: string): (text: string) => boolean {
+  if (!query) return () => true;
+  if (query.startsWith("regex:")) {
+    let pattern: RegExp;
+    try { pattern = new RegExp(query.slice(6), "i"); }
+    catch (error) { throw new Error(`Invalid regular expression: ${error instanceof Error ? error.message : error}`); }
+    return text => pattern.test(text);
+  }
+  const needle = query.toLowerCase();
+  return text => text.toLowerCase().includes(needle);
+}
 interface DisplayEntry { ref: string; topology: string; native: NativeDisplay; detail?: DetailContext }
 /** Aria snapshots above this many characters are cut. Read pages stored snapshots with offset/limit. */
 const WEB_SNAPSHOT_LIMIT = 400_000;
 /** Longest native element text retained for element:text reads; the walk shows 1024 characters per element. */
 const ELEMENT_TEXT_LIMIT = 200_000;
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
+/** File name of a Win32 launch path without directory and extension; packaged shell:appsFolder paths have none. */
+const executableName = (path: string) => /^shell:/i.test(path) ? "" : appName(path.split(/[\\/]/).pop() ?? "");
 
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
 export class ComputerSession {
@@ -313,11 +327,12 @@ export class ComputerSession {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before discovery.");
       try {
+        const matches = textMatcher(query);
         const windows = [];
         const owned = [...this.entries.values()].filter(entry => entry.owned);
         const nativeWindows = this.getMode() === "safe" && !owned.length ? [] : await this.list(signal);
         for (const native of nativeWindows) {
-          if (query && !`${native.app_name} ${native.title}`.toLowerCase().includes(query.toLowerCase())) continue;
+          if (!matches(`${native.app_name} ${native.title}`)) continue;
           const known = owned.find(entry => entry.target.pid === native.pid && entry.target.window_id === native.window_id);
           const entry = this.getMode() === "safe"
             ? known && await this.current(known.ref, signal)
@@ -339,7 +354,8 @@ export class ComputerSession {
       try {
         const state = await this.state("list_apps", {}, signal);
         if (!Array.isArray(state.apps)) throw new Error("Driver returned no app list.");
-        const apps = (state.apps as App[]).filter(app => (app.launch_path || app.bundle_id) && (!query || app.name.toLowerCase().includes(query.toLowerCase())))
+        const matches = textMatcher(query);
+        const apps = (state.apps as App[]).filter(app => (app.launch_path || app.bundle_id) && matches(app.name))
           .map(app => ({ ...app, app_id: app.launch_path ?? app.bundle_id }));
         return this.result("listed", "Installed native apps. Open by exact name or app_id when window lifetime is supported.", { platform: this.platform, apps });
       } catch (error) { return this.failed(error, false); }
@@ -392,12 +408,17 @@ export class ComputerSession {
       try {
         const state = await this.state("list_apps", {}, signal);
         if (!Array.isArray(state.apps)) throw new Error("Driver returned no app list.");
-        const matches = (state.apps as App[]).filter(item => item.launch_path &&
-          (appName(item.name) === appName(app) || item.launch_path === app || item.bundle_id === app));
+        const apps = (state.apps as App[]).filter(item => item.launch_path);
+        const exact = apps.filter(item => appName(item.name) === appName(app) || item.launch_path === app || item.bundle_id === app);
+        // An executable name such as "notepad" is used only when no installed name or app_id matches.
+        const matches = exact.length ? exact : apps.filter(item => executableName(item.launch_path!) === appName(app));
         const paths = [...new Map(matches.map(item => [item.launch_path, item])).values()];
-        if (paths.length !== 1) return this.result("refused", paths.length
-          ? "Ambiguous app name. Use computer_apps and an exact app_id."
-          : "Installed app not found. Use computer_apps to find its exact name or app_id.");
+        if (paths.length !== 1) {
+          if (paths.length) return this.result("refused", `Ambiguous app name: ${paths.slice(0, 5).map(item => item.name).join(", ")}. Open one by its exact app_id.`);
+          const wanted = appName(app);
+          const close = [...new Set(apps.map(item => item.name).filter(name => { const have = appName(name); return have.length > 2 && (wanted.includes(have) || have.includes(wanted)); }))];
+          return this.result("refused", `Installed app not found.${close.length ? ` Did you mean: ${close.slice(0, 5).join(", ")}?` : ""} Search computer:apps for exact names.`);
+        }
         const selected = paths[0];
         const before = new Set<string>();
         for (const native of await this.list(signal)) before.add(`${native.pid}:${native.window_id}`);
@@ -621,7 +642,7 @@ export class ComputerSession {
       state.screenshot_original_width === d.bounds.width && state.screenshot_original_height === d.bounds.height;
   }
   /** Read primary or a discovered native display in YOLO. Display pixels never ground input. */
-  observeDisplay(display: string, signal?: AbortSignal, zoom?: DetailRequest): Promise<ComputerResult> {
+  observeDisplay(display: string, signal?: AbortSignal, zoom?: DetailRequest, size?: { maxLongEdge?: number; scale?: number }): Promise<ComputerResult> {
     return this.queue(async () => {
       const denied = () => {
         this.displayOverview = undefined; this.displayEntries.clear();
@@ -635,7 +656,7 @@ export class ComputerSession {
       const retire = () => { if (entry) entry.detail = undefined; else this.displayOverview = undefined; };
       retire();
       try {
-        const settings = { ...this.overviewSettings() }; const cap = nativeImageCap(settings);
+        const settings = { ...this.overviewSettings(), ...size }; const cap = nativeImageCap(settings);
         const native = await this.readDisplay(entry, cap, signal);
         if (this.getMode() !== "yolo") return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display capture; pixels withheld.");
