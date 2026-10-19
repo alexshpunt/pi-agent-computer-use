@@ -301,7 +301,9 @@ export class WebBrowser {
         const request = this.pending.get(response.id!);
         if (!request) continue;
         this.pending.delete(response.id!);
-        if (response.error) request.reject(new WebError(String(response.error.message ?? "Browser operation failed."), response.error.name === "TimeoutError"));
+        // Playwright appends a colored call log; keep the plain first part for agents.
+        const message = String(response.error?.message ?? "Browser operation failed.").replace(/\x1b\[[0-9;]*m/g, "").split("\nCall log:")[0].trim();
+        if (response.error) request.reject(new WebError(message, response.error.name === "TimeoutError"));
         else request.resolve(response.value);
       }
     });

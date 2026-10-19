@@ -53,7 +53,18 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     if (configuration.maxLongEdge !== undefined) lines.push(`Capture: maxLongEdge=${configuration.maxLongEdge}, scale=${configuration.scale}`);
   }
   if (d.source) lines.push(`Source: ${d.source.captured_at}; input=${d.source.capabilities.input}; paint freshness=${d.source.visibility.paint_freshness}`);
-  if (d.dom) {
+  if (d.verification) {
+    const v = d.verification;
+    lines.push(computerResultText(result).split("\n{", 1)[0]);
+    if (d.dom) lines.push(`Page: ${label(d.dom.title)} | ${label(d.dom.url)} | tab ${d.dom.active ?? "none"}`);
+    v.conditions.forEach((condition, i) => {
+      const spec = v.spec.conditions[i];
+      const check = spec.is ? `is ${spec.is}` : spec.value !== undefined ? `value = ${JSON.stringify(spec.value)}` : spec.contains !== undefined ? `contains ${JSON.stringify(spec.contains)}`
+        : spec.title !== undefined ? `title = ${JSON.stringify(spec.title)}` : `url contains ${JSON.stringify(spec.url_contains)}`;
+      lines.push(`Condition ${i + 1}: ${spec.target ? JSON.stringify(spec.target) + " " : ""}${check} → ${condition.verdict}${condition.observed != null ? ` (observed ${JSON.stringify(label(condition.observed))})` : ""}${condition.reason ? `; ${label(condition.reason)}` : ""}`);
+    });
+    if (d.ui) lines.push(`UI: collected=${d.ui.collected}, complete=${d.ui.complete}, truncated=${d.ui.truncated}. Read or Search the observation for elements and hints.`);
+  } else if (d.dom) {
     if (d.status !== "observed") {
       const message = computerResultText(result).split("\n{", 1)[0];
       if (message) lines.push(message);
@@ -113,7 +124,8 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
       `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
-  lines.push(d.dom ? "Insert one JSON action into this observation, e.g. {\"action\":\"click\",\"target\":{\"ref\":\"e2\"}}. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
+  lines.push(d.verification ? (d.verification.verdict === "satisfied" ? "Conditions held; this observation is current for input." : "Not verified: neither proof of success nor of failure beyond the listed verdicts. Never replay uncertain input blindly.")
+    : d.dom ? "Insert one JSON action into this observation, e.g. {\"action\":\"click\",\"target\":{\"ref\":\"e2\"}}. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
     : d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
     : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
@@ -138,6 +150,68 @@ export function computerEffect(result: ComputerResult): "applied" | "not-applied
   return result.details.status === "refused" && !(typeof sequence.completed === "number" && sequence.completed > 0) ? "not-applied" : "unknown";
 }
 
+/**
+ * The value a Codemode script receives from a computer Write or Insert. Every outcome resolves with this
+ * shape, so scripts branch on `outcome` instead of catching errors. Delivery never verifies application state.
+ */
+export interface ComputerReceipt {
+  /** `refused` sent nothing; `unknown` may have reached the target, so never replay it blindly. */
+  outcome: "delivered" | "refused" | "unknown" | "observed" | "closed";
+  /** Input effect: `not-applied` only when nothing was delivered, including no earlier sequence step. */
+  effect: "applied" | "not-applied" | "unknown";
+  /** `validation`: rejected before reaching the target; `target`: the session, browser or native driver answered. */
+  stage: "validation" | "target";
+  action: string | null;
+  source: string;
+  window: string | null;
+  /** The new current observation issued by this call, such as a DOM action's next snapshot. */
+  observation: string | null;
+  /** Whether the addressed observation or window state can no longer be used for input. */
+  input_consumed: boolean;
+  application_effect: "unverified";
+  reason: string | null;
+  code: string | null;
+  /** Page state after a browser action. */
+  page?: { url: string; title: string; tab: string | null; dialog: string | null };
+  evaluation?: { value?: string; error?: string; truncated?: boolean };
+  /** Verdict of a wait_for/verify command, with one entry per requested condition. */
+  verification?: { verdict: "satisfied" | "unsatisfied" | "unknown"; timed_out: boolean; samples: number; elapsed_ms: number; reason?: string;
+    conditions: { index: number; verdict: "satisfied" | "unsatisfied" | "unknown"; observed?: string | null; reason?: string }[] };
+  /** Per-step results of a sequence. */
+  steps?: { index: number; action: unknown; status: unknown }[];
+  /** The same receipt the model sees. */
+  text: string;
+}
+/** Build the script receipt for one Write/Insert result, or for a request rejected before dispatch. */
+export function computerReceipt(source: string, action: string | null, outcome: { result: ComputerResult; inputConsumed: boolean; text: string }
+  | { error: unknown; inputConsumed: boolean }): ComputerReceipt {
+  if ("error" in outcome) {
+    const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+    const validation = outcome.error instanceof ComputerRequestError;
+    return { outcome: validation ? "refused" : "unknown", effect: validation ? "not-applied" : "unknown", stage: validation ? "validation" : "target",
+      action, source, window: null, observation: null, input_consumed: outcome.inputConsumed, application_effect: "unverified",
+      reason: message, code: validation ? "COMPUTER_INVALID_REQUEST" : "COMPUTER_UNKNOWN", text: message };
+  }
+  const d = outcome.result.details, state = d.state ?? {};
+  const id = d.observation_id ?? d.agent_image?.image_id;
+  const issued = typeof id === "string" && (d.status === "observed" || d.status === "delivered" && d.dom !== undefined);
+  const sequence = record(state.sequence);
+  const failed = d.status === "refused" || d.status === "unknown";
+  return {
+    outcome: d.status === "listed" ? "observed" : d.status, effect: computerEffect(outcome.result), stage: "target", action, source,
+    window: typeof d.window_ref === "string" ? computerSource("window", d.window_ref) : null,
+    observation: issued ? computerSource("observation", id) : null,
+    input_consumed: outcome.inputConsumed, application_effect: "unverified",
+    reason: failed ? computerResultText(outcome.result).split("\n{", 1)[0] : null,
+    code: typeof state.code === "string" ? state.code : null,
+    ...(d.dom ? { page: { url: d.dom.url, title: d.dom.title, tab: d.dom.active ?? null, dialog: d.dom.dialog?.type ?? null } } : {}),
+    ...(d.dom?.evaluation ? { evaluation: d.dom.evaluation } : {}),
+    ...(d.verification ? { verification: { verdict: d.verification.verdict, timed_out: d.verification.timed_out, samples: d.verification.samples,
+      elapsed_ms: d.verification.elapsed_ms, ...(d.verification.reason ? { reason: d.verification.reason } : {}), conditions: d.verification.conditions } } : {}),
+    ...(Array.isArray(sequence.steps) ? { steps: (sequence.steps as Record<string, unknown>[]).map(step => ({ index: step.index as number, action: step.action, status: step.status })) } : {}),
+    text: outcome.text,
+  };
+}
 function nativeBlocks(body: string, result: ComputerResult | undefined, uiOnly: boolean): Content[] {
   return [{ type: "text", text: body }, ...(uiOnly || !result ? [] : result.details.selected_frames
     ? result.content.slice(1) : result.content.filter(block => block.type === "image"))];
@@ -156,7 +230,11 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
       try {
         const address = requireComputerAddress(source);
         return { kind: "resolved", resource: { source, skipPostEdit: true,
-          read: async () => [{ type: "text", text: resources.descriptor(address) }] } };
+          // An expired reference still resolves, so Write/Insert reach the handler and return a refused receipt.
+          read: async () => {
+            try { return [{ type: "text", text: resources.descriptor(address) }]; }
+            catch (error) { if (error instanceof ComputerRequestError) return [{ type: "text", text: `# Computer resource\nSource: ${source}\n${error.message}` }]; throw error; }
+          } } };
       } catch (error) { return { kind: "failed", error }; }
     },
   };
@@ -215,24 +293,31 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         matches: input => owns(record(input).path),
         async execute(context, input) {
           const value = record(input), source = context.sourceFor("path");
+          const literal = value[tool === "write" ? "content" : "text"];
+          let action: string | null = tool === "write" ? "type_text" : null;
+          if (tool === "insert" && typeof literal === "string") try { const parsed = JSON.parse(literal); if (typeof parsed?.action === "string") action = parsed.action; } catch { /* reported by perform */ }
+          let address: ReturnType<typeof requireComputerAddress> | undefined;
           try {
             const fields = tool === "write" ? ["path", "content"] : ["path", "text"];
             if (Object.keys(value).some(key => !fields.includes(key))) throw new ComputerRequestError("Computer input accepts no text anchors, ranges or insertion flags; its observation address binds the target.");
-            const literal = value[tool === "write" ? "content" : "text"];
             if (typeof literal !== "string") throw new ComputerRequestError("Provide literal content for Write or one JSON command in Insert text.");
-            const result = await resources.perform(requireComputerAddress(source), context.cwd, literal, tool, context.signal);
+            address = requireComputerAddress(source);
+            const result = await resources.perform(address, context.cwd, literal, tool, context.signal);
             const effect = computerEffect(result);
             // Completion of the native request is separate from application-effect certainty.
             const ok = !result.isError && ["delivered", "observed", "closed"].includes(result.details.status);
-            return { source, summary: presentComputerResult(resources, result), data: { kind: "computer-action", ok,
+            const summary = presentComputerResult(resources, result);
+            return { source, summary, data: { kind: "computer-action", ok,
               effect, ...result.details,
               receipt: computerResultText(result),
               ...(!ok ? { error: { code: typeof result.details.state?.code === "string" ? result.details.state.code : `COMPUTER_${effect.toUpperCase().replace("-", "_")}`,
-                message: computerResultText(result) } } : {}) } };
+                message: computerResultText(result) } } : {}) },
+              script: { ...computerReceipt(source, action, { result, inputConsumed: !resources.grantsAuthority(address), text: summary }) } };
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             return { source, summary: message, data: { kind: "computer-action", ok: false,
-              effect: error instanceof ComputerRequestError ? "not-applied" : "unknown", error: { message } } };
+              effect: error instanceof ComputerRequestError ? "not-applied" : "unknown", error: { message } },
+              script: { ...computerReceipt(source, action, { error, inputConsumed: address ? !resources.grantsAuthority(address) : false }) } };
           }
         },
       });

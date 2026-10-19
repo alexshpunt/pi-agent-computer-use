@@ -16,6 +16,7 @@ import { actionCapability, type ActionCapability } from "./action-capability.ts"
 import { nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
+import { combine, evaluateNative, validateWait, type ConditionResult, type WaitResult, type WaitSpec } from "./ui-conditions.ts";
 import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
 
 /** Native Windows address. Models use session window references instead. */
@@ -102,6 +103,8 @@ export interface ComputerResult {
     captured?: { image: boolean; ui: boolean };
     sequence?: ReturnType<typeof sequenceMetadata>;
     selected_frames?: Omit<SequenceFrame, "image">[];
+    /** Outcome of a bounded wait_for/verify; the conditions as requested, in order. */
+    verification?: WaitResult & { spec: WaitSpec };
   };
   isError?: boolean;
 }
@@ -692,7 +695,7 @@ export class ComputerSession {
           output: { width: state.width, height: state.height, bytes: bytes.length, mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") }, input: "none" } }, images);
     } catch { return this.result("refused", "Window detail failed; pixels and diagnostics withheld. Observe again."); }
   }
-  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}): Promise<ComputerResult> {
+  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}, quiet = false): Promise<ComputerResult> {
     validateUiCapture(options);
     entry.dom = undefined; entry.windowState = undefined;
     const granularity = options.granularity ?? "full";
@@ -765,7 +768,8 @@ export class ComputerSession {
     const source = this.source("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
     if (!hasUi) source.semantic_scope = "none";
     if (!hasImage || wgc) source.capabilities.detail = "unsupported";
-    const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
+    // Repeated verification samples do not flash the human frame on every walk.
+    const highlight = quiet ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
     if (!this.allowed(entry)) { entry.observation = undefined; entry.detail = undefined; return this.denied(entry.ref); }
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during window frame; captured data withheld."); }
     const observed = entry.observation!;
@@ -894,6 +898,73 @@ export class ComputerSession {
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
       } catch (error) { return this.webFailure(entry, error, true); }
     });
+  }
+
+  /** Validate a wait_for/verify command for this window: owned browsers take Playwright targets and page checks. */
+  waitSpec(ref: string, command: Record<string, unknown>): WaitSpec {
+    return validateWait(command, this.entries.get(ref)?.web !== undefined);
+  }
+
+  /**
+   * Sample conditions until all hold for `stable` consecutive samples, or until `timeout_ms` passes.
+   * Native windows take a fresh bounded UI walk per sample; owned browsers ask Playwright. Nothing is
+   * dispatched. The last sample becomes the window's current observation with fresh input authority.
+   */
+  waitFor(ref: string, spec: WaitSpec, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const started = performance.now();
+      let entry: WindowEntry | undefined;
+      try { entry = await this.current(ref, signal); }
+      catch (error) { return this.result("refused", `Window lifetime check failed: ${error instanceof Error ? error.message : String(error)}`); }
+      if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window. Discover again.");
+      if (!this.allowed(entry)) return this.denied(entry.ref);
+      let samples = 0, stable = 0, results: ConditionResult[] = [], last: ComputerResult | undefined;
+      entry.dom = undefined; entry.windowState = undefined;
+      const finish = (verdict: WaitResult["verdict"], timedOut: boolean, final: ComputerResult | undefined, why?: string): ComputerResult => {
+        const verification = { verdict, conditions: results, samples, elapsed_ms: Math.round(performance.now() - started), timed_out: timedOut,
+          ...(why ? { reason: why } : {}), spec };
+        const message = `Verification ${verdict} after ${samples} sample(s) in ${verification.elapsed_ms} ms${timedOut ? " (timed out)" : ""}.${why ? ` ${why}` : ""}`;
+        const d = final?.details;
+        return this.result("observed", message, undefined, { ...this.addressed(entry!), verification,
+          ...(d?.observation_id ? { observation_id: d.observation_id } : {}), ...(d?.ui ? { ui: d.ui } : {}), ...(d?.dom ? { dom: d.dom } : {}) });
+      };
+      while (true) {
+        if (signal?.aborted) return finish("unknown", false, last, "Cancelled; the last sample does not decide the conditions.");
+        if (!this.allowed(entry)) return this.denied(entry.ref);
+        if (entry.web) {
+          try { results = await entry.web.request<ConditionResult[]>("check", { conditions: spec.conditions }, signal); }
+          catch (error) { results = []; return finish("unknown", false, undefined, `Playwright could not sample the page: ${error instanceof Error ? error.message : String(error)}`); }
+        } else {
+          const sample = await this.capture(entry, signal, undefined, { granularity: "ui" }, true);
+          if (sample.details.status !== "observed" || !sample.details.ui) {
+            results = spec.conditions.map((_, index) => ({ index, verdict: "unknown" as const, reason: "No current UI sample." }));
+            const why = sample.content.filter(block => block.type === "text").map(block => block.text).join("\n").split("\n{", 1)[0];
+            return finish("unknown", false, undefined, why);
+          }
+          last = sample;
+          results = evaluateNative(sample.details.ui, spec.conditions);
+        }
+        samples++;
+        const verdict = combine(results);
+        stable = verdict === "satisfied" ? stable + 1 : 0;
+        if (stable >= spec.stable) break;
+        if (performance.now() - started + spec.interval_ms > spec.timeout_ms) {
+          if (entry.web) last = await this.webFinal(entry, signal);
+          return finish(verdict, spec.timeout_ms > 0, last);
+        }
+        try { await delay(spec.interval_ms, undefined, { signal }); } catch { /* checked at the top of the loop */ }
+      }
+      if (entry.web) last = await this.webFinal(entry, signal);
+      return finish("satisfied", false, last);
+    });
+  }
+
+  /** A fresh DOM observation after browser verification, so later actions use current refs. */
+  private async webFinal(entry: WindowEntry, signal?: AbortSignal): Promise<ComputerResult | undefined> {
+    try {
+      const observed = this.webObservation(entry, await entry.web!.page("snapshot", {}, signal));
+      return this.result("observed", "", undefined, { observation_id: observed.id, dom: observed.page });
+    } catch { return undefined; }
   }
 
   /** Acquire fresh one-use native state without pixels, a UI walk or ordinary-input authority. */

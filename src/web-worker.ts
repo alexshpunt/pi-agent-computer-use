@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
+import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 
 interface Tab { id: string; page: Page; title: string; load: WebTab["load"]; opener?: string; dialog?: Dialog; onDialog: Set<() => void> }
 interface DownloadRecord { info: WebDownload; download: Download; done: Promise<void> }
@@ -299,6 +300,49 @@ async function act(action: WebAction) {
   return snapshot({});
 }
 
+/** Sample conditions once in the active tab. Reads only: no input, no waiting for actionability. */
+async function check({ conditions }: { conditions: UiCondition[] }): Promise<ConditionResult[]> {
+  const tab = current();
+  if (tab.dialog) return conditions.map((_, index) => ({ index, verdict: "unknown" as const, reason: `A ${tab.dialog!.type()} dialog is open in ${tab.id}.` }));
+  const page = tab.page;
+  return Promise.all(conditions.map(async (condition, index): Promise<ConditionResult> => {
+    try {
+      if (!condition.target) {
+        const observed = condition.title !== undefined ? await page.title() : page.url();
+        const ok = condition.title !== undefined ? observed === condition.title : observed.includes(condition.url_contains!);
+        return { index, verdict: ok ? "satisfied" : "unsatisfied", observed };
+      }
+      const locator = locate(page, condition.target as WebTarget);
+      const count = await locator.count();
+      if (condition.is === "absent") return { index, verdict: count === 0 ? "satisfied" : "unsatisfied", observed: `${count} match(es)` };
+      if (condition.is === "hidden" && count === 0) return { index, verdict: "satisfied", observed: "no match" };
+      if (count === 0) return { index, verdict: "unsatisfied", observed: "no match" };
+      if (count > 1) return { index, verdict: "unknown", reason: `${count} elements match; narrow the target.` };
+      const flag = async (read: () => Promise<boolean>, want: boolean): Promise<ConditionResult> => {
+        const value = await read();
+        return { index, verdict: value === want ? "satisfied" : "unsatisfied", observed: String(value) };
+      };
+      switch (condition.is) {
+        case "exists": return { index, verdict: "satisfied", observed: "1 match" };
+        case "visible": return flag(() => locator.isVisible(), true);
+        case "hidden": return flag(() => locator.isVisible(), false);
+        case "enabled": return flag(() => locator.isEnabled({ timeout: 1000 }), true);
+        case "disabled": return flag(() => locator.isEnabled({ timeout: 1000 }), false);
+        case "checked": return flag(() => locator.isChecked({ timeout: 1000 }), true);
+        case "unchecked": return flag(() => locator.isChecked({ timeout: 1000 }), false);
+        case "selected": return flag(() => locator.evaluate(el => (el as HTMLOptionElement).selected === true || el.getAttribute("aria-selected") === "true"), true);
+        case "focused": return flag(() => locator.evaluate(el => el === el.ownerDocument.activeElement), true);
+      }
+      // Form fields compare their value; other elements their visible text.
+      const observed = await locator.evaluate(el => "value" in el && typeof (el as HTMLInputElement).value === "string" && el.tagName !== "BUTTON"
+        ? (el as HTMLInputElement).value : (el as HTMLElement).innerText ?? el.textContent ?? "");
+      const ok = condition.value !== undefined ? observed.trim() === condition.value : observed.includes(condition.contains!);
+      return { index, verdict: ok ? "satisfied" : "unsatisfied", observed: short(observed, 500) };
+    } catch (error) {
+      return { index, verdict: "unknown", reason: short(error instanceof Error ? error.message.split("\n")[0] : String(error), 300) };
+    }
+  }));
+}
 async function screenshot({ target, highlight }: { target?: WebTarget; highlight?: boolean }) {
   const tab = current(), page = idle(tab);
   let box;
@@ -322,7 +366,7 @@ async function close() {
   return {};
 }
 
-const operations: Record<string, (args: never) => Promise<unknown>> = { open, snapshot, act, screenshot, close };
+const operations: Record<string, (args: never) => Promise<unknown>> = { open, snapshot, act, check, screenshot, close };
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 input.on("line", line => {
   void (async () => {
