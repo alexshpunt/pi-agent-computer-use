@@ -24,8 +24,15 @@ function keys(value: Record<string, unknown>, allowed: readonly string[]): void 
 
 /** Validate owned views before capturing; text offsets are never image coordinates.
  * `ocr` adds Windows text recognition to a window overview, an observation or a region detail.
- * `changes` reads a window's UI and lists only what changed since its previous observation. */
-export function parseComputerViews(views: readonly string[] = []): ComputerViews & { ocr?: true; changes?: true } {
+ * `changes` reads a window's UI and lists only what changed since its previous observation.
+ * `regions` adds icons and text areas found by Cua perception to a window overview or its current observation. */
+export function parseComputerViews(views: readonly string[] = []): ComputerViews & { ocr?: true; changes?: true; regions?: true } {
+  if (views.includes("regions")) {
+    const rest = parseComputerViews(views.filter(view => view !== "regions"));
+    if (rest.ocr || rest.changes || rest.kind !== "overview" || rest.capture.granularity === "ui")
+      throw Error("Use regions alone or with image/full capture options; it finds icons and text in pixels.");
+    return { ...rest, regions: true };
+  }
   if (views.includes("changes")) {
     const view = parseView(views.filter(view => view !== "changes"));
     if (view.kind !== "overview" || (view.capture.granularity ?? "ui") !== "ui")

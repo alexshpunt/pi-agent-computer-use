@@ -329,11 +329,18 @@ export class ComputerResources {
     if (view.changes && address.kind !== "window") throw new ComputerRequestError("changes reads a window address: it takes a fresh UI walk and compares it with the window's previous observation.");
     const baseline = view.changes && windowRef !== undefined ? this.lastUi.get(windowRef) : undefined;
     const target = windowRef === undefined ? undefined : session.windowTarget(windowRef);
+    if (view.regions && windowRef === undefined) throw new ComputerRequestError("regions reads a window or one of its observations.");
     // A region of a stored observation is read from its own pixels: exact boxes, no native call, input authority kept.
     const result = view.ocr && view.kind === "region" && snapshot && windowRef !== undefined
       ? await this.recognize(session, snapshot.result, windowRef, view.region, signal)
+      // An observation keeps its own capture: regions parses it without another native read.
+      : view.regions && snapshot ? snapshot.result
       : await this.readNative(address, cwd, views, view, signal);
     if (!result) return result;
+    if (view.regions && result.details.status === "observed") {
+      try { return { ...result, details: { ...result.details, visual_regions: await session.visualRegions(windowRef!, result.details.observation_id!, signal) } }; }
+      catch (error) { throw new ComputerRequestError(`Visual region detection failed: ${error instanceof Error ? error.message : error}`); }
+    }
     if (view.changes && result.details.status === "observed" && result.details.ui) {
       const changes = baseline ? { since: baseline.observation_id, diff: diffUi(baseline.ui, result.details.ui) }
         : { reason: "No earlier UI observation of this window in this session, so this is the full UI." };
