@@ -49,6 +49,27 @@ ZinPC (Windows 11 25H2, 4K console), model `openai-codex/gpt-5.6-luna`, thinking
 
 7 of 10 passed again, but the set changed: the two tasks the fixes targeted now pass, and three others timed out. With one attempt per task the numbers are noisy. Use `--task` to repeat one task, and compare runs over several attempts before drawing a conclusion. All five timeouts across both runs ended the same way: the agent's turn stopped and Pi waited without continuing until the 20-minute limit. The step that went wrong differed from run to run.
 
+### Model comparison on runtime 9921ae54
+
+Same tasks and runtime, thinking high, one attempt each.
+
+| Task | gpt-5.6-luna | gpt-6.1-sol: time / calls / tokens | claude-opus-5-5: time / calls / tokens |
+| --- | --- | --- | --- |
+| cmd-write | yes | yes, 103 s / 17 / 0.48 M | yes, 111 s / 13 / 0.57 M |
+| explorer-folders | yes | yes, 278 s / 61 / 2.62 M | yes, 220 s / 32 / 1.99 M |
+| explorer-copy | yes | yes, 206 s / 43 / 1.54 M | yes, 200 s / 38 / 2.75 M |
+| explorer-largest | yes | yes, 165 s / 31 / 1.00 M | yes, 149 s / 25 / 1.43 M |
+| count-files | yes | yes, 97 s / 12 / 0.31 M | yes, 85 s / 11 / 0.46 M |
+| powershell-hash | yes | yes, 127 s / 14 / 0.38 M | yes, 132 s / 15 / 0.69 M |
+| regedit-read | no | yes, 123 s / 19 / 0.55 M | yes, 109 s / 15 / 0.71 M |
+| regedit-export | no | yes, 314 s / 69 / 3.12 M | yes, 475 s / 69 / 4.99 M |
+| edge-form | no | yes, 125 s / 18 / 0.59 M | yes, 125 s / 21 / 1.13 M |
+| edge-table | yes | yes, 129 s / 14 / 0.41 M | yes, 146 s / 22 / 1.25 M |
+
+`openai-codex/gpt-6.1-sol` and `anthropic/claude-opus-5-5` each passed 10 of 10; Luna passed 7. Median per task: Sol 128 s and 0.57 M tokens, Opus 140 s and 1.13 M tokens. Neither hit the timeout, so the Luna timeouts point to the model, not to computer use. regedit-export (create a key and value, then export through a dialog) is the longest task for every model.
+
+Claude models run through the installed `pi-claude-subscription-connector`. The runner loads it for `anthropic/*` models, because trials run without the user's Pi packages and Anthropic would otherwise bill extra usage.
+
 ## What the benchmark found
 
 The first trials found product bugs. They were fixed before or between the runs above:
