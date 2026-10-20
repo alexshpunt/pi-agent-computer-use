@@ -51,6 +51,20 @@ A fresh production reload using the permanent path passed metadata discovery and
 
 We have no implemented and qualified solution for independent simultaneous control in our current stack. Windows architecture is not proven incapable. Future options include documented [UIA AutoSetFocus](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomation2-put_autosetfocus), which defaults to automatic focus for many actions; [one connected child session](https://learn.microsoft.com/en-us/windows/win32/termserv/child-sessions), already used by [Power Automate Picture-in-Picture](https://learn.microsoft.com/en-us/power-automate/desktop-flows/run-desktop-flows-pip); [Windows Server RDS](https://learn.microsoft.com/en-us/windows-server/remote/remote-desktop-services/overview), [licensed Enterprise multi-session](https://learn.microsoft.com/en-us/azure/virtual-desktop/windows-multisession-faq), or separate Windows VMs. These are source-backed research directions, not local passes or adopted providers. No further native repair, Windows feature, session or guest setup was performed.
 
+## Desktop-aware guard: e6d26cb6 (LPT-626, M9)
+
+The two earlier candidates failed in opposite ways: with the pointer guard the sentinel kept focus but an other-desktop target moved to the current desktop; without it the target took the foreground. Source `e6d26cb6d20ae7abd2cdcb58e847eb5edffc2c38` arms the WS_EX_NOACTIVATE guard only for a target already on the current desktop and keeps only the provider focus shield otherwise. Build [39500808704](<https://github.com/alexshpunt/cua/actions/runs/39500808704>) passed; driver SHA256 `59c7f48e3c86ed330eab20d9dce23a45c83479a062003aa7305875206e30644d` matches the build's hashes.json.
+
+`test/live/semantic-focus.live.ts` runs in a disposable Windows Sandbox on ZinPC, so the human's desktops are never touched. A sentinel console holds the foreground, a minimized sampler reads the foreground window every 20 ms and names every other title that took it, and the second virtual desktop is created inside the guest.
+
+| Target and desktop | Invoke | Select | Set value | Foreground | Desktop |
+| -- | -- | -- | -- | -- | -- |
+| WinForms (native Win32), current | Count 0→1 | gamma selected | Field text set | never the target | unchanged |
+| WinForms, other | content not exposed | content not exposed | content not exposed | never the target | unchanged |
+| Edge page, current and other | refused before the call: `semantic_element_process_changed` | same | same | never the target | unchanged |
+
+On the previous runtime (90c35d96, no guard) the same WinForms run let the target hold the foreground for 39 samples (about 0.8 s), so the check detects the regression. Two consecutive passes on e6d26cb6. The only other title seen was the guest's own `rgnupdt.exe` once after boot, and Program Manager on the new desktop, where a launched console did not take the foreground. Chrome itself was not repeated here; the guest has no Chrome and Edge refuses its page elements. Browser pages are Playwright's job.
+
 ## Limits
 
 Notepad's inactive-desktop content provider was unavailable in this run. No missing or unsupported pair counts toward the required successful action categories. A delivered UIA receipt proves neither the app result nor unchanged focus. WPF, UIAccess signing, other app families, physical focus policy and concurrent agents are not qualified here. The owner-accepted capture fallback limitation from LPT-625 is unchanged. Native RFC10/PR11 remain a draft fork experiment, not merged or upstream-ready.
