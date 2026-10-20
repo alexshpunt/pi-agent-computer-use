@@ -118,7 +118,14 @@ const fields: Record<InputCommand["action"], string[]> = {
   timeline: ["events"],
   menu: ["path"],
 };
-const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
+/** Common key spellings mapped to the driver's names; matching ignores case. */
+const KEY_ALIASES: Record<string, string> = { enter: "return", esc: "escape", del: "delete", spacebar: "space", pgup: "pageup", pgdn: "pagedown",
+  arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right", control: "ctrl", windows: "win", meta: "win", option: "alt",
+  minus: "-", hyphen: "-", equals: "=", comma: ",", period: ".", dot: ".", slash: "/", backslash: "\\", semicolon: ";", quote: "'", apostrophe: "'",
+  backtick: "`", grave: "`", bracketleft: "[", bracketright: "]" };
+const canonicalKey = (key: unknown) => typeof key === "string" ? KEY_ALIASES[key.toLowerCase()] ?? key.toLowerCase() : key;
+const KEY_NAMES = "a-z, 0-9, the unshifted punctuation - = [ ] ; ' , . / \\ ` (or minus, comma, period...), return (Enter), tab, escape, space, backspace, delete, up, down, left, right, home, end, pageup, pagedown or f1-f12; hold shift for shifted characters, or type text";
+const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9\-=[\];',./\\`]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
 const integer = (value: unknown, min: number, max: number) => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
 
 /** Complete steps a sequence may contain; each releases its keys and buttons before the next starts. */
@@ -126,6 +133,9 @@ const SEQUENCE_ACTIONS: readonly string[] = ["key", "hotkey", "type_text", "sele
 /** Validate complete commands against the original window overview before any member of a batch runs. */
 export function validateInput(command: InputStep, observed: { tokens: Set<string>; width?: number; height?: number }, sequence = false): void {
   if (!command || !fields[command.action]) throw new Error("Unsupported complete action.");
+  if (command.key !== undefined) command.key = canonicalKey(command.key) as string;
+  if (Array.isArray(command.keys)) command.keys = command.keys.map(canonicalKey) as string[];
+  if (Array.isArray(command.modifiers)) command.modifiers = command.modifiers.map(canonicalKey) as string[];
   const allowed = new Set(["action", ...fields[command.action], ...(isSemanticAction(command.action) ? ["element_token"] : ["drag", "hold", "timeline", "menu"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
   if (Object.keys(command).some(key => !allowed.has(key))) throw new Error("This action has unsupported or conflicting fields.");
   if (sequence && !SEQUENCE_ACTIONS.includes(command.action)) throw new Error(`Sequences accept only complete keyboard actions, clicks and drags: ${SEQUENCE_ACTIONS.join(", ")}.`);
@@ -156,7 +166,7 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
   if (command.action === "hover" && !integer(command.dwell_ms, 1, 10000)) throw new Error("hover needs dwell_ms from 1 to 10000.");
   if (["type_text", "set_value"].includes(command.action) && (typeof command.text !== "string" || command.text.length > 2000)) throw new Error("This action needs text, at most 2000 characters.");
   if (isSemanticAction(command.action) && !command.element_token) throw new Error("Semantic actions need an observed token.");
-  if (command.action === "key" && !validKey(command.key)) throw new Error("Unsupported key.");
+  if (command.action === "key" && !validKey(command.key)) throw new Error(`Unsupported key ${JSON.stringify(command.key)}. Use ${KEY_NAMES}.`);
   if (command.modifiers !== undefined && (!Array.isArray(command.modifiers) || command.modifiers.length > 4 || new Set(command.modifiers).size !== command.modifiers.length || command.modifiers.some(value => !modifiers.includes(value)))) throw new Error("Use unique ctrl/shift/alt/win modifiers.");
   if (command.action === "hotkey") {
     const keys = command.keys;
@@ -217,6 +227,7 @@ function validateTimeline(events: unknown, point: (x: unknown, y: unknown) => vo
     last = raw.at_ms;
     switch (raw.type) {
       case "key_down": case "key_up":
+        raw.key = canonicalKey(raw.key) as string;
         if (!validKey(raw.key) && !modifiers.includes(String(raw.key))) throw new Error("Unsupported timeline key.");
         if (raw.type === "key_down" ? keys.has(raw.key!) : !keys.has(raw.key!)) throw new Error(`Timeline key ${raw.key} is ${raw.type === "key_down" ? "already down" : "not down"}.`);
         raw.type === "key_down" ? keys.add(raw.key!) : keys.delete(raw.key!);
