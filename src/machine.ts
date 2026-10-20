@@ -11,6 +11,7 @@ import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "./reactive
 import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
+import { IsolatedSession } from "./isolated-session.ts";
 import { ComputerSession, type ComputerMode, type Content } from "./session.ts";
 import { WebBrowser } from "./web-browser.ts";
 
@@ -43,18 +44,21 @@ export async function checkRemoteWorker(runner: CommandRunner, remotePackage: st
 }
 
 /**
- * Each sandbox gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
+ * Each sandbox or isolated agent session gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
  * On another machine the sandbox host and its files are reached over SSH, and the guest relays through SSH tunnels.
  */
 export function sandboxFactory(options: { settings: () => CuaVisionSettings; retainRaw?: (image: Content) => void }): SandboxFactory {
   return async (cwd, command, signal, machineName) => {
     let parsed;
-    try { parsed = sandboxOptions(command); }
-    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    try {
+      if (command.action === "open_session" && Object.keys(command).some(key => key !== "action")) throw new Error("open_session takes no options.");
+      parsed = command.action === "open_session" ? undefined : sandboxOptions(command);
+    } catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
     const config = await loadComputerConfig(cwd);
     const machine = machineName ? await machineConfig(cwd, machineName) : undefined;
     const runner = machine ? sshRunner(machine.ssh) : localRunner(config.interop);
-    const sandbox = await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, parsed, signal);
+    const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, parsed, signal)
+      : await IsolatedSession.open(runnerHost(runner), machine?.command ?? config.command, signal);
     // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
     // Reactive actions skip the visible cursor glide here too, as on this machine's own desktop.
     const driver = new ReactiveAnimationDriver(new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),

@@ -83,8 +83,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "9921ae5411d001382a5474cedddc0a297882ec8b", version: "0.37.0",
-  sha256: "9c7f2cddb9d9f0cc679edfa60838ad2c463e789bc02d04faae8d98f25904c613",
+  source: "90c35d96a134b4499e4bf8b486a86caabc3a57e6", version: "0.37.0",
+  sha256: "3ab9d15771b750680181ed199e9ccddc410d3741013dd546342ecee8b46d1484",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -137,7 +137,7 @@ export class McpDriver implements Driver {
   }
 
   /** A sandbox guest or another machine reports its own source domain. */
-  get sourceDomain(): "windows-sandbox" | "windows-remote" | undefined { return this.config.endpoint ? "windows-sandbox" : this.config.ssh ? "windows-remote" : undefined; }
+  get sourceDomain(): "windows-sandbox" | "windows-session" | "windows-remote" | undefined { return this.config.endpoint ? this.config.endpoint.domain ?? "windows-sandbox" : this.config.ssh ? "windows-remote" : undefined; }
 
   /** Linux/macOS window lifetime binding is explicitly deferred, not replaced with pid/window_id. */
   get windowLifetime(): boolean { return this.platform === "windows"; }

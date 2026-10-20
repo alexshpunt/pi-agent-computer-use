@@ -35,6 +35,8 @@ export interface GuestEndpoint {
   url: string;
   token: string;
   identityPort: number;
+  /** Which kind of guest the driver runs in; a Windows Sandbox when omitted. */
+  domain?: "windows-sandbox" | "windows-session";
 }
 
 const RUNTIMES = ["windows-held-paths", "windows-key-holds", "windows-selected-displays", "windows-capture-drag", "windows-shell-desktops", "windows-single-png", "windows-semantic-actions", "windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"];
