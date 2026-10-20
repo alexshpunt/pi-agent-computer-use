@@ -133,7 +133,7 @@ Every snapshot shows `Log` lines for console errors, warnings and assertions, un
 
 Use a sandbox when the work should not touch the human's desktop or another agent's windows: no shared focus, pointer, windows or clipboard. It is a separate disposable Windows environment, not a security boundary against hostile code. The host needs the Windows Sandbox feature and its `wsb` command, and the human's Windows session must be active, at the console or in an open Remote Desktop window.
 
-Insert `{"action":"open_sandbox"}` into `computer:session`. It starts a new sandbox with its own CUA driver, which takes about 15–20 seconds, and returns its address: in Codemode `sandbox` is `computer:sandbox/<ref>`. The sandbox window stays minimized on the host without taking focus; do not close it, because that stops the sandbox.
+Insert `{"action":"open_sandbox"}` into `computer:session`. It starts a new sandbox with its own CUA driver, which takes about 15–20 seconds, and returns its address: in Codemode `sandbox` is `computer:sandbox/<ref>`. The sandbox window stays minimized on the host without taking focus; do not close it, because that stops the sandbox. Windows runs one sandbox at a time: while one is running on that machine, `open_sandbox` refuses at once and starts nothing.
 
 | On the sandbox address | Effect |
 | --- | --- |

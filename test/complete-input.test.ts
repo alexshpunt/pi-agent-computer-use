@@ -162,6 +162,19 @@ test("a bounded sequence dispatches complete steps once, without new captures, a
   expect((await f.send({ action: "key", key: "a" })).details.status).toBe("refused");
 });
 
+// Models write Enter, ESC or Control+S; the benchmark lost turns to "Unsupported key" for them (LPT-838).
+test("common key spellings reach the driver under its own names, and an unknown key names the valid ones", async () => {
+  const f = await fixture();
+  const result = await f.send({ action: "sequence", sequence: [
+    { action: "key", key: "Enter" }, { action: "key", key: "ESC", modifiers: ["Shift"] }, { action: "hotkey", keys: ["Control", "S"] }] });
+  expect(result.details.status).toBe("delivered");
+  expect(f.input().map(([, args]) => args.key ?? args.keys)).toEqual(["return", "escape", ["ctrl", "s"]]);
+  expect(f.input()[1][1].modifiers).toEqual(["shift"]);
+  const unknown = await (await fixture()).send({ action: "key", key: "Enterr" });
+  expect(unknown.details.status).toBe("refused");
+  expect(JSON.stringify(unknown.content)).toMatch(/Unsupported key \\"enterr\\". Use a-z, 0-9, return \(Enter\)/);
+});
+
 test.each(["refused", "partial", "throw"])("sequence stops after %s with a truthful completed prefix and no replay", async failure => {
   const f = await fixture(); const native = f.driver.call; let n = 0;
   f.driver.call = vi.fn<Driver["call"]>(async (...args) => {

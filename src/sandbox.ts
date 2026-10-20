@@ -157,8 +157,8 @@ export class WindowsSandbox {
   endpoint?: NonNullable<ComputerConfig["endpoint"]>;
   private relays: Relay[] = [];
   private tunnels: { port: number; close(): void }[] = [];
-  /** Sandboxes that existed before this launch; after a launch without a known id, newer ones are this sandbox. */
-  private before: string[] = [];
+  /** When this launch started; the sandbox client started since then is this sandbox's window. */
+  private startedAt?: string;
   private launched = false;
   private workdir?: { windows: string; unix: string };
   private closed = false;
@@ -207,17 +207,18 @@ export class WindowsSandbox {
     // A WindowsSandboxServer started by wsb.exe or WindowsSandbox.exe from WSL/SSH fails; launch through the user's shell
     // and call wsb only once a sandbox VM exists.
     const ids = `@(${this.wsb("list")} | Where-Object { $_ -match '^[0-9a-f-]{36}$' })`;
-    const existing = await this.ps(`if (Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) { ${ids} }
+    // Windows runs one sandbox at a time; launching beside another only shows an error dialog on the desktop.
+    const running = await this.ps(`if (Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) { 'running' }
 else { Get-Process WindowsSandboxServer -ErrorAction SilentlyContinue | Stop-Process -Force }`, signal);
-    this.before = existing.split("\n").map(line => line.trim()).filter(Boolean);
-    const startedAt = new Date().toISOString();
+    if (running.includes("running")) throw new ComputerRequestError("Windows Sandbox is already running on this machine, and Windows allows only one. "
+      + "Close it first (Insert close into its computer:sandbox address if this session opened it), then open a new one. Nothing was started.");
+    const startedAt = this.startedAt = new Date().toISOString();
     this.launched = true;
     await this.ps(`Start-Process explorer.exe -ArgumentList ${psString(`${windows}\\sandbox.wsb`)}`, signal);
-    const id = await this.ps(`$before = @(${this.before.map(psString).join(",")})
-for ($i = 0; $i -lt 120; $i++) {
+    const id = await this.ps(`for ($i = 0; $i -lt 120; $i++) {
   Start-Sleep -Milliseconds 1000
   if (Get-Process vmmemWindowsSandbox -ErrorAction SilentlyContinue) {
-    $id = ${ids} | Where-Object { $before -notcontains $_ } | Select-Object -First 1
+    $id = ${ids} | Select-Object -First 1
     if ($id) { $id; exit }
   }
 }
@@ -275,14 +276,16 @@ ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoPr
     this.relays = [];
     for (const tunnel of this.tunnels) tunnel.close();
     this.tunnels = [];
-    // A cancelled launch may have started a sandbox before its id was known: stop every sandbox newer than the launch.
+    // A cancelled launch may have started a sandbox before its id was known; only this launch's sandbox can be running.
     // Call wsb only once a VM exists (see start).
-    const unknown = this.launched && !this.id ? [`$before = @(${this.before.map(psString).join(",")}); $ids = @()`,
-      `for ($i = 0; $i -lt 60 -and -not $ids; $i++) { if (Get-Process vmmemWindowsSandbox -ErrorAction SilentlyContinue) { $ids = @(${this.wsb("list")} | Where-Object { $_ -match '^[0-9a-f-]{36}$' -and $before -notcontains $_ }) }; if (-not $ids) { Start-Sleep 1 } }`,
+    const unknown = this.launched && !this.id ? [`$ids = @()`,
+      `for ($i = 0; $i -lt 60 -and -not $ids; $i++) { if (Get-Process vmmemWindowsSandbox -ErrorAction SilentlyContinue) { $ids = @(${this.wsb("list")} | Where-Object { $_ -match '^[0-9a-f-]{36}$' }) }; if (-not $ids) { Start-Sleep 1 } }`,
       `foreach ($id in $ids) { ${this.wsb("stop --id $id")} *> $null }`] : [];
     await this.ps([
       ...unknown,
       ...(this.id ? [`${this.wsb(`stop --id ${this.id}`)} *> $null`] : []),
+      // wsb stop can fail over SSH; closing the sandbox client this launch started also stops the sandbox.
+      ...(this.startedAt ? [`Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -ge [DateTime]::Parse(${psString(this.startedAt)}).AddSeconds(-5) } | Stop-Process -Force`] : []),
       ...(pids.length ? [`Stop-Process -Id ${pids.join(",")} -Force -ErrorAction SilentlyContinue`] : []),
       "exit 0",
     ].join("\n"), undefined, 120_000).catch(() => undefined);

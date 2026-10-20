@@ -32,7 +32,7 @@ test("the sandbox shares only the runtime, its own config, an output folder and 
 });
 
 /** A host whose sandbox launch stops at `failAt`; every script is recorded. */
-async function fakeHost(failAt: "session" | "id") {
+async function fakeHost(failAt: "session" | "id", running = false) {
   const local = await mkdtemp(path.join(tmpdir(), "pi-sandbox-test-"));
   const scripts: string[] = [];
   const host: SandboxHost = {
@@ -49,7 +49,7 @@ async function fakeHost(failAt: "session" | "id") {
         return "11111111-2222-3333-4444-555555555555\n";
       }
       if (script.includes("user session did not become available")) throw new Error("The sandbox user session did not become available within 120 s.");
-      if (script.includes("Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) {")) return "aaaaaaaa-0000-0000-0000-000000000000\n";
+      if (script.includes("Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) { 'running' }")) return running ? "running\n" : "";
       return "";
     },
     mkdir: async dir => { await mkdir(dir, { recursive: true }); },
@@ -69,13 +69,22 @@ test("a sandbox that fails after launch is stopped and its host folder removed",
   expect(await readdir(local)).toEqual([]);
 });
 
-test("a launch cancelled before its id is known stops only sandboxes newer than the launch", async () => {
+test("a launch cancelled before its id is known stops its sandbox and the client it started", async () => {
   const { host, scripts, local } = await fakeHost("id");
   await expect(WindowsSandbox.open(host, "/mnt/c/runtime/cua-driver.exe", sandboxOptions({ action: "open_sandbox" }))).rejects.toThrow(/Cancelled/);
   const close = scripts.at(-1)!;
-  expect(close).toContain("$before = @('aaaaaaaa-0000-0000-0000-000000000000')");
-  expect(close).toMatch(/\$before -notcontains \$_/);
   expect(close).toContain("foreach ($id in $ids)");
+  expect(close).toMatch(/WindowsSandboxRemoteSession .*StartTime -ge .*Stop-Process -Force/);
+  expect(await readdir(local)).toEqual([]);
+});
+
+// Windows runs one sandbox at a time; a second launch only showed an error dialog and timed out after 120 s (LPT-838).
+test("another running sandbox refuses the launch at once and starts nothing", async () => {
+  const { host, scripts, local } = await fakeHost("id", true);
+  await expect(WindowsSandbox.open(host, "/mnt/c/runtime/cua-driver.exe", sandboxOptions({ action: "open_sandbox" })))
+    .rejects.toThrow(/already running on this machine, and Windows allows only one.*Nothing was started/);
+  expect(scripts.some(script => script.includes("explorer.exe"))).toBe(false);
+  expect(scripts.filter(script => !script.includes("'running'")).some(script => script.includes("Stop-Process"))).toBe(false);
   expect(await readdir(local)).toEqual([]);
 });
 
