@@ -12,6 +12,7 @@ import { parseWindowManagement, type WindowManagementCommand } from "./window-ma
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
 import { diffDom, diffUi } from "./successor.ts";
+import type { UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
 
@@ -175,6 +176,8 @@ function only(value: Record<string, unknown>, fields: readonly string[]): void {
 export class ComputerResources {
   private readonly snapshots = new Map<string, Snapshot>();
   private readonly windowStates = new Map<string, { window_ref: string; result: ComputerResult }>();
+  /** Each window's latest observed UI, the baseline of its next `changes` Read. Outlives the observation's input authority. */
+  private readonly lastUi = new Map<string, { observation_id: string; ui: UiResource }>();
   private readonly apps = new Map<string, string>();
   private readonly sandboxes = new Map<string, OpenedSandbox>();
   private readonly machines = new Map<string, OpenedMachine>();
@@ -275,6 +278,11 @@ export class ComputerResources {
     for (const [old, entry] of this.snapshots)
       if (entry.target.window_ref === target.window_ref && entry.target.display === target.display) this.snapshots.delete(old);
     this.snapshots.set(id, { target, result });
+    if (target.window_ref !== undefined && result.details.ui) {
+      this.lastUi.delete(target.window_ref);
+      this.lastUi.set(target.window_ref, { observation_id: id, ui: result.details.ui });
+      while (this.lastUi.size > 64) this.lastUi.delete(this.lastUi.keys().next().value!);
+    }
     // Match the backend's small pixel-retention window; eviction never renews references.
     while (this.snapshots.size > 3) this.snapshots.delete(this.snapshots.keys().next().value!);
     return result;
@@ -318,12 +326,19 @@ export class ComputerResources {
     const snapshot = address.kind === "observation" ? this.snapshots.get(address.ref) : undefined;
     const windowRef = address.kind === "window" ? address.ref : snapshot?.target.window_ref;
     if (view.ocr && windowRef === undefined) throw new ComputerRequestError("ocr reads window observations; display observations have no kept overview pixels.");
+    if (view.changes && address.kind !== "window") throw new ComputerRequestError("changes reads a window address: it takes a fresh UI walk and compares it with the window's previous observation.");
+    const baseline = view.changes && windowRef !== undefined ? this.lastUi.get(windowRef) : undefined;
     const target = windowRef === undefined ? undefined : session.windowTarget(windowRef);
     // A region of a stored observation is read from its own pixels: exact boxes, no native call, input authority kept.
     const result = view.ocr && view.kind === "region" && snapshot && windowRef !== undefined
       ? await this.recognize(session, snapshot.result, windowRef, view.region, signal)
       : await this.readNative(address, cwd, views, view, signal);
     if (!result) return result;
+    if (view.changes && result.details.status === "observed" && result.details.ui) {
+      const changes = baseline ? { since: baseline.observation_id, diff: diffUi(baseline.ui, result.details.ui) }
+        : { reason: "No earlier UI observation of this window in this session, so this is the full UI." };
+      return { ...result, details: { ...result.details, changes } };
+    }
     if (view.kind === "state" && result.details.status === "observed") {
       const health = await session.processHealth(target);
       return health ? { ...result, content: [...result.content, { type: "text", text: health.responding ? `Process ${health.name} (pid ${health.pid}) responds; ${health.memory_mb} MB memory, ${health.cpu_seconds} s CPU.` : unresponsive(health) }], details: { ...result.details, process: health } } : result;

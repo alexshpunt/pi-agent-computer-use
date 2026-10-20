@@ -116,6 +116,8 @@ export interface ComputerResult {
     postcondition?: { status: "verified" | "preexisting" | "failed" | "unknown"; reason?: string; verification?: WaitResult & { spec: WaitSpec } };
     /** The observation taken after an action and its compact difference from the action's input observation. */
     successor?: { observation_id?: string; diff?: StateDiff; reason?: string };
+    /** A `changes` Read: this UI compared with the window's previous observation, or why there is no comparison. */
+    changes?: { since?: string; diff?: StateDiff; reason?: string };
     /** Text recognised by Windows OCR in this result's image, boxes in the observation's overview pixels. */
     text_lines?: TextLine[];
     /** The window's process: whether it responds, its memory and CPU time. */
