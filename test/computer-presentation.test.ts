@@ -20,6 +20,14 @@ test("control-state presentation separates desktop frame coordinates from pointe
   expect(text).not.toContain("computer:observation/");
   expect(JSON.stringify(result)).toBe(before);
 });
+test("process health and OCR lines reach the presented text", () => {
+  const hung: ComputerResult = { content: [], details: { status: "refused", mode: "yolo",
+    process: { pid: 7, name: "mspaint", responding: false, memory_mb: 1900, cpu_seconds: 12 } } };
+  expect(presentComputerResult(resources, hung)).toContain("mspaint (pid 7) is NOT responding; 1900 MB memory");
+  const read: ComputerResult = { content: [], details: { status: "observed", mode: "yolo", observation_id: "o",
+    text_lines: [{ text: "Hello Agent 42", x: 10, y: 20, width: 88, height: 18, words: [] }] } };
+  expect(presentComputerResult(resources, read)).toContain('"Hello Agent 42" | x=10 y=20 w=88 h=18');
+});
 test("unknown management retains submitted prefix and constrained geometry without a raw dump", () => {
   const result: ComputerResult = { content: [], isError: true, details: { status: "unknown", mode: "yolo",
     state: { operation: "resize", mutation_attempted: true, mutation_accepted: true, postcondition_confirmed: false,
