@@ -166,13 +166,14 @@ test("a bounded sequence dispatches complete steps once, without new captures, a
 test("common key spellings reach the driver under its own names, and an unknown key names the valid ones", async () => {
   const f = await fixture();
   const result = await f.send({ action: "sequence", sequence: [
-    { action: "key", key: "Enter" }, { action: "key", key: "ESC", modifiers: ["Shift"] }, { action: "hotkey", keys: ["Control", "S"] }] });
+    { action: "key", key: "Enter" }, { action: "key", key: "ESC", modifiers: ["Shift"] }, { action: "hotkey", keys: ["Control", "S"] },
+    { action: "key", key: "minus" }, { action: "key", key: "/" }] });
   expect(result.details.status).toBe("delivered");
-  expect(f.input().map(([, args]) => args.key ?? args.keys)).toEqual(["return", "escape", ["ctrl", "s"]]);
+  expect(f.input().map(([, args]) => args.key ?? args.keys)).toEqual(["return", "escape", ["ctrl", "s"], "-", "/"]);
   expect(f.input()[1][1].modifiers).toEqual(["shift"]);
   const unknown = await (await fixture()).send({ action: "key", key: "Enterr" });
   expect(unknown.details.status).toBe("refused");
-  expect(JSON.stringify(unknown.content)).toMatch(/Unsupported key \\"enterr\\". Use a-z, 0-9, return \(Enter\)/);
+  expect(JSON.stringify(unknown.content)).toMatch(/Unsupported key \\"enterr\\". Use a-z, 0-9, .*return \(Enter\)/);
 });
 
 test.each(["refused", "partial", "throw"])("sequence stops after %s with a truthful completed prefix and no replay", async failure => {

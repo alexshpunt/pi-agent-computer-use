@@ -120,10 +120,12 @@ const fields: Record<InputCommand["action"], string[]> = {
 };
 /** Common key spellings mapped to the driver's names; matching ignores case. */
 const KEY_ALIASES: Record<string, string> = { enter: "return", esc: "escape", del: "delete", spacebar: "space", pgup: "pageup", pgdn: "pagedown",
-  arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right", control: "ctrl", windows: "win", meta: "win", option: "alt" };
+  arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right", control: "ctrl", windows: "win", meta: "win", option: "alt",
+  minus: "-", hyphen: "-", equals: "=", comma: ",", period: ".", dot: ".", slash: "/", backslash: "\\", semicolon: ";", quote: "'", apostrophe: "'",
+  backtick: "`", grave: "`", bracketleft: "[", bracketright: "]" };
 const canonicalKey = (key: unknown) => typeof key === "string" ? KEY_ALIASES[key.toLowerCase()] ?? key.toLowerCase() : key;
-const KEY_NAMES = "a-z, 0-9, return (Enter), tab, escape, space, backspace, delete, up, down, left, right, home, end, pageup, pagedown or f1-f12";
-const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
+const KEY_NAMES = "a-z, 0-9, the unshifted punctuation - = [ ] ; ' , . / \\ ` (or minus, comma, period...), return (Enter), tab, escape, space, backspace, delete, up, down, left, right, home, end, pageup, pagedown or f1-f12; hold shift for shifted characters, or type text";
+const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9\-=[\];',./\\`]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
 const integer = (value: unknown, min: number, max: number) => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
 
 /** Complete steps a sequence may contain; each releases its keys and buttons before the next starts. */
