@@ -126,7 +126,14 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
   if (d.sequence) {
     const sequence = d.sequence;
     lines.push(`Sequence: ${computerSource("sequence", sequence.sequence_id)}`,
-      `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
+      `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; last_frame_age_ms=${sequence.last_frame_age_ms === null ? null : Math.round(sequence.last_frame_age_ms)}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
+  }
+  if (d.process) lines.push(d.process.responding
+    ? `Process: ${d.process.name} (pid ${d.process.pid}) responds; ${d.process.memory_mb} MB memory, ${d.process.cpu_seconds} s CPU`
+    : `Process: ${d.process.name} (pid ${d.process.pid}) is NOT responding; ${d.process.memory_mb} MB memory. Capture and input cannot recover a hung app: wait and read again, or close it.`);
+  if (d.text_lines) {
+    lines.push(`OCR: ${d.text_lines.length} lines; boxes in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`);
+    for (const line of d.text_lines) lines.push(`"${label(line.text)}" | x=${line.x} y=${line.y} w=${line.width} h=${line.height}`);
   }
   if (d.batch) for (const step of d.batch.steps)
     lines.push(`Step ${step.index}: ${step.action} → ${step.outcome}${step.verdict ? ` (${step.verdict})` : ""}${step.reason ? `; ${label(step.reason)}` : ""}`);
