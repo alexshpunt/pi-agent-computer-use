@@ -10,7 +10,9 @@ Search `computer:apps` or `computer:windows` with a name/title substring, or `re
 
 Overviews have a 1280 px long edge by default; smaller windows are not enlarged. Add `capture:{"maxLongEdge":...}` to one window Read for another size; `/computer-debug` changes the session default.
 
-Insert into `computer:session` with `text` containing `{"action":"open","app":"Exact installed name"}` to open a genuinely new window. An app_id or a Win32 executable name such as `notepad` also works; a miss suggests close installed names. Alternatively, Insert `{"action":"open"}` into an app address returned by Search. Never replay an unknown launch.
+Insert into `computer:session` with `text` containing `{"action":"open","app":"Exact installed name"}` to open a genuinely new window. An app_id or a Win32 executable name such as `notepad` also works; a miss suggests close installed names. Alternatively, Insert `{"action":"open"}` into an app address returned by Search. In YOLO, `{"action":"open","path":"C:\\Tools\\app.exe","args":["--flag"]}` starts an executable by its absolute Windows path with up to 32 arguments and binds its new window; Safe refuses it because it runs arbitrary programs. Never replay an unknown launch.
+
+Apps with their own scripting (Blender, for example) can build content while computer use checks the result: `put` the script into the session folder, open the app with the script's returned path in `args` (`--factory-startup --python <path>` for Blender), then Read the window with `ocr` and `state`. See [app scripting](research/app-scripting.md).
 
 Read a returned `computer:window/...` for its native accessibility structure and small overview PNG. Read `computer:display/primary`, or a returned display address, for readonly display pixels; add `capture:{"maxLongEdge":320}` for another size. Successful overviews issue `computer:observation/...` addresses. References are session-local and disappear on close/reload.
 
@@ -58,6 +60,8 @@ The same addresses take clipboard commands, in YOLO only, because the clipboard 
 | `{"action":"record_stop","to":"art/run.mp4"}` | Stop early, keep the video as `recording-<n>.mp4` in the session folder and optionally copy it into the workspace |
 
 A recording shows the whole main display, including other windows; it is YOLO-only like display reads.
+
+`{"action":"audio_record","seconds":10,"transcribe":true}` records what that machine's default playback device plays (WASAPI loopback, YOLO only) as `audio-<n>.wav` in the session folder; `"to"` also copies it into the workspace. `transcribe` runs [faster-whisper](https://github.com/SYSTRAN/faster-whisper) through `uv` on this machine (the model downloads on first use) and returns the text with timed segments; recognised speech can be wrong. A machine without an active playback device, or with that device muted, refuses with the reason instead of recording silence.
 
 Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Detail from an ordinary WGC overview is unsupported: use an explicit default-route overview for that path. Display detail, frames and text selections never grant input authority.
 
@@ -176,7 +180,7 @@ Closing the computer session or Pi disconnects every machine, and a cancelled `c
   "zinpc": {
     "ssh": "zinpc-benchmark",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.34.0-desktop-630c7ab2/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-ae7cc20b/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
@@ -237,6 +241,8 @@ For an app with a menu bar, Insert `{"action":"menu","path":["File","Save As..."
 To end an app this session opened that does not close normally (for example a hung one), Insert `{"action":"kill"}` into its window address. It force-closes the process and loses unsaved work, and refuses for windows the session did not open or for a process that also shows other windows.
 
 Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabilities retain their runtime gates and native limits. A sequence contains up to 2000 known keyboard, click and stroke steps, up to 15 minutes of requested work and a 30-minute elapsed budget; a long drawing program fits into one call. Cancelling a sequence lets the current step finish and release its keys and buttons, then stops; the receipt reports the completed prefix. No cross-call held buttons/keys exist. See [complete input](complete-input.md), [strict semantics](semantic-actions.md) and [native pointer limits](research/native-hover-results.md) for backend contracts; their older standalone tool examples are historical.
+
+When Windows refuses to activate the target (`foreground_unavailable`), the result names the process that holds the foreground. If that is a system service, for example after a UAC prompt, Windows also blocks all injected input on that desktop until a person clicks or presses a key there; ask the user, then Read again.
 
 Start with background. After an observed background refusal, Read a fresh overview before requesting explicit foreground delivery. Foreground may activate the window and disturb the real pointer. Delivery is not an application postcondition: Read again to verify the actual effect. Unsupported modes refuse rather than silently falling back.
 

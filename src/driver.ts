@@ -81,8 +81,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "630c7ab24421db0b9a60e9ee7d704f8f799dc5e9", version: "0.34.0",
-  sha256: "288dbe0a8a390741431dcba7d961b1aa6d7b3397832ce842f24a0f37daf3f6a8",
+  source: "ae7cc20bfebf41339ae21e6f63f25921b37ec120", version: "0.37.0",
+  sha256: "607e257d758f9033f371bf9342d92fcfabac75950361e44bcdd4793c500d7096",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -100,6 +100,11 @@ const forkRuntimes = {
   "windows-fast-bilinear": FAST_BILINEAR_RUNTIME,
   "windows-direct-process": DIRECT_PROCESS_RUNTIME,
   "windows-persistent-wgc": PERSISTENT_WGC_RUNTIME,
+};
+/** Whether a driver version returns compact window state unless `full_output` is set (0.35.0 and later). */
+export const compactWindowState = (version: string) => {
+  const [major, minor] = version.split(".").map(Number);
+  return major > 0 || minor >= 35;
 };
 /** Requested length of an input timeline: the offset of its last event. */
 const timelineLength = (args: Record<string, unknown>) => {
@@ -294,6 +299,8 @@ export class McpDriver implements Driver {
     const client = await this.connect(signal);
     if (this.nativeTools && !this.nativeTools.has(name))
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
+    // Since 0.35 the driver shapes window state for models; the adapter needs the full payload with `elements`.
+    if (name === "get_window_state" && compactWindowState(this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version)) args = { ...args, full_output: true };
     // A timeline runs for its own length; every other native call answers well within 15 s.
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : 15_000;
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));

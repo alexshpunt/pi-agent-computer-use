@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { parseComputerAddress, computerSource, type ComputerAddress } from "./computer-address.ts";
 import { parseComputerViews, type ComputerViews } from "./computer-views.ts";
 import { checkedName, type ProcessHealth } from "./machine-host.ts";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { basename, dirname, resolve } from "node:path";
 import type { ComputerSession, ComputerResult, Action } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
@@ -49,7 +52,30 @@ export interface OpenedMachine {
 /** Connect to a configured machine by name; unknown names refuse before any SSH work. */
 export type MachineFactory = (cwd: string, name: string, signal?: AbortSignal) => Promise<OpenedMachine>;
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
-const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop"];
+/**
+ * The target of an open command: an installed app by name, or an executable by absolute Windows path with
+ * up to 32 command-line arguments (YOLO only, checked by the session).
+ */
+function openTarget(command: Record<string, unknown>, where: string): string | { path: string; args: string[] } {
+  if (command.path === undefined) {
+    only(command, ["action", "app"]);
+    if (typeof command.app !== "string" || !command.app.trim()) throw new ComputerRequestError(`Open needs an app name installed ${where}, or path and args.`);
+    return command.app;
+  }
+  only(command, ["action", "path", "args"]);
+  if (typeof command.path !== "string" || !/^[A-Za-z]:\\.+\.exe$/i.test(command.path)) throw new ComputerRequestError("path must be an absolute Windows path to an .exe, for example C:\\Tools\\app.exe.");
+  const args = command.args ?? [];
+  if (!Array.isArray(args) || args.length > 32 || args.some(arg => typeof arg !== "string" || arg.length > 8192)) throw new ComputerRequestError("args must be up to 32 strings.");
+  return { path: command.path, args: args as string[] };
+}
+const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop", "audio_record"];
+/** Speech in a WAV file as text, with faster-whisper run through uv on the agent's own machine. */
+async function transcribe(wav: string): Promise<{ text: string; language: string; segments: { start: number; end: number; text: string }[] }> {
+  const script = fileURLToPath(new URL("../scripts/transcribe.py", import.meta.url));
+  const { stdout } = await promisify(execFile)("uv", ["run", "-q", "--with", "faster-whisper", "--with", "av<16", "python", script, wav], { timeout: 300_000, maxBuffer: 16 * 1024 * 1024 })
+    .catch((error: Error) => { throw new ComputerRequestError(`Transcription failed (needs uv and network on first use): ${error.message.slice(0, 400)}`); });
+  return JSON.parse(stdout.trim().split("\n").at(-1)!);
+}
 /**
  * Move files between the workspace and the session's own folder on the controlled machine, and use its clipboard.
  * put copies a workspace file in, get copies one out, files lists the folder; closing the session removes it.
@@ -93,6 +119,25 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
       await mkdir(dirname(to), { recursive: true });
       await writeFile(to, bytes);
       return { ...stopped, content: [...stopped.content, { type: "text", text: `Fetched it (${bytes.length} bytes) into ${to}.` }] };
+    }
+    if (command.action === "audio_record") {
+      only(command, ["action", "seconds", "to", "transcribe"]);
+      if (!Number.isSafeInteger(command.seconds) || (command.seconds as number) < 1 || (command.seconds as number) > 300) throw new ComputerRequestError("audio_record needs seconds: 1..300.");
+      if (command.transcribe !== undefined && typeof command.transcribe !== "boolean") throw new ComputerRequestError("transcribe must be true or false.");
+      const recorded = await session.recordAudio(command.seconds as number);
+      if (recorded.details.status !== "delivered") return recorded;
+      const name = String(recorded.details.state!.name);
+      const to = command.to === undefined ? undefined : local(command.to, "to");
+      if (!to && !command.transcribe) return recorded;
+      const bytes = await host.get(name);
+      const wav = to ?? resolve(cwd, ".tmp", `pi-${name}`);
+      await mkdir(dirname(wav), { recursive: true });
+      await writeFile(wav, bytes);
+      const lines = [...recorded.content, ...(to ? [{ type: "text" as const, text: `Fetched it (${bytes.length} bytes) into ${to}.` }] : [])];
+      if (!command.transcribe) return { ...recorded, content: lines };
+      const transcript = await transcribe(wav).finally(() => to ? undefined : rm(wav, { force: true }));
+      return { ...recorded, content: [...lines, { type: "text", text: `Transcript (faster-whisper on this machine; can be wrong): ${transcript.text || "(no speech)"}` }],
+        details: { ...recorded.details, state: { ...recorded.details.state, transcript } } };
     }
     if (command.action === "files") {
       only(command, ["action"]);
@@ -478,9 +523,7 @@ export class ComputerResources {
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
       if (command.action !== "open") throw new ComputerRequestError("A machine address accepts open, open_browser, open_sandbox or disconnect.");
-      only(command, ["action", "app"]);
-      if (typeof command.app !== "string" || !command.app.trim()) throw new ComputerRequestError("Open needs an app name installed on that machine.");
-      const result = await machine.session.open(command.app, signal);
+      const result = await machine.session.open(openTarget(command, "on that machine"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
     if (tool === "insert" && (address.kind === "session" || address.kind === "app")) {
@@ -516,9 +559,12 @@ export class ComputerResources {
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
       if (command.action !== "open") throw new ComputerRequestError("Use open for an app, or close to release the computer session; it does not close application documents.");
-      only(command, address.kind === "app" ? ["action"] : ["action", "app"]);
-      const app = address.kind === "app" ? this.apps.get(address.ref) : command.app;
-      if (typeof app !== "string" || !app.trim()) throw new ComputerRequestError("Open needs an installed app identifier or exact name.");
+      let app;
+      if (address.kind === "app") {
+        only(command, ["action"]);
+        app = this.apps.get(address.ref);
+        if (typeof app !== "string") throw new ComputerRequestError("App reference expired. Search computer:apps again.");
+      } else app = openTarget(command, "on this machine");
       const result = await (await this.getSession(cwd)).open(app, signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
@@ -615,9 +661,15 @@ export class ComputerResources {
     }
     const action = { ...command, window_ref: snapshot.target.window_ref, observation_id: address.ref } as Action;
     const session = await this.sessionFor(cwd, snapshot.target);
-    const result = await session.act(action, signal);
+    let result = await session.act(action, signal);
     // Delivered pixel-only input keeps the observation usable; anything else, including a refusal, spends it.
     if (result.details.status !== "delivered" || !session.holdsObservation(snapshot.target.window_ref!, address.ref)) this.snapshots.delete(address.ref);
+    // Windows refused to activate the target: say who holds the foreground, so a blocked desktop is not mistaken for a bad target.
+    if (/foreground_unavailable/.test(JSON.stringify(result.details.state ?? {})) && session.host) {
+      const owner = await session.host.foregroundOwner().catch(() => undefined);
+      if (owner) result = { ...result, content: [...result.content, { type: "text", text:
+        `Windows kept the foreground on ${owner.name} (pid ${owner.pid}). If that is not a window this task opened (for example a system service after a UAC prompt), Windows also blocks injected input there until a person clicks or presses a key on that machine: ask the user to do that, then Read again.` }] };
+    }
     return result;
   }
 

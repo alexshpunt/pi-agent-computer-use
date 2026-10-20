@@ -14,6 +14,13 @@ public static class PiLoopback {
   interface IMMDeviceEnumerator { int EnumAudioEndpoints(int flow, int mask, out IntPtr devices); int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice device); }
   [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDevice { int Activate(ref Guid iid, int context, IntPtr parameters, [MarshalAs(UnmanagedType.IUnknown)] out object client); }
+  [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioEndpointVolume {
+    int RegisterControlChangeNotify(IntPtr n); int UnregisterControlChangeNotify(IntPtr n); int GetChannelCount(out uint n);
+    int SetMasterVolumeLevel(float l, ref Guid g); int SetMasterVolumeLevelScalar(float l, ref Guid g); int GetMasterVolumeLevel(out float l);
+    int GetMasterVolumeLevelScalar(out float l); int SetChannelVolumeLevel(uint c, float l, ref Guid g); int SetChannelVolumeLevelScalar(uint c, float l, ref Guid g);
+    int GetChannelVolumeLevel(uint c, out float l); int GetChannelVolumeLevelScalar(uint c, out float l); int SetMute(bool m, ref Guid g); int GetMute(out bool m);
+  }
   [Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioClient {
     int Initialize(int shareMode, int flags, long bufferDuration, long periodicity, IntPtr format, IntPtr session);
@@ -34,6 +41,11 @@ public static class PiLoopback {
   public static void Record(double seconds, string path) {
     var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
     IMMDevice device; Check(enumerator.GetDefaultAudioEndpoint(0, 0, out device));
+    // Some drivers feed loopback only silence while the endpoint is muted; refuse rather than record it.
+    var volumeId = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A"); object volumeObject;
+    Check(device.Activate(ref volumeId, 23, IntPtr.Zero, out volumeObject));
+    bool muted; Check(((IAudioEndpointVolume)volumeObject).GetMute(out muted));
+    if (muted) throw new InvalidOperationException("The default playback device is muted; loopback would record only silence.");
     var clientId = new Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2"); object clientObject;
     Check(device.Activate(ref clientId, 23, IntPtr.Zero, out clientObject));
     var client = (IAudioClient)clientObject;
