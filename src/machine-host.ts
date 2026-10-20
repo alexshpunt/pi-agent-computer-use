@@ -48,6 +48,12 @@ export class MachineHost {
     return Buffer.from((await this.runner.run("base64", ["-w0", `${folder.wsl}/${checkedName(name)}`], { timeoutMs: 120_000 })).trim(), "base64");
   }
 
+  /** Rename a file inside the owned folder. */
+  async rename(from: string, to: string): Promise<void> {
+    const folder = await this.files();
+    await this.runner.run("mv", ["-f", "--", `${folder.wsl}/${checkedName(from)}`, `${folder.wsl}/${checkedName(to)}`]);
+  }
+
   /** Files in the owned folder with their sizes. */
   async list(): Promise<{ name: string; bytes: number }[]> {
     const folder = await this.files();

@@ -179,6 +179,8 @@ export class ComputerSession {
   private readonly displayEntries = new Map<string, DisplayEntry>();
   /** Modes this session replaced, by display device; close puts them back. */
   private readonly replacedModes = new Map<string, DisplayMode>();
+  private recording?: { timer: NodeJS.Timeout; started: number };
+  private recordings = 0;
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
@@ -640,6 +642,43 @@ export class ComputerSession {
         return this.result("observed", `Clipboard formats: ${JSON.stringify(state.types ?? state.available_types ?? [])}.${text !== undefined ? `\nText (${text.length} characters):\n${text}` : " No text."}${image ? png ? " Image attached." : " No image." : ""}`,
           { types: state.types ?? state.available_types, ...(text !== undefined ? { text } : {}) }, {}, png ? [{ type: "image", mimeType: "image/png", data: png.toString("base64") }] : []);
       } catch (error) { return this.result("refused", `Clipboard read failed: ${error instanceof Error ? error.message : error}`); }
+    });
+  }
+
+  /**
+   * Record the main display to video in YOLO, into this session's folder, for at most `seconds`.
+   * The driver captures with ffmpeg; recording stops on record_stop, at the limit or when the session closes.
+   */
+  recordStart(seconds: number, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display recording. Only the user can select YOLO with /computer-mode.");
+      if (!this.host) return this.result("refused", "Recording needs the session folder, which this desktop does not have.");
+      if (this.recording) return this.result("refused", "A recording is already running; stop it first.");
+      const folder = await this.host.files();
+      const native = await this.driver.call("start_recording", { output_dir: folder.windows, record_video: true, include_accessibility_tree: false }, signal);
+      const state = native.structuredContent ?? {};
+      if (native.isError || state.video_active !== true) {
+        await this.driver.call("stop_recording", {}).catch(() => undefined);
+        return this.result("refused", `Recording did not start${state.last_error ? `: ${state.last_error}` : ""}. Video needs ffmpeg on that machine (for example winget install Gyan.FFmpeg).`, state);
+      }
+      const timer = setTimeout(() => { void this.recordStop(); }, seconds * 1000);
+      this.recording = { timer, started: Date.now() };
+      return this.result("delivered", `Recording the main display for up to ${seconds} s. Insert record_stop to finish earlier and fetch the video.`, state);
+    });
+  }
+
+  /** Stop the running recording; the video stays in the session folder as recording-<n>.mp4. */
+  recordStop(): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const current = this.recording;
+      if (!current || !this.host) return this.result("refused", "No recording is running, or it already stopped at its limit; Insert files to see saved videos.");
+      clearTimeout(current.timer);
+      this.recording = undefined;
+      const native = await this.driver.call("stop_recording", {});
+      const name = `recording-${++this.recordings}.mp4`;
+      try { await this.host.rename("recording.mp4", name); }
+      catch (error) { return this.result("unknown", `Recording stopped, but its video was not found: ${error instanceof Error ? error.message : error}`, native.structuredContent); }
+      return this.result("delivered", `Recorded ${Math.round((Date.now() - current.started) / 1000)} s of the main display as ${name} in the session folder.`, { ...native.structuredContent, name });
     });
   }
 
@@ -1596,6 +1635,7 @@ export class ComputerSession {
       const modes = [...this.replacedModes];
       this.replacedModes.clear();
       const restored = await Promise.allSettled(modes.map(([device, mode]) => this.host!.displayModes.restore(device, mode)));
+      if (this.recording) { clearTimeout(this.recording.timer); this.recording = undefined; }
       const files = await this.host?.removeFiles().then(() => true, () => false) ?? true;
       await this.driver.close();
       const failed = cleanup.filter(result => result.status === "rejected").length;

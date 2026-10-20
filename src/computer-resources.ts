@@ -49,7 +49,7 @@ export interface OpenedMachine {
 /** Connect to a configured machine by name; unknown names refuse before any SSH work. */
 export type MachineFactory = (cwd: string, name: string, signal?: AbortSignal) => Promise<OpenedMachine>;
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
-const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write"];
+const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop"];
 /**
  * Move files between the workspace and the session's own folder on the controlled machine, and use its clipboard.
  * put copies a workspace file in, get copies one out, files lists the folder; closing the session removes it.
@@ -78,6 +78,21 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
       }
       const from = local(command.image, "image");
       return await session.clipboardWrite({ imagePath: await host.put(checkedName(`clipboard-${basename(from)}`), await readFile(from)) });
+    }
+    if (command.action === "record_start") {
+      only(command, ["action", "seconds"]);
+      if (!Number.isSafeInteger(command.seconds) || (command.seconds as number) < 1 || (command.seconds as number) > 600) throw new ComputerRequestError("record_start needs seconds: 1..600.");
+      return await session.recordStart(command.seconds as number);
+    }
+    if (command.action === "record_stop") {
+      only(command, ["action", "to"]);
+      const stopped = await session.recordStop();
+      if (command.to === undefined || stopped.details.status !== "delivered") return stopped;
+      const to = local(command.to, "to");
+      const bytes = await host.get(String(stopped.details.state!.name));
+      await mkdir(dirname(to), { recursive: true });
+      await writeFile(to, bytes);
+      return { ...stopped, content: [...stopped.content, { type: "text", text: `Fetched it (${bytes.length} bytes) into ${to}.` }] };
     }
     if (command.action === "files") {
       only(command, ["action"]);

@@ -40,6 +40,14 @@ document.addEventListener('pointerlockchange', () => { log('pointerlock', { lock
 document.addEventListener('mousemove', e => { if (document.pointerLockElement === pad) { locked.x += e.movementX; locked.y += e.movementY; } });
 setInterval(() => { if (document.pointerLockElement === pad && (locked.x || locked.y)) { log('locked-move', { ...locked }); locked = { x: 0, y: 0 }; } }, 200);
 </script>`),
+  // Reaction target: a red square jumps every 1.5 s; a click on it is journaled with the time since it moved.
+  "/target": page("Reaction target", `<style>body{margin:0;background:#fff}#t{position:fixed;width:60px;height:60px;background:#e00010}</style><div id="t"></div>
+<script>
+const t = document.querySelector('#t'); let moved = performance.now(), hit = false;
+const jump = () => { t.style.left = Math.round(80 + Math.random() * (innerWidth - 220)) + 'px'; t.style.top = Math.round(80 + Math.random() * (innerHeight - 220)) + 'px'; moved = performance.now(); hit = false; };
+jump(); setInterval(jump, 1500);
+t.addEventListener('pointerdown', () => { if (!hit) { hit = true; log('hit', { reaction_ms: Math.round(performance.now() - moved) }); } });
+</script>`),
   "/frame": page("Inner frame", `<button onclick="const ok = confirm('Frame question?'); log('frame-confirm', { ok }); document.body.dataset.answer = ok; this.textContent = 'frame ' + ok">Frame confirm</button>`),
   "/popup": page("Popup", `<h1>Popup</h1><a href="/popup/next">Next page</a> <button onclick="window.close()">Close me</button>`),
   "/popup/next": page("Popup next", `<h1>Popup next</h1><a href="javascript:history.back()">Back</a>`),

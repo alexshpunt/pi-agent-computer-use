@@ -20,6 +20,8 @@ export interface SequenceFrame {
 export interface FrameSequence {
   sequence_id: string; requested: { duration_ms: number; fps: number; max_frames: number; timeout_ms: number };
   started_at: string; elapsed_ms: number; sample_span_ms: number; actual_fps: number | null;
+  /** How old the newest frame was when the sequence returned: time from its native completion to the result. */
+  last_frame_age_ms: number | null;
   skipped_slots: number[]; pending_slots: number; payload_bytes: number;
   stop_reason: "completed" | "frame_limit" | "byte_limit" | "cancelled" | "timeout" | "target_lost" | "access_revoked" | "capture_failed";
   frames: SequenceFrame[];
@@ -33,14 +35,17 @@ const byteBudget = 48 * 1024 * 1024;
 export class SequenceStop extends Error {
   constructor(readonly reason: FrameSequence["stop_reason"]) { super(reason); }
 }
+/** Limits of one sequence: a minute of frames at up to 30 FPS; one Read still selects at most 40 of them. */
+export const SEQUENCE_LIMITS = { duration_ms: 60_000, fps: 30, max_frames: 300, timeout_ms: 90_000, selected: 40 } as const;
 /** Validate before native dispatch; requested FPS is a sampling goal, never a performance promise. */
 export function validateSequence(options: SequenceOptions): FrameSequence["requested"] {
   const result = { duration_ms: options.duration_ms, fps: options.fps ?? 4, max_frames: options.max_frames ?? 40, timeout_ms: options.timeout_ms ?? 15000 };
-  if (!Number.isSafeInteger(result.duration_ms) || result.duration_ms < 1 || result.duration_ms > 10000 ||
-    !Number.isFinite(result.fps) || result.fps < 1 || result.fps > 10 ||
-    !Number.isSafeInteger(result.max_frames) || result.max_frames < 1 || result.max_frames > 40 ||
-    !Number.isSafeInteger(result.timeout_ms) || result.timeout_ms < result.duration_ms || result.timeout_ms > 30000)
-    throw Error("Use duration_ms 1..10000, fps 1..10, max_frames 1..40 and timeout_ms duration..30000.");
+  const L = SEQUENCE_LIMITS;
+  if (!Number.isSafeInteger(result.duration_ms) || result.duration_ms < 1 || result.duration_ms > L.duration_ms ||
+    !Number.isFinite(result.fps) || result.fps < 1 || result.fps > L.fps ||
+    !Number.isSafeInteger(result.max_frames) || result.max_frames < 1 || result.max_frames > L.max_frames ||
+    !Number.isSafeInteger(result.timeout_ms) || result.timeout_ms < result.duration_ms || result.timeout_ms > L.timeout_ms)
+    throw Error(`Use duration_ms 1..${L.duration_ms}, fps 1..${L.fps}, max_frames 1..${L.max_frames} and timeout_ms duration..${L.timeout_ms}.`);
   const r = options.region;
   if (r && (![r.x, r.y, r.width, r.height].every(Number.isSafeInteger) || r.x < 0 || r.y < 0 || r.width < 1 || r.height < 1))
     throw Error("Region uses positive integer dimensions and non-negative local pixel coordinates.");
@@ -55,7 +60,7 @@ export async function collectSequence(options: SequenceOptions,
   const timeout = AbortSignal.timeout(requested.timeout_ms);
   const active = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const sequence: FrameSequence = { sequence_id: "seq-" + randomUUID(), requested, started_at: new Date().toISOString(),
-    elapsed_ms: 0, sample_span_ms: 0, actual_fps: null, skipped_slots: [], pending_slots: 0, payload_bytes: 0, stop_reason: "completed", frames: [] };
+    elapsed_ms: 0, sample_span_ms: 0, actual_fps: null, last_frame_age_ms: null, skipped_slots: [], pending_slots: 0, payload_bytes: 0, stop_reason: "completed", frames: [] };
   const interval = 1000 / requested.fps; const slots = Math.ceil(requested.duration_ms / interval);
   let slot = 0;
   try {
@@ -87,6 +92,7 @@ export async function collectSequence(options: SequenceOptions,
     sequence.stop_reason = signal?.aborted ? "cancelled" : timeout.aborted ? "timeout" : error instanceof SequenceStop ? error.reason : "capture_failed";
   }
   sequence.elapsed_ms = clock.now() - started;
+  sequence.last_frame_age_ms = sequence.frames.length ? sequence.elapsed_ms - sequence.frames.at(-1)!.timestamp_ms : null;
   sequence.pending_slots = slots - sequence.frames.length - sequence.skipped_slots.length;
   sequence.sample_span_ms = sequence.frames.length > 1 ? sequence.frames.at(-1)!.timestamp_ms - sequence.frames[0].timestamp_ms : 0;
   sequence.actual_fps = sequence.sample_span_ms > 0 ? (sequence.frames.length - 1) * 1000 / sequence.sample_span_ms : null;
@@ -109,14 +115,17 @@ export function sequenceMetadata(sequence: FrameSequence) {
 /** Select an ordered subset; changed means exact byte changes, not a model judgement. */
 export function selectFrames(sequence: FrameSequence, selection: FrameSelection): SequenceFrame[] {
   const frames = sequence.frames;
-  if (selection === "all") return frames;
+  if (selection === "all") {
+    if (frames.length > SEQUENCE_LIMITS.selected) throw Error(`This sequence has ${frames.length} frames; select at most ${SEQUENCE_LIMITS.selected} with indexes, a range or changed.`);
+    return frames;
+  }
   if (selection === "first") return frames.slice(0, 1);
   if (selection === "last") return frames.slice(-1);
   if (selection === "endpoints") return frames.filter((_, i) => i === 0 || i === frames.length - 1);
   if (selection === "changed") return frames.filter((f, i) => i === 0 || f.hash !== frames[i - 1].hash || f.geometry_changed);
   if (!selection || typeof selection !== "object") throw Error("Choose all, first, last, endpoints, changed, indexes or an inclusive range.");
   const indexes = "indexes" in selection ? selection.indexes : Array.from({ length: selection.to - selection.from + 1 }, (_, i) => selection.from + i);
-  if (!Array.isArray(indexes) || indexes.length < 1 || indexes.length > 40 ||
+  if (!Array.isArray(indexes) || indexes.length < 1 || indexes.length > SEQUENCE_LIMITS.selected ||
     indexes.some(i => !Number.isSafeInteger(i) || i < 0 || i >= frames.length) || new Set(indexes).size !== indexes.length)
     throw Error("Selection needs unique valid captured-frame indexes or an inclusive from..to range.");
   return frames.filter(f => indexes.includes(f.index));

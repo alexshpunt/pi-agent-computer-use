@@ -1,28 +1,19 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { readFile } from "node:fs/promises";
-import { connectLive, text } from "./remote.ts";
-import { machineConfig } from "../../src/machine.ts";
-import { sshRunner } from "../../src/runner.ts";
+import { connectLive, serveFixture, text } from "./remote.ts";
 
 // Serve scripts/web-fixture.mjs on the machine, open its /input page in an owned remote browser,
 // send native timelines to the browser window and read what the page itself recorded.
 const live = await connectLive();
-const runner = sshRunner((await machineConfig(process.cwd(), process.env.LIVE_MACHINE ?? "zinpc")).ssh);
-let fixture: ReturnType<typeof runner.spawn> | undefined, base = "", window = "";
-const journal = async () => JSON.parse(await runner.run("curl", ["-s", `${base}/journal`])) as { type: string; [key: string]: unknown }[];
+const fixture = await serveFixture(live.runner);
+const journal = fixture.journal;
+let window = "";
 
 beforeAll(async () => {
-  await runner.run("dd", ["status=none", "of=/tmp/pi-web-fixture.mjs"], { input: await readFile("scripts/web-fixture.mjs") });
-  fixture = runner.spawn("node", ["/tmp/pi-web-fixture.mjs"]);
-  base = await new Promise<string>((resolve, reject) => {
-    fixture!.stdout.on("data", (chunk: Buffer) => { const match = /FIXTURE (\S+)/.exec(chunk.toString()); if (match) resolve(match[1].replace(/\/$/, "")); });
-    fixture!.on("exit", () => reject(new Error("fixture exited")));
-  });
-  const opened = await live.insert(live.machine, { action: "open_browser", browser: "msedge", url: `${base}/input` });
+  const opened = await live.insert(live.machine, { action: "open_browser", browser: "msedge", url: `${fixture.base}/input` });
   expect(opened.details.status, text(opened)).toBe("observed");
   window = `computer:window/${opened.details.window_ref}`;
 });
-afterAll(async () => { await live.close(); fixture?.stdin.end(); fixture?.kill(); });
+afterAll(async () => { await live.close(); fixture.close(); });
 
 const timeline = async (events: unknown[]) => {
   const view = await live.read(window, ["image"]);
@@ -90,4 +81,25 @@ test("relative motion reaches a pointer-locked page", async () => {
   const moved = events.filter(e => e.type === "locked-move").reduce((sum, e) => ({ x: sum.x + Number(e.x), y: sum.y + Number(e.y) }), { x: 0, y: 0 });
   expect(moved.x).toBeGreaterThan(50);
   expect(moved.y).toBeLessThan(-20);
+});
+
+test("cancelling a timeline mid-way leaves no key or button held", async () => {
+  const before = (await journal()).length;
+  const view = await live.read(window, ["image"]);
+  const abort = new AbortController();
+  const done = live.insert(`computer:observation/${view.details.observation_id}?delivery=foreground`, { action: "timeline", events: [
+    { at_ms: 0, type: "move", x: 400, y: 400 }, { at_ms: 20, type: "key_down", key: "shift" }, { at_ms: 40, type: "button_down", button: "right" },
+    ...Array.from({ length: 30 }, (_, i) => ({ at_ms: 100 + i * 100, type: "move", x: 400 + i * 5, y: 400 })),
+    { at_ms: 3200, type: "button_up", button: "right" }, { at_ms: 3220, type: "key_up", key: "shift" }] }, abort.signal);
+  setTimeout(() => abort.abort(), 1000);
+  const result = await done;
+  console.log("cancelled", result.details.status, text(result).slice(0, 200));
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  const events = (await journal()).slice(before).map(e => `${e.type}:${e.button ?? e.key ?? ""}`);
+  console.log(events.join(" "));
+  expect(events).toContain("pointerdown:2");
+  expect(events).toContain("pointerup:2");
+  expect(events).toContain("keyup:Shift");
+  const held = await live.powershell(`Add-Type -Name K -Namespace PiLive -MemberDefinition '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int v);'; (1,2,4,16 | Where-Object { [PiLive.K]::GetAsyncKeyState($_) -band 0x8000 }) -join ','`);
+  expect(held.trim()).toBe("");
 });
