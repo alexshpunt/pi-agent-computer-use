@@ -118,6 +118,8 @@ export interface ComputerResult {
     successor?: { observation_id?: string; diff?: StateDiff; reason?: string };
     /** A `changes` Read: this UI compared with the window's previous observation, or why there is no comparison. */
     changes?: { since?: string; diff?: StateDiff; reason?: string };
+    /** Icons and text areas found by Cua perception, boxes in the observation's overview pixels. */
+    visual_regions?: VisualRegion[];
     /** Text recognised by Windows OCR in this result's image, boxes in the observation's overview pixels. */
     text_lines?: TextLine[];
     /** The window's process: whether it responds, its memory and CPU time. */
@@ -130,6 +132,9 @@ export interface ComputerResult {
   };
   isError?: boolean;
 }
+/** One icon or text area detected in an observation's pixels; the box is in its overview pixels. */
+export interface VisualRegion { kind: "icon" | "text"; x: number; y: number; width: number; height: number; text?: string; label?: string; confidence: number }
+
 interface Observation { texts?: Map<string, string>; id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"];
   /** Kept after pixel-only input: coordinates stay valid until a freshness check finds a changed size or state; UI tokens and the native capture are spent. */
   pixelsOnly?: boolean }
@@ -1263,6 +1268,26 @@ export class ComputerSession {
   observationImage(ref: string, id: string): Content | undefined {
     const observed = this.entries.get(ref)?.observation;
     return observed?.id === id && !observed.pixelsOnly ? observed.rawImage : undefined;
+  }
+
+  /**
+   * Icons and text areas that Cua perception (OmniParser icons, PP-OCR text) finds in a current window observation's
+   * capture, with boxes in its overview pixels. Needs the perception extension installed on that machine.
+   */
+  visualRegions(ref: string, id: string, signal?: AbortSignal): Promise<VisualRegion[]> {
+    return this.queue(async () => {
+      const observed = this.entries.get(ref)?.observation;
+      if (observed?.id !== id || !observed.captureId) throw new Error("This observation's native capture is no longer current. Read the window with regions again.");
+      const native = await this.driver.call("parse_visual_regions", { capture_id: observed.captureId, options: { max_regions: 300 } }, signal);
+      if (native.isError) throw new Error(native.content.filter(c => c.type === "text").map(c => c.text).join(" ") || "parse_visual_regions failed");
+      const parsed = native.structuredContent as { capture: { screenshot: { width: number } }; regions: {
+        kind: "icon" | "text"; bounds: { x: number; y: number; width: number; height: number }; text?: string | null; label?: string | null; confidence: number }[] };
+      const scale = (observed.width ?? parsed.capture.screenshot.width) / parsed.capture.screenshot.width;
+      const at = (value: number) => Math.round(value * scale);
+      return parsed.regions.map(region => ({ kind: region.kind, x: at(region.bounds.x), y: at(region.bounds.y), width: at(region.bounds.width), height: at(region.bounds.height),
+        // OmniParser's detector has one class; its "icon-class-0" label names nothing.
+        ...(region.text ? { text: region.text } : {}), ...(region.label && !/^icon-class-\d+$/.test(region.label) ? { label: region.label } : {}), confidence: Math.round(region.confidence * 100) / 100 }));
+    });
   }
 
   /** Recognise text with Windows OCR on this desktop's machine; boxes are in the given image's pixels, a region only reads that part. */
