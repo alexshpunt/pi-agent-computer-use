@@ -181,6 +181,7 @@ export class ComputerSession {
   private readonly replacedModes = new Map<string, DisplayMode>();
   private recording?: { timer: NodeJS.Timeout; started: number };
   private recordings = 0;
+  private audioClips = 0;
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
@@ -420,14 +421,23 @@ export class ComputerSession {
       }
     });
   }
-  /** Launch once, establish a genuinely new window, and return its first UI observation. No shell strings from the model. */
-  open(app: string, signal?: AbortSignal): Promise<ComputerResult> {
+  /**
+   * Open a new window of an installed app, or in YOLO an executable by its Windows path with command-line
+   * arguments (for example an app with a script to run). The result binds exactly one genuinely new window.
+   */
+  open(app: string | { path: string; args: string[] }, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before app opening.");
       if (this.driver.windowLifetime === false) return this.result("refused",
         `window_lifetime_unavailable: ${this.platform}. Window opening/control is deferred; no application was launched.`);
+      if (typeof app !== "string" && this.getMode() !== "yolo")
+        return this.result("refused", "Starting an executable by path with arguments runs arbitrary programs; Safe mode allows only installed apps by name. Only the user can select YOLO with /computer-mode.");
       let dispatched = false;
       try {
+        if (typeof app !== "string") {
+          const name = app.path.split("\\").at(-1)!.replace(/\.exe$/i, "");
+          return await this.launchNew({ name }, { path: app.path, additional_arguments: app.args }, signal, () => dispatched = true);
+        }
         const state = await this.state("list_apps", {}, signal);
         if (!Array.isArray(state.apps)) throw new Error("Driver returned no app list.");
         const apps = (state.apps as App[]).filter(item => item.launch_path);
@@ -442,45 +452,50 @@ export class ComputerSession {
           return this.result("refused", `Installed app not found.${close.length ? ` Did you mean: ${close.slice(0, 5).join(", ")}?` : ""} Search computer:apps for exact names.`);
         }
         const selected = paths[0];
-        const before = new Set<string>();
-        for (const native of await this.list(signal)) before.add(`${native.pid}:${native.window_id}`);
         const aumid = selected.launch_path!.match(/^shell:appsFolder\\(.+!.+)$/i)?.[1];
-        if (signal?.aborted) return this.result("refused", "Cancelled before launch dispatch.");
-        dispatched = true;
-        const launched = await this.state("launch_app", aumid ? { aumid } : { launch_path: selected.launch_path }, signal);
-        const pid = launched.pid;
-        if (!Number.isSafeInteger(pid) || (pid as number) <= 0) throw new Error("Launch returned no usable process ID; do not relaunch blindly.");
-        let candidates: WindowEntry[] = [];
-        for (let attempt = 0; attempt < 20; attempt++) {
-          const nativeWindows = await this.list(signal);
-          candidates = [];
-          for (const native of nativeWindows) {
-            // Packaged activation may return a broker PID while the new window belongs to an existing app process.
-            const reported = Array.isArray(launched.windows) && launched.windows.some(window => {
-              const item = window as WindowTarget;
-              return item.pid === native.pid && item.window_id === native.window_id;
-            });
-            if (native.pid !== pid && appName(String(native.app_name ?? "")) !== appName(selected.name) && !reported) continue;
-            // Treat baseline addresses as existing even if a handle is recycled during launch: fail closed.
-            if (before.has(`${native.pid}:${native.window_id}`)) continue;
-            const entry = await this.register(native as unknown as WindowTarget, signal);
-            if (entry) candidates.push(entry);
-          }
-          if (candidates.length) break;
-          if (attempt < 19) await delay(250, undefined, { signal });
-        }
-        if (candidates.length !== 1) return this.result("unknown", candidates.length
-          ? "Launch produced multiple possible new windows. Discover them before choosing; ownership is not established."
-          : "Launch did not establish a genuinely new window. It may have reused an existing window or opened a tab. Discover before deciding; do not relaunch blindly.");
-        const entry = candidates[0];
-        entry.owned = true;
-        const observed = await this.capture(entry, signal);
-        return this.result(observed.details.status, observed.details.status === "observed"
-          ? "New application window opened. First observation is ready for one action."
-          : "A new window appeared but its first observation failed. Discover before deciding.",
-          observed.details.state, { ...observed.details, opened: true }, observed.content.filter(block => block.type === "image"));
+        return await this.launchNew(selected, aumid ? { aumid } : { launch_path: selected.launch_path }, signal, () => dispatched = true);
       } catch (error) { return this.failed(error, dispatched); }
     });
+  }
+
+  /** Launch with native arguments and bind the one new window of that process or app; called inside the queue. */
+  private async launchNew(selected: { name: string }, launch: Record<string, unknown>, signal: AbortSignal | undefined, dispatch: () => void): Promise<ComputerResult> {
+    const before = new Set<string>();
+    for (const native of await this.list(signal)) before.add(`${native.pid}:${native.window_id}`);
+    if (signal?.aborted) return this.result("refused", "Cancelled before launch dispatch.");
+    dispatch();
+    const launched = await this.state("launch_app", launch, signal);
+    const pid = launched.pid;
+    if (!Number.isSafeInteger(pid) || (pid as number) <= 0) throw new Error("Launch returned no usable process ID; do not relaunch blindly.");
+    let candidates: WindowEntry[] = [];
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const nativeWindows = await this.list(signal);
+      candidates = [];
+      for (const native of nativeWindows) {
+        // Packaged activation may return a broker PID while the new window belongs to an existing app process.
+        const reported = Array.isArray(launched.windows) && launched.windows.some(window => {
+          const item = window as WindowTarget;
+          return item.pid === native.pid && item.window_id === native.window_id;
+        });
+        if (native.pid !== pid && appName(String(native.app_name ?? "")) !== appName(selected.name) && !reported) continue;
+        // Treat baseline addresses as existing even if a handle is recycled during launch: fail closed.
+        if (before.has(`${native.pid}:${native.window_id}`)) continue;
+        const entry = await this.register(native as unknown as WindowTarget, signal);
+        if (entry) candidates.push(entry);
+      }
+      if (candidates.length) break;
+      if (attempt < 19) await delay(250, undefined, { signal });
+    }
+    if (candidates.length !== 1) return this.result("unknown", candidates.length
+      ? "Launch produced multiple possible new windows. Discover them before choosing; ownership is not established."
+      : "Launch did not establish a genuinely new window. It may have reused an existing window or opened a tab. Discover before deciding; do not relaunch blindly.");
+    const entry = candidates[0];
+    entry.owned = true;
+    const observed = await this.capture(entry, signal);
+    return this.result(observed.details.status, observed.details.status === "observed"
+      ? "New application window opened. First observation is ready for one action."
+      : "A new window appeared but its first observation failed. Discover before deciding.",
+      observed.details.state, { ...observed.details, opened: true }, observed.content.filter(block => block.type === "image"));
   }
 
   /** Reproject proven window-local native geometry onto fresh CUA frames, never DPI guesses. */
@@ -664,6 +679,18 @@ export class ComputerSession {
       const timer = setTimeout(() => { void this.recordStop(); }, seconds * 1000);
       this.recording = { timer, started: Date.now() };
       return this.result("delivered", `Recording the main display for up to ${seconds} s. Insert record_stop to finish earlier and fetch the video.`, state);
+    });
+  }
+
+  /** Record the machine's playback audio (YOLO) into the session folder as audio-<n>.wav. */
+  recordAudio(seconds: number): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids audio recording: it can capture the user's calls and media. Only the user can select YOLO with /computer-mode.");
+      if (!this.host) return this.result("refused", "Audio recording needs the session folder, which this desktop does not have.");
+      try {
+        const name = await this.host.recordAudio(seconds, `audio-${++this.audioClips}.wav`);
+        return this.result("delivered", `Recorded ${seconds} s of the playback audio as ${name} in the session folder.`, { name });
+      } catch (error) { return this.result("refused", `Audio not recorded: ${error instanceof Error ? error.message : error}`); }
     });
   }
 

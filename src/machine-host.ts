@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { displayModes as nativeDisplayModes, type DisplayModes } from "./display-mode.ts";
 import { WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
@@ -20,7 +21,8 @@ export class MachineHost {
 
   private powershell(script: string, input?: string | Buffer, timeoutMs = 60_000): Promise<string> {
     return this.runner.run(WINDOWS_POWERSHELL, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand",
-      Buffer.from(`$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'\ntry {\n${script}\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`, "utf16le").toString("base64")],
+      // UTF-8 output: the console code page would turn characters such as • into control bytes.
+      Buffer.from(`$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.Encoding]::UTF8\ntry {\n${script}\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`, "utf16le").toString("base64")],
     { ...(input !== undefined ? { input } : {}), timeoutMs }).then(output => output.replace(/\r/g, "").trim());
   }
 
@@ -79,6 +81,33 @@ export class MachineHost {
       : `-not (Add-Type -PassThru -Name Hung -Namespace PiComputerUse -MemberDefinition '[DllImport("user32.dll")] public static extern bool IsHungAppWindow(IntPtr window);')::IsHungAppWindow([IntPtr]${window})`;
     const out = await this.powershell(`$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { @{ pid = $p.Id; name = $p.ProcessName; responding = [bool](${responding}); memory_mb = [math]::Round($p.WorkingSet64 / 1MB); cpu_seconds = [math]::Round($p.CPU, 1) } | ConvertTo-Json -Compress }`, undefined, 20_000);
     return out ? JSON.parse(out) as ProcessHealth : undefined;
+  }
+
+  /**
+   * Record what the default playback device plays (WASAPI loopback) for `seconds` into a WAV file in the owned
+   * folder and return its name. Fails with a clear message when the machine has no active playback device.
+   */
+  async recordAudio(seconds: number, name: string): Promise<string> {
+    const script = await this.put("audio-loopback.ps1", await readFile(new URL("../scripts/audio-loopback.ps1", import.meta.url)));
+    const folder = await this.files();
+    try {
+      await this.runner.run(WINDOWS_POWERSHELL, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, String(seconds), `${folder.windows}\\${checkedName(name)}`],
+        { timeoutMs: seconds * 1000 + 30_000 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(/0x80070490|Element not found/.test(message) ? "That machine has no active playback device to record from."
+        : /muted/.test(message) ? "The default playback device on that machine is muted, so loopback would record only silence. Ask the user to unmute it." : message);
+    }
+    return name;
+  }
+
+  /** The process that owns the foreground window. */
+  async foregroundOwner(): Promise<{ pid: number; name: string } | undefined> {
+    const out = await this.powershell(`Add-Type -Name F -Namespace PiComputerUse -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint p);'
+$p = 0; [void][PiComputerUse.F]::GetWindowThreadProcessId([PiComputerUse.F]::GetForegroundWindow(), [ref]$p)
+$proc = Get-Process -Id $p -ErrorAction SilentlyContinue
+if ($proc) { @{ pid = [int]$p; name = $proc.ProcessName } | ConvertTo-Json -Compress }`, undefined, 20_000);
+    return out ? JSON.parse(out) : undefined;
   }
 
   /** The clipboard's image as PNG bytes, or undefined when it holds no image. */

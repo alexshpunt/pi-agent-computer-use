@@ -10,6 +10,9 @@ import { connectLive, text } from "./remote.ts";
 // transport (a trivial native call), native input (click) and the full Read+click loop.
 // It acts only on a new Notepad window it opens and closes.
 const ROUNDS = Number(process.env.BENCH_ROUNDS ?? 20);
+// BENCH_BACKEND=wgc measures the retained WGC route; BENCH_EDGE sets the overview long edge.
+const VIEWS = ["image", ...(process.env.BENCH_BACKEND ? [`backend:${process.env.BENCH_BACKEND}`] : []),
+  ...(process.env.BENCH_EDGE ? [`capture:{"maxLongEdge":${process.env.BENCH_EDGE}}`] : [])];
 const native: { name: string; ms: number }[] = [];
 const call = McpDriver.prototype.call;
 McpDriver.prototype.call = async function (this: McpDriver, ...args: Parameters<typeof call>) {
@@ -39,7 +42,7 @@ test("observe and act loop latency per stage", async () => {
   const window = `computer:window/${opened.details.window_ref}`;
   const stages: Record<string, number[]> = { "capture native": [], "capture adapter": [], "read total": [], "transport (control state)": [], "input native": [], "input total": [], "loop total": [] };
   for (let round = 0; round < ROUNDS; round++) {
-    const read = await timed(() => live.read(window, ["image"]));
+    const read = await timed(() => live.read(window, VIEWS));
     expect(read.result.details.status, text(read.result)).toBe("observed");
     const capture = nativeMs(read.native, "get_window_state");
     stages["capture native"].push(capture);
@@ -47,6 +50,7 @@ test("observe and act loop latency per stage", async () => {
     stages["read total"].push(read.ms);
     const { width, height } = (read.result.details.agent_image as { output: { width: number; height: number } }).output;
     const click = await timed(() => live.insert(`computer:observation/${read.result.details.observation_id}?delivery=foreground`, { action: "click", x: Math.round(width / 2), y: Math.round(height / 2) }));
+    if (click.result.details.status !== "delivered") console.log("CLICK", JSON.stringify(click.result.details.state).slice(0, 800));
     expect(click.result.details.status, text(click.result)).toBe("delivered");
     stages["input native"].push(nativeMs(click.native, "click"));
     stages["input total"].push(click.ms);

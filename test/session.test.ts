@@ -117,6 +117,15 @@ test("a sequence spends the single-use native capture on its first pixel click o
   const clicks = vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "click").map(([, args]) => args.capture_id);
   expect(clicks).toEqual(["capture-1", undefined]);
 });
+test("starting an executable by path with arguments is YOLO-only and launches nothing in Safe", async () => {
+  const f = fixture();
+  const safe = new ComputerSession(f.driver, () => "safe");
+  const refused = await safe.open({ path: "C:\\Tools\\app.exe", args: ["--python", "x.py"] });
+  expect(refused.details.status).toBe("refused");
+  expect(vi.mocked(f.driver.call).mock.calls.some(([name]) => name === "launch_app")).toBe(false);
+  await f.session.open({ path: "C:\\Tools\\app.exe", args: ["--python", "x.py"] });
+  expect(f.driver.call).toHaveBeenCalledWith("launch_app", { path: "C:\\Tools\\app.exe", additional_arguments: ["--python", "x.py"] }, undefined);
+});
 test("opens a genuinely new window and returns its first observation in the same result", async () => {
   const { session, driver } = fixture();
   const opened = await session.open("Notepad");

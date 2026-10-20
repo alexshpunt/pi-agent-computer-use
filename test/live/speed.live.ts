@@ -7,6 +7,8 @@ beforeAll(async () => {
   const opened = await live.insert(live.machine, { action: "open", app: "Paint" });
   window = `computer:window/${opened.details.window_ref}`;
   pid = opened.details.target!.pid;
+  // A size that fits any display, including a Remote Desktop one, so every stroke point is on screen.
+  await live.powershell(`Add-Type 'using System;using System.Runtime.InteropServices;public static class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);}'; [W]::MoveWindow([IntPtr]${opened.details.target!.window_id},60,60,1400,1000,$true) | Out-Null`);
 });
 afterAll(async () => { if (pid) await live.kill(pid); await live.close(); });
 
@@ -37,7 +39,7 @@ test("one observation serves 20 calls while the window keeps its size, then expi
   console.log(`20 calls on one observation: ${Date.now() - started} ms`);
   const overview = await live.read(window, ["image"]);
   expect((await live.insert(`computer:observation/${overview.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 })).details.status).toBe("delivered");
-  await live.powershell(`Add-Type 'using System;using System.Runtime.InteropServices;public static class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);}'; $h=(Get-Process -Id ${pid}).MainWindowHandle; [W]::MoveWindow($h,200,150,1800,1300,$true) | Out-Null`);
+  await live.powershell(`Add-Type 'using System;using System.Runtime.InteropServices;public static class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);}'; $h=(Get-Process -Id ${pid}).MainWindowHandle; [W]::MoveWindow($h,100,100,1300,900,$true) | Out-Null`);
   const expired = await live.insert(`computer:observation/${overview.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 });
   expect(expired.details.status).toBe("refused");
   expect(text(expired)).toMatch(/resized from/);
@@ -55,5 +57,6 @@ test("cancelling a long program stops between steps and reports the completed pr
   expect(sequence.completed).toBeLessThan(300);
   // No button stays held: a following pixel click is an ordinary complete click.
   const after = await live.read(window, ["image"]);
-  expect((await live.insert(`computer:observation/${after.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 })).details.status).toBe("delivered");
+  const click = await live.insert(`computer:observation/${after.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 });
+  expect(click.details.status, text(click)).toBe("delivered");
 });

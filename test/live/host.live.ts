@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "vitest";
 import { mkdir, readFile } from "node:fs/promises";
 import sharp from "sharp";
-import { addresses, connectLive, text } from "./remote.ts";
+import { addresses, connectLive, paintTool, text } from "./remote.ts";
 import { machineConfig } from "../../src/machine.ts";
 import { sshRunner, WINDOWS_POWERSHELL } from "../../src/runner.ts";
 import type { ComputerResult } from "../../src/session.ts";
@@ -46,9 +46,7 @@ test("window state reports a hung app and a working app's memory", async () => {
 
 test("OCR finds text typed into a Paint canvas within a few pixels of the drawn words", async () => {
   const window = await paint();
-  const full = await live.read(window, ['capture:{"granularity":"full"}']);
-  const button = (full.details.ui!.elements as { hint: string; role: string; name: string }[]).find(e => e.role === "Button" && e.name === "Text")!;
-  await delivered(observation(full, `?hint=${encodeURIComponent(button.hint)}&delivery=foreground`), { action: "click" });
+  await paintTool(live, window, "Text");
   const small = await live.read(window, ['capture:{"granularity":"image"}']);
   const { width, height } = size(small);
   const at = { x: Math.round(width * 0.3), y: Math.round(height * 0.45) };
@@ -58,8 +56,12 @@ test("OCR finds text typed into a Paint canvas within a few pixels of the drawn 
   await new Promise(resolve => setTimeout(resolve, 500));
   const read = await live.read(window, ['capture:{"granularity":"image","maxLongEdge":3840}', "ocr"]);
   console.log(text(read).split("\n").filter(line => line.includes("OCR") || line.startsWith("- ")).join("\n"));
-  const line = read.details.text_lines!.find(l => /Hello\s*Agent\s*42/i.test(l.text))!;
-  expect(line).toBeTruthy();
+  const found = read.details.text_lines!.find(l => /Hello\s*Agent\s*42/i.test(l.text))!;
+  expect(found).toBeTruthy();
+  // Compare the words of the phrase: a stray mark next to it can join the recognised line.
+  const words = found.words.slice(found.words.findIndex(w => /Hello/i.test(w.text)), found.words.findIndex(w => /^42/.test(w.text)) + 1);
+  const line = { x: Math.min(...words.map(w => w.x)), y: Math.min(...words.map(w => w.y)), width: 0, height: 0 };
+  line.width = Math.max(...words.map(w => w.x + w.width)) - line.x; line.height = Math.max(...words.map(w => w.y + w.height)) - line.y;
   // Truth: the bounding box of dark pixels inside the text box (its dashed frame excluded) in the same image.
   const big = size(read), scale = big.width / width;
   const image = read.content.find(block => block.type === "image")!;
@@ -94,8 +96,7 @@ test("a file put in the session folder is opened, edited and saved in Paint, fet
   await new Promise(resolve => setTimeout(resolve, 2000));
   const full = await live.read(window, ['capture:{"granularity":"full"}']);
   expect(text(full) + JSON.stringify(full.details.ui?.elements.map(e => e.name))).toMatch(/in(\.png)? - Paint/);
-  const pencil = (full.details.ui!.elements as { hint: string; role: string; name: string }[]).find(e => e.role === "Button" && e.name === "Pencil")!;
-  await delivered(observation(full, `?hint=${encodeURIComponent(pencil.hint)}&delivery=foreground`), { action: "click" });
+  await paintTool(live, window, "Pencil");
   // The 400x300 picture sits in the middle of the canvas area at 100% zoom; draw a short line across its centre.
   const view = await live.read(window, ["image"]);
   const { width, height } = size(view);

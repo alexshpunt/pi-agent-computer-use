@@ -40,9 +40,9 @@ test("text written to the clipboard is pasted, and text copied in the app is rea
     { action: "click", x: Math.round(width / 2), y: Math.round(height / 2) },
     { action: "hotkey", keys: ["ctrl", "v"] }, { action: "type_text", text: " + typed" },
     // A multiline WinForms text box ignores ctrl+a; select with ctrl+home and ctrl+shift+end.
-    { action: "hotkey", keys: ["ctrl", "home"], wait_ms: 200 }, { action: "hotkey", keys: ["ctrl", "shift", "end"] }, { action: "hotkey", keys: ["ctrl", "c"] }] });
+    { action: "hotkey", keys: ["ctrl", "home"], wait_ms: 300 }, { action: "hotkey", keys: ["ctrl", "shift", "end"], wait_ms: 200 }, { action: "hotkey", keys: ["ctrl", "c"], wait_ms: 200 }] });
   expect(typed.details.status, text(typed)).toBe("delivered");
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, 1000));
   const back = await live.insert(live.machine, { action: "clipboard_read" });
   expect(back.details.state?.text).toBe(`${marker} + typed`);
 });

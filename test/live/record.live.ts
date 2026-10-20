@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "vitest";
 import { readFile, stat } from "node:fs/promises";
 import sharp from "sharp";
-import { connectLive, text } from "./remote.ts";
+import { connectLive, paintTool, text } from "./remote.ts";
 import { machineConfig } from "../../src/machine.ts";
 import { sshRunner } from "../../src/runner.ts";
 
@@ -17,9 +17,7 @@ test("a recording of a Paint window plays back the drawn stroke", async () => {
   expect(opened.details.status, text(opened)).toBe("observed");
   pid = opened.details.target!.pid;
   const window = `computer:window/${opened.details.window_ref}`;
-  const full = await live.read(window, ["full"]);
-  const pencil = (full.details.ui!.elements as { hint: string; name: string }[]).find(e => e.name === "Pencil")!;
-  await live.insert(`computer:observation/${full.details.observation_id}?hint=${encodeURIComponent(pencil.hint)}&delivery=foreground`, { action: "click" });
+  await paintTool(live, window, "Pencil");
 
   // open keeps the previous foreground window in front; bring Paint forward so the video starts on its canvas.
   const front = await live.read(window, ["image"]);
