@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "vitest";
-import { addresses, connectLive, text } from "./remote.ts";
+import { connectLive, nativeForm, openWindow, text, WINDOWS_POWERSHELL_PATH as POWERSHELL } from "./remote.ts";
 import { computerSource } from "../../src/computer-address.ts";
 
 // LPT-626: strict UIA actions must not take the foreground or move their target to another virtual desktop.
@@ -20,17 +20,7 @@ while ($true) { $h = [W.U]::GetForegroundWindow(); [void]$sb.Clear(); [void][W.U
   if ($t -like '*SENTINEL*') { $seen = $true } elseif ($seen) { $k = ($t -replace '[^A-Za-z0-9 ]', '_'); if ($k.Length -gt 40) { $k = $k.Substring($k.Length - 40) }; $who[$k] = 1 + [int]$who[$k] }
   if ($n % 10 -eq 0) { $Host.UI.RawUI.WindowTitle = 'FGPROBE n=' + $n + ' who=' + (($who.GetEnumerator() | ForEach-Object { $_.Key + ':' + $_.Value }) -join ';') }
   Start-Sleep -Milliseconds 20 }`;
-// A native Win32 target: WinForms button, list box and text box behind the standard UIA proxies. The guest has
-// neither Notepad (its System32 stub needs the Store app) nor Character Map.
-const FORM = `Add-Type -AssemblyName System.Windows.Forms
-$f = New-Object Windows.Forms.Form; $f.Text = 'NATIVE TARGET'; $f.Width = 420; $f.Height = 300
-$b = New-Object Windows.Forms.Button; $b.Text = 'Count 0'; $b.Left = 10; $b.Top = 10; $b.Width = 120; $script:n = 0
-$b.Add_Click({ $script:n++; $b.Text = "Count $script:n" })
-$l = New-Object Windows.Forms.ListBox; $l.Left = 10; $l.Top = 50; $l.Height = 80; [void]$l.Items.AddRange(@('alpha', 'beta', 'gamma')); $l.AccessibleName = 'Pick'
-$t = New-Object Windows.Forms.TextBox; $t.Left = 10; $t.Top = 150; $t.Width = 300; $t.AccessibleName = 'Field'
-$f.Controls.AddRange(@($b, $l, $t)); [void]$f.ShowDialog()`;
 const encoded = (script: string) => Buffer.from(script, "utf16le").toString("base64");
-const POWERSHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 const CMD = "C:\\Windows\\System32\\cmd.exe";
 type Element = { role?: string | null; name?: string | null; hint: string; value?: unknown; selected?: unknown };
 
@@ -38,18 +28,11 @@ test("strict UIA actions keep the sentinel foreground and the target's desktop",
   const opened = await live.insert(live.machine, { action: "open_sandbox" });
   expect(opened.details.status, text(opened)).toBe("delivered");
   sandbox = computerSource("sandbox", opened.details.sandbox_ref!);
-  // Edge hands its launch to a broker, and a PowerShell launch reports its console rather than the form it shows,
-  // so every target is found by its window title.
-  const open = async (path: string, args: string[], title: string) => {
-    const r = await live.insert(sandbox!, { action: "open", path, args });
-    let found: string | undefined;
-    for (let i = 0; !found && i < 20; i++) { found = addresses(await live.search(sandbox!, title), "window")[0]; if (!found) await sleep(1000); }
-    if (!found) throw new Error(`No ${title} window appeared: ${text(r)}`);
-    return found;
-  };
+  const open = (path: string, args: string[], title: string) => openWindow(live, sandbox!, path, args, title);
   const edge = await open("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     ["--no-first-run", "--no-default-browser-check", "--new-window", `data:text/html,${encodeURIComponent(PAGE)}`], "Semantic targets");
-  const native = await open(POWERSHELL, ["-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", encoded(FORM)], "NATIVE TARGET");
+  // The guest has neither Notepad (its System32 stub needs the Store app) nor Character Map.
+  const native = await open(POWERSHELL, nativeForm("NATIVE TARGET"), "NATIVE TARGET");
   const sentinel = await open(CMD, ["/k", "title SENTINEL"], "SENTINEL");
   await open(POWERSHELL, ["-NoProfile", "-WindowStyle", "Minimized", "-EncodedCommand", encoded(SAMPLER)], "FGPROBE");
 
