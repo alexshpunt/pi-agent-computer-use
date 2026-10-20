@@ -26,7 +26,7 @@ The extension selects its native CUA runtime from packages installed with the ex
 
 Fresh window Reads can choose `image`, `ui` or `full` views: `image` skips the UI walk and grounds pixel input; `ui` skips pixels and grounds current hint/token actions; `full` remains the default. Omitted parts are not reused from older observations. See [mode options and limits](docs/observation-granularity.md).
 
-The separately hash-checked `windows-persistent-wgc` runtime uses session/window retained WGC by default for image/full window observations. The `backend:default` Read view selects the old native route; other runtimes and UI-only keep their existing routing. Native, production tool and TUI checks passed. The initial opt-in delivery kept installation unchanged; the later user-approved runtime switch and rollback are recorded separately. New timestamps do not promise current pixels. See [the opt-in contract and evidence](docs/persistent-wgc.md).
+Window overviews use the driver's default capture route. A retained WGC route was removed in M7 (LPT-806): on the measured machines it was slower and timed out on windows that do not repaint. See [persistent WGC](docs/persistent-wgc.md) for the history.
 
 This installation selects a separately qualified Windows fork that resizes captured pixels before encoding one final overview PNG. The format, native capture route and input/detail contracts stay unchanged; the previous runtime remains available. See [single-PNG qualification and measured latency](docs/single-png-overviews.md).
 

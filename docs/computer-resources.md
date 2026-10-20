@@ -23,7 +23,6 @@ Read views:
 | `full` (default), `image`, `ui` | Fresh full window, pixels without a UI walk, or current UI without pixels. |
 | `state` | Fresh native metadata without pixels or a UI walk. Use alone on a window. The selected runtime issues restore-only or management state; management also reports bounds, maximized state and independent virtual-desktop queries. It also reports the window's process: whether Windows considers the window hung, its memory and CPU time (`process`). |
 | `dom`, `dom:{"target":{"role":"button","name":"Save"},"depth":4}` | Fresh Playwright aria snapshot of a browser opened with `open_browser`. Use alone; add `"log":true` for the retained console and network log. See [Browser pages](#browser-pages). |
-| `backend:default`, `backend:wgc` | Explicit window image route. WGC requires a qualified runtime. When WGC is only the runtime default and fails twice (it can, right after input or a launch), the overview uses the default route and says so; an explicit `backend:wgc` never falls back. |
 | `capture:{"max_elements":500,"max_depth":20,"hints":true}` | Fresh bounded walk/hints. Optional `guides` takes grid/region/action booleans. `maxLongEdge` (64..4096) and `scale` (0.05..1) set this window Read’s native image cap without changing session defaults. |
 | `region:100,80,120,60` | Fresh readonly detail in local pixels of the addressed observation image. Consumes its overview. |
 | `ocr` | Windows OCR of the overview pixels, without UI hint labels. Alone or with capture options on a window, alone on its observation, or with `region:x,y,w,h` on an observation to read only that part (no native call; the observation stays usable). Lines and words come with boxes in the observation's overview pixels (`text_lines`). Small text needs a larger overview, for example `capture:{"granularity":"image","maxLongEdge":3840}`. Recognised text can be wrong: confirm with pixels or UI before acting on it. |
@@ -63,7 +62,7 @@ A recording shows the whole main display, including other windows; it is YOLO-on
 
 `{"action":"audio_record","seconds":10,"transcribe":true}` records what that machine's default playback device plays (WASAPI loopback, YOLO only) as `audio-<n>.wav` in the session folder; `"to"` also copies it into the workspace. `transcribe` runs [faster-whisper](https://github.com/SYSTRAN/faster-whisper) through `uv` on this machine (the model downloads on first use) and returns the text with timed segments; recognised speech can be wrong. Loopback follows the device volume, so a quiet setting still works; the transcriber normalises the clip first. A machine without an active playback device, or with that device muted, refuses with the reason instead of recording silence.
 
-Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Detail from an ordinary WGC overview is unsupported: use an explicit default-route overview for that path. Display detail, frames and text selections never grant input authority.
+Detail retains the original local rectangle and native scale through movement/resizing, clips smaller bounds and never expands on growth. Display detail, frames and text selections never grant input authority.
 
 ## Browser pages
 
@@ -180,7 +179,7 @@ Closing the computer session or Pi disconnects every machine, and a cancelled `c
   "zinpc": {
     "ssh": "zinpc-benchmark",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-ae7cc20b/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-b4d98549/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }

@@ -9,9 +9,9 @@ test("the desktop profile inherits every earlier window capability and checks it
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-desktop" });
   const wrapped = new ReactiveAnimationDriver(backend, { glide_duration_ms: 1 });
   try {
-    expect([backend.windowManagement, backend.windowRestore, backend.coordinateScroll, backend.nativePointer, backend.persistentWgc,
+    expect([backend.windowManagement, backend.windowRestore, backend.coordinateScroll, backend.nativePointer,
       backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions,
-      wrapped.windowManagement]).toEqual(Array(11).fill(true));
+      wrapped.windowManagement]).toEqual(Array(10).fill(true));
     expect(backend.overviewKernel).toBe("bilinear");
     await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
   } finally { await wrapped.close(); }
@@ -19,8 +19,8 @@ test("the desktop profile inherits every earlier window capability and checks it
 test("management preserves inherited routes but rejects changed bytes before state acquisition", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-window-management" });
   try {
-    expect([backend.windowManagement, backend.windowRestore, backend.coordinateScroll, backend.nativePointer, backend.persistentWgc,
-      backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual(Array(10).fill(true));
+    expect([backend.windowManagement, backend.windowRestore, backend.coordinateScroll, backend.nativePointer,
+      backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual(Array(9).fill(true));
     expect(backend.overviewKernel).toBe("bilinear");
     await expect(backend.call("get_window_control_state", { pid: 42, window_id: 91 })).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
@@ -148,13 +148,12 @@ test("the exact selected-display profile preserves keys and paths but rejects wr
   } finally { await backend.close(); }
 });
 
-test("persistent WGC preserves earlier capabilities but refuses wrong bytes before capture", async () => {
+test("the persistent-WGC runtime profile preserves earlier capabilities but refuses wrong bytes before capture", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-persistent-wgc" });
   try {
     expect(backend.overviewKernel).toBe("bilinear");
-    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions,
-      backend.persistentWgc]).toEqual([true,true,true,true,true,true]);
-    await expect(backend.call("get_window_state", { capture_backend:"wgc" })).rejects.toThrow("artifact hash mismatch");
+    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual([true, true, true, true, true]);
+    await expect(backend.call("get_window_state", {})).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
 });
 test("native pointer candidate keeps the capture base but rejects changed bytes before movement", async () => {
@@ -162,28 +161,17 @@ test("native pointer candidate keeps the capture base but rejects changed bytes 
   try {
     expect(backend.overviewKernel).toBe("bilinear");
     expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag,
-      backend.semanticActions, backend.persistentWgc, backend.nativePointer]).toEqual([true,true,true,true,true,true,true]);
+      backend.semanticActions, backend.nativePointer]).toEqual([true, true, true, true, true, true]);
     await expect(backend.call("move_pointer", { delivery_mode: "foreground" })).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
 });
-test("older native profiles cannot silently start WGC", async () => {
-  for (const runtime of [undefined,"windows-direct-process","windows-fast-bilinear"] as const) {
-    const backend = new McpDriver({ command: process.execPath, runtime });
-    try {
-      expect(await backend.call("get_window_state",{capture_backend:"wgc"})).toMatchObject({
-        isError:true, structuredContent:{code:"persistent_wgc_unavailable",attempted:false,fallback:false},
-      });
-    } finally { await backend.close(); }
-  }
-});
-
 test("restore candidate inherits qualified capabilities and rejects wrong bytes before state or mutation", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-window-restore" });
   try {
     expect(backend.overviewKernel).toBe("bilinear");
     expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag,
-      backend.semanticActions, backend.persistentWgc, backend.nativePointer, backend.coordinateScroll, backend.windowRestore])
-      .toEqual([true, true, true, true, true, true, true, true, true]);
+      backend.semanticActions, backend.nativePointer, backend.coordinateScroll, backend.windowRestore])
+      .toEqual([true, true, true, true, true, true, true, true]);
     for (const name of ["get_window_status", "restore_window"])
       await expect(backend.call(name, { pid: 42, window_id: 91, state_id: "state" })).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
@@ -206,8 +194,8 @@ test("coordinate scroll keeps inherited Windows capabilities but rejects changed
   try {
     expect(backend.overviewKernel).toBe("bilinear");
     expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag,
-      backend.semanticActions, backend.persistentWgc, backend.nativePointer, backend.coordinateScroll])
-      .toEqual([true, true, true, true, true, true, true, true]);
+      backend.semanticActions, backend.nativePointer, backend.coordinateScroll])
+      .toEqual([true, true, true, true, true, true, true]);
     await expect(backend.call("scroll_at", { delivery_mode: "foreground" })).rejects.toThrow("artifact hash mismatch");
   } finally { await backend.close(); }
 });

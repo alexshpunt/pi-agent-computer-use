@@ -1,6 +1,7 @@
-// Windows Node worker: one visible Playwright browser with a disposable profile. EOF closes it and deletes the profile.
+// Windows Node worker: one visible Playwright browser with a disposable profile, or the agent's persistent one.
+// EOF closes it and deletes a disposable profile.
 import readline from "node:readline";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
@@ -134,13 +135,17 @@ function locate(page: Page, target: WebTarget): Locator {
   return parts.reduce((all, part) => all.and(part));
 }
 
-async function open({ browser, url }: WebLaunchOptions) {
+async function open({ browser, url, profile: kind }: WebLaunchOptions) {
   if (context) throw new Error("This worker already owns a browser.");
-  profile = await mkdtemp(path.join(tmpdir(), "pi-browser-"));
+  // The agent's persistent profile lives in its own folder per browser and is kept on close; a disposable one is deleted.
+  const directory = kind === "agent"
+    ? path.join(process.env.LOCALAPPDATA ?? tmpdir(), "PiComputerUse", "browser-profiles", browser ?? "chrome")
+    : profile = await mkdtemp(path.join(tmpdir(), "pi-browser-"));
+  if (kind === "agent") await mkdir(directory, { recursive: true });
   // Playwright's default flags trade browser security for test determinism; keep only what an owned pipe/profile needs.
-  context = await chromium.launchPersistentContext(profile, {
+  context = await chromium.launchPersistentContext(directory, {
     channel: browser, headless: false, chromiumSandbox: true, viewport: null, ignoreDefaultArgs: true,
-    args: ["--user-data-dir=" + profile, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
+    args: ["--user-data-dir=" + directory, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
       "--disable-sync", "--window-size=1100,800", "about:blank"],
   });
   for (const page of context.pages()) adopt(page);

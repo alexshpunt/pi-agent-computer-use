@@ -86,7 +86,7 @@ test.each(["refused", "unknown"] as const)("a native %s receipt consumes the pro
 
 test("cached observations reject acquisition options instead of pretending to apply them", async () => {
   const f = await fixture(), view = await f.read();
-  for (const views of [['capture:{"max_elements":10}'], ['capture:{"hints":false}'], ["backend:default"]])
+  for (const views of [['capture:{"max_elements":10}'], ['capture:{"hints":false}'], ['capture:{"maxLongEdge":320}']])
     await expect(f.resources.read(view.observation, cwd, views)).rejects.toThrow(/fresh window Read/i);
   expect(f.captures()).toHaveLength(1);
   expect((await f.resources.read(view.observation, cwd, ["ui"]))?.details.status).toBe("observed");

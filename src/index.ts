@@ -68,7 +68,6 @@ export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string
       query: Type.Optional(Type.String({ description: "Native reread projected to matching labels/values and ancestors; replaces old hints. For local search use ui instead." })),
       capture: Type.Optional(Type.Object({
         granularity: Type.Optional(Type.Union(["image", "ui", "full"].map(value => Type.Literal(value)), { description: "Window overview: image-only grounds pixel input without a UI walk; UI-only grounds current hints/tokens without pixels; full is the default." })),
-        backend: Type.Optional(Type.Union([Type.Literal("default"), Type.Literal("wgc")], { description: "Windows window overview only: omitted backend uses WGC for image/full on the selected windows-persistent-wgc runtime, otherwise native routing. Explicit default selects native routing; wgc needs the qualified runtime and retains session/window capture resources. Image/full only, no fallback on failure. Paint freshness remains unverified; native zoom/crop is unsupported on WGC." })),
         max_elements: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
         max_depth: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
         hints: Type.Optional(Type.Boolean()),

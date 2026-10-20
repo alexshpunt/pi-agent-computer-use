@@ -1,4 +1,6 @@
-# Opt-in persistent WGC
+# Opt-in persistent WGC (removed)
+
+**Removed in M7 (LPT-806).** On ZinPC (4K) and ZinLaptop, the default window capture took 176–187 ms p50 while retained WGC took 580–830 ms on a 4K window and failed with `fresh_frame_timeout` on a window that does not repaint. The adapter no longer offers `backend:wgc` or uses WGC by default; the driver still uses WGC internally where its default route needs it (for example XAML apps). The record below is kept as history.
 
 This is the Windows-only retained capture path from [LPT-695](https://linear.app/alexshpunt/issue/LPT-695). Native, production-tool and TUI checks passed, and the approved implementation is merged. Initial qualification kept the installed runtime unchanged. The later explicit runtime/default-selection approval and checks are recorded below.
 

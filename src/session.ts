@@ -62,8 +62,6 @@ export interface Driver {
   windowRestore?: boolean;
   /** True only for an exact byte-qualified Windows state-bound management runtime. */
   windowManagement?: boolean;
-  /** True only for an exact qualified runtime whose window image/full reads default to session-owned WGC. */
-  persistentWgc?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
   overviewKernel?: CuaVisionSettings["kernel"];
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal, options?: { animation?: "reactive" }): Promise<DriverResult>;
@@ -130,7 +128,7 @@ export interface ComputerResult {
   };
   isError?: boolean;
 }
-interface Observation { texts?: Map<string, string>; id: string; backend?: "wgc"; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"];
+interface Observation { texts?: Map<string, string>; id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"];
   /** Kept after pixel-only input: coordinates stay valid until a freshness check finds a changed size or state; UI tokens and the native capture are spent. */
   pixelsOnly?: boolean }
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
@@ -163,12 +161,6 @@ const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+
 /** File name of a Win32 launch path without directory and extension; packaged shell:appsFolder paths have none. */
 const executableName = (path: string) => /^shell:/i.test(path) ? "" : appName(path.split(/[\\/]/).pop() ?? "");
 
-/** A WGC refusal that a short retry or the default route can recover: no frame, a failed capture or a capture timeout. */
-const wgcFailure = (native: DriverResult) => {
-  const state = native.structuredContent ?? {};
-  const text = native.content.filter(block => block.type === "text").map(block => block.text).join(" ");
-  return /wgc|capture/i.test(String(state.code ?? "")) || /did not finish within|Windows Graphics Capture/i.test(`${text} ${String(state.message ?? "")}`);
-};
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
 export class ComputerSession {
   private tail: Promise<unknown> = Promise.resolve();
@@ -386,13 +378,16 @@ export class ComputerSession {
   }
 
   /**
-   * Launch one new visible browser through Playwright with a disposable profile, then bind its native window.
-   * Personal browsers are never attached. Closing the session closes this browser and deletes its profile.
+   * Launch one new visible browser through Playwright with a disposable profile, or in YOLO the agent's persistent
+   * profile, then bind its native window. Personal browsers and profiles are never attached. Closing the session closes
+   * this browser and deletes a disposable profile.
    */
   openBrowser(options: WebLaunchOptions = {}, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted || !this.launchWeb || this.driver.windowLifetime === false)
         return this.result("refused", "Opening a browser needs Windows window lifetime and the Playwright browser backend; nothing was launched.");
+      if (options.profile && this.getMode() !== "yolo")
+        return this.result("refused", "The agent's persistent browser profile keeps logins, so Safe mode allows only disposable profiles. Only the user can select YOLO with /computer-mode.");
       let launched: Awaited<ReturnType<WebLauncher>> | undefined;
       try {
         launched = await this.launchWeb(options, signal);
@@ -409,7 +404,7 @@ export class ComputerSession {
         const entry = await this.register(target, signal);
         if (!entry) throw Error("The browser window lifetime could not be established.");
         entry.owned = true;
-        return this.result("observed", "Opened a new visible browser with a disposable profile. Read its window with dom for page structure, or with image/ui/full for native pixels and Windows UI.",
+        return this.result("observed", `Opened a new visible browser with ${options.profile ? "the agent's persistent profile (logins made in it stay for later sessions)" : "a disposable profile"}. Read its window with dom for page structure, or with image/ui/full for native pixels and Windows UI.`,
           { operation: "open_browser", ...launched.opened }, { ...this.addressed(entry), opened: true });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
@@ -850,7 +845,6 @@ export class ComputerSession {
   }
 
   private async windowDetail(entry: WindowEntry, request: DetailRequest, signal?: AbortSignal): Promise<ComputerResult> {
-    if (entry.observation?.backend === "wgc") return this.result("refused", "Native zoom/crop does not support WGC. Read an overview with capture.backend: default to use native detail.");
     const overview = entry.detail;
     try { validateDetail(request, overview, true); }
     catch (error) { return this.result("refused", (error as Error).message); }
@@ -891,8 +885,6 @@ export class ComputerSession {
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
-    let wgc = options.backend === "wgc" || (options.backend === undefined && hasImage && this.driver.persistentWgc === true);
-    if (wgc && this.driver.persistentWgc !== true) return this.result("refused", "WGC needs an explicitly selected, qualified Windows runtime. Default capture is unchanged.");
     if (!this.allowed(entry)) return this.denied(entry.ref);
     entry.observation = undefined; entry.detail = undefined;
     const current = await this.current(entry.ref, signal);
@@ -900,25 +892,12 @@ export class ComputerSession {
     if (!current) return this.result("refused", "Window closed or its native handle was reused. Discover again.");
     const settings = structuredClone({ ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
       ...(options.scale !== undefined ? { scale: options.scale } : {}), ...(options.hints !== undefined ? { hints: options.hints } : {}), ...(options.guides ? { guides: options.guides } : {}) });
-    const read = (route: boolean) => this.driver.call("get_window_state", {
+    const native = await this.driver.call("get_window_state", {
       ...entry.target,
       ...(hasUi ? { max_elements: options.max_elements ?? 200, max_depth: options.max_depth ?? 15, timeout_ms: 5000, ...(query ? { query } : {}) }
         : { include_accessibility_tree: false }),
       ...(hasImage ? { max_image_dimension: nativeImageCap(settings) } : { include_screenshot: false }),
-      ...(route ? { capture_backend: "wgc" } : {}),
     }, signal);
-    let native = await read(wgc);
-    let routeNote = "";
-    // WGC can fail for a moment right after input or a launch. Retry once; when WGC was only the runtime default, say so and use the default route.
-    if (wgc && native.isError && wgcFailure(native)) {
-      await delay(150, undefined, { signal }).catch(() => undefined);
-      if (!signal?.aborted) native = await read(true);
-      if (native.isError && wgcFailure(native) && options.backend === undefined && !signal?.aborted) {
-        routeNote = ` WGC capture failed (${String(native.structuredContent?.code ?? "no frame")}); this overview used the default capture route.`;
-        wgc = false;
-        native = await read(false);
-      }
-    }
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (signal?.aborted) return this.result("refused", "Cancelled during observation; captured data withheld.");
     if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry, native.structuredContent?.virtual_desktop));
@@ -932,9 +911,6 @@ export class ComputerSession {
       return this.result("refused", `Window screenshot unavailable. Native reason: ${screenshot_error}`,
         { screenshot_error }, this.addressed(entry, state.virtual_desktop));
     }
-    const backend = state.capture_backend as { backend?: unknown } | undefined;
-    if (wgc && (backend?.backend !== "wgc" || typeof state.capture_id !== "string" || !state.capture_id))
-      return this.result("refused", "WGC returned no bound WGC capture receipt; pixels and input authority withheld.");
     // Native screenshot-only reads may preserve their old AX snapshot. Never expose it as current.
     if (!hasUi) for (const key of ["elements", "tree_markdown", "snapshot_id", "invalidated_snapshot_ids", "elements_complete", "truncated", "truncation_reason", "total_element_count", "element_count", "focused_element"]) delete state[key];
     // Tree-only native receipts can describe an older pixel frame. It gives this observation no image authority.
@@ -962,7 +938,7 @@ export class ComputerSession {
       const full = [element.label, element.value].filter((item): item is string => typeof item === "string" && item.length > 1024);
       if (full.length && ui.elements[index]) texts.set(ui.elements[index].hint, full.join("\n").slice(0, ELEMENT_TEXT_LIMIT));
     });
-    entry.observation = { id, ui, settings, ...(texts.size ? { texts } : {}), ...(wgc ? { backend: "wgc" as const } : {}),
+    entry.observation = { id, ui, settings, ...(texts.size ? { texts } : {}),
       width: hasImage && typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: hasImage && typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
       tokens: new Set(elements.map(element => element.element_token).filter((token): token is string => typeof token === "string")),
@@ -975,7 +951,7 @@ export class ComputerSession {
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during observation; captured data withheld."); }
     const source = this.source("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
     if (!hasUi) source.semantic_scope = "none";
-    if (!hasImage || wgc) source.capabilities.detail = "unsupported";
+    if (!hasImage) source.capabilities.detail = "unsupported";
     // Repeated verification samples do not flash the human frame on every walk.
     const highlight = quiet ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
     if (!this.allowed(entry)) { entry.observation = undefined; entry.detail = undefined; return this.denied(entry.ref); }
@@ -1003,7 +979,7 @@ export class ComputerSession {
     const message = hasUi
       ? `Fresh full window observation: ${ui!.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui!.complete === true ? "complete" : ui!.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`
       : "Fresh image-only window observation. Accessibility was not collected; no current UI hints/tokens. Pixel input uses this window image; paint freshness is unverified.";
-    return this.result("observed", `${message}${wgc ? " Retained WGC capture; native detail is not supported on this route." : ""}${routeNote}`, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
+    return this.result("observed", message, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
       agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 

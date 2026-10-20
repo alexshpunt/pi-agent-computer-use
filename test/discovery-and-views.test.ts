@@ -11,11 +11,11 @@ test("discovery queries match substrings or explicit regular expressions", () =>
   expect(() => textMatcher("regex:(")).toThrow(/Invalid regular expression/);
 });
 
-test("Read views accept granularity and backend in either form and name conflicts", () => {
-  expect(parseComputerViews(['capture:{"granularity":"image","maxLongEdge":320}', "backend:default"]))
-    .toEqual({ kind: "overview", capture: { granularity: "image", maxLongEdge: 320, backend: "default" } });
+test("Read views accept granularity in either form and name conflicts", () => {
+  expect(parseComputerViews(['capture:{"granularity":"image","maxLongEdge":320}']))
+    .toEqual({ kind: "overview", capture: { granularity: "image", maxLongEdge: 320 } });
   expect(parseComputerViews(["image", 'capture:{"maxLongEdge":320}'])).toEqual({ kind: "overview", capture: { granularity: "image", maxLongEdge: 320 } });
-  expect(() => parseComputerViews(["backend:default", 'capture:{"maxLongEdge":320}', "ui"])).toThrow(/ui view collects no pixels, so backend:default/);
+  expect(() => parseComputerViews(["backend:default"])).toThrow(/Unknown view backend:default/);
   expect(() => parseComputerViews(["image", 'capture:{"granularity":"ui"}'])).toThrow(/granularity is given twice/);
   expect(() => parseComputerViews(["image", "full"])).toThrow(/got image and full/);
   expect(() => parseComputerViews(['capture:{"size":1}'])).toThrow(/unsupported options: size/);
