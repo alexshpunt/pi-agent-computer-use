@@ -13,6 +13,8 @@ test("a Blender scene built by a script is checked through a window Read", async
   await mkdir(".tmp", { recursive: true });
   await writeFile(".tmp/pi-scene.py", [
     "import bpy",
+    "bpy.ops.object.select_all(action='SELECT')",
+    "bpy.ops.object.delete()  # the default camera, cube and light; a short outliner then lists only the scene built here",
     "for name, add, location in (('PiCube', bpy.ops.mesh.primitive_cube_add, (0, 0, 1)), ('PiSphere', bpy.ops.mesh.primitive_uv_sphere_add, (3, 0, 1))):",
     "    add(location=location)",
     "    bpy.context.object.name = name",
@@ -28,10 +30,13 @@ test("a Blender scene built by a script is checked through a window Read", async
   let names: string[] = [];
   for (let attempt = 0; attempt < 10 && !["PiCube", "PiSphere", "PiGround"].every(name => names.includes(name)); attempt++) {
     await new Promise(resolve => setTimeout(resolve, 1500));
-    const read = await live.read(window, ['capture:{"granularity":"image","maxLongEdge":3840}', "ocr"]);
-    names = (read.details.text_lines ?? []).flatMap(line => line.words.map(word => word.text));
+    // The outliner sits in the top-right corner; region OCR enlarges it, which small Remote Desktop text needs.
+    const read = await live.read(window, ['capture:{"granularity":"image","maxLongEdge":3840}']);
+    const { width, height } = (read.details.agent_image as { output: { width: number; height: number } }).output;
+    const corner = await live.read(`computer:observation/${read.details.observation_id}`, [`region:${Math.round(width * 0.7)},0,${Math.round(width * 0.3)},${Math.round(height * 0.4)}`, "ocr"]);
+    names = (corner.details.text_lines ?? []).flatMap(line => line.words.map(word => word.text));
   }
-  console.log("outliner words", names.filter(name => /^Pi|Cube|Sphere|Camera|Light/.test(name)));
+  console.log("outliner words", JSON.stringify(names));
   expect(names).toEqual(expect.arrayContaining(["PiCube", "PiSphere", "PiGround"]));
   const state = await live.read(window, ["state"]);
   expect(state.details.process).toMatchObject({ responding: true });

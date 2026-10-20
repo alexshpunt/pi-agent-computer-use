@@ -65,6 +65,31 @@ export async function serveFixture(runner: CommandRunner) {
   };
 }
 
+/**
+ * Select a Paint tool (Pencil, Text, …) by its button. A narrow window (for example on a Remote Desktop display)
+ * collapses the ribbon into group buttons; then the Tools group is opened first and the tool picked from its flyout.
+ */
+export async function paintTool(live: Awaited<ReturnType<typeof connectLive>>, window: string, name: string): Promise<void> {
+  type Element = { hint: string; role: string; name: string | null };
+  const click = async (view: ComputerResult, element: Element) => {
+    const result = await live.insert(`computer:observation/${view.details.observation_id}?hint=${encodeURIComponent(element.hint)}&delivery=foreground`, { action: "click" });
+    if (result.details.status !== "delivered") throw new Error(`Clicking ${element.name} was not delivered: ${text(result)}`);
+  };
+  let view = await live.read(window, ["full"]);
+  let tool = (view.details.ui!.elements as Element[]).find(e => e.role === "Button" && e.name === name);
+  if (!tool) {
+    const group = (view.details.ui!.elements as Element[]).find(e => e.role === "Button" && e.name === "Tools");
+    if (!group) throw new Error(`Paint shows neither a ${name} button nor a Tools group.`);
+    await click(view, group);
+    for (let attempt = 0; attempt < 3 && !tool; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 600));
+      view = await live.read(window, ["full"]);
+      tool = (view.details.ui!.elements as Element[]).find(e => e.role === "Button" && e.name === name);
+    }
+    if (!tool) throw new Error(`The Tools flyout has no ${name} button.`);
+  }
+  await click(view, tool);
+}
 export const at = (path: string): ComputerAddress => requireComputerAddress(path);
 export const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
 /** Window or display addresses listed by a discovery result. */
