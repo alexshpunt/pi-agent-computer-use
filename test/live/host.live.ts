@@ -53,18 +53,18 @@ test("OCR finds text typed into a Paint canvas within a few pixels of the drawn 
   const { width, height } = size(small);
   const at = { x: Math.round(width * 0.3), y: Math.round(height * 0.45) };
   await delivered(observation(small, "?delivery=foreground"), { action: "sequence", sequence: [
-    { action: "click", ...at }, { action: "type_text", text: "Hello Agent 42", wait_ms: 300 },
-    { action: "click", x: Math.round(width * 0.8), y: Math.round(height * 0.85), wait_ms: 300 }] });
+    // Paint's text tool needs a dragged text box, and the box takes a moment to accept typing. It stays open.
+    { action: "drag", from_x: at.x, from_y: at.y, to_x: at.x + 300, to_y: at.y + 60, duration_ms: 300 }, { action: "type_text", text: "Hello Agent 42", wait_ms: 1000 }] });
   await new Promise(resolve => setTimeout(resolve, 500));
   const read = await live.read(window, ['capture:{"granularity":"image","maxLongEdge":3840}', "ocr"]);
   console.log(text(read).split("\n").filter(line => line.includes("OCR") || line.startsWith("- ")).join("\n"));
   const line = read.details.text_lines!.find(l => /Hello\s*Agent\s*42/i.test(l.text))!;
   expect(line).toBeTruthy();
-  // Truth: the bounding box of dark pixels near the click in the same image.
+  // Truth: the bounding box of dark pixels inside the text box (its dashed frame excluded) in the same image.
   const big = size(read), scale = big.width / width;
   const image = read.content.find(block => block.type === "image")!;
   const { data, info } = await sharp(Buffer.from(image.data, "base64")).greyscale().raw().toBuffer({ resolveWithObject: true });
-  const area = { left: Math.round(at.x * scale) - 20, top: Math.round(at.y * scale) - 20, right: Math.round(at.x * scale) + line.width + 80, bottom: Math.round(at.y * scale) + line.height * 3 };
+  const area = { left: Math.round(at.x * scale) + 8, top: Math.round(at.y * scale) + 8, right: Math.round((at.x + 300) * scale) - 8, bottom: Math.round((at.y + 60) * scale) - 8 };
   let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
   for (let y = area.top; y < area.bottom; y++) for (let x = area.left; x < area.right; x++)
     if (data[y * info.width + x] < 100) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }

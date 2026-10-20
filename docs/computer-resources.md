@@ -176,7 +176,7 @@ Closing the computer session or Pi disconnects every machine, and a cancelled `c
   "zinpc": {
     "ssh": "zinpc-benchmark",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.34.0-desktop-4379acbd/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.34.0-desktop-630c7ab2/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }

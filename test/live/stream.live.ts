@@ -34,7 +34,8 @@ test("a capture, find and click loop hits a moving target and the page reports r
     const image = view.content.find(block => block.type === "image") as { data: string };
     const { data, info } = await sharp(Buffer.from(image.data, "base64")).removeAlpha().raw().toBuffer({ resolveWithObject: true });
     let sx = 0, sy = 0, n = 0;
-    for (let i = 0; i < data.length; i += 3) if (data[i] > 200 && data[i + 1] < 40 && data[i + 2] < 60) { const p = i / 3; sx += p % info.width; sy += Math.floor(p / info.width); n++; }
+    // Red, whatever the display's colour profile.
+    for (let i = 0; i < data.length; i += 3) if (data[i] > 150 && data[i] - data[i + 1] > 100 && data[i] - data[i + 2] > 100) { const p = i / 3; sx += p % info.width; sy += Math.floor(p / info.width); n++; }
     if (n < 20) continue;
     const at = { x: Math.round(sx / n), y: Math.round(sy / n) };
     if (Math.abs(at.x - lastHit.x) + Math.abs(at.y - lastHit.y) < 4) continue; // Already clicked this position.
