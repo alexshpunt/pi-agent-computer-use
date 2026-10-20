@@ -50,6 +50,37 @@ export async function connectLive(cwd = process.cwd()) {
   };
 }
 
+/**
+ * PowerShell arguments for a disposable native Win32 target: a WinForms window with a counter button, a list box
+ * and a text box behind the standard UIA proxies. Use it where Notepad is missing or would restore the human's tabs.
+ */
+export function nativeForm(title: string): string[] {
+  const script = `Add-Type -AssemblyName System.Windows.Forms
+$f = New-Object Windows.Forms.Form; $f.Text = '${title}'; $f.Width = 420; $f.Height = 300
+$b = New-Object Windows.Forms.Button; $b.Text = 'Count 0'; $b.Left = 10; $b.Top = 10; $b.Width = 120; $script:n = 0
+$b.Add_Click({ $script:n++; $b.Text = "Count $script:n" })
+$l = New-Object Windows.Forms.ListBox; $l.Left = 10; $l.Top = 50; $l.Height = 80; [void]$l.Items.AddRange(@('alpha', 'beta', 'gamma')); $l.AccessibleName = 'Pick'
+$t = New-Object Windows.Forms.TextBox; $t.Left = 10; $t.Top = 150; $t.Width = 300; $t.AccessibleName = 'Field'
+$f.Controls.AddRange(@($b, $l, $t)); [void]$f.ShowDialog()`;
+  return ["-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
+}
+export const WINDOWS_POWERSHELL_PATH = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+
+/**
+ * Open an app by path on a machine, sandbox or session address and return its window by title. Edge hands its
+ * launch to a broker and a PowerShell launch reports its console rather than the form it shows, so the launch's own
+ * window reference is not used.
+ */
+export async function openWindow(live: Awaited<ReturnType<typeof connectLive>>, source: string, path: string, args: string[], title: string): Promise<string> {
+  const launched = await live.insert(source, { action: "open", path, args });
+  for (let i = 0; i < 60; i++) {
+    const found = addresses(await live.search(source, title), "window")[0];
+    if (found) return found;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  throw new Error(`No ${title} window appeared: ${text(launched)}`);
+}
+
 /** Serve scripts/web-fixture.mjs on the machine (its WSL loopback, reachable by its Windows browsers) and read its journal. */
 export async function serveFixture(runner: CommandRunner) {
   await runner.run("dd", ["status=none", "of=/tmp/pi-web-fixture.mjs"], { input: await readFile("scripts/web-fixture.mjs") });
