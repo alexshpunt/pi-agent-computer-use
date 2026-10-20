@@ -13,11 +13,9 @@ import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
 import { WebBrowser } from "./web-browser.ts";
-import { ComputerRequestError, type SandboxFactory } from "./computer-resources.ts";
-import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
-import { localRunner, sshRunner } from "./runner.ts";
+import { localRunner } from "./runner.ts";
 import { MachineHost } from "./machine-host.ts";
-import { machineConfig, machineFactory } from "./machine.ts";
+import { machineFactory, sandboxFactory } from "./machine.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
 export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
@@ -144,25 +142,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     try { return await loading; }
     finally { loading = undefined; }
   }
-  // Each sandbox gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
-  // On another machine the sandbox host and its files are reached over SSH, and the guest relays through SSH tunnels.
-  const openSandbox: SandboxFactory = async (cwd, command, signal, machineName) => {
-    let options;
-    try { options = sandboxOptions(command); }
-    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-    const config = await loadComputerConfig(cwd);
-    const machine = machineName ? await machineConfig(cwd, machineName) : undefined;
-    const runner = machine ? sshRunner(machine.ssh) : localRunner(config.interop);
-    const sandbox = await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, options, signal);
-    // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
-    const driver = new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
-      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) });
-    try { await waitForGuestDriver(driver, signal); }
-    catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
-    const guest = new ComputerSession(driver, () => "yolo", () => images.settings(), undefined, image => debug.trace.retainOriginal(image));
-    return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
-      close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
-  };
+  const openSandbox = sandboxFactory({ settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
   const connectMachine = machineFactory({ getMode, settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
   await registerComputerProvider(pi, getSession, async () => {
     await closeClassifier();

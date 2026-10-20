@@ -4,12 +4,12 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadComputerConfig, type ComputerConfig } from "./config.ts";
-import { ComputerRequestError, type MachineFactory } from "./computer-resources.ts";
+import { ComputerRequestError, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
 import { MachineHost } from "./machine-host.ts";
-import { sshRunner, type CommandRunner } from "./runner.ts";
-import { waitForGuestDriver } from "./sandbox.ts";
+import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
+import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { ComputerSession, type ComputerMode, type Content } from "./session.ts";
 import { WebBrowser } from "./web-browser.ts";
 
@@ -39,6 +39,30 @@ export async function checkRemoteWorker(runner: CommandRunner, remotePackage: st
   const stale = WORKER_FILES.filter((_, index) => remote[index] !== local[index]).map(([name]) => name);
   if (stale.length) throw new ComputerRequestError(`The browser worker on this machine is missing or out of date (${stale.join(", ")}); nothing was launched. `
     + `Refresh it from this package with ${refresh}, then open the browser again.`);
+}
+
+/**
+ * Each sandbox gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
+ * On another machine the sandbox host and its files are reached over SSH, and the guest relays through SSH tunnels.
+ */
+export function sandboxFactory(options: { settings: () => CuaVisionSettings; retainRaw?: (image: Content) => void }): SandboxFactory {
+  return async (cwd, command, signal, machineName) => {
+    let parsed;
+    try { parsed = sandboxOptions(command); }
+    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    const config = await loadComputerConfig(cwd);
+    const machine = machineName ? await machineConfig(cwd, machineName) : undefined;
+    const runner = machine ? sshRunner(machine.ssh) : localRunner(config.interop);
+    const sandbox = await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, parsed, signal);
+    // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
+    const driver = new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
+      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) });
+    try { await waitForGuestDriver(driver, signal); }
+    catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
+    const guest = new ComputerSession(driver, () => "yolo", options.settings, undefined, options.retainRaw);
+    return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
+      close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
+  };
 }
 
 /**
