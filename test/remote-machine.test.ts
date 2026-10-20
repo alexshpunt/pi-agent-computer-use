@@ -6,7 +6,8 @@ import { expect, test, vi } from "vitest";
 import { computerSource } from "../src/computer-address.ts";
 import { ComputerRequestError, ComputerResources, requireComputerAddress, type OpenedMachine, type OpenedSandbox } from "../src/computer-resources.ts";
 import { loadComputerConfig } from "../src/config.ts";
-import { remoteCommand } from "../src/runner.ts";
+import { checkRemoteWorker } from "../src/machine.ts";
+import { remoteCommand, type CommandRunner } from "../src/runner.ts";
 import { ComputerSession, type Driver } from "../src/session.ts";
 
 const cwd = "/synthetic-remote-fixture";
@@ -114,4 +115,20 @@ test("closing the computer session disconnects every machine", async () => {
   await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert");
   expect(f.machineClose).toHaveBeenCalledOnce();
   expect(() => f.resources.descriptor(address(f.machineSource))).toThrow(/expired/);
+});
+
+test("a remote browser refuses before launch when that machine's worker copy is stale or missing", async () => {
+  const local = execFileSync("sha256sum", ["src/web-worker.ts", require.resolve("playwright-core/package.json")], { encoding: "utf8" });
+  const runner = (output: string | Error): CommandRunner => ({ spawn: vi.fn(), run: vi.fn(async () => {
+    if (output instanceof Error) throw output;
+    return output;
+  }) });
+  const current = runner(local);
+  await checkRemoteWorker(current, "/pkg", "scripts/setup-remote-machine.sh zinpc /rt zinpc");
+  expect(current.run).toHaveBeenCalledWith("sha256sum", ["/pkg/src/web-worker.ts", "/pkg/node_modules/playwright-core/package.json"], expect.anything());
+  const stale = local.replace(/^[0-9a-f]{64}/, "0".repeat(64));
+  await expect(checkRemoteWorker(runner(stale), "/pkg", "scripts/setup-remote-machine.sh zinpc /rt zinpc"))
+    .rejects.toThrow(/out of date \(src\/web-worker\.ts\); nothing was launched\. Refresh it from this package with scripts\/setup-remote-machine\.sh zinpc \/rt zinpc/);
+  await expect(checkRemoteWorker(runner(new Error("No such file")), "/pkg", "setup"))
+    .rejects.toBeInstanceOf(ComputerRequestError);
 });

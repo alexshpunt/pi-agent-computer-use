@@ -173,7 +173,7 @@ Closing the computer session or Pi disconnects every machine, and a cancelled `c
 ### Set up a machine
 
 1. Make the machine reachable with an SSH alias from `~/.ssh/config` that logs in to its WSL by key, without a password prompt. Its host key must already be known.
-2. Run `scripts/setup-remote-machine.sh <alias> <local runtime folder> [name]` from this repository after `npm ci`. It copies the CUA runtime and checks its hash, installs a checksum-verified portable Windows Node in the remote user's folder, copies the browser worker, and prints the `machines` entry. It changes nothing system-wide.
+2. Run `scripts/setup-remote-machine.sh <alias> <local runtime folder> [name]` from this repository after `npm ci`. It copies the CUA runtime and checks its hash, installs a checksum-verified portable Windows Node in the remote user's folder, copies the browser worker, and prints the `machines` entry. It changes nothing system-wide. Run it again after updating this package: a browser launch on that machine refuses, naming this command, while its worker copy differs from this package.
 3. Add that entry to `machines` in `.pi/computer-use.json`:
 
 ```json
