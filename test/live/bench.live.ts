@@ -10,8 +10,8 @@ import { connectLive, text } from "./remote.ts";
 // transport (a trivial native call), native input (click) and the full Read+click loop.
 // It acts only on a new Notepad window it opens and closes.
 const ROUNDS = Number(process.env.BENCH_ROUNDS ?? 20);
-// BENCH_BACKEND=wgc measures the retained WGC route; BENCH_EDGE sets the overview long edge.
-const VIEWS = ["image", ...(process.env.BENCH_BACKEND ? [`backend:${process.env.BENCH_BACKEND}`] : []),
+// BENCH_EDGE sets the overview long edge.
+const VIEWS = ["image",
   ...(process.env.BENCH_EDGE ? [`capture:{"maxLongEdge":${process.env.BENCH_EDGE}}`] : [])];
 const native: { name: string; ms: number }[] = [];
 const call = McpDriver.prototype.call;

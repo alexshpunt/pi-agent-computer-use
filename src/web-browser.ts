@@ -62,7 +62,11 @@ export interface WebDownload {
 }
 /** Installed browser channel launched by Playwright. */
 export type WebChannel = "chrome" | "msedge";
-export interface WebLaunchOptions { browser?: WebChannel; url?: string }
+/**
+ * Browser launch request. `profile: "agent"` uses the agent's own persistent profile on that machine (YOLO only):
+ * logins made there stay for later sessions; it is never the user's own profile.
+ */
+export interface WebLaunchOptions { browser?: WebChannel; url?: string; profile?: "agent" }
 /** One open tab or popup of the owned browser. Ids are stable for the browser's lifetime. */
 export interface WebTab {
   id: string; url: string; title: string; active: boolean;
@@ -259,17 +263,18 @@ export function validateWebAction(value: unknown): WebAction {
 
 /** Validate an `open_browser` command. */
 export function validateWebLaunch(value: Record<string, unknown>): WebLaunchOptions {
-  only(value, ["action", "browser", "url"], "open_browser");
+  only(value, ["action", "browser", "url", "profile"], "open_browser");
   if (value.browser !== undefined && !["chrome", "msedge"].includes(value.browser as string)) throw Error("browser must be chrome or msedge.");
+  if (value.profile !== undefined && value.profile !== "agent") throw Error("profile must be \"agent\", the agent's own persistent profile; omit it for a disposable one.");
   return { ...(value.browser !== undefined ? { browser: value.browser as WebChannel } : {}),
-    ...(value.url !== undefined ? { url: httpUrl(value.url) } : {}) };
+    ...(value.url !== undefined ? { url: httpUrl(value.url) } : {}), ...(value.profile ? { profile: "agent" as const } : {}) };
 }
 
 interface Pending { resolve(value: unknown): void; reject(error: Error): void }
 
 /**
- * One Windows Node worker that owns one visible Playwright browser and its disposable profile.
- * Ending the worker's stdin closes that browser and deletes the profile.
+ * One Windows Node worker that owns one visible Playwright browser and its disposable profile (or the agent's persistent one).
+ * Ending the worker's stdin closes that browser and deletes a disposable profile.
  */
 export class WebBrowser {
   private readonly pending = new Map<number, Pending>();
@@ -335,7 +340,7 @@ export class WebBrowser {
     }
     const browser = new WebBrowser(child, options.remote?.runner);
     try {
-      const opened = await browser.request<WebOpened>("open", { browser: options.browser ?? "chrome", ...(options.url ? { url: options.url } : {}) }, signal, 60_000);
+      const opened = await browser.request<WebOpened>("open", { browser: options.browser ?? "chrome", ...(options.url ? { url: options.url } : {}), ...(options.profile ? { profile: options.profile } : {}) }, signal, 60_000);
       if (!Number.isSafeInteger(opened.pid) || opened.pid <= 0) throw new WebError("Browser launch did not report a process id.");
       return { browser, opened };
     } catch (error) {

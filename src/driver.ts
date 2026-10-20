@@ -81,8 +81,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "ae7cc20bfebf41339ae21e6f63f25921b37ec120", version: "0.37.0",
-  sha256: "607e257d758f9033f371bf9342d92fcfabac75950361e44bcdd4793c500d7096",
+  source: "b4d98549fe451c27f940d33c0e961476f21570e6", version: "0.37.0",
+  sha256: "1a4994cbd30cbb30de9811063cdbc94d4f662755762c65b9d89907dc216558af",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -156,11 +156,6 @@ export class McpDriver implements Driver {
   get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
   /** Old profiles cannot borrow state-bound management from matching version numbers. */
   get windowManagement(): boolean { return ["windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
-  /**
-   * Retained capture is opt-in and never inferred from an unqualified bundle or version.
-   * A sandbox guest (no vGPU) misses WGC's first frames, so its windows use the default capture route.
-   */
-  get persistentWgc(): boolean { return !this.config.endpoint && ["windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
   get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
@@ -279,8 +274,6 @@ export class McpDriver implements Driver {
         restore_attempted: false, restore_requested: false, restored: false, activation_attempted: false,
         activation_succeeded: false, visible: null, foreground_at_target: null, keyboard_focus_at_target: null, foreground_changed: null,
       } };
-    if (name === "get_window_state" && args.capture_backend === "wgc" && !this.persistentWgc)
-      return { content: [], structuredContent: { status: "refused", code: "persistent_wgc_unavailable", attempted: false, fallback: false }, isError: true };
     if (name === "scroll_at" && !this.coordinateScroll)
       return { content: [], structuredContent: { status: "refused", code: "coordinate_scroll_unavailable", attempted: false, delivered: false,
         pointer_attempted: false, pointer_delivered: false, attempted_axes: [], delivered_axes: [], fallback: false }, isError: true };
@@ -301,8 +294,9 @@ export class McpDriver implements Driver {
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
     // Since 0.35 the driver shapes window state for models; the adapter needs the full payload with `elements`.
     if (name === "get_window_state" && compactWindowState(this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version)) args = { ...args, full_output: true };
-    // A timeline runs for its own length; every other native call answers well within 15 s.
-    const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : 15_000;
+    // A timeline runs for its own length and a large app (GIMP, Blender) can take over 15 s to show its first window;
+    // every other native call answers well within 15 s.
+    const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
     const content: Content[] = [];
     for (const block of result.content) {

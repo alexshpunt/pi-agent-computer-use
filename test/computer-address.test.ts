@@ -32,7 +32,7 @@ describe("computer Read views", () => {
   it("keeps UI lines, pixels and native detail distinct", () => {
     expect(parseComputerViews()).toEqual({ kind: "overview", capture: {} });
     expect(parseComputerViews(["ui"])).toEqual({ kind: "overview", capture: { granularity: "ui" } });
-    expect(parseComputerViews(["image", "backend:default"])).toEqual({ kind: "overview", capture: { granularity: "image", backend: "default" } });
+    expect(parseComputerViews(["image", 'capture:{"maxLongEdge":320}'])).toEqual({ kind: "overview", capture: { granularity: "image", maxLongEdge: 320 } });
     expect(parseComputerViews(["region:10,20,100,80"])).toEqual({ kind: "region", region: { x: 10, y: 20, width: 100, height: 80 } });
   });
 
@@ -45,12 +45,12 @@ describe("computer Read views", () => {
     expect(parseComputerViews(['capture:{"max_elements":10,"hints":true}'])).toEqual({ kind: "overview", capture: { max_elements: 10, hints: true } });
     expect(parseComputerViews(["element:inspect,1:a"])).toEqual({ kind: "element", operation: "inspect", hint: "1:a" });
     for (const views of [['sequence:{"duration_ms":60001}'], ['sequence:{"duration_ms":200,"window_ref":"other"}'],
-      ['frames:{"from":2,"to":1}'], ['frames:{"indexes":[0,0]}'], ["frames:last", "ui"], ['capture:{"backend":"unknown"}']])
+      ['frames:{"from":2,"to":1}'], ['frames:{"indexes":[0,0]}'], ["frames:last", "ui"], ['capture:{"backend":"wgc"}']])
       expect(() => parseComputerViews(views)).toThrow();
   });
   it("refuses ambiguous or invalid views rather than silently acquiring wider pixels", () => {
     for (const views of [["image", "ui"], ["region:0,0,0,10"], ["region:-1,0,10,10"],
-      ["region:0,0,10,10", "full"], ["backend:unknown"], ["region:0,0,Infinity,10"], ["anchors"]])
+      ["region:0,0,10,10", "full"], ["backend:wgc"], ["region:0,0,Infinity,10"], ["anchors"]])
       expect(() => parseComputerViews(views), views.join(",")).toThrow();
   });
 });
