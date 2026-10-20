@@ -14,7 +14,8 @@ import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClic
 import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
 import { DEFAULT_MAX_LONG_EDGE, nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
-import type { DisplayMode, DisplayModes } from "./display-mode.ts";
+import type { DisplayMode } from "./display-mode.ts";
+import type { MachineHost, ProcessHealth, TextLine } from "./machine-host.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import type { StateDiff } from "./successor.ts";
@@ -117,6 +118,10 @@ export interface ComputerResult {
     postcondition?: { status: "verified" | "preexisting" | "failed" | "unknown"; reason?: string; verification?: WaitResult & { spec: WaitSpec } };
     /** The observation taken after an action and its compact difference from the action's input observation. */
     successor?: { observation_id?: string; diff?: StateDiff; reason?: string };
+    /** Text recognised by Windows OCR in this result's image, boxes in the observation's overview pixels. */
+    text_lines?: TextLine[];
+    /** The window's process: whether it responds, its memory and CPU time. */
+    process?: ProcessHealth;
     /** Complete text of one native element from its observation. */
     element_text?: { hint: string; role: string | null; name: string | null; text: string; cut: boolean };
     /** Per-step outcome of a mixed batch; the batch stops at the first step that is not delivered or satisfied. */
@@ -174,6 +179,8 @@ export class ComputerSession {
   private readonly displayEntries = new Map<string, DisplayEntry>();
   /** Modes this session replaced, by display device; close puts them back. */
   private readonly replacedModes = new Map<string, DisplayMode>();
+  private recording?: { timer: NodeJS.Timeout; started: number };
+  private recordings = 0;
   private readonly sequences = new SequenceStore();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
@@ -220,7 +227,8 @@ export class ComputerSession {
     private readonly observer?: WindowObserver,
     private readonly retainRaw?: (image: Content) => void,
     private readonly launchWeb?: WebLauncher,
-    private readonly displayModes?: DisplayModes) {}
+    /** Display modes, the owned file folder, process health and OCR on this desktop's machine; absent in a sandbox guest. */
+    readonly host?: MachineHost) {}
 
   private overviewSettings(): CuaVisionSettings {
     const settings = this.settings();
@@ -618,16 +626,84 @@ export class ComputerSession {
     });
   }
 
+  /**
+   * Read the controlled machine's clipboard in YOLO: its formats, text and, when asked, its image as PNG.
+   * The clipboard is shared with the user, so it is read only on this explicit call.
+   */
+  clipboardRead(image: boolean, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids clipboard access: it is shared with the user's own apps. Only the user can select YOLO with /computer-mode.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before reading the clipboard.");
+      try {
+        if (image && !this.host) return this.result("refused", "Clipboard images need the machine host, which this desktop does not have.");
+        const state = await this.state("clipboard_read", { include_text: true }, signal);
+        const png = image ? await this.host!.clipboardImage() : undefined;
+        const text = typeof state.text === "string" ? state.text : undefined;
+        return this.result("observed", `Clipboard formats: ${JSON.stringify(state.types ?? state.available_types ?? [])}.${text !== undefined ? `\nText (${text.length} characters):\n${text}` : " No text."}${image ? png ? " Image attached." : " No image." : ""}`,
+          { types: state.types ?? state.available_types, ...(text !== undefined ? { text } : {}) }, {}, png ? [{ type: "image", mimeType: "image/png", data: png.toString("base64") }] : []);
+      } catch (error) { return this.result("refused", `Clipboard read failed: ${error instanceof Error ? error.message : error}`); }
+    });
+  }
+
+  /**
+   * Record the main display to video in YOLO, into this session's folder, for at most `seconds`.
+   * The driver captures with ffmpeg; recording stops on record_stop, at the limit or when the session closes.
+   */
+  recordStart(seconds: number, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display recording. Only the user can select YOLO with /computer-mode.");
+      if (!this.host) return this.result("refused", "Recording needs the session folder, which this desktop does not have.");
+      if (this.recording) return this.result("refused", "A recording is already running; stop it first.");
+      const folder = await this.host.files();
+      const native = await this.driver.call("start_recording", { output_dir: folder.windows, record_video: true, include_accessibility_tree: false }, signal);
+      const state = native.structuredContent ?? {};
+      if (native.isError || state.video_active !== true) {
+        await this.driver.call("stop_recording", {}).catch(() => undefined);
+        return this.result("refused", `Recording did not start${state.last_error ? `: ${state.last_error}` : ""}. Video needs ffmpeg on that machine (for example winget install Gyan.FFmpeg).`, state);
+      }
+      const timer = setTimeout(() => { void this.recordStop(); }, seconds * 1000);
+      this.recording = { timer, started: Date.now() };
+      return this.result("delivered", `Recording the main display for up to ${seconds} s. Insert record_stop to finish earlier and fetch the video.`, state);
+    });
+  }
+
+  /** Stop the running recording; the video stays in the session folder as recording-<n>.mp4. */
+  recordStop(): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const current = this.recording;
+      if (!current || !this.host) return this.result("refused", "No recording is running, or it already stopped at its limit; Insert files to see saved videos.");
+      clearTimeout(current.timer);
+      this.recording = undefined;
+      const native = await this.driver.call("stop_recording", {});
+      const name = `recording-${++this.recordings}.mp4`;
+      try { await this.host.rename("recording.mp4", name); }
+      catch (error) { return this.result("unknown", `Recording stopped, but its video was not found: ${error instanceof Error ? error.message : error}`, native.structuredContent); }
+      return this.result("delivered", `Recorded ${Math.round((Date.now() - current.started) / 1000)} s of the main display as ${name} in the session folder.`, { ...native.structuredContent, name });
+    });
+  }
+
+  /** Replace the controlled machine's clipboard in YOLO with text or an image file already on that machine. */
+  clipboardWrite(value: { text: string } | { imagePath: string }, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids clipboard access: it is shared with the user's own apps. Only the user can select YOLO with /computer-mode.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before writing the clipboard.");
+      try {
+        const state = await this.state("clipboard_write", "text" in value ? { text: value.text } : { image_path: value.imagePath }, signal);
+        return this.result("delivered", `Clipboard replaced with ${"text" in value ? `text (${value.text.length} characters)` : "an image"}. Paste with ctrl+v in the target window.`, state);
+      } catch (error) { return this.result("refused", `Clipboard write failed: ${error instanceof Error ? error.message : error}`); }
+    });
+  }
+
   /** Change a discovered display's resolution in YOLO. Closing the session restores the mode it replaced. */
   resizeDisplay(display: string, mode: DisplayMode, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display changes. Only the user can select YOLO with /computer-mode.");
-      if (!this.displayModes) return this.result("refused", "Display resizing is not available for this desktop.");
+      if (!this.host) return this.result("refused", "Display resizing is not available for this desktop.");
       const entry = this.displayEntries.get(display);
       if (!entry) return this.result("refused", "Unknown or outdated display reference. Read the displays again.");
       if (signal?.aborted) return this.result("refused", "Cancelled before the display change.");
       let change;
-      try { change = await this.displayModes.set(entry.native.monitor_handle, mode, signal); }
+      try { change = await this.host.displayModes.set(entry.native.monitor_handle, mode, signal); }
       catch (error) {
         // A cancelled or timed-out change may still have reached Windows.
         if (signal?.aborted) return this.result("unknown", "Cancelled during the display change; the resolution may have changed. Read the displays again.");
@@ -1147,6 +1223,51 @@ export class ComputerSession {
     });
   }
 
+  /**
+   * Force-close the process of a window this session opened, when every window of that process is session-owned.
+   * Unsaved work in it is lost; a process that also shows other windows is never killed.
+   */
+  killOwned(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = this.entries.get(ref);
+      if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
+      if (!entry.owned) return this.result("refused", "Only windows this session opened can be force-closed; close other windows through their own UI.");
+      if (signal?.aborted) return this.result("refused", "Cancelled before closing the process.");
+      try {
+        const windows = (await this.state("list_windows", { pid: entry.target.pid }, signal)).windows as WindowTarget[] ?? [];
+        const owned = new Set([...this.entries.values()].filter(e => e.owned).map(e => `${e.target.pid}:${e.target.window_id}`));
+        const foreign = windows.filter(w => w.pid === entry.target.pid && !owned.has(`${w.pid}:${w.window_id}`));
+        if (foreign.length) return this.result("refused", `Process ${entry.target.pid} also shows ${foreign.length} window(s) this session did not open; it was not killed. Close this window through its own UI.`);
+        const native = await this.driver.call("kill_app", { pid: entry.target.pid }, signal);
+        if (native.isError) return this.result("refused", `The process was not killed: ${native.content.filter(c => c.type === "text").map(c => c.text).join(" ")}`, native.structuredContent);
+        for (const [key, other] of this.entries) if (other.target.pid === entry.target.pid) this.entries.delete(key);
+        return this.result("delivered", `Process ${entry.target.pid} was force-closed; unsaved work in it is lost and its window addresses expired.`, native.structuredContent);
+      } catch (error) { return this.failed(error, true); }
+    });
+  }
+
+  /** The native target of a known window, read before work that may forget the window. */
+  windowTarget(ref: string): WindowTarget | undefined { return this.entries.get(ref)?.target; }
+
+  /** Whether a window still responds, with its process's memory and CPU; undefined when unknown or not measurable here. */
+  processHealth(target: WindowTarget | undefined): Promise<ProcessHealth | undefined> {
+    return target === undefined || !this.host ? Promise.resolve(undefined) : this.host.processHealth(target.pid, target.window_id).catch(() => undefined);
+  }
+
+  /** The unannotated overview pixels of a window observation, for text recognition in its own coordinates. */
+  observationImage(ref: string, id: string): Content | undefined {
+    const observed = this.entries.get(ref)?.observation;
+    return observed?.id === id && !observed.pixelsOnly ? observed.rawImage : undefined;
+  }
+
+  /** Recognise text with Windows OCR on this desktop's machine; boxes are in the given image's pixels, a region only reads that part. */
+  async recognizeText(image: Content, region?: ScreenRect, signal?: AbortSignal): Promise<TextLine[]> {
+    if (!this.host) throw new Error("Text recognition is not available for this desktop.");
+    if (image.type !== "image") throw new Error("Text recognition needs an image.");
+    if (signal?.aborted) throw new Error("Cancelled before text recognition.");
+    return this.host.ocr(Buffer.from(image.data, "base64"), region);
+  }
+
   /** Check cached state authority without acquiring metadata or renewing its one-use native lease. */
   checkWindowState(ref: string, id: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -1391,6 +1512,7 @@ export class ComputerSession {
           { ...(result.details.state ?? {}), sequence: trace }, { ...this.addressed(entry), ...(result.details.highlight ? { highlight: result.details.highlight } : {}) });
       };
       try {
+        let capture = observed.captureId;
         for (const [index, step] of commands.entries()) {
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before the next dispatch.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
@@ -1400,7 +1522,9 @@ export class ComputerSession {
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
           if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
-          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", observed.captureId, this.driver.captureBoundDrag);
+          // The native capture is single-use: the first step that binds to it spends it, later pixel steps use the window's current mapping.
+          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", capture, this.driver.captureBoundDrag);
+          if (args.capture_id !== undefined) capture = undefined;
           // AX bounds are native. Only native click receipts establish an exact pixel action mark.
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
           let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);
@@ -1510,11 +1634,14 @@ export class ComputerSession {
       const cleanup = await Promise.allSettled(browsers.map(browser => browser.close()));
       const modes = [...this.replacedModes];
       this.replacedModes.clear();
-      const restored = await Promise.allSettled(modes.map(([device, mode]) => this.displayModes!.restore(device, mode)));
+      const restored = await Promise.allSettled(modes.map(([device, mode]) => this.host!.displayModes.restore(device, mode)));
+      if (this.recording) { clearTimeout(this.recording.timer); this.recording = undefined; }
+      const files = await this.host?.removeFiles().then(() => true, () => false) ?? true;
       await this.driver.close();
       const failed = cleanup.filter(result => result.status === "rejected").length;
       const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);
       if (unrestored.length) return this.result("unknown", `Native runtime released, but restoring the display mode of ${unrestored.join(", ")} failed. Signing out of Windows also restores it.`);
+      if (!files) return this.result("unknown", "Native runtime released, but removing the session's file folder failed.");
       if (failed) return this.result("unknown", `Native runtime released, but cleanup of ${failed} of ${browsers.length} owned browsers is unconfirmed.`);
       return this.result("closed", "Owned computer-use runtime and session-opened browsers released. Other application documents were not closed or saved.");
     });

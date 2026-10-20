@@ -4,7 +4,7 @@ import { isCoordinateScroll } from "./scroll-actions.ts";
 
 /** Complete CUA operations. None exposes a key or button held between calls. */
 export interface InputCommand {
-  action: "move" | "hover" | "invoke" | "select" | "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold";
+  action: "move" | "hover" | "invoke" | "select" | "type_text" | "set_value" | "click" | "right_click" | "double_click" | "scroll" | "drag" | "select_all" | "key" | "hotkey" | "hold" | "timeline" | "menu";
   element_token?: string;
   /** Snapshot-scoped UI alias; ComputerSession resolves it before native validation. */
   hint?: string;
@@ -26,13 +26,29 @@ export interface InputCommand {
   via?: { x: number; y: number }[];
   /** Complete screenshot-grounded pointer steps executed while this command owns its held keys. */
   actions?: HoldPointer[];
+  /** Timed key, button, motion, wheel and pen events; everything still held is released when the call ends. */
+  events?: TimelineEvent[];
+  /** Menu labels from the top-level menu to the item, resolved and invoked through accessibility. */
+  path?: string[];
 }
+/** One event of an input timeline, at_ms after its start. Points are overview pixels; move_relative is raw mouse motion. */
+export interface TimelineEvent {
+  at_ms: number;
+  type: "key_down" | "key_up" | "button_down" | "button_up" | "move" | "move_relative" | "wheel" | "pen_down" | "pen_move" | "pen_up";
+  key?: string; button?: "left" | "right" | "middle" | "x1" | "x2";
+  x?: number; y?: number; dx?: number; dy?: number;
+  /** Pen only: pressure 0..1, tilt -90..90 degrees, eraser end, barrel button. */
+  pressure?: number; tilt_x?: number; tilt_y?: number; eraser?: boolean; barrel?: boolean;
+}
+/** Longest timeline, in requested time and events, that one call accepts. */
+export const TIMELINE_MAX_MS = 120_000;
+export const TIMELINE_MAX_EVENTS = 5000;
 /** Pointer input inside one bounded key hold; only observed local pixels, no nested key state. */
 export type HoldPointer = Pick<InputCommand, "x" | "y" | "from_x" | "from_y" | "to_x" | "to_y" | "duration_ms" | "steps" | "via"> & { action: "click" | "drag" };
 /** Wait before a complete step, measured from the previous step's completion. */
 export interface InputStep extends InputCommand { wait_ms?: number }
 
-const names = ["move", "hover", "invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold"] as const;
+const names = ["move", "hover", "invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold", "timeline", "menu"] as const;
 const modifiers = ["ctrl", "shift", "alt", "win"];
 const enumSchema = (values: readonly string[]) => Type.Union(values.map(value => Type.Literal(value)));
 const optional = {
@@ -73,6 +89,18 @@ export const actionParameters = Type.Object({
   }, { additionalProperties: false }), { minItems: 1, maxItems: 32,
     description: "hold only: complete left clicks/drags inside this key hold. Pixel targets from this overview; total pointer time must fit duration_ms. No tokens, modifiers or nested holds." })),
   ...optional,
+  path: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { minItems: 1, maxItems: 16,
+    description: "menu only: exact labels from the top-level menu to the item, e.g. [\"File\",\"Save As...\"]; invoked through accessibility, never pixels." })),
+  events: Type.Optional(Type.Array(Type.Object({
+    at_ms: Type.Integer({ minimum: 0, maximum: 120000 }),
+    type: enumSchema(["key_down", "key_up", "button_down", "button_up", "move", "move_relative", "wheel", "pen_down", "pen_move", "pen_up"]),
+    key: Type.Optional(Type.String()), button: Type.Optional(enumSchema(["left", "right", "middle", "x1", "x2"])),
+    x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
+    dx: Type.Optional(Type.Integer()), dy: Type.Optional(Type.Integer()),
+    pressure: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })), tilt_x: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })), tilt_y: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })),
+    eraser: Type.Optional(Type.Boolean()), barrel: Type.Optional(Type.Boolean()),
+  }, { additionalProperties: false }), { minItems: 1, maxItems: 5000,
+    description: "timeline only: timed key/button/motion/wheel/pen events at at_ms offsets; points are overview pixels, move_relative is raw motion. Foreground only; everything held is released when the call ends." })),
   sequence: Type.Optional(Type.Array(Type.Object({
     action: enumSchema(["key", "hotkey", "type_text", "select_all", "drag", "click", "double_click", "right_click"]), ...optional,
     wait_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 5000 })),
@@ -87,6 +115,8 @@ const fields: Record<InputCommand["action"], string[]> = {
   scroll: ["direction", "amount", "by", "delta_x", "delta_y", "unit"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers", "via"],
   select_all: [], invoke: [], select: [],
   hold: ["keys", "duration_ms", "actions"],
+  timeline: ["events"],
+  menu: ["path"],
 };
 const validKey = (key: unknown): key is string => typeof key === "string" && /^(?:[a-z0-9]|return|tab|escape|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown|f[1-9]|f1[0-2])$/.test(key);
 const integer = (value: unknown, min: number, max: number) => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
@@ -96,7 +126,7 @@ const SEQUENCE_ACTIONS: readonly string[] = ["key", "hotkey", "type_text", "sele
 /** Validate complete commands against the original window overview before any member of a batch runs. */
 export function validateInput(command: InputStep, observed: { tokens: Set<string>; width?: number; height?: number }, sequence = false): void {
   if (!command || !fields[command.action]) throw new Error("Unsupported complete action.");
-  const allowed = new Set(["action", ...fields[command.action], ...(isSemanticAction(command.action) ? ["element_token"] : ["drag", "hold"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
+  const allowed = new Set(["action", ...fields[command.action], ...(isSemanticAction(command.action) ? ["element_token"] : ["drag", "hold", "timeline", "menu"].includes(command.action) ? [] : ["element_token", "x", "y"]), ...(sequence ? ["wait_ms"] : [])]);
   if (Object.keys(command).some(key => !allowed.has(key))) throw new Error("This action has unsupported or conflicting fields.");
   if (sequence && !SEQUENCE_ACTIONS.includes(command.action)) throw new Error(`Sequences accept only complete keyboard actions, clicks and drags: ${SEQUENCE_ACTIONS.join(", ")}.`);
   if (command.action === "hold") {
@@ -148,6 +178,9 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
       if (command.by !== undefined && !["line", "page"].includes(command.by)) throw new Error("Scroll by line or page.");
     }
   }
+  if (command.action === "timeline") validateTimeline(command.events, point);
+  if (command.action === "menu" && (!Array.isArray(command.path) || command.path.length < 1 || command.path.length > 16 || command.path.some(label => typeof label !== "string" || !label.trim() || label.length > 200)))
+    throw new Error("menu needs path: 1..16 menu labels from the top-level menu to the item.");
   if (command.action === "drag") {
     point(command.from_x, command.from_y); point(command.to_x, command.to_y);
     if (command.duration_ms !== undefined && !integer(command.duration_ms, 0, 10000)) throw new Error("duration_ms must be 0..10000.");
@@ -165,7 +198,54 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
 
 /** Estimated requested native gesture time, excluding transport/admission and OS scheduling. */
 export function requestedInputTime(command: InputStep): number {
-  return (command.wait_ms ?? 0) + (command.action === "hold" ? command.duration_ms ?? 0 : command.action === "drag" ? command.duration_ms ?? 500 : command.action === "type_text" ? (command.text?.length ?? 0) * (command.delay_ms ?? 30) : 0);
+  return (command.wait_ms ?? 0) + (command.action === "hold" ? command.duration_ms ?? 0 : command.action === "drag" ? command.duration_ms ?? 500 : command.action === "type_text" ? (command.text?.length ?? 0) * (command.delay_ms ?? 30)
+    : command.action === "timeline" ? command.events?.at(-1)?.at_ms ?? 0 : 0);
+}
+
+const TIMELINE_FIELDS: Record<TimelineEvent["type"], string[]> = {
+  key_down: ["key"], key_up: ["key"], button_down: ["button"], button_up: ["button"], move: ["x", "y"], move_relative: ["dx", "dy"], wheel: ["dx", "dy"],
+  pen_down: ["x", "y", "pressure", "tilt_x", "tilt_y", "eraser", "barrel"], pen_move: ["x", "y", "pressure", "tilt_x", "tilt_y", "eraser", "barrel"], pen_up: ["x", "y", "pressure", "tilt_x", "tilt_y", "eraser", "barrel"],
+};
+/** Check a timeline completely before any input: order, fields, overview points and balanced presses. */
+function validateTimeline(events: unknown, point: (x: unknown, y: unknown) => void): void {
+  if (!Array.isArray(events) || events.length < 1 || events.length > TIMELINE_MAX_EVENTS) throw new Error(`timeline needs 1..${TIMELINE_MAX_EVENTS} events.`);
+  let last = 0; const keys = new Set<string>(), buttons = new Set<string>(); let pen = false;
+  for (const raw of events as TimelineEvent[]) {
+    if (!raw || typeof raw !== "object" || !TIMELINE_FIELDS[raw.type]) throw new Error("Each timeline event needs a supported type.");
+    if (Object.keys(raw).some(key => key !== "at_ms" && key !== "type" && !TIMELINE_FIELDS[raw.type].includes(key))) throw new Error(`A ${raw.type} event has unsupported fields.`);
+    if (!integer(raw.at_ms, last, TIMELINE_MAX_MS)) throw new Error(`Timeline at_ms must be non-decreasing integers up to ${TIMELINE_MAX_MS}.`);
+    last = raw.at_ms;
+    switch (raw.type) {
+      case "key_down": case "key_up":
+        if (!validKey(raw.key) && !modifiers.includes(String(raw.key))) throw new Error("Unsupported timeline key.");
+        if (raw.type === "key_down" ? keys.has(raw.key!) : !keys.has(raw.key!)) throw new Error(`Timeline key ${raw.key} is ${raw.type === "key_down" ? "already down" : "not down"}.`);
+        raw.type === "key_down" ? keys.add(raw.key!) : keys.delete(raw.key!);
+        break;
+      case "button_down": case "button_up": {
+        const button = raw.button ?? "left";
+        if (!["left", "right", "middle", "x1", "x2"].includes(button)) throw new Error("Unsupported timeline button.");
+        if (raw.type === "button_down" ? buttons.has(button) : !buttons.has(button)) throw new Error(`Timeline button ${button} is ${raw.type === "button_down" ? "already down" : "not down"}.`);
+        raw.type === "button_down" ? buttons.add(button) : buttons.delete(button);
+        break;
+      }
+      case "move_relative":
+        if (!integer(raw.dx, -10000, 10000) || !integer(raw.dy, -10000, 10000)) throw new Error("move_relative needs integer dx and dy in -10000..10000.");
+        break;
+      case "wheel": {
+        const dx = raw.dx ?? 0, dy = raw.dy ?? 0;
+        if (!integer(dx, -50, 50) || !integer(dy, -50, 50) || (dx === 0 && dy === 0)) throw new Error("wheel needs integer dx/dy detents in -50..50, at least one nonzero.");
+        break;
+      }
+      default:
+        point(raw.x, raw.y);
+        if (raw.type !== "move") {
+          if (raw.pressure !== undefined && !(Number.isFinite(raw.pressure) && raw.pressure >= 0 && raw.pressure <= 1)) throw new Error("Pen pressure must be 0..1.");
+          for (const tilt of [raw.tilt_x, raw.tilt_y]) if (tilt !== undefined && !integer(tilt, -90, 90)) throw new Error("Pen tilt must be an integer -90..90.");
+          if (raw.type === "pen_down" ? pen : raw.type === "pen_up" && !pen) throw new Error(`The pen is ${pen ? "already" : "not"} down.`);
+          if (raw.type === "pen_down") pen = true; else if (raw.type === "pen_up") pen = false;
+        }
+    }
+  }
 }
 
 /** Translate supported fields only. Coordinates stay in the original overview's local image domain.
@@ -179,6 +259,8 @@ export function nativeInput(command: InputCommand, target: { pid: number; window
     ...target, delivery_mode: delivery, dwell_ms: command.action === "hover" ? command.dwell_ms : 0,
     ...(command.element_token !== undefined ? { element_token: command.element_token } : { capture_id: captureId, x: command.x, y: command.y }),
   } };
+  if (command.action === "timeline") return { name: "input_timeline", args: { ...target, events: command.events, delivery_mode: delivery } };
+  if (command.action === "menu") return { name: "invoke_menu", args: { ...target, path: command.path } };
   if (isSemanticAction(command.action)) return { name: "semantic_action", args: { ...target, element_token: command.element_token,
     operation: command.action, ...(command.action === "set_value" ? { value: command.text } : {}) } };
   const name = command.action === "hold" ? "hold_keys" : command.action === "select_all" ? "hotkey" : command.action === "key" ? "press_key" : command.action;

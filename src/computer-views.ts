@@ -1,5 +1,5 @@
 import { validateUiCapture, type UiCaptureOptions } from "./ui-resources.ts";
-import { validateSequence, type SequenceOptions, type FrameSelection } from "./temporal-capture.ts";
+import { SEQUENCE_LIMITS, validateSequence, type SequenceOptions, type FrameSelection } from "./temporal-capture.ts";
 import { validateWebSnapshot, type WebSnapshotOptions } from "./web-browser.ts";
 
 /** One native Read mode. Details and sampled frames never grant input authority. */
@@ -22,8 +22,17 @@ function keys(value: Record<string, unknown>, allowed: readonly string[]): void 
   if (unknown.length) throw Error(`Read view contains unsupported options: ${unknown.join(", ")}. Allowed: ${allowed.join(", ")}.`);
 }
 
-/** Validate owned views before capturing; text offsets are never image coordinates. */
-export function parseComputerViews(views: readonly string[] = []): ComputerViews {
+/** Validate owned views before capturing; text offsets are never image coordinates.
+ * `ocr` adds Windows text recognition to a window overview, an observation or a region detail. */
+export function parseComputerViews(views: readonly string[] = []): ComputerViews & { ocr?: true } {
+  if (!views.includes("ocr")) return parseView(views);
+  const view = parseView(views.filter(view => view !== "ocr"));
+  if (view.kind !== "overview" && view.kind !== "region") throw Error("Use ocr alone or with region:x,y,width,height or capture options; it reads text from pixels.");
+  if (view.kind === "overview" && view.capture.granularity === "ui") throw Error("ocr needs pixels; use image or full granularity.");
+  return { ...view, ocr: true };
+}
+
+function parseView(views: readonly string[]): ComputerViews {
   const first = views[0] ?? "";
   if (views.some(view => view === "dom" || view.startsWith("dom:"))) {
     if (views.length !== 1) throw Error("Use dom alone: a DOM snapshot has no image, UI, state, backend or capture options.");
@@ -58,12 +67,13 @@ export function parseComputerViews(views: readonly string[] = []): ComputerViews
     const indexes = raw.indexes;
     if (indexes !== undefined) {
       keys(raw, ["indexes"]);
-      if (!Array.isArray(indexes) || indexes.length < 1 || indexes.length > 40 || new Set(indexes).size !== indexes.length ||
-        indexes.some(i => !Number.isSafeInteger(i) || i < 0 || i > 39)) throw Error("Frame indexes must be distinct integers 0..39.");
+      if (!Array.isArray(indexes) || indexes.length < 1 || indexes.length > SEQUENCE_LIMITS.selected || new Set(indexes).size !== indexes.length ||
+        indexes.some(i => !Number.isSafeInteger(i) || i < 0 || i >= SEQUENCE_LIMITS.max_frames)) throw Error(`Select 1..${SEQUENCE_LIMITS.selected} distinct frame indexes 0..${SEQUENCE_LIMITS.max_frames - 1}.`);
     } else {
       keys(raw, ["from", "to"]);
       if (!Number.isSafeInteger(raw.from) || !Number.isSafeInteger(raw.to) || (raw.from as number) < 0 ||
-        (raw.to as number) < (raw.from as number) || (raw.to as number) > 39) throw Error("Use an inclusive frame range 0..39.");
+        (raw.to as number) < (raw.from as number) || (raw.to as number) >= SEQUENCE_LIMITS.max_frames || (raw.to as number) - (raw.from as number) >= SEQUENCE_LIMITS.selected)
+        throw Error(`Use an inclusive frame range within 0..${SEQUENCE_LIMITS.max_frames - 1} of at most ${SEQUENCE_LIMITS.selected} frames.`);
     }
     return { kind: "frames", selection: raw as FrameSelection };
   }

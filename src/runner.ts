@@ -57,7 +57,7 @@ export function sshRunner(alias: string): CommandRunner {
 
 function execute(file: string, args: string[], env: NodeJS.ProcessEnv, options: { input?: string | Buffer; signal?: AbortSignal; timeoutMs?: number }): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = execFile(file, args, { env, signal: options.signal, timeout: options.timeoutMs ?? 60_000, maxBuffer: 16 * 1024 * 1024, encoding: "buffer" },
+    const child = execFile(file, args, { env, signal: options.signal, timeout: options.timeoutMs ?? 60_000, maxBuffer: 256 * 1024 * 1024, encoding: "buffer" },
       (error, stdout, stderr) => {
         if (error) reject(new Error(`${file === "ssh" ? "Remote command" : file} failed: ${(stderr.toString() || error.message).trim().slice(0, 500)}`));
         else resolve(stdout.toString());

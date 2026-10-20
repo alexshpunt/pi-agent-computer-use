@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { ComputerSession, type ComputerMode, type Driver, type DriverResult } from "../src/session.ts";
 import { displayMode, type DisplayModes } from "../src/display-mode.ts";
+import { MachineHost } from "../src/machine-host.ts";
 
 const primary = { display_id: "\\\\.\\DISPLAY1", monitor_handle: "0x10001", monitor_device_paths: ["native-primary"],
   bounds: { x: 0, y: 0, width: 3840, height: 2560 }, work_area: { x: 0, y: 0, width: 3840, height: 2500 }, primary: true, scale_factor: 1.5, dpi: null };
@@ -19,7 +20,7 @@ function fixture() {
       throw new Error(`Unexpected native call ${name}`);
     }), identity: vi.fn(async () => "unused"), close: vi.fn(async () => {}),
   };
-  const session = new ComputerSession(driver, () => mode, undefined, undefined, undefined, undefined, modes);
+  const session = new ComputerSession(driver, () => mode, undefined, undefined, undefined, undefined, new MachineHost({ run: vi.fn(), spawn: vi.fn() }, modes));
   const ref = async () => ((await session.displays()).details.state!.displays as { display_ref: string }[])[0].display_ref;
   return { session, modes, driver, ref, current: () => current, setMode(value: ComputerMode) { mode = value; } };
 }

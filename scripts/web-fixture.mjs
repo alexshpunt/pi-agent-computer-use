@@ -22,6 +22,32 @@ const pages = {
 <p role="status" id="out">idle</p>
 <iframe title="Inner frame" src="/frame" width="300" height="90"></iframe>
 <script>function out(text) { document.querySelector('#out').textContent = text; }</script>`),
+  // Native input witness: every key, button, wheel, pen and pointer-lock movement is journaled with its details.
+  "/input": page("Input log", `<h1>Input log</h1>
+<div id="pad" style="position:fixed;inset:80px 0 0 0;background:#eef;touch-action:none"></div>
+<script>
+const pad = document.querySelector('#pad');
+const ptr = e => ({ pointerType: e.pointerType, button: e.button, buttons: e.buttons, pressure: Math.round(e.pressure * 100) / 100, tiltX: e.tiltX, tiltY: e.tiltY, shift: e.shiftKey, ctrl: e.ctrlKey });
+for (const type of ['pointerdown', 'pointerup']) pad.addEventListener(type, e => log(type, ptr(e)));
+let moves = 0; pad.addEventListener('pointermove', e => { if (e.buttons && moves++ % 5 === 0) log('pointermove', ptr(e)); });
+pad.addEventListener('contextmenu', e => e.preventDefault());
+pad.addEventListener('auxclick', e => e.preventDefault());
+pad.addEventListener('wheel', e => { e.preventDefault(); log('wheel', { deltaX: e.deltaX, deltaY: e.deltaY, buttons: e.buttons }); }, { passive: false });
+for (const type of ['keydown', 'keyup']) addEventListener(type, e => { if (!e.repeat) log(type, { key: e.key, buttons: window.lastButtons ?? 0 }); });
+pad.addEventListener('dblclick', () => pad.requestPointerLock());
+let locked = { x: 0, y: 0 };
+document.addEventListener('pointerlockchange', () => { log('pointerlock', { locked: document.pointerLockElement === pad }); locked = { x: 0, y: 0 }; });
+document.addEventListener('mousemove', e => { if (document.pointerLockElement === pad) { locked.x += e.movementX; locked.y += e.movementY; } });
+setInterval(() => { if (document.pointerLockElement === pad && (locked.x || locked.y)) { log('locked-move', { ...locked }); locked = { x: 0, y: 0 }; } }, 200);
+</script>`),
+  // Reaction target: a red square jumps every 1.5 s; a click on it is journaled with the time since it moved.
+  "/target": page("Reaction target", `<style>body{margin:0;background:#fff}#t{position:fixed;width:60px;height:60px;background:#e00010}</style><div id="t"></div>
+<script>
+const t = document.querySelector('#t'); let moved = performance.now(), hit = false;
+const jump = () => { t.style.left = Math.round(80 + Math.random() * (innerWidth - 220)) + 'px'; t.style.top = Math.round(80 + Math.random() * (innerHeight - 220)) + 'px'; moved = performance.now(); hit = false; };
+jump(); setInterval(jump, 1500);
+t.addEventListener('pointerdown', () => { if (!hit) { hit = true; log('hit', { reaction_ms: Math.round(performance.now() - moved) }); } });
+</script>`),
   "/frame": page("Inner frame", `<button onclick="const ok = confirm('Frame question?'); log('frame-confirm', { ok }); document.body.dataset.answer = ok; this.textContent = 'frame ' + ok">Frame confirm</button>`),
   "/popup": page("Popup", `<h1>Popup</h1><a href="/popup/next">Next page</a> <button onclick="window.close()">Close me</button>`),
   "/popup/next": page("Popup next", `<h1>Popup next</h1><a href="javascript:history.back()">Back</a>`),

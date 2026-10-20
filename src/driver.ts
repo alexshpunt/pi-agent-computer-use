@@ -81,8 +81,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "4379acbd422a822e75a02c4951b45a276a2293a7", version: "0.34.0",
-  sha256: "18ed1b8d97f364de5e5eb70aa7ad95e96e2b3a3554a6a9ab1fbf16d349461458",
+  source: "630c7ab24421db0b9a60e9ee7d704f8f799dc5e9", version: "0.34.0",
+  sha256: "288dbe0a8a390741431dcba7d961b1aa6d7b3397832ce842f24a0f37daf3f6a8",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -100,6 +100,12 @@ const forkRuntimes = {
   "windows-fast-bilinear": FAST_BILINEAR_RUNTIME,
   "windows-direct-process": DIRECT_PROCESS_RUNTIME,
   "windows-persistent-wgc": PERSISTENT_WGC_RUNTIME,
+};
+/** Requested length of an input timeline: the offset of its last event. */
+const timelineLength = (args: Record<string, unknown>) => {
+  const events = Array.isArray(args.events) ? args.events as { at_ms?: unknown }[] : [];
+  const last = events.at(-1)?.at_ms;
+  return typeof last === "number" && Number.isFinite(last) ? Math.max(0, last) : 0;
 };
 /** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
@@ -288,7 +294,9 @@ export class McpDriver implements Driver {
     const client = await this.connect(signal);
     if (this.nativeTools && !this.nativeTools.has(name))
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
-    const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout: 15_000 }));
+    // A timeline runs for its own length; every other native call answers well within 15 s.
+    const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : 15_000;
+    const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
     const content: Content[] = [];
     for (const block of result.content) {
       if (block.type === "text") content.push({ type: "text", text: block.text });

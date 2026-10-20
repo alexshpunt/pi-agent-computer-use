@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { parseComputerAddress, computerSource, type ComputerAddress } from "./computer-address.ts";
-import { parseComputerViews } from "./computer-views.ts";
+import { parseComputerViews, type ComputerViews } from "./computer-views.ts";
+import { checkedName, type ProcessHealth } from "./machine-host.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 import type { ComputerSession, ComputerResult, Action } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
@@ -46,6 +49,75 @@ export interface OpenedMachine {
 /** Connect to a configured machine by name; unknown names refuse before any SSH work. */
 export type MachineFactory = (cwd: string, name: string, signal?: AbortSignal) => Promise<OpenedMachine>;
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
+const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop"];
+/**
+ * Move files between the workspace and the session's own folder on the controlled machine, and use its clipboard.
+ * put copies a workspace file in, get copies one out, files lists the folder; closing the session removes it.
+ * clipboard_read/clipboard_write are explicit YOLO-only calls on the clipboard the user also uses.
+ */
+async function fileCommand(session: ComputerSession, command: Record<string, unknown>, cwd: string): Promise<ComputerResult> {
+  if (!session.host) throw new ComputerRequestError("This desktop has no owned file folder.");
+  const host = session.host;
+  const local = (value: unknown, field: string) => {
+    if (typeof value !== "string" || !value.trim()) throw new ComputerRequestError(`${command.action} needs ${field}: a workspace file path.`);
+    return resolve(cwd, value);
+  };
+  const done = (text: string, state: Record<string, unknown>): ComputerResult => ({ content: [{ type: "text", text }], details: { status: "delivered", mode: "yolo", state } });
+  try {
+    if (command.action === "clipboard_read") {
+      only(command, ["action", "image"]);
+      if (command.image !== undefined && typeof command.image !== "boolean") throw new ComputerRequestError("clipboard_read image must be true or false.");
+      return await session.clipboardRead(command.image === true);
+    }
+    if (command.action === "clipboard_write") {
+      only(command, ["action", "text", "image"]);
+      if ((command.text === undefined) === (command.image === undefined)) throw new ComputerRequestError("clipboard_write needs exactly one of text or image (a workspace image path).");
+      if (command.text !== undefined) {
+        if (typeof command.text !== "string") throw new ComputerRequestError("clipboard_write text must be a string.");
+        return await session.clipboardWrite({ text: command.text });
+      }
+      const from = local(command.image, "image");
+      return await session.clipboardWrite({ imagePath: await host.put(checkedName(`clipboard-${basename(from)}`), await readFile(from)) });
+    }
+    if (command.action === "record_start") {
+      only(command, ["action", "seconds"]);
+      if (!Number.isSafeInteger(command.seconds) || (command.seconds as number) < 1 || (command.seconds as number) > 600) throw new ComputerRequestError("record_start needs seconds: 1..600.");
+      return await session.recordStart(command.seconds as number);
+    }
+    if (command.action === "record_stop") {
+      only(command, ["action", "to"]);
+      const stopped = await session.recordStop();
+      if (command.to === undefined || stopped.details.status !== "delivered") return stopped;
+      const to = local(command.to, "to");
+      const bytes = await host.get(String(stopped.details.state!.name));
+      await mkdir(dirname(to), { recursive: true });
+      await writeFile(to, bytes);
+      return { ...stopped, content: [...stopped.content, { type: "text", text: `Fetched it (${bytes.length} bytes) into ${to}.` }] };
+    }
+    if (command.action === "files") {
+      only(command, ["action"]);
+      const folder = await host.files();
+      const files = await host.list();
+      return done(`Session folder ${folder.windows}: ${files.length ? files.map(file => `${file.name} (${file.bytes} bytes)`).join(", ") : "empty"}. Apps on that machine can open and save files there.`, { folder: folder.windows, files });
+    }
+    if (command.action === "put") {
+      only(command, ["action", "name", "from"]);
+      const from = local(command.from, "from");
+      const path = await host.put(checkedName(String(command.name ?? basename(from))), await readFile(from));
+      return done(`Put ${from} as ${path}.`, { path });
+    }
+    only(command, ["action", "name", "to"]);
+    const to = local(command.to, "to");
+    const bytes = await host.get(checkedName(String(command.name)));
+    await mkdir(dirname(to), { recursive: true });
+    await writeFile(to, bytes);
+    return done(`Got ${command.name} (${bytes.length} bytes) into ${to}.`, { path: to, bytes: bytes.length });
+  } catch (error) {
+    if (error instanceof ComputerRequestError) throw error;
+    throw new ComputerRequestError(`File ${command.action} failed: ${error instanceof Error ? error.message : error}`);
+  }
+}
+const unresponsive = (health: ProcessHealth) => `The app ${health.name} (pid ${health.pid}) is not responding; it uses ${health.memory_mb} MB memory. Capture and input cannot recover a hung app: wait and read again, or close it.`;
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ComputerRequestError("Use a JSON command object.");
   return value as Record<string, unknown>;
@@ -193,6 +265,45 @@ export class ComputerResources {
   /** Acquire a requested native projection, or inspect one explicitly issued observation. */
   async read(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
     const view = parseComputerViews(views);
+    if (address.kind !== "window" && address.kind !== "observation") {
+      if (view.ocr) throw new ComputerRequestError("ocr reads a window, one of its observations or a region of one.");
+      return this.readNative(address, cwd, views, view, signal);
+    }
+    const session = await this.sessionFor(cwd, this.windowOf(address));
+    const snapshot = address.kind === "observation" ? this.snapshots.get(address.ref) : undefined;
+    const windowRef = address.kind === "window" ? address.ref : snapshot?.target.window_ref;
+    if (view.ocr && windowRef === undefined) throw new ComputerRequestError("ocr reads window observations; display observations have no kept overview pixels.");
+    const target = windowRef === undefined ? undefined : session.windowTarget(windowRef);
+    // A region of a stored observation is read from its own pixels: exact boxes, no native call, input authority kept.
+    const result = view.ocr && view.kind === "region" && snapshot && windowRef !== undefined
+      ? await this.recognize(session, snapshot.result, windowRef, view.region, signal)
+      : await this.readNative(address, cwd, views, view, signal);
+    if (!result) return result;
+    if (view.kind === "state" && result.details.status === "observed") {
+      const health = await session.processHealth(target);
+      return health ? { ...result, content: [...result.content, { type: "text", text: health.responding ? `Process ${health.name} (pid ${health.pid}) responds; ${health.memory_mb} MB memory, ${health.cpu_seconds} s CPU.` : unresponsive(health) }], details: { ...result.details, process: health } } : result;
+    }
+    if (result.details.status === "refused" || result.details.status === "unknown") {
+      const health = await session.processHealth(target);
+      return health && !health.responding ? { ...result, content: [...result.content, { type: "text", text: unresponsive(health) }], details: { ...result.details, process: health } } : result;
+    }
+    return view.ocr && view.kind !== "region" && windowRef !== undefined ? this.recognize(session, result, windowRef, undefined, signal) : result;
+  }
+
+  /** Add Windows OCR lines of an observation's unannotated overview pixels, or of one region of them. */
+  private async recognize(session: ComputerSession, result: ComputerResult, windowRef: string, region: { x: number; y: number; width: number; height: number } | undefined, signal?: AbortSignal): Promise<ComputerResult> {
+    const id = result.details.observation_id;
+    const image = id === undefined ? undefined : session.observationImage(windowRef, id);
+    if (!image) throw new ComputerRequestError("This observation's unannotated pixels are no longer kept. Read the window with ocr again.");
+    let lines;
+    try { lines = await session.recognizeText(image, region, signal); }
+    catch (error) { throw new ComputerRequestError(`Text recognition failed: ${error instanceof Error ? error.message : error}`); }
+    const listing = lines.length ? lines.map(line => `- "${line.text}" at ${line.x},${line.y} ${line.width}x${line.height}`).join("\n") : "(no text found)";
+    const header = `Windows OCR${region ? ` of region ${region.x},${region.y} ${region.width}x${region.height}` : ""}: ${lines.length} lines; boxes are in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`;
+    return { ...result, content: [...(region ? [] : result.content), { type: "text", text: `${header}\n${listing}` }], details: { ...result.details, text_lines: lines } };
+  }
+
+  private async readNative(address: ComputerAddress, cwd: string, views: readonly string[] | undefined, view: ComputerViews, signal?: AbortSignal): Promise<ComputerResult | undefined> {
     if (address.kind === "machine") {
       if (views?.length) throw new ComputerRequestError("A machine address has no image views. Read a returned window or display address.");
       return this.machine(address.ref).session.displays(signal);
@@ -357,6 +468,7 @@ export class ComputerResources {
       if (tool !== "insert") throw new ComputerRequestError("A machine address accepts Insert commands, not literal Write.");
       const command = commandObject(value);
       if (command.action === "disconnect") { only(command, ["action"]); return this.disconnect(machine); }
+      if (FILE_ACTIONS.includes(command.action as string)) return fileCommand(machine.session, command, cwd);
       if (command.action === "open_sandbox") return this.startSandbox(cwd, command, signal, machine.ref);
       if (command.action === "open_browser") {
         let options;
@@ -374,6 +486,7 @@ export class ComputerResources {
     if (tool === "insert" && (address.kind === "session" || address.kind === "app")) {
       const command = commandObject(value);
       if (command.action === "open_sandbox" && address.kind === "session") return this.startSandbox(cwd, command, signal);
+      if (FILE_ACTIONS.includes(command.action as string) && address.kind === "session") return fileCommand(await this.getSession(cwd), command, cwd);
       if (command.action === "connect" && address.kind === "session") {
         only(command, ["action", "machine"]);
         if (typeof command.machine !== "string" || !command.machine) throw new ComputerRequestError("connect needs a configured machine name.");
@@ -426,9 +539,14 @@ export class ComputerResources {
     }
     if (address.kind === "window" && tool === "insert") {
       const command = commandObject(value);
-      if (command.action !== "wait_for" && command.action !== "verify")
-        throw new ComputerRequestError("A window address accepts only wait_for or verify. Input needs the observation address returned by a fresh window Read.");
       const session = await this.sessionFor(cwd, { window_ref: address.ref });
+      if (command.action === "kill") {
+        only(command, ["action"]);
+        this.retireWindow(address.ref);
+        return session.killOwned(address.ref, signal);
+      }
+      if (command.action !== "wait_for" && command.action !== "verify")
+        throw new ComputerRequestError("A window address accepts only wait_for, verify or kill. Input needs the observation address returned by a fresh window Read.");
       let spec;
       try { spec = session.waitSpec(address.ref, command); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }

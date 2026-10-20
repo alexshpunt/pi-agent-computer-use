@@ -44,7 +44,7 @@ describe("computer Read views", () => {
     expect(parseComputerViews(['frames:{"indexes":[0,2]}'])).toEqual({ kind: "frames", selection: { indexes: [0, 2] } });
     expect(parseComputerViews(['capture:{"max_elements":10,"hints":true}'])).toEqual({ kind: "overview", capture: { max_elements: 10, hints: true } });
     expect(parseComputerViews(["element:inspect,1:a"])).toEqual({ kind: "element", operation: "inspect", hint: "1:a" });
-    for (const views of [['sequence:{"duration_ms":10001}'], ['sequence:{"duration_ms":200,"window_ref":"other"}'],
+    for (const views of [['sequence:{"duration_ms":60001}'], ['sequence:{"duration_ms":200,"window_ref":"other"}'],
       ['frames:{"from":2,"to":1}'], ['frames:{"indexes":[0,0]}'], ["frames:last", "ui"], ['capture:{"backend":"unknown"}']])
       expect(() => parseComputerViews(views)).toThrow();
   });

@@ -29,7 +29,7 @@ test("cancellation stops sampling and retains only the known completed prefix", 
 });
 
 test("bounds fail before sampling and a frame limit reports unsampled slots", async () => {
-  for (const input of [{ duration_ms: 0 }, { duration_ms: 10001 }, { fps: 11 }, { max_frames: 41 }, { timeout_ms: 10 }])
+  for (const input of [{ duration_ms: 0 }, { duration_ms: 60001 }, { fps: 31 }, { max_frames: 301 }, { timeout_ms: 10 }])
     expect(() => validateSequence({ duration_ms: 1000, ...input })).toThrow();
   const sequence = await collectSequence({ duration_ms: 1000, fps: 10, max_frames: 2 }, async () => frame(), undefined, clock());
   expect(sequence.frames).toHaveLength(2); expect(sequence.stop_reason).toBe("frame_limit"); expect(sequence.pending_slots).toBe(8);

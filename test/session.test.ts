@@ -104,6 +104,19 @@ test("batch receipts retain separate capability evidence for each attempted acti
   expect(steps[1].action_capability).toMatchObject({ background: "unavailable", foreground: "suggested" });
   expect(result.details.action_capability).toBeUndefined();
 });
+test("a sequence spends the single-use native capture on its first pixel click only", async () => {
+  const f = fixture(); const native = f.driver.call;
+  f.driver.call = vi.fn<Driver["call"]>(async (...args) => {
+    const result = await native(...args);
+    return args[0] === "get_window_state" ? { ...result, structuredContent: { ...result.structuredContent,
+      capture_id: "capture-1", screenshot_width: 500, screenshot_height: 350 } } : result;
+  });
+  const { ref, observed } = await readExisting(f.session);
+  await f.session.act({ window_ref: ref, observation_id: observed.details.observation_id!, delivery_mode: "foreground",
+    action: "sequence", sequence: [{ action: "click", x: 10, y: 10 }, { action: "click", x: 20, y: 20 }] });
+  const clicks = vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "click").map(([, args]) => args.capture_id);
+  expect(clicks).toEqual(["capture-1", undefined]);
+});
 test("opens a genuinely new window and returns its first observation in the same result", async () => {
   const { session, driver } = fixture();
   const opened = await session.open("Notepad");

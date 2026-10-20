@@ -16,7 +16,7 @@ import { WebBrowser } from "./web-browser.ts";
 import { ComputerRequestError, type SandboxFactory } from "./computer-resources.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { localRunner, sshRunner } from "./runner.ts";
-import { displayModes } from "./display-mode.ts";
+import { MachineHost } from "./machine-host.ts";
 import { machineConfig, machineFactory } from "./machine.ts";
 
 /** Register standalone window tools against an owned session factory. The caller owns shutdown. */
@@ -139,7 +139,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
       overviewKernel = driver.overviewKernel ?? "lanczos3";
       session = new ComputerSession(driver, getMode, () => images.settings(), driver.platform === "windows" ? highlights.flash : undefined, image => debug.trace.retainOriginal(image),
         driver.platform === "windows" ? (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal) : undefined,
-        driver.platform === "windows" ? displayModes(localRunner(config.interop)) : undefined);
+        driver.platform === "windows" ? new MachineHost(localRunner(config.interop)) : undefined);
       return session;
     });
     try { return await loading; }
