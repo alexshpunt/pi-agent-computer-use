@@ -57,6 +57,10 @@ async function sshHost(machine: string): Promise<BenchHost> {
 }
 
 const ide = process.env.PI_AGENT_IDE_EXTENSION ?? path.resolve(repo, "../pi-agent-ide/src/pi-agent-ide.ts");
+// Trials run without the user's Pi packages. Claude subscription models need the installed connector, or Anthropic bills
+// the requests to extra usage and refuses them once that is off.
+const connector = path.join(homedir(), ".pi/agent/npm/node_modules/pi-claude-subscription-connector/extensions/subscription-guard.ts");
+const billing = model.startsWith("anthropic/") ? [connector] : [];
 const suite = windowsTaskSuite(await sshHost(values.machine!), await readFile(path.join(repo, ".pi/computer-use.json"), "utf8"));
 const results = path.join(repo, ".tmp/bench/results");
 // One evaluation per task: a trial that times out or crashes Pi fails that task instead of ending the run.
@@ -65,7 +69,7 @@ for (const task of values.task ? [values.task] : WINDOWS_TASKS.map(item => item.
   try {
     const directory = await runEvaluation({
       suite, benchmarkPreset: "windows-10", taskId: task,
-      agentProfiles: [{ id: "computer-use", extensions: [ide, path.join(repo, "src/index.ts")], skills: [path.join(repo, ".pi/skills/computer-use")] }],
+      agentProfiles: [{ id: "computer-use", extensions: [ide, path.join(repo, "src/index.ts"), ...billing], skills: [path.join(repo, ".pi/skills/computer-use")] }],
       model, thinking, resultsDirectory: results, workspacesDirectory: path.join(tmpdir(), "pi-computer-use-bench"), timeoutMs: 20 * 60_000,
     });
     const trial = (JSON.parse(await readFile(path.join(directory, "summary.json"), "utf8")) as { trials: { score: { passed: boolean; details?: { reason?: string } };
