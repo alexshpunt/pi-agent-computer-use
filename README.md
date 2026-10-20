@@ -28,6 +28,8 @@ Fresh window Reads can choose `image`, `ui` or `full` views: `image` skips the U
 
 Window overviews use the driver's default capture route. A retained WGC route was removed in M7 (LPT-806): on the measured machines it was slower and timed out on windows that do not repaint. See [persistent WGC](docs/persistent-wgc.md) for the history.
 
+`npm run bench:windows` runs ten Windows tasks with a real agent in a Windows Sandbox on a configured machine and reports success, time and tokens per task. See [the task-success benchmark](docs/research/task-success-benchmark.md).
+
 This installation selects a separately qualified Windows fork that resizes captured pixels before encoding one final overview PNG. The format, native capture route and input/detail contracts stay unchanged; the previous runtime remains available. See [single-PNG qualification and measured latency](docs/single-png-overviews.md).
 
 This installation explicitly selects a qualified runtime using pinned fast_image_resize Bilinear for capped Windows window and display overviews. Approved merge, isolated qualification and production tool/TUI checks passed; the previous runtime and bundled default packages are retained. See [the exact artifact and qualification contract](docs/windows-bilinear-overviews.md).
