@@ -40,7 +40,7 @@ export interface OpenedSandbox {
   /** The machine whose Windows hosts this sandbox; undefined for this host. */
   machine?: string;
 }
-/** Start a sandbox for open_sandbox; validation errors are reported before any host work. */
+/** Start a Windows Sandbox for open_sandbox, or an isolated agent session for open_session; validation errors are reported before any host work. */
 export type SandboxFactory = (cwd: string, command: Record<string, unknown>, signal?: AbortSignal, machine?: string) => Promise<OpenedSandbox>;
 /** Another machine's desktop, driven over SSH by its own session. */
 export interface OpenedMachine {
@@ -239,7 +239,7 @@ export class ComputerResources {
     const sandbox = await this.launch(this.openSandbox(cwd, command, signal, machine), signal);
     this.sandboxes.set(sandbox.ref, sandbox);
     const source = computerSource("sandbox", sandbox.ref);
-    return { content: [{ type: "text", text: `Sandbox ready: ${source}\n${sandbox.describe(source)}` }],
+    return { content: [{ type: "text", text: `${command.action === "open_session" ? "Isolated session" : "Sandbox"} ready: ${source}\n${sandbox.describe(source)}` }],
       details: { status: "delivered", mode: "yolo", sandbox_ref: sandbox.ref } };
   }
   private sandbox(ref: string): OpenedSandbox {
@@ -525,9 +525,7 @@ export class ComputerResources {
       const command = commandObject(value);
       if (command.action === "close") { only(command, ["action"]); return this.closeSandbox(sandbox); }
       if (command.action !== "open") throw new ComputerRequestError("A sandbox address accepts {\"action\":\"open\",\"app\":\"...\"} or {\"action\":\"close\"}.");
-      only(command, ["action", "app"]);
-      if (typeof command.app !== "string" || !command.app.trim()) throw new ComputerRequestError("Open needs an app name installed in the sandbox.");
-      const result = await sandbox.session.open(command.app, signal);
+      const result = await sandbox.session.open(openTarget(command, "in the sandbox"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
     if (address.kind === "machine") {
@@ -536,7 +534,7 @@ export class ComputerResources {
       const command = commandObject(value);
       if (command.action === "disconnect") { only(command, ["action"]); return this.disconnect(machine); }
       if (FILE_ACTIONS.includes(command.action as string)) return fileCommand(machine.session, command, cwd);
-      if (command.action === "open_sandbox") return this.startSandbox(cwd, command, signal, machine.ref);
+      if (command.action === "open_sandbox" || command.action === "open_session") return this.startSandbox(cwd, command, signal, machine.ref);
       if (command.action === "open_browser") {
         let options;
         try { options = validateWebLaunch(command); }
@@ -544,13 +542,13 @@ export class ComputerResources {
         const result = await machine.session.openBrowser(options, signal);
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
-      if (command.action !== "open") throw new ComputerRequestError("A machine address accepts open, open_browser, open_sandbox or disconnect.");
+      if (command.action !== "open") throw new ComputerRequestError("A machine address accepts open, open_browser, open_sandbox, open_session or disconnect.");
       const result = await machine.session.open(openTarget(command, "on that machine"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
     if (tool === "insert" && (address.kind === "session" || address.kind === "app")) {
       const command = commandObject(value);
-      if (command.action === "open_sandbox" && address.kind === "session") return this.startSandbox(cwd, command, signal);
+      if ((command.action === "open_sandbox" || command.action === "open_session") && address.kind === "session") return this.startSandbox(cwd, command, signal);
       if (FILE_ACTIONS.includes(command.action as string) && address.kind === "session") return fileCommand(await this.getSession(cwd), command, cwd);
       if (command.action === "connect" && address.kind === "session") {
         only(command, ["action", "machine"]);

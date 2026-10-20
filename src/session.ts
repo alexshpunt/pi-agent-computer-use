@@ -41,7 +41,7 @@ export interface Driver {
   /** False where native lifetime binding is not implemented; never substitute reusable IDs. */
   windowLifetime?: boolean;
   /** Source domain override: a sandbox guest's windows are not host windows. */
-  sourceDomain?: "windows-sandbox" | "windows-remote";
+  sourceDomain?: "windows-sandbox" | "windows-session" | "windows-remote";
   /** True only for a backend qualified for held paths and graceful in-flight release. */
   heldPaths?: boolean;
   /** True only for a qualified native runtime with bounded keyboard ownership. */

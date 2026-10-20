@@ -153,6 +153,19 @@ Only explicit host folders are shared. Add them to `open_sandbox`:
 
 A missing feature, folder or Windows-drive path refuses before anything starts. Closing the computer session or Pi destroys every sandbox it opened, and a cancelled `open_sandbox` stops the sandbox it was starting.
 
+## Work in an isolated agent session
+
+An isolated session is a separate Windows session for the agent on the same machine, from [Microsoft Execution Containers](https://github.com/microsoft/mxc) (MXC) `isolation_session`. Windows creates a fresh agent user with its own desktop, clipboard and input, invisible to the human, and removes the user again on close. Unlike a Windows Sandbox, several sessions can run at once, and one starts in about 15–25 seconds. It is not a security boundary.
+
+Insert `{"action":"open_session"}` into `computer:session` or a machine address. It returns a `computer:sandbox/<ref>` address that works like a sandbox's: Search it for the session's windows, Insert `{"action":"open","app":"Command Prompt"}` (or, as on a machine, `"path"` and `"args"`) to start an app there, and `{"action":"close"}` to remove the session. Its window sources report the `windows-session` domain. Foreground input inside a session never reaches the human's desktop, so several agents can use foreground input at the same time, each in its own session.
+
+Limits:
+
+- The session's desktop is 640×480, without a desktop compositor and with the classic window style.
+- The app list is the agent user's own. Some apps are missing by name, such as Notepad; start them by path, for example `{"action":"open","path":"C:\\Windows\\System32\\notepad.exe"}`.
+- No files are shared with the session yet.
+- The machine needs Windows 11 24H2 or 25H2 build 9550 or later, and MXC's `wxc-exec.exe` in the Windows user's `%LOCALAPPDATA%\PiComputerUse\mxc`. Install it with `scripts/install-mxc.sh local` or `scripts/install-mxc.sh <ssh alias>`. Without them, `open_session` refuses with the reason. See [the research note](research/windows-session-isolation.md).
+
 ## Work on another machine
 
 Another Windows machine with WSL can be operated from this one over SSH: its windows, displays, an owned browser and a sandbox on it. Only machines named under `machines` in `.pi/computer-use.json` can be reached; the agent passes a name, never a host or path, and an unknown name refuses before any SSH work.
@@ -187,7 +200,7 @@ The `regions` view needs Cua's signed perception extension on the machine whose 
   "zinpc": {
     "ssh": "zinpc-benchmark",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-9921ae54/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-90c35d96/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
