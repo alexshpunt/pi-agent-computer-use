@@ -187,7 +187,7 @@ The `regions` view needs Cua's signed perception extension on the machine whose 
   "zinpc": {
     "ssh": "zinpc-benchmark",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-b4d98549/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-fb7d1909/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
@@ -252,6 +252,8 @@ Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabi
 When Windows refuses to activate the target (`foreground_unavailable`), the result names the process that holds the foreground. If that is a system service, for example after a UAC prompt, Windows also blocks all injected input on that desktop until a person clicks or presses a key there; ask the user, then Read again.
 
 Start with background. After an observed background refusal, Read a fresh overview before requesting explicit foreground delivery. Foreground may activate the window and disturb the real pointer. Delivery is not an application postcondition: Read again to verify the actual effect. Unsupported modes refuse rather than silently falling back.
+
+While the human uses the keyboard or mouse, foreground input pauses: it refuses with the time since their last physical input and when to retry, until 10 s pass without it. A running timeline, held path or key hold stops at its next event and still releases everything it holds. Background input continues; it moves neither their pointer nor their focus. The pause applies on this machine, on configured machines and in sandboxes. Wait and retry, or use background delivery; never try to outrun the human.
 
 Input consumes its observation even on refusal after admission, with one exception: after delivered input that used only pixel coordinates and keys (no hints, tokens or semantic actions), the observation stays usable. Each later call first checks the window cheaply and refuses with the reason when it was resized, minimized or hidden; moving the window keeps window-local points valid. The observation's UI hints expire with the first input, so use pixel coordinates or Read again. This lets a canvas program send many calls without capturing the window each time. Interrupted batches retain their attempted/completed prefix. A later refusal does not erase prior input; the overall effect remains unknown. Never replay completed or uncertain steps. Cancellation stops future dispatch, but in-flight native input may still finish.
 

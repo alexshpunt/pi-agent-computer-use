@@ -1582,7 +1582,10 @@ export class ComputerSession {
             "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),
             "In-flight outcome withheld after revocation/cancellation.");
           const state = native.structuredContent ?? {};
-          const refused = state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
+          const nativeMessage = native.content.filter(c => c.type === "text").map(c => c.text).join("\n");
+          // Foreground input checks for recent physical input before sending anything (CUA_HUMAN_IDLE_MS).
+          const takeover = /human_takeover:/.test(nativeMessage) && (native.isError || state.effect === "refused");
+          const refused = takeover || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
             "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
           const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
           const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
@@ -1615,12 +1618,12 @@ export class ComputerSession {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
           }
-          const result = this.result(status, `Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
+          const result = this.result(status, takeover ? `Foreground input paused because the human is using the computer: ${nativeMessage.slice(nativeMessage.indexOf("human_takeover:") + 16)}` : `Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
             { ...state, ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
               overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
               resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
             ...(native.isError || !native.structuredContent ? {
-              native_message: native.content.filter(c => c.type === "text").map(c => c.text).join("\n"),
+              native_message: nativeMessage,
             } : {}) }, { ...this.addressed(entry), action_capability: capability, ...(highlight ? { highlight } : {}) });
           if (!batch || status !== "delivered" || index === commands.length - 1) {
             // Pixel-only input keeps the overview usable: the next call checks the window size instead of capturing again.

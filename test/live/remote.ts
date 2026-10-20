@@ -2,7 +2,7 @@ import { computerSource } from "../../src/computer-address.ts";
 import type { ComputerAddress } from "../../src/computer-address.ts";
 import { ComputerResources, requireComputerAddress } from "../../src/computer-resources.ts";
 import { CuaImageSettings } from "../../src/cua-image-settings.ts";
-import { machineConfig, machineFactory } from "../../src/machine.ts";
+import { machineConfig, machineFactory, sandboxFactory } from "../../src/machine.ts";
 import { localRunner, sshRunner, WINDOWS_POWERSHELL, type CommandRunner } from "../../src/runner.ts";
 import { readFile } from "node:fs/promises";
 import { ComputerSession, type ComputerResult } from "../../src/session.ts";
@@ -26,8 +26,8 @@ export async function connectLive(cwd = process.cwd()) {
     if (name !== "local") throw new Error("Live checks use only the remote machine.");
     return local ??= new ComputerSession(new McpDriver(config), () => "yolo", () => images.settings(), undefined, undefined,
       (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal), new MachineHost(localRunner(config.interop)));
-  }, async () => local ? local.close() : { content: [], details: { status: "closed", mode: "yolo" } }, undefined,
-    machineFactory({ getMode: () => "yolo", settings: () => images.settings() }));
+  }, async () => local ? local.close() : { content: [], details: { status: "closed", mode: "yolo" } },
+    sandboxFactory({ settings: () => images.settings() }), machineFactory({ getMode: () => "yolo", settings: () => images.settings() }));
   const machine = name === "local" ? "computer:session"
     : computerSource("machine", (await resources.perform(at("computer:session"), cwd, JSON.stringify({ action: "connect", machine: name }), "insert")).details.machine_ref!);
   const runner = name === "local" ? localRunner(config.interop) : sshRunner((await machineConfig(cwd, name)).ssh);

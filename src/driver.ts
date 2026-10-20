@@ -13,6 +13,8 @@ import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts"
 import { verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
 
+/** Foreground input waits until the human has not used the keyboard or mouse for this long (owner choice, LPT-835). */
+const HUMAN_IDLE_MS = 10_000;
 /** Exact Windows CI artifact qualified for held paths; selection is trusted config, never a tool argument. */
 export const HELD_PATH_RUNTIME = {
   source: "bba07a9c8ccba117c1057a3a0003e95d3693b2b3", version: "0.34.0",
@@ -81,8 +83,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "b4d98549fe451c27f940d33c0e961476f21570e6", version: "0.37.0",
-  sha256: "1a4994cbd30cbb30de9811063cdbc94d4f662755762c65b9d89907dc216558af",
+  source: "fb7d190979d1c552732f685883cbf1e09314b46b", version: "0.37.0",
+  sha256: "ebe238427363ff22721ceaaa7697c3c562447a93266193878e4d943af477aaf5",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -222,12 +224,21 @@ export class McpDriver implements Driver {
     }
   }
 
+  /**
+   * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks, and a
+   * 10 s takeover pause: foreground input refuses while the human used the keyboard or mouse that recently.
+   */
+  private driverVariables(): Record<string, string> {
+    return { CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false",
+      ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1", CUA_HUMAN_IDLE_MS: String(HUMAN_IDLE_MS) };
+  }
+
   /** The owned native child; Windows-host control runs through WSL interop, on another machine over SSH. */
   private async stdioTransport(): Promise<StdioClientTransport> {
     if (this.config.ssh) {
       // The remote WSL supplies its own interop; the driver exits on stdin EOF when SSH ends.
-      const env = { WSLENV: ["CUA_DRIVER_RS_TELEMETRY_ENABLED", "CUA_DRIVER_RS_UPDATE_CHECK", ...(this.envelopes ? ["CUA_DRIVER_MCP_ENVELOPES"] : []), "DO_NOT_TRACK"].join(":"),
-        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false", ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1" };
+      const variables = this.driverVariables();
+      const env = { WSLENV: Object.keys(variables).join(":"), ...variables };
       const transport = new StdioClientTransport({ command: "ssh", stderr: "pipe",
         args: [...SSH_OPTIONS, this.config.ssh, remoteCommand(this.config.command, this.envelopes ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"], env)] });
       this.stderr = "";
@@ -246,11 +257,8 @@ export class McpDriver implements Driver {
       env: {
         ...Object.fromEntries(["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"].flatMap(name => process.env[name] === undefined ? [] : [[name, process.env[name]!]])),
         ...(interop ? { WSL_INTEROP: interop } : {}),
-        WSLENV: [process.env.WSLENV, "CUA_DRIVER_RS_TELEMETRY_ENABLED", "CUA_DRIVER_RS_UPDATE_CHECK", ...(this.envelopes ? ["CUA_DRIVER_MCP_ENVELOPES"] : []), "DO_NOT_TRACK"].filter(Boolean).join(":"),
-        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
-        CUA_DRIVER_RS_UPDATE_CHECK: "false",
-        ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}),
-        DO_NOT_TRACK: "1",
+        WSLENV: [process.env.WSLENV, ...Object.keys(this.driverVariables())].filter(Boolean).join(":"),
+        ...this.driverVariables(),
       },
     });
     this.stderr = "";
