@@ -28,6 +28,13 @@ function fixture() {
   return { driver: new ReactiveAnimationDriver(base, { glide_duration_ms: 1 }), calls, control, glide: () => glide };
 }
 
+// Remote machines and sandboxes wrap their drivers too (LPT-702); their sources must keep naming their domain.
+test("the wrapper keeps the wrapped driver's source domain", () => {
+  for (const domain of ["windows-remote", "windows-sandbox", undefined] as const) {
+    const base = { sourceDomain: domain, identity: async () => "owned", close: async () => {}, call: async () => ({ content: [] }) } as Driver;
+    expect(new ReactiveAnimationDriver(base, { glide_duration_ms: 1 }).sourceDomain).toBe(domain);
+  }
+});
 test("ordinary calls do not change animation or add cursor requests", async () => {
   const f = fixture();
   await f.driver.call("click", { target: "fixture" });

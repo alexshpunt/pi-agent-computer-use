@@ -7,6 +7,7 @@ import { loadComputerConfig, type ComputerConfig } from "./config.ts";
 import { ComputerRequestError, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
+import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "./reactive-animation.ts";
 import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
@@ -55,8 +56,9 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; ret
     const runner = machine ? sshRunner(machine.ssh) : localRunner(config.interop);
     const sandbox = await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, parsed, signal);
     // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
-    const driver = new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
-      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) });
+    // Reactive actions skip the visible cursor glide here too, as on this machine's own desktop.
+    const driver = new ReactiveAnimationDriver(new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
+      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) }), await loadReactiveAnimationConfig(cwd));
     try { await waitForGuestDriver(driver, signal); }
     catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
     const guest = new ComputerSession(driver, () => "yolo", options.settings, undefined, options.retainRaw);
@@ -76,7 +78,8 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
     const runtimeFolder = local?.endsWith("/runtime/cua-driver.exe") ? path.dirname(path.dirname(local)) : "<local runtime folder>";
     const refresh = `scripts/setup-remote-machine.sh ${machine.ssh} ${runtimeFolder} ${name}`;
     const runner = sshRunner(machine.ssh);
-    const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh });
+    const driver = new ReactiveAnimationDriver(new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh }),
+      await loadReactiveAnimationConfig(cwd));
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
     const launchWeb = machine.node && machine.package

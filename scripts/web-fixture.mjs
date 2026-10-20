@@ -48,6 +48,25 @@ const jump = () => { t.style.left = Math.round(80 + Math.random() * (innerWidth 
 jump(); setInterval(jump, 1500);
 t.addEventListener('pointerdown', () => { if (!hit) { hit = true; log('hit', { reaction_ms: Math.round(performance.now() - moved) }); } });
 </script>`),
+  // Short-lived target (LPT-702): a red square shows for ?ms= milliseconds (600 by default) at a random spot every 1.5 s.
+  // Each appearance and each click on a visible square is journaled; a click while it is hidden counts as a miss.
+  "/flash": page("Flash target", `<style>body{margin:0;background:#fff}#t{position:fixed;width:60px;height:60px;background:#e00010;display:none}
+#c{position:fixed;left:0;bottom:0;width:48px;height:48px}</style><div id="t"></div><div id="c"></div>
+<script>
+// The bottom-left block turns black or white on every click, so a test can time a click until a frame shows it.
+const c = document.querySelector('#c'); let dark = false; c.style.background = '#fff'; c.style.outline = '1px solid #888';
+document.addEventListener('pointerdown', () => { dark = !dark; c.style.background = dark ? '#000' : '#fff'; });
+const t = document.querySelector('#t'); let shown = 0, n = 0, hit = false;
+setInterval(() => {
+  t.style.left = Math.round(80 + Math.random() * (innerWidth - 220)) + 'px'; t.style.top = Math.round(80 + Math.random() * (innerHeight - 220)) + 'px';
+  t.style.display = 'block'; shown = performance.now(); hit = false; log('shown', { n: ++n });
+  setTimeout(() => { t.style.display = 'none'; }, Number(new URLSearchParams(location.search).get('ms')) || 600);
+}, 1500);
+document.addEventListener('pointerdown', e => {
+  if (e.target === t && !hit) { hit = true; log('hit', { n, reaction_ms: Math.round(performance.now() - shown) }); }
+  else if (e.target !== t) { const r = t.getBoundingClientRect(); log('miss', { n, x: e.clientX, y: e.clientY, square: t.style.display === 'none' ? null : [Math.round(r.left), Math.round(r.top)], w: innerWidth, h: innerHeight }); }
+});
+</script>`),
   "/frame": page("Inner frame", `<button onclick="const ok = confirm('Frame question?'); log('frame-confirm', { ok }); document.body.dataset.answer = ok; this.textContent = 'frame ' + ok">Frame confirm</button>`),
   "/popup": page("Popup", `<h1>Popup</h1><a href="/popup/next">Next page</a> <button onclick="window.close()">Close me</button>`),
   "/popup/next": page("Popup next", `<h1>Popup next</h1><a href="javascript:history.back()">Back</a>`),
