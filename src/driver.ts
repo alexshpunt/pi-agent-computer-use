@@ -301,8 +301,9 @@ export class McpDriver implements Driver {
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
     // Since 0.35 the driver shapes window state for models; the adapter needs the full payload with `elements`.
     if (name === "get_window_state" && compactWindowState(this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version)) args = { ...args, full_output: true };
-    // A timeline runs for its own length; every other native call answers well within 15 s.
-    const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : 15_000;
+    // A timeline runs for its own length and a large app (GIMP, Blender) can take over 15 s to show its first window;
+    // every other native call answers well within 15 s.
+    const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
     const content: Content[] = [];
     for (const block of result.content) {

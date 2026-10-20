@@ -6,9 +6,12 @@
 import json
 import sys
 
-from faster_whisper import WhisperModel
+from faster_whisper import WhisperModel, decode_audio
 
 model = WhisperModel(sys.argv[2] if len(sys.argv) > 2 else "base.en", device="cpu", compute_type="int8")
-segments, info = model.transcribe(sys.argv[1])
+# Loopback follows the device volume, so a quiet machine gives a quiet clip: bring its peak to full scale first.
+audio = decode_audio(sys.argv[1])
+peak = float(abs(audio).max()) if audio.size else 0.0
+segments, info = model.transcribe(audio / peak * 0.9 if peak > 0 else audio)
 parts = [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segments]
 print(json.dumps({"text": " ".join(p["text"] for p in parts), "language": info.language, "segments": parts}))
