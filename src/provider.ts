@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError, type SandboxFactory, type MachineFactory } from "./computer-resources.ts";
 import { computerSource } from "./computer-address.ts";
 import type { WebLogEntry } from "./web-browser.ts";
+import type { StateDiff } from "./successor.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
 import type { ComputerSession, ComputerResult, Content } from "./session.ts";
@@ -97,7 +98,10 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
     if (!d.successor) lines.push(...d.dom.snapshot.split("\n"));
   } else if (d.ui) {
     lines.push(`UI: collected=${d.ui.collected}, complete=${d.ui.complete}, truncated=${d.ui.truncated || d.ui.projection_truncated}`);
-    for (const e of d.ui.elements) lines.push(`${e.hint} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | enabled=${e.enabled} | image_bounds=${JSON.stringify(e.bounds.window_image ?? null)}`);
+    // A changes Read lists only the difference; the observation still holds, and Search finds, the whole UI.
+    if (d.changes?.diff) lines.push(`Since ${computerSource("observation", d.changes.since!)}:`, ...diffLines(d.changes.diff));
+    else if (d.changes?.reason) lines.push(d.changes.reason);
+    if (!d.changes?.diff) for (const e of d.ui.elements) lines.push(`${e.hint} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | enabled=${e.enabled} | image_bounds=${JSON.stringify(e.bounds.window_image ?? null)}`);
   } else if (d.status === "listed") {
     for (const kind of ["windows", "apps", "displays"] as const) {
       const rows = state[kind];
@@ -145,13 +149,8 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
   if (d.successor) {
     const s = d.successor, diff = s.diff;
     lines.push(s.observation_id ? `Successor: ${computerSource("observation", s.observation_id)}` : `Successor: none. ${s.reason ?? ""}`);
-    if (diff) {
-      const page = diff.page ?? {};
-      for (const [key, change] of Object.entries(page)) lines.push(`Changed ${key}: ${JSON.stringify(change![0])} → ${JSON.stringify(change![1])}`);
-      lines.push(`Changes: ${diff.counts.changed} changed, ${diff.counts.added} added, ${diff.counts.removed} removed${diff.counts.changed + diff.counts.added + diff.counts.removed === 0 && !Object.keys(page).length ? " (no visible change yet)" : ""}`);
-      lines.push(...diff.changed.map(line => `~ ${label(line)}`), ...diff.added.map(line => `+ ${label(line)}`), ...diff.removed.map(line => `- ${label(line)}`));
-      if (diff.note) lines.push(diff.note);
-    } else if (s.reason) lines.push(s.reason);
+    if (diff) lines.push(...diffLines(diff));
+    else if (s.reason) lines.push(s.reason);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
   lines.push(d.successor?.observation_id ? "Read the successor observation for the full state; it is current for input."
@@ -167,6 +166,18 @@ export function presentComputerResult(resources: Pick<ComputerResources, "appSou
   const preview = fittingLines(lines, 24_000 - 300);
   // A Read of the observation renders slightly different header lines, so page it there rather than by these numbers.
   return `${preview.join("\n")}\nDOM text preview reached its byte limit after ${preview.length} of ${lines.length} lines. Read this observation with offset and limit to page through it (each page names the next offset), or Search it; omitted lines are not absence.`;
+}
+
+/** Lines of a compact UI or DOM change list; changed and added rows carry the new observation's hints. */
+function diffLines(diff: StateDiff): string[] {
+  const page = diff.page ?? {};
+  const total = diff.counts.changed + diff.counts.added + diff.counts.removed;
+  const omitted = total - diff.changed.length - diff.added.length - diff.removed.length;
+  return [...Object.entries(page).map(([key, change]) => `Changed ${key}: ${JSON.stringify(change![0])} → ${JSON.stringify(change![1])}`),
+    `Changes: ${diff.counts.changed} changed, ${diff.counts.added} added, ${diff.counts.removed} removed${total === 0 && !Object.keys(page).length ? " (no visible change yet)" : ""}`,
+    ...diff.changed.map(line => `~ ${label(line)}`), ...diff.added.map(line => `+ ${label(line)}`), ...diff.removed.map(line => `- ${label(line)}`),
+    ...(omitted > 0 ? [`${omitted} more changes are not listed; Search or Read the new observation for them.`] : []),
+    ...(diff.note ? [diff.note] : [])];
 }
 
 /** Whole lines from the start that fit a byte budget, never splitting Unicode. */
@@ -301,7 +312,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
   await Promise.all([
     connectReadPlugin(pi, { protocol: READ_PROTOCOL, apiVersion: READ_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ resolver, priority: -250, renderResult: computerReadRenderer });
-      for (const view of ["image", "ui", "full", "state", "dom", "region", "sequence", "frames", "capture", "element", "ocr"])
+      for (const view of ["image", "ui", "full", "state", "dom", "region", "sequence", "frames", "capture", "element", "ocr", "changes"])
         api.addView({ view, contentKind: "any", presenter: { id: `computer-${view}`, present: document => document } });
       api.addHandler({ stage: "read", when: { resolvedBy: resolver.id, contentKind: "any" }, async handler(context) {
         const { request, resolverContext } = context;
@@ -328,7 +339,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           script: { kind: "native", source: address.source, blocks: canonical } } };
       } });
       api.describe({ path: "Read docs:computer for native resources. computer:windows/apps/displays/session and returned computer:window/ref, display/ref, observation/id, window-state/id or sequence/id. Read window overviews before input; display/detail/frames are readonly.",
-        views: "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a window opened by open_browser returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI, plus whether the window is hung and its process memory/CPU. ocr (alone or with capture options on a window, alone on an observation, or with region:x,y,width,height on an observation) adds Windows OCR lines with boxes in overview pixels; use maxLongEdge 3840 for small text. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop|text,hint on an observation; element:text returns one element's full text. sequence:{duration_ms<=60000,fps<=30,max_frames<=300,timeout_ms,maxLongEdge,scale,region} on window/display reports actual_fps and last_frame_age_ms; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
+        views: "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a window opened by open_browser returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI, plus whether the window is hung and its process memory/CPU. ocr (alone or with capture options on a window, alone on an observation, or with region:x,y,width,height on an observation) adds Windows OCR lines with boxes in overview pixels; use maxLongEdge 3840 for small text. changes (alone or with ui capture options, on a window) takes a fresh UI walk and lists only rows changed, added or removed since that window's previous observation, with the new observation's hints. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop|text,hint on an observation; element:text returns one element's full text. sequence:{duration_ms<=60000,fps<=30,max_frames<=300,timeout_ms,maxLongEdge,scale,region} on window/display reports actual_fps and last_frame_age_ms; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} on sequence. Detail/frames are readonly; text offset/limit select UI lines, never image cells." });
     } }),
     connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],
