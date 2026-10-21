@@ -71,7 +71,8 @@ export interface WebLaunchOptions {
   browser?: WebChannel; url?: string; profile?: "agent";
   /**
    * Attach to a running Chrome or Edge instead of launching one: the browser process and title of the window to work in.
-   * A remote-debugging port on its command line selects CDP; otherwise the Playwright Extension connects after approval.
+   * A remote-debugging port on its command line selects CDP; remote debugging turned on in the running browser selects
+   * its WebSocket endpoint after the browser's Allow prompt; otherwise the Playwright Extension connects after approval.
    */
   attach?: { pid: number; title: string };
 }
@@ -97,7 +98,7 @@ export interface WebPage {
 export interface WebOpened {
   pid: number; version: string; url: string; title: string;
   /** How Playwright reached an attached browser. */
-  via?: "cdp" | "extension";
+  via?: "cdp" | "toggle" | "extension";
 }
 /** Starts one owned browser; the session binds its native window. */
 export type WebLauncher = (options: WebLaunchOptions, signal?: AbortSignal) => Promise<{ browser: WebBrowser; opened: WebOpened }>;

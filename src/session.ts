@@ -454,7 +454,7 @@ export class ComputerSession {
       }
       this.browsers.set(`${entry.target.pid}:${entry.target.window_id}`, launched.browser);
       entry.web = launched.browser;
-      const via = launched.opened.via === "cdp" ? "its remote-debugging port" : "the Playwright Extension";
+      const via = { cdp: "its remote-debugging port", toggle: "the remote debugging turned on in the browser", extension: "the Playwright Extension" }[launched.opened.via ?? "extension"];
       return this.result("delivered", `Attached Playwright to this browser through ${via}. Read the window with dom for its active tab; every tab is listed there and switch_tab changes the active one. Closing the computer session detaches without closing the browser.`,
         { operation: "attach_browser", ...launched.opened }, this.addressed(entry));
     });

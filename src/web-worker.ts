@@ -191,8 +191,9 @@ function trackTabs(owned: BrowserContext) {
 
 /**
  * Attach to the running Chrome or Edge that owns a window. A remote-debugging port on its command line means CDP;
- * otherwise Playwright's extension relay opens the Playwright Extension's connect page in that browser and waits until
- * the connection is approved there. The window's visible tab becomes active when its title identifies one tab.
+ * remote debugging turned on in the running browser (Chrome 144+) means its WebSocket endpoint after the browser's own
+ * Allow prompt; otherwise Playwright's extension relay opens the Playwright Extension's connect page in that browser and
+ * waits until the connection is approved there. The window's visible tab becomes active when its title identifies one tab.
  */
 async function attach({ pid, title }: { pid: number; title: string }) {
   if (context) throw new Error("This worker already owns a browser.");
@@ -200,7 +201,12 @@ async function attach({ pid, title }: { pid: number; title: string }) {
     `(Get-CimInstance Win32_Process -Filter 'ProcessId=${Math.trunc(pid)}').CommandLine`], { windowsHide: true, timeout: 15_000 });
   const found = parseBrowserCommandLine(stdout.trim());
   if (!found) throw new Error("This window does not belong to Chrome or Edge, so Playwright cannot attach to it. Nothing was attached.");
-  let via: "cdp" | "extension";
+  let via: "cdp" | "toggle" | "extension";
+  // Without a debugging flag, a browser whose remote debugging was turned on at chrome://inspect/#remote-debugging
+  // names its WebSocket endpoint in DevToolsActivePort; that server has no HTTP endpoint.
+  const dataDir = found.userDataDir ?? path.join(process.env.LOCALAPPDATA ?? "", ...(found.channel === "chrome" ? ["Google", "Chrome"] : ["Microsoft", "Edge"]), "User Data");
+  const [togglePort, togglePath] = found.debuggingPort === undefined
+    ? (await readFile(path.join(dataDir, "DevToolsActivePort"), "utf8").catch(() => "")).trim().split("\n") : [];
   if (found.debuggingPort !== undefined) {
     let port = found.debuggingPort;
     if (!port && found.userDataDir) port = Number((await readFile(path.join(found.userDataDir, "DevToolsActivePort"), "utf8").catch(() => "")).split("\n")[0]);
@@ -210,6 +216,13 @@ async function attach({ pid, title }: { pid: number; title: string }) {
       throw new Error(`Could not reach the browser's debugging port ${port}: ${error instanceof Error ? error.message.split("\n")[0] : error}. Chrome and Edge ignore remote debugging with their default profile; start the browser with its own --user-data-dir, or attach without the flag through the Playwright Extension. Nothing was attached.`);
     }
     via = "cdp";
+  } else if (togglePort && togglePath?.startsWith("/devtools/browser/")) {
+    // Chrome asks "Allow remote debugging?" before it completes the handshake, so the connect waits for approval.
+    try { attached = await chromium.connectOverCDP(`ws://127.0.0.1:${togglePort}${togglePath}`, { timeout: ATTACH_APPROVAL_MS }); }
+    catch (error) {
+      throw new Error(`The browser's remote debugging (chrome://inspect/#remote-debugging) did not accept the connection: ${error instanceof Error ? error.message.split("\n")[0] : error}. Approve the browser's "Allow remote debugging?" prompt within ${ATTACH_APPROVAL_MS / 1000} s, or turn the switch off and on again if it went stale. Nothing was attached.`);
+    }
+    via = "toggle";
   } else {
     const cli = { extension: true, browser: found.channel,
       ...(found.userDataDir ? { executablePath: found.executable, userDataDir: found.userDataDir } : {}),
@@ -231,12 +244,14 @@ async function attach({ pid, title }: { pid: number; title: string }) {
   context = attached.contexts()[0];
   if (!context) { await attached.close().catch(() => undefined); attached = undefined; throw new Error("The browser exposed no tabs to Playwright. Nothing was attached."); }
   trackTabs(context);
-  // Attached tabs loaded before Playwright arrived, so no load event will report their state.
+  // Attached tabs loaded before Playwright arrived, so no load event will report their state or title.
   const loads: Record<string, Tab["load"]> = { loading: "loading", interactive: "interactive", complete: "complete" };
-  await Promise.all(tabs.map(async tab => { tab.load = loads[await tab.page.evaluate(() => document.readyState).catch(() => "loading")] ?? "loading"; }));
-  const titled = await Promise.all(tabs.map(async tab => ({ tab, title: await tab.page.title().catch(() => "") })));
-  const visible = titled.filter(item => item.title && title.startsWith(item.title));
-  active = tabs.length === 1 ? tabs[0] : visible.length === 1 ? visible[0].tab : undefined;
+  await Promise.all(tabs.map(async tab => {
+    tab.load = loads[await tab.page.evaluate(() => document.readyState).catch(() => "loading")] ?? "loading";
+    tab.title = await tab.page.title().catch(() => "");
+  }));
+  const visible = tabs.filter(tab => tab.title && title.startsWith(tab.title));
+  active = tabs.length === 1 ? tabs[0] : visible.length === 1 ? visible[0] : undefined;
   if (!active) note("Several tabs are open and the window title matches none or several of them; switch_tab to choose one.");
   return { pid, version: attached.version(), url: active?.page.url() ?? "", title: active ? await active.page.title() : "", via };
 }
