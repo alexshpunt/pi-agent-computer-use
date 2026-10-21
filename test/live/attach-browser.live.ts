@@ -24,6 +24,8 @@ async function fillThroughPlaywright(window: string, value: string) {
   const snapshot = await live.read(window, ["dom"]);
   expect(snapshot.details.status, text(snapshot)).toBe("observed");
   expect(text(snapshot)).toMatch(/textbox "Field"/);
+  // The page loaded before Playwright attached; its tab still reports that.
+  expect(snapshot.details.dom?.tabs.find(tab => tab.active)).toMatchObject({ load: "complete" });
   const filled = await live.insert(`computer:observation/${snapshot.details.observation_id}`, { action: "fill", target: { label: "Field" }, text: value });
   expect(filled.details.status, text(filled)).toBe("delivered");
   expect(text(await live.read(window, ["dom"]))).toMatch(new RegExp(`textbox "Field"[^\\n]*: ${value}`));

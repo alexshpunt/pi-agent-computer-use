@@ -231,6 +231,9 @@ async function attach({ pid, title }: { pid: number; title: string }) {
   context = attached.contexts()[0];
   if (!context) { await attached.close().catch(() => undefined); attached = undefined; throw new Error("The browser exposed no tabs to Playwright. Nothing was attached."); }
   trackTabs(context);
+  // Attached tabs loaded before Playwright arrived, so no load event will report their state.
+  const loads: Record<string, Tab["load"]> = { loading: "loading", interactive: "interactive", complete: "complete" };
+  await Promise.all(tabs.map(async tab => { tab.load = loads[await tab.page.evaluate(() => document.readyState).catch(() => "loading")] ?? "loading"; }));
   const titled = await Promise.all(tabs.map(async tab => ({ tab, title: await tab.page.title().catch(() => "") })));
   const visible = titled.filter(item => item.title && title.startsWith(item.title));
   active = tabs.length === 1 ? tabs[0] : visible.length === 1 ? visible[0].tab : undefined;
