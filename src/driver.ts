@@ -83,8 +83,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "e6d26cb6d20ae7abd2cdcb58e847eb5edffc2c38", version: "0.37.0",
-  sha256: "59c7f48e3c86ed330eab20d9dce23a45c83479a062003aa7305875206e30644d",
+  source: "13dbacca94e33fbdce56fd4ed6bd9bebc6aeb5a5", version: "0.37.0",
+  sha256: "689487a1566b4cb04adee8b30f6732d4ae096290e53dd1d7570064e8a3265b67",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -225,12 +225,14 @@ export class McpDriver implements Driver {
   }
 
   /**
-   * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks, and a
-   * 10 s takeover pause: foreground input refuses while the human used the keyboard or mouse that recently.
+   * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks, a 10 s
+   * takeover pause (foreground input refuses while the human used the keyboard or mouse that recently), and launches
+   * with remote-debugging switches, which this adapter allows only through YOLO's open by path and arguments.
    */
   private driverVariables(): Record<string, string> {
     return { CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false",
-      ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1", CUA_HUMAN_IDLE_MS: String(HUMAN_IDLE_MS) };
+      ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1", CUA_HUMAN_IDLE_MS: String(HUMAN_IDLE_MS),
+      CUA_DRIVER_ALLOW_DEBUGGING_LAUNCH: "1" };
   }
 
   /** The owned native child; Windows-host control runs through WSL interop, on another machine over SSH. */

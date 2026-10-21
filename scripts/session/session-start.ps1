@@ -13,6 +13,7 @@ $env:CUA_DRIVER_RS_MCP_HTTP_TOKEN = $config.token
 $env:CUA_DRIVER_RS_TELEMETRY_ENABLED = 'false'
 $env:CUA_DRIVER_RS_UPDATE_CHECK = 'false'
 $env:DO_NOT_TRACK = '1'
+$env:CUA_DRIVER_ALLOW_DEBUGGING_LAUNCH = '1'
 $out = Join-Path $Workspace 'out'
 New-Item -ItemType Directory -Force $out | Out-Null
 # No cursor overlay: the session has no desktop compositor, so the overlay window would paint over every capture.
