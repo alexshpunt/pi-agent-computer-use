@@ -3,6 +3,13 @@ import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { displayModes as nativeDisplayModes, type DisplayModes } from "./display-mode.ts";
 import { WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
+/** The Chromium switch a WebView2 app gets for debugging; port 0 lets each app choose a free port. */
+export const WEBVIEW2_DEBUGGING = "--remote-debugging-port=0";
+/** Quote one argument for a Windows command line as CommandLineToArgvW and the C runtime read it back. */
+export function windowsArgument(value: string): string {
+  if (value && !/[\s"]/.test(value)) return value;
+  return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`;
+}
 
 /** One app process as Windows reports it; `responding` is false when its UI thread stopped handling messages. */
 export interface ProcessHealth { pid: number; name: string; responding: boolean; memory_mb: number; cpu_seconds: number }
@@ -101,6 +108,44 @@ export class MachineHost {
     return name;
   }
 
+  /**
+   * Turn WebView2 remote debugging on or off for one app through the user's per-exe WebView2 policy
+   * (HKCU\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments). It applies to the app's next start,
+   * whoever starts it, and stays until turned off. Returns the value now set for that exe, if any.
+   */
+  async webview2Debugging(app: string, enabled: boolean): Promise<string | undefined> {
+    const key = "HKCU:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments";
+    const name = app.replace(/'/g, "''");
+    const change = enabled
+      ? `New-Item -Path '${key}' -Force | Out-Null; New-ItemProperty -Path '${key}' -Name '${name}' -Value '${WEBVIEW2_DEBUGGING}' -PropertyType String -Force | Out-Null`
+      : `Remove-ItemProperty -Path '${key}' -Name '${name}' -ErrorAction SilentlyContinue`;
+    // Policy keys are writable only with administrator rights: with UAC, Windows asks the person at that machine to
+    // approve the elevated change on its secure desktop, which no injected input can reach.
+    const encoded = Buffer.from(change, "utf16le").toString("base64");
+    await this.powershell(`try { ${change} } catch [System.Security.SecurityException], [System.UnauthorizedAccessException] {
+  $p = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList '-NoProfile -EncodedCommand ${encoded}'
+  if ($p.ExitCode -ne 0) { throw "The elevated change failed with exit code $($p.ExitCode)." }
+}`, undefined, 180_000);
+    const out = await this.powershell(`(Get-ItemProperty -Path '${key}' -Name '${name}' -ErrorAction SilentlyContinue).'${name}'`, undefined, 20_000);
+    return out.trim() || undefined;
+  }
+
+  /**
+   * Start an executable with extra environment variables and return its process ID. CUA's launch has no environment,
+   * so this starts the process from PowerShell; the caller binds its window as for any launch.
+   */
+  async startProcess(path: string, args: string[], environment: Record<string, string>): Promise<number> {
+    const spec = Buffer.from(JSON.stringify({ path, args: args.map(windowsArgument).join(" "), environment }), "utf8").toString("base64");
+    // The variables go into this PowerShell's own environment, which Start-Process passes on. Start-Process also keeps
+    // the app from inheriting this call's output pipes, which would hold the call open for the app's lifetime.
+    const out = await this.powershell(`$s = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${spec}')) | ConvertFrom-Json
+foreach ($v in $s.environment.PSObject.Properties) { [Environment]::SetEnvironmentVariable($v.Name, [string]$v.Value) }
+$a = @{ FilePath = $s.path; PassThru = $true }; if ($s.args) { $a.ArgumentList = $s.args }
+(Start-Process @a).Id`, undefined, 30_000);
+    const pid = Number(out.trim());
+    if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("The process did not report an ID; do not relaunch blindly.");
+    return pid;
+  }
   /** The process that owns the foreground window. */
   async foregroundOwner(): Promise<{ pid: number; name: string } | undefined> {
     const out = await this.powershell(`Add-Type -Name F -Namespace PiComputerUse -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint p);'
