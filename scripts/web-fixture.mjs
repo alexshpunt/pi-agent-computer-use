@@ -145,4 +145,6 @@ export async function startWebFixture() {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const fixture = await startWebFixture();
   console.log(`FIXTURE ${fixture.url}`);
+  // Live checks run it over SSH and end its stdin to stop it; killing the local ssh alone leaves it running there.
+  process.stdin.on("end", () => process.exit()).resume();
 }
