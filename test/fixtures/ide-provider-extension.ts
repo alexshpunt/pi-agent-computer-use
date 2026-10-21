@@ -85,12 +85,12 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         if (operation === "safe") mode = "safe";
         else await driver!.call("fixture_control", { operation }, signal);
       };
-      const open = async () => reference(await ok("insert", { path: "computer:session", text: JSON.stringify({ action: "open", app: "Notepad" }) }), "window");
+      const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: JSON.stringify({ action: "open", app: "Notepad" }) }), "window");
       assert(!pi.getAllTools().some(tool => /^computer_/.test(tool.name)), "Provider exposed duplicate ordinary computer_* tools");
-      const apps = await ok("search", { path: "computer:apps", query: "Notepad" });
+      const apps = await ok("search", { path: "computer:machine/local/apps", query: "Notepad" });
       assert(textOf(apps).includes("Notepad"), "Installed-app Search lost the native app");
       const first = reference(await ok("insert", { path: reference(apps, "app"), text: JSON.stringify({ action: "open" }) }), "window"), second = await open();
-      const found = await ok("search", { path: "computer:windows", query: "Owned fixture" });
+      const found = await ok("search", { path: "computer:machine/local/windows", query: "Owned fixture" });
       assert(textOf(found).includes(first) && textOf(found).includes(second), "Window Search lost exact resources");
       let view = await ok("read", { path: first });
       const image = view.content.find(block => block.type === "image");
@@ -142,7 +142,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const local = await ok("read", { path: "local.txt" });
         assert(textOf(local).includes("Second local line"), "Computer provider intercepted local editor behavior");
       } else {
-        const listed = await ok("search", { path: "computer:windows", query: "Unowned fixture" });
+        const listed = await ok("search", { path: "computer:machine/local/windows", query: "Unowned fixture" });
         const external = reference(listed, "window");
         const externalView = await ok("read", { path: external });
         await control("safe");

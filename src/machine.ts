@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadComputerConfig, type ComputerConfig } from "./config.ts";
-import { ComputerRequestError, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
+import { ComputerRequestError, machineGuide, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
 import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "./reactive-animation.ts";
@@ -94,9 +94,8 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
       : undefined;
     const remote = new ComputerSession(driver, options.getMode, options.settings, undefined, options.retainRaw, launchWeb, new MachineHost(runner));
     return { ref: name, session: remote,
-      describe: source => [`# Remote machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
-        `Browser: ${launchWeb ? "available" : "not configured (node and package)"}`,
-        "Search this address for that machine's windows; Read it for its displays, and Insert resize into a display address to change its resolution. Insert open, open_browser, open_sandbox or disconnect."].join("\n"),
-      close: () => remote.close().then(() => undefined) };
+      describe: source => [`# Machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
+        `Browser: ${launchWeb ? "available" : "not configured (node and package)"}`, ...machineGuide(source)].join("\n"),
+      close: () => remote.close() };
   };
 }

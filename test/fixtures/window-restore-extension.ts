@@ -75,10 +75,10 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         return reference(value, "window-state");
       };
       const restore = (state: string) => call("insert", { path: state, text: '{"action":"restore"}' });
-      const open = async () => reference(await ok("insert", { path: "computer:session", text: '{"action":"open","app":"Notepad"}' }), "window");
+      const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: '{"action":"open","app":"Notepad"}' }), "window");
       assert(!pi.getAllTools().some(tool => /^computer_/.test(tool.name)), "Duplicate computer tools escaped primary IDE provider");
       const first = await open(), second = await open();
-      const listed = await ok("search", { path: "computer:windows", query: "Owned restore fixture" });
+      const listed = await ok("search", { path: "computer:machine/local/windows", query: "Owned restore fixture" });
       assert(body(listed).includes(first) && body(listed).includes(second), "Search lost exact native window references");
       let state = await stateRead(first);
       if (scenario === "workflow") {
@@ -119,7 +119,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("insert", { path: beforeSequence, text: '{"action":"restore"}' });
         assert(await count("restore_window") === 1, "Temporal Read retained restore authority");
       } else {
-        const external = reference(await ok("search", { path: "computer:windows", query: "Unowned restore fixture" }), "window");
+        const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned restore fixture" }), "window");
         const externalState = await stateRead(external); mode = "safe";
         const refusal = await denied("insert", { path: externalState, text: '{"action":"restore"}' });
         assert(semantic(refusal).effect === "not-applied" && body(refusal).includes("Safe mode"), "Safe denial hid no-dispatch effect");
@@ -144,14 +144,14 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("insert", { path: state, text: '{"action":"restore"}' });
         const beforeReuse = await count("restore_window");
         mode = "yolo";
-        const replacement = reference(await ok("search", { path: "computer:windows", query: "Owned restore fixture 92" }), "window");
+        const replacement = reference(await ok("search", { path: "computer:machine/local/windows", query: "Owned restore fixture 92" }), "window");
         state = await stateRead(replacement); await control("reused_after_restore");
         const reused = await denied("insert", { path: state, text: '{"action":"restore"}' });
         assert(semantic(reused).effect === "unknown" && find(reused, "activation_succeeded") === true, "Post-dispatch reuse lost completed prefix or became success");
         assert(await count("restore_window") === beforeReuse + 1, "Closed/reused reference sent an extra restoration");
         capability = false;
         const beforeUnqualified = await count("get_window_status");
-        const latest = reference(await ok("search", { path: "computer:windows", query: "Owned restore fixture 92" }), "window");
+        const latest = reference(await ok("search", { path: "computer:machine/local/windows", query: "Owned restore fixture 92" }), "window");
         const manual = await denied("read", { path: latest, views: ["state"] });
         assert(/manually|user/i.test(body(manual)), "Unqualified runtime omitted manual recovery");
         assert(await count("get_window_status") === beforeUnqualified, "Unqualified runtime sent native state acquisition");

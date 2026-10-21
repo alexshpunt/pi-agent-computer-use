@@ -96,7 +96,7 @@ test("Toggle: remote debugging turned on in the running browser, after its Allow
   const attaching = live.insert(window, { action: "attach_browser" });
   let prompt: string | undefined;
   for (let i = 0; !prompt && i < 40; i++) {
-    prompt = addresses(await live.search(live.machine, "Allow remote debugging?"), "window")[0];
+    prompt = addresses(await live.search(live.windows, "Allow remote debugging?"), "window")[0];
     if (!prompt) await sleep(500);
   }
   if (!prompt) throw new Error("Chrome's Allow prompt did not appear.");
@@ -122,7 +122,7 @@ test("Toggle: remote debugging turned on in the running browser, after its Allow
 /** A window with this exact title, if it appears within a few seconds. */
 async function openWindowIfShown(title: string): Promise<string | undefined> {
   for (let i = 0; i < 10; i++) {
-    const found = JSON.stringify((await live.search(live.machine, title)).details.state).match(/"window_ref":"(w-[^"]+)"/);
+    const found = JSON.stringify((await live.search(live.windows, title)).details.state).match(/"window_ref":"(w-[^"]+)"/);
     if (found) return `computer:window/${found[1]}`;
     await sleep(500);
   }

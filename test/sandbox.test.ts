@@ -116,7 +116,7 @@ async function routing() {
   const close = vi.fn(async () => {});
   const sandbox: OpenedSandbox = { ref: "sb-test", session: guest, describe: source => `# Windows Sandbox\nAddress: ${source}`, close };
   const resources = new ComputerResources(async () => host, async () => host.close(), async () => sandbox);
-  const opened = await resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "open_sandbox" }), "insert");
+  const opened = await resources.perform(address("computer:machine/local"), cwd, JSON.stringify({ action: "open_sandbox" }), "insert");
   return { hostDriver, guestDriver, resources, opened, close, sandboxSource: computerSource("sandbox", "sb-test") };
 }
 

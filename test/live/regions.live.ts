@@ -17,7 +17,7 @@ test("a detected toolbar icon is clicked by its center and selects that tool", a
   const started = performance.now();
   const view = await live.read(window, ["regions"]);
   console.log(`regions in ${Math.round(performance.now() - started)} ms`);
-  const shown = presentComputerResult(live.resources, view);
+  const shown = presentComputerResult(view);
   console.log(shown.split("\n").filter(line => line.startsWith("Regions") || line.startsWith("icon")).slice(0, 25).join("\n"));
   const regions = view.details.visual_regions!;
   expect(regions.filter(r => r.kind === "icon").length).toBeGreaterThan(5);

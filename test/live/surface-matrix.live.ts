@@ -33,7 +33,7 @@ test("every surface observes and acts only on itself, and refuses resources of t
   };
 
   // Displays: readonly pixels; any input into a display observation refuses.
-  const displays = addresses(await live.read(live.machine), "display");
+  const displays = addresses(await live.read(live.displays), "display");
   for (const [index, display] of displays.entries()) {
     const seen = await observe(display, []);
     const id = seen.last.details.observation_id ?? seen.last.details.agent_image?.image_id;
@@ -65,7 +65,7 @@ test("every surface observes and acts only on itself, and refuses resources of t
     windows[surface.name] = opened.value;
     openMs[surface.name] = opened.ms;
     if (surface.name === "host window") {
-      const pid = (JSON.parse(JSON.stringify((await live.search(live.machine, title)).details.state)).windows as { pid: number }[])[0].pid;
+      const pid = (JSON.parse(JSON.stringify((await live.search(live.windows, title)).details.state)).windows as { pid: number }[])[0].pid;
       cleanup.push(() => live.kill(pid));
     }
   }
@@ -78,7 +78,7 @@ test("every surface observes and acts only on itself, and refuses resources of t
     const typed = await timed(() => live.write(`computer:observation/${view.details.observation_id}?hint=${encodeURIComponent(target.hint)}&delivery=${surface.delivery}`, `${surface.domain}-mark`));
     expect(typed.value.details.status, text(typed.value)).toBe("delivered");
     // Search on each surface lists only that surface's windows.
-    expect(domainOf((await live.search(surface.source, "regex:.")).details.state)).toEqual([surface.domain]);
+    expect(domainOf((await live.search(surface.source === live.machine ? live.windows : surface.source, "regex:.")).details.state)).toEqual([surface.domain]);
     matrix[surface.name] = { open_ms: openMs[surface.name], observe_ms: seen.median, type_ms: typed.ms, delivery: surface.delivery, domain: surface.domain };
   }
 

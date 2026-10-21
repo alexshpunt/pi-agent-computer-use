@@ -5,7 +5,7 @@ const live = await connectLive();
 afterAll(() => live.close());
 
 test("regular-expression Search lists the machine's windows", async () => {
-  const all = await live.search(live.machine, "regex:.");
+  const all = await live.search(live.windows, "regex:.");
   expect(addresses(all, "window").length).toBeGreaterThan(0);
 });
 
@@ -16,7 +16,7 @@ test("an executable name that is not installed suggests the display name", async
 });
 
 test("a display overview takes a per-Read size", async () => {
-  const display = addresses(await live.read(live.machine), "display")[0];
+  const display = addresses(await live.read(live.displays), "display")[0];
   const small = await live.read(display, ['capture:{"maxLongEdge":320}']);
   expect(small.details.agent_image).toMatchObject({ output: { width: 320 } });
 });
