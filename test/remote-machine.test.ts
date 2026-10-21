@@ -28,7 +28,7 @@ test("machines come only from validated configuration", async () => {
   const write = (machines: unknown) => writeFile(path.join(dir, ".pi/computer-use.json"), JSON.stringify({ command: "/x/cua-driver.exe", machines }));
   await write({ zinpc: { ssh: "zinpc-benchmark", command: "/mnt/c/run/cua-driver.exe", runtime: "windows-desktop", node: "/mnt/c/node.exe", package: "/home/u/pkg" } });
   expect((await loadComputerConfig(dir)).machines?.zinpc).toEqual({ ssh: "zinpc-benchmark", command: "/mnt/c/run/cua-driver.exe", runtime: "windows-desktop", node: "/mnt/c/node.exe", package: "/home/u/pkg" });
-  for (const bad of [{ "Bad Name": { ssh: "a", command: "/x" } }, { pc: { ssh: "a", command: "relative/cua.exe" } }, { pc: { ssh: "a", command: "/x", extra: 1 } }, { pc: { ssh: "a", command: "/x", runtime: "unknown" } }, []]) {
+  for (const bad of [{ "Bad Name": { ssh: "a", command: "/x" } }, { local: { ssh: "a", command: "/x" } }, { pc: { ssh: "a", command: "relative/cua.exe" } }, { pc: { ssh: "a", command: "/x", extra: 1 } }, { pc: { ssh: "a", command: "/x", runtime: "unknown" } }, []]) {
     await write(bad);
     await expect(loadComputerConfig(dir)).rejects.toThrow(/Invalid machines/);
   }
@@ -46,6 +46,8 @@ function backend(pid: number) {
       if (name === "get_window_state") return { content: [], structuredContent: { pid, window_id: 7, snapshot_id: "s", elements_complete: true, elements: [],
         window_bounds: { x: 0, y: 0, width: 100, height: 80 } } };
       if (name === "type_text") return { content: [], structuredContent: { effect: "confirmed" } };
+      if (name === "list_apps") return { content: [], structuredContent: { apps: [{ name: `App ${pid}`, launch_path: `C:\\app${pid}.exe` }] } };
+      if (name === "launch_app") throw new Error("launch stopped by the fixture");
       throw new Error(`Unexpected native call ${name}`);
     }),
   };
@@ -56,51 +58,52 @@ async function fixture() {
   const hostDriver = backend(10), remoteDriver = backend(20), guestDriver = backend(30);
   const host = new ComputerSession(hostDriver, () => "yolo");
   const remote = new ComputerSession(remoteDriver, () => "yolo"), guest = new ComputerSession(guestDriver, () => "yolo");
-  const machineClose = vi.fn(async () => { await remote.close(); }), sandboxClose = vi.fn(async () => {});
+  const machineClose = vi.fn(() => remote.close()), sandboxClose = vi.fn(async () => {});
   const machine: OpenedMachine = { ref: "zinpc", session: remote, describe: source => `# Remote machine\nAddress: ${source}`, close: machineClose };
   const openSandbox = vi.fn(async (_cwd: string, _command: Record<string, unknown>, _signal?: AbortSignal, onMachine?: string): Promise<OpenedSandbox> =>
     ({ ref: "sb-1", session: guest, describe: source => source, close: sandboxClose, ...(onMachine ? { machine: onMachine } : {}) }));
-  const connect = vi.fn(async (_cwd: string, name: string) => {
+  const start = vi.fn(async (_cwd: string, name: string) => {
     if (name !== "zinpc") throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json.`);
     return machine;
   });
-  const resources = new ComputerResources(async () => host, async () => host.close(), openSandbox, connect);
+  const resources = new ComputerResources(async () => host, async () => host.close(), openSandbox, start);
   const names = (driver: Driver) => vi.mocked(driver.call).mock.calls.map(([name]) => name);
-  return { resources, hostDriver, remoteDriver, openSandbox, connect, machineClose, sandboxClose, names, machineSource: computerSource("machine", "zinpc") };
+  return { resources, hostDriver, remoteDriver, openSandbox, start, machineClose, sandboxClose, names, machineSource: computerSource("machine", "zinpc") };
 }
 
-test("a machine's windows and displays are found, read and operated only through its own driver", async () => {
+test("a machine starts on first use; its windows, apps and displays come only from its own driver", async () => {
   const f = await fixture();
-  const connected = await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "connect", machine: "zinpc" }), "insert");
-  expect(connected.details).toMatchObject({ status: "delivered", machine_ref: "zinpc" });
-  const listed = await f.resources.search(address(f.machineSource), cwd, "window");
+  const listed = await f.resources.search(address(`${f.machineSource}/windows`), cwd, "window");
   const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
   const view = await f.resources.read(address(computerSource("window", ref)), cwd, ["ui"]);
   await f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, "hello", "write");
-  const displays = await f.resources.read(address(f.machineSource), cwd);
+  const displays = await f.resources.read(address(`${f.machineSource}/displays`), cwd);
   expect((displays!.details.state!.displays as { display_id: string }[]).map(display => display.display_id)).toEqual(["D20"]);
-  expect(f.names(f.remoteDriver)).toEqual(["list_windows", "get_window_state", "type_text", "list_displays"]);
+  // An app address opens the app on the machine that listed it.
+  const apps = await f.resources.search(address(`${f.machineSource}/apps`), cwd, "App");
+  const app = (apps.details.state!.apps as { app_ref: string }[])[0].app_ref;
+  await f.resources.perform(address(computerSource("app", app)), cwd, JSON.stringify({ action: "open" }), "insert");
+  expect(f.names(f.remoteDriver)).toEqual(["list_windows", "get_window_state", "type_text", "list_displays", "list_apps", "list_apps", "list_windows", "launch_app"]);
   expect(f.names(f.hostDriver)).toEqual([]);
-  // Connecting again reuses the open connection.
-  await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "connect", machine: "zinpc" }), "insert");
-  expect(f.connect).toHaveBeenCalledOnce();
+  // Every use after the first reuses the started machine.
+  expect(f.start).toHaveBeenCalledOnce();
 });
 
-test("an unknown machine refuses, and disconnect retires the machine, its references and its sandboxes", async () => {
+test("an unknown machine refuses, and closing a machine releases it, its references and its sandboxes", async () => {
   const f = await fixture();
-  await expect(f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "connect", machine: "other" }), "insert")).rejects.toThrow(ComputerRequestError);
-  await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "connect", machine: "zinpc" }), "insert");
-  const listed = await f.resources.search(address(f.machineSource), cwd, "window");
+  await expect(f.resources.search(address("computer:machine/other/windows"), cwd, "")).rejects.toThrow(ComputerRequestError);
+  const listed = await f.resources.search(address(`${f.machineSource}/windows`), cwd, "window");
   const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
   const view = await f.resources.read(address(computerSource("window", ref)), cwd, ["ui"]);
   const sandbox = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "open_sandbox" }), "insert");
   expect(sandbox.details.sandbox_ref).toBe("sb-1");
   expect(f.openSandbox.mock.calls[0][3]).toBe("zinpc");
-  const closed = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "disconnect" }), "insert");
-  expect(closed.details).toMatchObject({ status: "closed", machine_ref: "zinpc" });
+  const closed = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "close" }), "insert");
+  // The report names each released part.
+  expect(closed.details.status).toBe("closed");
+  expect(closed.content[0]).toMatchObject({ text: expect.stringMatching(/computer:sandbox\/sb-1: Sandbox[^\n]*destroyed[\s\S]*computer:machine\/zinpc: /) });
   expect(f.sandboxClose).toHaveBeenCalledOnce();
   expect(f.machineClose).toHaveBeenCalledOnce();
-  expect(() => f.resources.descriptor(address(f.machineSource))).toThrow(/expired/);
   expect(() => f.resources.descriptor(address(computerSource("sandbox", "sb-1")))).toThrow(/expired/);
   await expect(f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, "late", "write")).rejects.toThrow(/expired/);
   // A stale remote window address never reaches this host's desktop.
@@ -109,12 +112,23 @@ test("an unknown machine refuses, and disconnect retires the machine, its refere
   expect(f.names(f.hostDriver).filter(name => name !== "list_windows")).toEqual([]);
 });
 
-test("closing the computer session disconnects every machine", async () => {
+test("closing the computer session releases every machine, the local one included, and reports each", async () => {
   const f = await fixture();
-  await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "connect", machine: "zinpc" }), "insert");
-  await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert");
+  await f.resources.search(address(`${f.machineSource}/windows`), cwd, "");
+  await f.resources.search(address("computer:machine/local/windows"), cwd, "");
+  const closed = await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert");
   expect(f.machineClose).toHaveBeenCalledOnce();
-  expect(() => f.resources.descriptor(address(f.machineSource))).toThrow(/expired/);
+  expect(closed.details.status).toBe("closed");
+  const lines = (closed.content[0] as { text: string }).text;
+  expect(lines).toMatch(/computer:machine\/zinpc: /);
+  expect(lines).toMatch(/computer:machine\/local: /);
+  // A closed machine starts again on its next use.
+  await f.resources.search(address(`${f.machineSource}/windows`), cwd, "");
+  expect(f.start).toHaveBeenCalledTimes(2);
+});
+
+test("removed address forms refuse", () => {
+  for (const source of ["computer:windows", "computer:apps", "computer:displays"]) expect(() => address(source)).toThrow();
 });
 
 test("a remote browser refuses before launch when that machine's worker copy is stale or missing", async () => {

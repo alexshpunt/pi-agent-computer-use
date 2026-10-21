@@ -147,7 +147,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   await registerComputerProvider(pi, getSession, async () => {
     await closeClassifier();
     const result: ComputerResult = session ? await session.close() : {
-      content: [{ type: "text", text: "No owned computer-use runtime is running." }],
+      content: [{ type: "text", text: "Not started." }],
       details: { status: "closed", mode: getMode() },
     };
     session = undefined;

@@ -32,7 +32,7 @@ test("window state reports a hung app and a working app's memory", async () => {
     "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = 'pi-hang-fixture'; $f.Show(); [Windows.Forms.Application]::DoEvents(); $end = [DateTime]::Now.AddSeconds(40); while ([DateTime]::Now -lt $end) {}"]);
   try {
     await new Promise(resolve => setTimeout(resolve, 8000)); // Windows marks a window hung after 5 s without messages.
-    const [hung] = addresses(await live.search(live.machine, "pi-hang-fixture") as ComputerResult, "window");
+    const [hung] = addresses(await live.search(live.windows, "pi-hang-fixture") as ComputerResult, "window");
     expect(hung).toBeTruthy();
     const state = await live.read(hung, ["state"]);
     console.log(text(state));
@@ -88,7 +88,7 @@ test("a file put in the session folder is opened, edited and saved in Paint, fet
   await delivered(observation(await live.read(window, ["image"]), "?delivery=foreground"), { action: "hotkey", keys: ["ctrl", "o"] });
   await new Promise(resolve => setTimeout(resolve, 1500));
   const paintPid = opened.at(-1);
-  const rows = ((await live.search(live.machine, "Open") as ComputerResult).details.state?.windows ?? []) as { pid: number; title: string; window_ref?: string }[];
+  const rows = ((await live.search(live.windows, "Open") as ComputerResult).details.state?.windows ?? []) as { pid: number; title: string; window_ref?: string }[];
   const dialog = rows.find(row => row.pid === paintPid && row.title === "Open")?.window_ref;
   expect(dialog).toBeTruthy();
   await delivered(observation(await live.read(`computer:window/${dialog}`, ["image"]), "?delivery=foreground"), { action: "sequence", sequence: [

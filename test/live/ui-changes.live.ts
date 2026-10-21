@@ -14,9 +14,9 @@ test("a changes re-read lists only the changed rows and their hints ground input
   const window = `computer:window/${paint.details.window_ref}`;
 
   const full = await live.read(window, ["ui"]);
-  const fullText = presentComputerResult(live.resources, full);
+  const fullText = presentComputerResult(full);
   const unchanged = await live.read(window, ["changes"]);
-  const unchangedText = presentComputerResult(live.resources, unchanged);
+  const unchangedText = presentComputerResult(unchanged);
   console.log(`full ${fullText.length} chars, ${full.details.ui!.elements.length} elements; unchanged re-read ${unchangedText.length} chars`);
   console.log(unchangedText);
   expect(unchanged.details.changes?.since).toBe(full.details.observation_id);
@@ -29,7 +29,7 @@ test("a changes re-read lists only the changed rows and their hints ground input
   expect(clicked.details.status, text(clicked)).toBe("delivered");
 
   const after = await live.read(window, ["changes"]);
-  const afterText = presentComputerResult(live.resources, after);
+  const afterText = presentComputerResult(after);
   console.log(afterText);
   const listed = after.details.changes!.diff!.changed.find(line => line.includes("\"Eraser\""));
   expect(listed, afterText).toBeTruthy();

@@ -88,10 +88,10 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       };
       const insert = (state: string, command: Record<string, unknown>) => call("insert", { path: state, text: JSON.stringify(command) });
       const move = { action: "move", x: -20, y: 120, unit: "windows_desktop_pixels" };
-      const open = async () => reference(await ok("insert", { path: "computer:session", text: '{"action":"open","app":"Notepad"}' }), "window");
+      const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: '{"action":"open","app":"Notepad"}' }), "window");
       assert(!pi.getAllTools().some(tool => /^computer_/.test(tool.name)), "Separate computer tools leaked into the IDE provider");
       const first = await open(), second = await open();
-      const listed = await ok("search", { path: "computer:windows", query: "Owned management fixture" });
+      const listed = await ok("search", { path: "computer:machine/local/windows", query: "Owned management fixture" });
       assert(body(listed).includes(first) && body(listed).includes(second), "Search lost exact-source references");
       let state = await stateRead(first);
       if (scenario === "workflow") {
@@ -143,7 +143,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("insert", { path: state, text: JSON.stringify(move) });
         assert(await count("manage_window") === 6, "Read-only authority retirement sent a mutation");
       } else if (scenario === "admission") {
-        const external = reference(await ok("search", { path: "computer:windows", query: "Unowned management fixture" }), "window");
+        const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned management fixture" }), "window");
         const externalState = await stateRead(external); mode = "safe";
         const refused = await denied("insert", { path: externalState, text: JSON.stringify(move) });
         assert(semantic(refused).effect === "not-applied", "Safe denial lost no-dispatch effect");
@@ -159,7 +159,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("insert", { path: state, text: JSON.stringify(move) });
         assert(await count("manage_window") === 0, "Closed/reused source sent native mutation");
         mode = "yolo";
-        const replacement = reference(await ok("search", { path: "computer:windows", query: "Owned management fixture 92" }), "window");
+        const replacement = reference(await ok("search", { path: "computer:machine/local/windows", query: "Owned management fixture 92" }), "window");
         state = await stateRead(replacement); await control("reused_after_dispatch", 92);
         const reused = await denied("insert", { path: state, text: JSON.stringify(move) });
         assert(semantic(reused).effect === "unknown" && find(reused, "postcondition_confirmed") === true,

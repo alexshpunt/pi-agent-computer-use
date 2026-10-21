@@ -6,11 +6,20 @@ The current desktop scope is Windows controlled from WSL, on this machine or on 
 
 ## Discover and read
 
-Search `computer:apps` or `computer:windows` with a name/title substring, or `regex:<pattern>` for a case-insensitive regular expression; machine and sandbox addresses take the same queries. Results include the available native process metadata and addressable app/window resources. Discovery launches nothing. Read `computer:displays` for connected-monitor metadata when the selected runtime supports it; display discovery takes no text predicate.
+Every machine is addressed the same way: `computer:machine/local` is this one, and `computer:machine/<name>` is another Windows machine configured under `machines` (see [Work on another machine](#work-on-another-machine)). A machine starts on its first use; nothing needs connecting. Read `computer:session` for the machines, sandboxes and sessions started so far.
+
+| Address | Use |
+| --- | --- |
+| `computer:machine/<name>/windows` | Search its windows |
+| `computer:machine/<name>/apps` | Search its installed apps |
+| `computer:machine/<name>/displays` | Read its displays |
+| `computer:machine/<name>` | Insert commands: `open`, `open_browser`, `open_sandbox`, `open_session`, file, clipboard, recording and `close` |
+
+Search with a name/title substring, or `regex:<pattern>` for a case-insensitive regular expression; sandbox addresses take the same queries. Results include the available native process metadata and addressable app/window resources; an app address opens that app on the machine that listed it. Discovery launches nothing. Display discovery takes no text predicate.
 
 Overviews have a 1280 px long edge by default; smaller windows are not enlarged. Add `capture:{"maxLongEdge":...}` to one window Read for another size; `/computer-debug` changes the session default.
 
-Insert into `computer:session` with `text` containing `{"action":"open","app":"Exact installed name"}` to open a genuinely new window. An app_id or a Win32 executable name such as `notepad` also works; a miss suggests close installed names. Alternatively, Insert `{"action":"open"}` into an app address returned by Search. In YOLO, `{"action":"open","path":"C:\\Tools\\app.exe","args":["--flag"]}` starts an executable by its absolute Windows path with up to 32 arguments and binds its new window; Safe refuses it because it runs arbitrary programs. Never replay an unknown launch.
+Insert into a machine address with `text` containing `{"action":"open","app":"Exact installed name"}` to open a genuinely new window. An app_id or a Win32 executable name such as `notepad` also works; a miss suggests close installed names. Alternatively, Insert `{"action":"open"}` into an app address returned by Search. In YOLO, `{"action":"open","path":"C:\\Tools\\app.exe","args":["--flag"]}` starts an executable by its absolute Windows path with up to 32 arguments and binds its new window; Safe refuses it because it runs arbitrary programs. Never replay an unknown launch.
 
 Apps with their own scripting (Blender, for example) can build content while computer use checks the result: `put` the script into the session folder, open the app with the script's returned path in `args` (`--factory-startup --python <path>` for Blender), then Read the window with `ocr` and `state`. See [app scripting](research/app-scripting.md).
 
@@ -40,7 +49,7 @@ When a capture refuses and the window's process is hung, the refusal says so wit
 
 ## Files on the controlled machine
 
-Each computer session owns a folder in the controlled machine's Windows temp directory. Insert into `computer:session` (this machine) or `computer:machine/<name>`:
+Each computer session owns a folder in the controlled machine's Windows temp directory. Insert into that machine's address:
 
 | Command | Effect |
 | --- | --- |
@@ -70,7 +79,7 @@ Detail retains the original local rectangle and native scale through movement/re
 
 Web pages run through [Playwright](https://playwright.dev/). The browser window itself, its tabs and toolbar, system dialogs and every other application stay native Windows windows read and operated as above.
 
-Insert `{"action":"open_browser"}` into `computer:session` to launch a new visible browser with a disposable profile. Optional `"browser":"msedge"` selects installed Edge instead of Chrome, `"browser":"firefox"` selects Playwright's own Firefox build, and `"url"` opens an HTTP(S) page. Firefox is not the user's installed Firefox: install the build once per machine with `scripts/install-firefox.sh local` or `scripts/install-firefox.sh <machine name>`, and again after updating this package. It uses the same DOM views and actions; it cannot be attached to. The result returns the browser's window address, owned by this session under Safe. DOM reads refuse in windows that are neither opened this way nor [attached](#attach-to-a-running-browser). Never replay an uncertain launch. Closing the computer session closes these browsers and deletes their profiles.
+Insert `{"action":"open_browser"}` into a machine address to launch a new visible browser with a disposable profile. Optional `"browser":"msedge"` selects installed Edge instead of Chrome, `"browser":"firefox"` selects Playwright's own Firefox build, and `"url"` opens an HTTP(S) page. Firefox is not the user's installed Firefox: install the build once per machine with `scripts/install-firefox.sh local` or `scripts/install-firefox.sh <machine name>`, and again after updating this package. It uses the same DOM views and actions; it cannot be attached to. The result returns the browser's window address, owned by this session under Safe. DOM reads refuse in windows that are neither opened this way nor [attached](#attach-to-a-running-browser). Never replay an uncertain launch. Closing the computer session closes these browsers and deletes their profiles.
 
 For sites that need a login, add `"profile":"agent"` (YOLO only): the browser then uses the agent's own persistent profile on that machine (`%LOCALAPPDATA%\PiComputerUse\browser-profiles\<browser>`), so logins made there stay for later sessions. It is a separate profile, never the user's own; the user signs in to the needed sites once inside it. Only one browser can use it at a time, and closing the session keeps it.
 
@@ -143,7 +152,7 @@ Every snapshot shows `Log` lines for console errors, warnings and assertions, un
 
 Use a sandbox when the work should not touch the human's desktop or another agent's windows: no shared focus, pointer, windows or clipboard. It is a separate disposable Windows environment, not a security boundary against hostile code. The host needs the Windows Sandbox feature and its `wsb` command, and the human's Windows session must be active, at the console or in an open Remote Desktop window.
 
-Insert `{"action":"open_sandbox"}` into `computer:session`. It starts a new sandbox with its own CUA driver, which takes about 15–20 seconds, and returns its address: in Codemode `sandbox` is `computer:sandbox/<ref>`. The sandbox window stays minimized on the host without taking focus; do not close it, because that stops the sandbox. Windows runs one sandbox at a time: while one is running on that machine, `open_sandbox` refuses at once and starts nothing.
+Insert `{"action":"open_sandbox"}` into a machine address, `computer:machine/local` for this host. It starts a new sandbox with its own CUA driver, which takes about 15–20 seconds, and returns its address: in Codemode `sandbox` is `computer:sandbox/<ref>`. The sandbox window stays minimized on the host without taking focus; do not close it, because that stops the sandbox. Windows runs one sandbox at a time: while one is running on that machine, `open_sandbox` refuses at once and starts nothing.
 
 | On the sandbox address | Effect |
 | --- | --- |
@@ -151,7 +160,7 @@ Insert `{"action":"open_sandbox"}` into `computer:session`. It starts a new sand
 | Insert `{"action":"open","app":"Command Prompt"}` | Start an app in the guest and return its window |
 | Insert `{"action":"close"}` | Destroy the sandbox; its window and observation addresses expire |
 
-Read, Write and Insert work on guest window and observation addresses as on host ones. Their sources report the `windows-sandbox` domain, and `computer:windows` and `computer:apps` list only host windows. The guest has no Notepad; use apps the sandbox ships with, or bring your own through a shared folder. Guest windows use the default capture route, and console windows may need `delivery=foreground`, which brings the window forward inside the guest only.
+Read, Write and Insert work on guest window and observation addresses as on host ones. Their sources report the `windows-sandbox` domain, and the machine's own `windows` and `apps` addresses list only host windows and apps. The guest has no Notepad; use apps the sandbox ships with, or bring your own through a shared folder. Guest windows use the default capture route, and console windows may need `delivery=foreground`, which brings the window forward inside the guest only.
 
 Only explicit host folders are shared. Add them to `open_sandbox`:
 
@@ -167,7 +176,7 @@ A missing feature, folder or Windows-drive path refuses before anything starts. 
 
 An isolated session is a separate Windows session for the agent on the same machine, from [Microsoft Execution Containers](https://github.com/microsoft/mxc) (MXC) `isolation_session`. Windows creates a fresh agent user with its own desktop, clipboard and input, invisible to the human, and removes the user again on close. Unlike a Windows Sandbox, several sessions can run at once, and one starts in about 15–25 seconds. It is not a security boundary.
 
-Insert `{"action":"open_session"}` into `computer:session` or a machine address. It returns a `computer:sandbox/<ref>` address that works like a sandbox's: Search it for the session's windows, Insert `{"action":"open","app":"Command Prompt"}` (or, as on a machine, `"path"` and `"args"`) to start an app there, and `{"action":"close"}` to remove the session. Its window sources report the `windows-session` domain. Foreground input inside a session never reaches the human's desktop, so several agents can use foreground input at the same time, each in its own session.
+Insert `{"action":"open_session"}` into a machine address. It returns a `computer:sandbox/<ref>` address that works like a sandbox's: Search it for the session's windows, Insert `{"action":"open","app":"Command Prompt"}` (or, as on a machine, `"path"` and `"args"`) to start an app there, and `{"action":"close"}` to remove the session. Its window sources report the `windows-session` domain. Foreground input inside a session never reaches the human's desktop, so several agents can use foreground input at the same time, each in its own session.
 
 Limits:
 
@@ -180,20 +189,21 @@ Limits:
 
 Another Windows machine with WSL can be operated from this one over SSH: its windows, displays, an owned browser and a sandbox on it. Only machines named under `machines` in `.pi/computer-use.json` can be reached; the agent passes a name, never a host or path, and an unknown name refuses before any SSH work.
 
-Insert `{"action":"connect","machine":"zinpc"}` into `computer:session`. It starts that machine's CUA driver over SSH and returns its address: in Codemode `machine` is `computer:machine/<name>`. Connecting again reuses the open connection.
+Use `computer:machine/<name>` with the configured name, for example `computer:machine/zinpc`. The first use of any of its addresses starts that machine's CUA driver over SSH; later uses share it. Its addresses work as described in [Discover and read](#discover-and-read):
 
-| On the machine address | Effect |
+| Address and call | Effect |
 | --- | --- |
-| Search with a title query | That machine's windows, as `computer:window/...` addresses |
-| Read | That machine's displays, as `computer:display/...` addresses; Insert `resize` into one to change its resolution |
-| Insert `{"action":"open","app":"notepad"}` | Start an app there and return its window |
-| Insert `{"action":"open_browser"}` | Launch an owned browser there (optional `browser`, `url`), as `open_browser` does locally |
+| Search `computer:machine/zinpc/windows` | That machine's windows, as `computer:window/...` addresses |
+| Search `computer:machine/zinpc/apps` | Its installed apps, as `computer:app/...` addresses that open there |
+| Read `computer:machine/zinpc/displays` | Its displays, as `computer:display/...` addresses; Insert `resize` into one to change its resolution |
+| Insert `{"action":"open","app":"notepad"}` into `computer:machine/zinpc` | Start an app there and return its window |
+| Insert `{"action":"open_browser"}` | Launch an owned browser there (optional `browser`, `url`) |
 | Insert `{"action":"open_sandbox"}` | Start a Windows Sandbox on that machine (with `import`/`export` folders of that machine) |
-| Insert `{"action":"disconnect"}` | Close its sandboxes and browsers and stop its driver; its addresses expire |
+| Insert `{"action":"close"}` | Close its sandboxes, sessions and browsers and stop its driver; its addresses expire, and its next use starts it again |
 
-Read, Write and Insert work on its window, display and observation addresses as on local ones, and never act on this machine. Their sources report the `windows-remote` domain, and `computer:windows`, `computer:apps` and `computer:displays` list only this machine. The current Safe/YOLO mode applies there too. A `url` for a remote browser is opened on that machine, so `127.0.0.1` means that machine. The remote user's Windows session must be active, at the console or in an open Remote Desktop window; a disconnected session returns white screenshots.
+Read, Write and Insert work on its window, display and observation addresses as on local ones, and never act on this machine. Their sources report the `windows-remote` domain. The current Safe/YOLO mode applies there too. A `url` for a remote browser is opened on that machine, so `127.0.0.1` means that machine. The remote user's Windows session must be active, at the console or in an open Remote Desktop window; a disconnected session returns white screenshots.
 
-Closing the computer session or Pi disconnects every machine, and a cancelled `connect` stops what it started. The helpers run as SSH children and exit when SSH ends; no ports are opened on either machine.
+Closing the computer session or Pi closes every machine, and a cancelled first use stops what it started. The helpers run as SSH children and exit when SSH ends; no ports are opened on either machine.
 
 ### Install perception for `regions`
 
@@ -221,11 +231,11 @@ All paths are on the remote WSL. Without `node` and `package`, the machine works
 
 ## Change a display's resolution
 
-A high-resolution display at a large Windows scale gives small, dense overviews. In YOLO, Insert `{"action":"resize","width":2160,"height":1440}` into a display address returned by `computer:displays` or by a machine address. It works on this machine and on a connected one; Safe refuses.
+A high-resolution display at a large Windows scale gives small, dense overviews. In YOLO, Insert `{"action":"resize","width":2160,"height":1440}` into a display address returned by a machine's `displays` address. It works on every machine; Safe refuses.
 
 Only modes the graphics driver lists are used, keeping the colour depth and preferring the current refresh rate. An unsupported size refuses and lists the supported ones; keep the display's aspect ratio to avoid stretching. The change also affects what the human sees on that display.
 
-Windows does not save the change. Closing the computer session, or disconnecting the machine, restores the mode the session replaced; signing out also restores it. After a change, read the displays and windows again: earlier display addresses, display observations and window observations of that session no longer work.
+Windows does not save the change. Closing the computer session, or closing the machine, restores the mode the session replaced; signing out also restores it. After a change, read the displays and windows again: earlier display addresses, display observations and window observations of that session no longer work.
 
 ## Restore a minimized window
 
@@ -298,7 +308,6 @@ else { /* r.observation is the current observation, if one was issued */ }
 | `stage` | `validation` when the request was rejected before reaching the browser, session or driver, otherwise `target` |
 | `observation`, `window` | The new current observation (a DOM snapshot, successor or verification sample) and the window |
 | `sandbox` | The `computer:sandbox/...` address an `open_sandbox` started |
-| `machine` | The `computer:machine/...` address a `connect` opened or a `disconnect` closed |
 | `input_consumed` | Whether the addressed observation or window state can no longer be used for input |
 | `application_effect` | Always `unverified`: delivery is not proof of the application's response |
 | `reason`, `code` | Why a refused or unknown action ended |
@@ -345,6 +354,6 @@ On a browser observation, steps are the DOM actions above plus `wait_for` and `v
 
 ## Cleanup and development
 
-Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into `computer:session` to release the runtime and references. This does not close unrelated application documents or save them. It does close the browsers this session opened and delete their profiles, destroys its sandboxes and disconnects its machines; a failed or uncertain cleanup is reported rather than called complete.
+Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into a machine address to release that machine, or into `computer:session` to release every machine, sandbox and isolated session this computer use started. This does not close unrelated application documents or save them. It does close the browsers the session opened and delete their profiles, detaches from attached browsers, destroys sandboxes and isolated sessions and stops remote drivers. The result lists each released part with its own outcome; a failed or uncertain cleanup is reported as `unknown` rather than called complete.
 
 For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This links the public peer SDK without modifying IDE or its dependencies. Normal loading still needs both extensions installed. Use the [development skill](../.pi/skills/develop-computer-use/SKILL.md) for isolated task loading and restoration. Installation/interface switching and new native runtime adoption are separate decisions.

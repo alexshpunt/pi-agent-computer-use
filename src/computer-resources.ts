@@ -16,6 +16,13 @@ import type { UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
 
+/** The machine this extension runs on, by its address name. */
+export const LOCAL_MACHINE = "local";
+/** How to use a machine address: the same on every machine. */
+export function machineGuide(source: string): string[] {
+  return [`Search ${source}/windows for its windows and ${source}/apps for its installed apps; Read ${source}/displays for its displays (Insert resize into a display address to change its resolution).`,
+    `Insert open, open_browser, open_sandbox, open_session, put, get, files, clipboard_read, clipboard_write, record_start, record_stop, audio_record or close into ${source}.`];
+}
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
 function commandObject(value: string): Record<string, unknown> {
@@ -44,15 +51,25 @@ export interface OpenedSandbox {
 export type SandboxFactory = (cwd: string, command: Record<string, unknown>, signal?: AbortSignal, machine?: string) => Promise<OpenedSandbox>;
 /** Another machine's desktop, driven over SSH by its own session. */
 export interface OpenedMachine {
+  /** Its configured name, which is also its address. */
   ref: string;
   session: ComputerSession;
   describe(source: string): string;
-  /** Release the remote session and everything it started on that machine. */
-  close(): Promise<void>;
+  /** Release the remote session and everything it started on that machine, reporting what was released. */
+  close(): Promise<ComputerResult>;
 }
-/** Connect to a configured machine by name; unknown names refuse before any SSH work. */
+/** Start a configured machine by name; unknown names refuse before any SSH work. */
 export type MachineFactory = (cwd: string, name: string, signal?: AbortSignal) => Promise<OpenedMachine>;
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
+/** A cleanup that threw: what it released is unknown. */
+const failure = (error: unknown): ComputerResult => ({ content: [{ type: "text", text: `Cleanup failed; what it released is unknown: ${error instanceof Error ? error.message : error}` }],
+  details: { status: "unknown", mode: "yolo" } });
+/** One result for a release of several parts, each with its own outcome; any unknown part leaves the whole release unknown. */
+function report(parts: readonly (readonly [string | undefined, ComputerResult])[], heading?: string): ComputerResult {
+  const unknown = parts.some(([, result]) => result.details.status === "unknown");
+  const lines = parts.map(([source, result]) => (source ? `${source}: ` : "") + text(result));
+  return { content: [{ type: "text", text: [...(heading ? [heading] : []), ...lines].join("\n") }], details: { status: unknown ? "unknown" : "closed", mode: "yolo" } };
+}
 /**
  * The target of an open command: an installed app by name, or an executable by absolute Windows path with
  * up to 32 command-line arguments (YOLO only, checked by the session).
@@ -178,21 +195,25 @@ export class ComputerResources {
   private readonly windowStates = new Map<string, { window_ref: string; result: ComputerResult }>();
   /** Each window's latest observed UI, the baseline of its next `changes` Read. Outlives the observation's input authority. */
   private readonly lastUi = new Map<string, { observation_id: string; ui: UiResource }>();
-  private readonly apps = new Map<string, string>();
+  /** Installed apps by opaque reference, each with the machine that listed it. */
+  private readonly apps = new Map<string, { machine: string; id: string }>();
   private readonly sandboxes = new Map<string, OpenedSandbox>();
+  /** Started remote machines by name. The local machine is the session getSession returns. */
   private readonly machines = new Map<string, OpenedMachine>();
-  /** Sandbox launches and connections still in progress; a cancelled one finishes its own cleanup before it settles. */
+  /** Remote machines still starting, so concurrent first uses share one start. */
+  private readonly starting = new Map<string, Promise<OpenedMachine>>();
+  /** Sandbox launches and machine starts still in progress; a cancelled one finishes its own cleanup before it settles. */
   private readonly opening = new Set<Promise<unknown>>();
 
-  /** Give installed paths opaque addresses; paths themselves are not session references. */
-  appSource(id: string): string {
-    let ref = [...this.apps].find(([, app]) => app === id)?.[0];
-    if (!ref) { ref = randomUUID(); this.apps.set(ref, id); }
-    return computerSource("app", ref);
+  /** Give an installed app of one machine an opaque reference; paths themselves are not session references. */
+  private appRef(machine: string, id: string): string {
+    let ref = [...this.apps].find(([, app]) => app.machine === machine && app.id === id)?.[0];
+    if (!ref) { ref = randomUUID(); this.apps.set(ref, { machine, id }); }
+    return ref;
   }
   constructor(private readonly getSession: (cwd: string) => Promise<ComputerSession>,
     private readonly closeSession: () => Promise<ComputerResult>, private readonly openSandbox?: SandboxFactory,
-    private readonly connectMachine?: MachineFactory) {}
+    private readonly startMachine?: MachineFactory) {}
 
   /** The session that issued a window or display reference: a sandbox's or another machine's, otherwise this host's. */
   private async sessionFor(cwd: string, target?: ObservationTarget | { window_ref?: string; display?: string }): Promise<ComputerSession> {
@@ -206,10 +227,22 @@ export class ComputerResources {
       : address.kind === "window-state" ? { window_ref: this.windowStates.get(address.ref)?.window_ref }
       : address.kind === "observation" ? this.snapshots.get(address.ref)?.target : undefined;
   }
-  private machine(ref: string): OpenedMachine {
-    const machine = this.machines.get(ref);
-    if (!machine) throw new ComputerRequestError("Machine reference expired. Connect again; it was disconnected or this session was released.");
-    return machine;
+  /** A configured remote machine, started on its first use. */
+  private async machine(cwd: string, name: string, signal?: AbortSignal): Promise<OpenedMachine> {
+    const open = this.machines.get(name);
+    if (open) return open;
+    if (!this.startMachine) throw new ComputerRequestError("Other machines are not available in this runtime.");
+    let start = this.starting.get(name);
+    if (!start) {
+      start = this.launch(this.startMachine(cwd, name, signal), signal).then(machine => { this.machines.set(name, machine); return machine; })
+        .finally(() => this.starting.delete(name));
+      this.starting.set(name, start);
+    }
+    return start;
+  }
+  /** The session of a machine by name: this one's, or a remote one's started on first use. */
+  private async machineSession(cwd: string, name: string, signal?: AbortSignal): Promise<ComputerSession> {
+    return name === LOCAL_MACHINE ? this.getSession(cwd) : (await this.machine(cwd, name, signal)).session;
   }
   /** Forget a released session's observations and window states. */
   private forget(session: ComputerSession): void {
@@ -217,16 +250,36 @@ export class ComputerResources {
       if (entry.target.window_ref ? session.hasWindow(entry.target.window_ref) : session.hasDisplay(entry.target.display!)) this.snapshots.delete(id);
     for (const [id, entry] of this.windowStates) if (session.hasWindow(entry.window_ref)) this.windowStates.delete(id);
   }
-  private async disconnect(machine: OpenedMachine): Promise<ComputerResult> {
-    this.machines.delete(machine.ref);
-    await Promise.allSettled([...this.sandboxes.values()].filter(sandbox => sandbox.machine === machine.ref).map(sandbox => this.closeSandbox(sandbox)));
-    this.forget(machine.session);
-    await machine.close();
-    return { content: [{ type: "text", text: `Disconnected ${computerSource("machine", machine.ref)}. Its windows, observations, browsers and sandboxes are gone.` }],
-      details: { status: "closed", mode: "yolo", machine_ref: machine.ref } };
+  /**
+   * Release one machine: its sandboxes and sessions, then its own session with its browsers and file folder. The
+   * result lists each released part and how its cleanup ended.
+   */
+  private async closeMachine(name: string): Promise<ComputerResult> {
+    const sandboxes = [...this.sandboxes.values()].filter(sandbox => (sandbox.machine ?? LOCAL_MACHINE) === name);
+    const parts = await Promise.all(sandboxes.map(sandbox => this.closeSandbox(sandbox).then(result => [computerSource("sandbox", sandbox.ref), result] as const,
+      error => [computerSource("sandbox", sandbox.ref), failure(error)] as const)));
+    let own: ComputerResult;
+    if (name === LOCAL_MACHINE) {
+      for (const [id, entry] of this.snapshots) if (!this.remoteOwner(entry.target)) this.snapshots.delete(id);
+      for (const [id, entry] of this.windowStates) if (!this.remoteOwner({ window_ref: entry.window_ref })) this.windowStates.delete(id);
+      own = await this.closeSession().catch(failure);
+    } else {
+      const machine = this.machines.get(name);
+      if (!machine) return report([], `${computerSource("machine", name)} was not started.`);
+      this.machines.delete(name);
+      this.forget(machine.session);
+      own = await machine.close().catch(failure);
+    }
+    for (const [ref, app] of this.apps) if (app.machine === name) this.apps.delete(ref);
+    return report([...parts, [computerSource("machine", name), own]]);
+  }
+  /** Whether a remote machine or a sandbox issued this window or display reference. */
+  private remoteOwner(target: { window_ref?: string; display?: string }): boolean {
+    return [...this.sandboxes.values(), ...this.machines.values()].some(environment =>
+      target.window_ref ? environment.session.hasWindow(target.window_ref) : target.display !== undefined && environment.session.hasDisplay(target.display));
   }
   /** Run one launch so session close and Pi shutdown can wait for it; a launch cancelled after success is undone. */
-  private async launch<T extends { close(): Promise<void> }>(start: Promise<T>, signal?: AbortSignal): Promise<T> {
+  private async launch<T extends { close(): Promise<unknown> }>(start: Promise<T>, signal?: AbortSignal): Promise<T> {
     this.opening.add(start);
     let opened: T;
     try { opened = await start; } finally { this.opening.delete(start); }
@@ -254,11 +307,18 @@ export class ComputerResources {
     return { content: [{ type: "text", text: `Sandbox ${computerSource("sandbox", sandbox.ref)} destroyed. Its windows and observations are gone.` }],
       details: { status: "closed", mode: "yolo", sandbox_ref: sandbox.ref } };
   }
-  /** Destroy every sandbox and machine connection this session opened; used when the computer session closes or Pi shuts down. */
-  async closeEnvironments(): Promise<void> {
+  /**
+   * Release every machine, sandbox and isolated session this computer session started, the local machine included;
+   * used by computer:session close and when Pi shuts down. The result lists each part and how its cleanup ended.
+   */
+  async closeAll(): Promise<ComputerResult> {
     await Promise.allSettled([...this.opening]);
-    await Promise.allSettled([...this.sandboxes.values()].map(sandbox => this.closeSandbox(sandbox)));
-    await Promise.allSettled([...this.machines.values()].map(machine => this.disconnect(machine)));
+    const names = [...new Set([...this.machines.keys(), ...[...this.sandboxes.values()].map(sandbox => sandbox.machine ?? LOCAL_MACHINE)])].filter(name => name !== LOCAL_MACHINE);
+    const results = await Promise.all([...names.map(name => this.closeMachine(name)), this.closeMachine(LOCAL_MACHINE)]);
+    this.snapshots.clear();
+    this.windowStates.clear();
+    this.apps.clear();
+    return report(results.map(result => [undefined, result]), "Computer use released. Application documents were not closed or saved.");
   }
 
   private snapshot(id: string): Snapshot {
@@ -311,7 +371,18 @@ export class ComputerResources {
           : "Display observation is readonly and grants no input authority.");
     }
     if (address.kind === "sandbox") return this.sandbox(address.ref).describe(address.source);
-    if (address.kind === "machine") return this.machine(address.ref).describe(address.source);
+    if (address.kind === "machine") {
+      const remote = this.machines.get(address.ref);
+      if (remote) return remote.describe(address.source);
+      return [`# Machine ${address.ref}`, `Address: ${address.source}`, ...machineGuide(address.source)].join("\n");
+    }
+    if (address.kind === "session") {
+      const machines = [LOCAL_MACHINE, ...this.machines.keys()].map(name => `- ${computerSource("machine", name)}`);
+      const sandboxes = [...this.sandboxes.values()].map(sandbox => `- ${computerSource("sandbox", sandbox.ref)} on ${computerSource("machine", sandbox.machine ?? LOCAL_MACHINE)}`);
+      return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in .pi/computer-use.json starts on its first use):",
+        ...machines, ...(sandboxes.length ? ["Sandboxes and isolated sessions:", ...sandboxes] : []),
+        "Insert {\"action\":\"close\"} here to release every machine, browser, sandbox and session this computer use started; the result lists each part."].join("\n");
+    }
     return `# Computer resource\nSource: ${address.source}\nUse Read for native observation, Search for discovery, and Insert for explicit commands. No native capture occurred during descriptor resolution.`;
   }
 
@@ -373,7 +444,9 @@ export class ComputerResources {
   private async readNative(address: ComputerAddress, cwd: string, views: readonly string[] | undefined, view: ComputerViews, signal?: AbortSignal): Promise<ComputerResult | undefined> {
     if (address.kind === "machine") {
       if (views?.length) throw new ComputerRequestError("A machine address has no image views. Read a returned window or display address.");
-      return this.machine(address.ref).session.displays(signal);
+      if (address.part === "windows" || address.part === "apps") throw new ComputerRequestError(`Search ${address.source} with a name or regex:<pattern>.`);
+      const session = await this.machineSession(cwd, address.ref, signal);
+      return address.part === "displays" ? session.displays(signal) : undefined;
     }
     if (address.kind === "session" || address.kind === "app" || address.kind === "sandbox") {
       if (views?.length) throw new ComputerRequestError("This resource has no native image views.");
@@ -406,10 +479,6 @@ export class ComputerResources {
       return session.sequenceFrames(address.ref, view.selection, signal);
     }
     if (view.kind === "frames") throw new ComputerRequestError("Frame selection needs a sequence address.");
-    if (address.kind === "windows" || address.kind === "apps" || address.kind === "displays") {
-      if (views?.length) throw new ComputerRequestError("Use a returned window/display address for native views.");
-      return session[address.kind](signal);
-    }
     if (address.kind === "window") {
       // Fresh window Read retires both provider handles before any native acquisition.
       this.retireWindow(address.ref);
@@ -485,14 +554,19 @@ export class ComputerResources {
   /** Search permitted discovery metadata or the current collected UI without another native walk. */
   async search(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind === "sandbox") return this.sandbox(address.ref).session.windows(signal, query);
-    if (address.kind === "machine") return this.machine(address.ref).session.windows(signal, query);
-    const session = await this.sessionFor(cwd, this.windowOf(address));
-    if (address.kind === "windows" || address.kind === "apps") return session[address.kind](signal, query);
-    if (address.kind === "displays") {
-      if (query) throw new ComputerRequestError("Display discovery does not accept a text predicate.");
-      return session.displays(signal);
+    if (address.kind === "machine") {
+      if (address.part !== "windows" && address.part !== "apps")
+        throw new ComputerRequestError(`Search ${computerSource("machine", address.ref, "windows")} or ${computerSource("machine", address.ref, "apps")}; Read ${computerSource("machine", address.ref, "displays")} for displays.`);
+      const machine = await this.machineSession(cwd, address.ref, signal);
+      if (address.part === "windows") return machine.windows(signal, query);
+      const listed = await machine.apps(signal, query);
+      const apps = listed.details.state?.apps;
+      // Each app gets an address that opens it on the machine that listed it.
+      return Array.isArray(apps) ? { ...listed, details: { ...listed.details, state: { ...listed.details.state,
+        apps: apps.map(app => ({ ...app, app_ref: this.appRef(address.ref, String((app as { app_id: unknown }).app_id)) })) } } } : listed;
     }
-    if (address.kind !== "observation") throw new ComputerRequestError("Search computer:windows, computer:apps, computer:displays or a returned observation address.");
+    const session = await this.sessionFor(cwd, this.windowOf(address));
+    if (address.kind !== "observation") throw new ComputerRequestError("Search computer:machine/<name>/windows, computer:machine/<name>/apps, a sandbox address or a returned observation address.");
     if (address.hint || address.delivery || address.delayMs !== undefined) throw new ComputerRequestError("Input options do not select a Search scope.");
     const snapshot = this.snapshot(address.ref);
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display images have no native UI search scope.");
@@ -529,63 +603,40 @@ export class ComputerResources {
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
     if (address.kind === "machine") {
-      const machine = this.machine(address.ref);
-      if (tool !== "insert") throw new ComputerRequestError("A machine address accepts Insert commands, not literal Write.");
+      if (tool !== "insert" || address.part) throw new ComputerRequestError(`Insert commands into ${computerSource("machine", address.ref)}, not literal Write or its windows, apps or displays.`);
       const command = commandObject(value);
-      if (command.action === "disconnect") { only(command, ["action"]); return this.disconnect(machine); }
-      if (FILE_ACTIONS.includes(command.action as string)) return fileCommand(machine.session, command, cwd);
-      if (command.action === "open_sandbox" || command.action === "open_session") return this.startSandbox(cwd, command, signal, machine.ref);
+      if (command.action === "close") { only(command, ["action"]); return this.closeMachine(address.ref); }
+      const remote = address.ref === LOCAL_MACHINE ? undefined : address.ref;
+      if (command.action === "open_sandbox" || command.action === "open_session") {
+        // A remote machine starts before its sandbox, so an unknown name refuses first.
+        if (remote) await this.machine(cwd, remote, signal);
+        return this.startSandbox(cwd, command, signal, remote);
+      }
+      const session = await this.machineSession(cwd, address.ref, signal);
+      if (FILE_ACTIONS.includes(command.action as string)) return fileCommand(session, command, cwd);
       if (command.action === "open_browser") {
         let options;
         try { options = validateWebLaunch(command); }
         catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-        const result = await machine.session.openBrowser(options, signal);
+        const result = await session.openBrowser(options, signal);
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
-      if (command.action !== "open") throw new ComputerRequestError("A machine address accepts open, open_browser, open_sandbox, open_session or disconnect.");
-      const result = await machine.session.open(openTarget(command, "on that machine"), signal);
+      if (command.action !== "open")
+        throw new ComputerRequestError(`A machine address accepts open, open_browser, open_sandbox, open_session, ${FILE_ACTIONS.join(", ")} or close.`);
+      const result = await session.open(openTarget(command, "on that machine"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
-    if (tool === "insert" && (address.kind === "session" || address.kind === "app")) {
+    if (tool === "insert" && address.kind === "session") {
       const command = commandObject(value);
-      if ((command.action === "open_sandbox" || command.action === "open_session") && address.kind === "session") return this.startSandbox(cwd, command, signal);
-      if (FILE_ACTIONS.includes(command.action as string) && address.kind === "session") return fileCommand(await this.getSession(cwd), command, cwd);
-      if (command.action === "connect" && address.kind === "session") {
-        only(command, ["action", "machine"]);
-        if (typeof command.machine !== "string" || !command.machine) throw new ComputerRequestError("connect needs a configured machine name.");
-        if (!this.connectMachine) throw new ComputerRequestError("Remote machines are not available in this runtime.");
-        let machine = this.machines.get(command.machine);
-        if (!machine) {
-          machine = await this.launch(this.connectMachine(cwd, command.machine, signal), signal);
-          this.machines.set(machine.ref, machine);
-        }
-        const source = computerSource("machine", machine.ref);
-        return { content: [{ type: "text", text: `Connected: ${source}\n${machine.describe(source)}` }],
-          details: { status: "delivered", mode: "yolo", machine_ref: machine.ref } };
-      }
-      if (command.action === "close" && address.kind === "session") {
-        only(command, ["action"]);
-        await this.closeEnvironments();
-        this.snapshots.clear();
-        this.windowStates.clear();
-        this.apps.clear();
-        return this.closeSession();
-      }
-      if (command.action === "open_browser" && address.kind === "session") {
-        let options;
-        try { options = validateWebLaunch(command); }
-        catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-        const result = await (await this.getSession(cwd)).openBrowser(options, signal);
-        return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
-      }
-      if (command.action !== "open") throw new ComputerRequestError("Use open for an app, or close to release the computer session; it does not close application documents.");
-      let app;
-      if (address.kind === "app") {
-        only(command, ["action"]);
-        app = this.apps.get(address.ref);
-        if (typeof app !== "string") throw new ComputerRequestError("App reference expired. Search computer:apps again.");
-      } else app = openTarget(command, "on this machine");
-      const result = await (await this.getSession(cwd)).open(app, signal);
+      if (command.action !== "close") throw new ComputerRequestError("computer:session accepts only close. Insert machine commands into computer:machine/local or computer:machine/<name>.");
+      only(command, ["action"]);
+      return this.closeAll();
+    }
+    if (tool === "insert" && address.kind === "app") {
+      only(commandObject(value), ["action"]);
+      const app = this.apps.get(address.ref);
+      if (!app) throw new ComputerRequestError("App reference expired. Search computer:machine/<name>/apps again.");
+      const result = await (await this.machineSession(cwd, app.machine, signal)).open(app.id, signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
     if (address.kind === "display" && tool === "insert") {

@@ -103,7 +103,7 @@ export function finalAnswer(messages: readonly unknown[]): string | undefined {
 
 /** The machine a trial runs on: its two folders and the output after the run. */
 export interface BenchHost {
-  /** Configured machine name the agent connects to. */
+  /** Configured machine name the agent works on. */
   readonly machine: string;
   /** Create the trial's input and empty output folders; returns their Windows paths on that machine. */
   prepare(trialId: string, files: ReadonlyMap<string, Buffer>): Promise<{ input: string; output: string }>;
@@ -117,7 +117,7 @@ interface TrialState { readonly trialId: string; readonly input: string; readonl
 
 /**
  * The suite. `config` is this extension's `.pi/computer-use.json` content: each trial writes it into the agent's
- * workspace so the agent can connect to `host.machine`.
+ * workspace so the agent can use `host.machine`.
  */
 export function windowsTaskSuite(host: BenchHost, config: string): EvalSuite<WindowsTask, TrialState> {
   const task = (id: string) => WINDOWS_TASKS.find(item => item.id === id)!;
@@ -138,9 +138,8 @@ export function windowsTaskSuite(host: BenchHost, config: string): EvalSuite<Win
     prompt({ trial, prepared }) {
       const { input, output } = prepared.state;
       return [`Use computer use to do one task on the configured machine "${host.machine}", inside a new Windows Sandbox only.`,
-        `First Insert {"action":"connect","machine":"${host.machine}"} into computer:session. Then Insert`,
-        JSON.stringify({ action: "open_sandbox", import: [input], export: output }),
-        "into the returned machine address. In the sandbox, the input folder is C:\\pi\\import\\input and the output folder is C:\\pi\\export.",
+        "Insert", JSON.stringify({ action: "open_sandbox", import: [input], export: output }),
+        `into computer:machine/${host.machine}. In the sandbox, the input folder is C:\\pi\\import\\input and the output folder is C:\\pi\\export.`,
         "Close the sandbox when you are done. Do not touch anything outside the sandbox.",
         "", `Task: ${trial.task.task}`, "",
         "If the task asks for an answer, end your final message with one line: ANSWER: <value>"].join("\n");

@@ -15,7 +15,7 @@ import { WebBrowser } from "../../src/web-browser.ts";
  * Connect to the machine named by LIVE_MACHINE (default zinpc) through the same factory the extension uses,
  * or with LIVE_MACHINE=local to this machine's desktop through the configured local driver.
  * Live checks act on that machine's real desktop: use only new Notepad/Paint documents and synthetic pages.
- * `machine` is where to Insert open and Search windows: the machine address, or computer:session locally.
+ * `machine` is where to Insert machine commands such as open; `windows` and `displays` are its discovery addresses.
  */
 export async function connectLive(cwd = process.cwd()) {
   const name = process.env.LIVE_MACHINE ?? "zinpc";
@@ -28,13 +28,15 @@ export async function connectLive(cwd = process.cwd()) {
       (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal), new MachineHost(localRunner(config.interop)));
   }, async () => local ? local.close() : { content: [], details: { status: "closed", mode: "yolo" } },
     sandboxFactory({ settings: () => images.settings() }), machineFactory({ getMode: () => "yolo", settings: () => images.settings() }));
-  const machine = name === "local" ? "computer:session"
-    : computerSource("machine", (await resources.perform(at("computer:session"), cwd, JSON.stringify({ action: "connect", machine: name }), "insert")).details.machine_ref!);
+  // A machine starts on its first use; the live checks use the configured one unless LIVE_MACHINE=local.
+  const machine = computerSource("machine", name);
   const runner = name === "local" ? localRunner(config.interop) : sshRunner((await machineConfig(cwd, name)).ssh);
   return {
     resources, machine, cwd, runner,
-    /** Where to Search this desktop's windows. */
-    windows: name === "local" ? "computer:windows" : machine,
+    /** Where to Search this machine's windows. */
+    windows: computerSource("machine", name, "windows"),
+    /** Where to Read this machine's displays. */
+    displays: computerSource("machine", name, "displays"),
     read: (path: string, views?: string[]) => resources.read(at(path), cwd, views) as Promise<ComputerResult>,
     search: (path: string, query: string) => resources.search(at(path), cwd, query),
     insert: (path: string, command: unknown, signal?: AbortSignal) => resources.perform(at(path), cwd, JSON.stringify(command), "insert", signal),
@@ -73,8 +75,10 @@ export const WINDOWS_POWERSHELL_PATH = "C:\\Windows\\System32\\WindowsPowerShell
  */
 export async function openWindow(live: Awaited<ReturnType<typeof connectLive>>, source: string, path: string, args: string[], title: string): Promise<string> {
   const launched = await live.insert(source, { action: "open", path, args });
+  // A machine lists its windows at its windows address; a sandbox or session at its own.
+  const windows = source === live.machine ? live.windows : source;
   for (let i = 0; i < 60; i++) {
-    const found = addresses(await live.search(source, title), "window")[0];
+    const found = addresses(await live.search(windows, title), "window")[0];
     if (found) return found;
     await new Promise(resolve => setTimeout(resolve, 1000));
   }

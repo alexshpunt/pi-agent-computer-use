@@ -85,8 +85,6 @@ export interface ComputerResult {
     status: "listed" | "observed" | "delivered" | "refused" | "unknown" | "closed";
     /** The sandbox an open_sandbox command started. */
     sandbox_ref?: string;
-    /** The machine a connect command reached. */
-    machine_ref?: string;
     mode: ComputerMode;
     target?: WindowTarget;
     window_ref?: string;
@@ -487,7 +485,7 @@ export class ComputerSession {
           if (paths.length) return this.result("refused", `Ambiguous app name: ${paths.slice(0, 5).map(item => item.name).join(", ")}. Open one by its exact app_id.`);
           const wanted = appName(app);
           const close = [...new Set(apps.map(item => item.name).filter(name => { const have = appName(name); return have.length > 2 && (wanted.includes(have) || have.includes(wanted)); }))];
-          return this.result("refused", `Installed app not found.${close.length ? ` Did you mean: ${close.slice(0, 5).join(", ")}?` : ""} Search computer:apps for exact names.`);
+          return this.result("refused", `Installed app not found.${close.length ? ` Did you mean: ${close.slice(0, 5).join(", ")}?` : ""} Search the machine's apps (computer:machine/<name>/apps) for exact names.`);
         }
         const selected = paths[0];
         const aumid = selected.launch_path!.match(/^shell:appsFolder\\(.+!.+)$/i)?.[1];
@@ -1032,7 +1030,7 @@ export class ComputerSession {
     try { entry = await this.current(ref, signal); }
     catch (error) { return this.result("refused", `Window lifetime check failed: ${error instanceof Error ? error.message : String(error)}`); }
     if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window. Discover again.");
-    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened with Insert {\"action\":\"open_browser\"} into computer:session, or attached with Insert {\"action\":\"attach_browser\"} into a Chrome or Edge window address (YOLO). Use image/ui/full Reads for other windows.",
+    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened with Insert {\"action\":\"open_browser\"} into a machine address, or attached with Insert {\"action\":\"attach_browser\"} into a Chrome or Edge window address (YOLO). Use image/ui/full Reads for other windows.",
       undefined, this.addressed(entry));
     return entry;
   }

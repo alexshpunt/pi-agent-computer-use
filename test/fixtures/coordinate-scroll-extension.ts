@@ -80,7 +80,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         else if (operation === "capability_on") capability = true;
         else await driver!.call("fixture_control", { operation }, signal);
       };
-      const open = async () => reference(await ok("insert", { path: "computer:session", text: JSON.stringify({ action: "open", app: "Notepad" }) }), "window");
+      const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: JSON.stringify({ action: "open", app: "Notepad" }) }), "window");
       const observe = (window: string, granularity = "full") => ok("read", { path: window,
         views: [granularity, ...(granularity === "ui" ? [] : ['capture:{"hints":false}'])] });
       const command = (extra: Record<string, unknown> = {}) => ({ action: "scroll", x: 100, y: 80, delta_y: 2, unit: "wheel_detents", ...extra });
@@ -97,7 +97,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       };
       assert(!pi.getAllTools().some(tool => /^computer_/.test(tool.name)), "Provider exposed duplicate ordinary computer_* tools");
       const first = await open(), second = await open();
-      const listed = await ok("search", { path: "computer:windows", query: "Owned fixture" });
+      const listed = await ok("search", { path: "computer:machine/local/windows", query: "Owned fixture" });
       assert(textOf(listed).includes(first) && textOf(listed).includes(second), "Search lost exact opened resources");
       let view = await observe(first), observation = reference(view, "observation");
       const image = view.content.find(block => block.type === "image");
@@ -160,7 +160,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await control("capability_off"); view = await observe(first); observation = reference(view, "observation");
         await rejected(observation, command({ delivery_mode: "foreground" }));
         await control("capability_on");
-        const external = reference(await ok("search", { path: "computer:windows", query: "Unowned fixture" }), "window");
+        const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned fixture" }), "window");
         view = await observe(external); observation = reference(view, "observation"); await control("safe");
         await rejected(observation, command({ delivery_mode: "foreground" }));
         view = await observe(first, "image"); observation = reference(view, "observation");
