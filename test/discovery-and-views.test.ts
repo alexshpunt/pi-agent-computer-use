@@ -21,6 +21,18 @@ test("Read views accept granularity in either form and name conflicts", () => {
   expect(() => parseComputerViews(['capture:{"size":1}'])).toThrow(/unsupported options: size/);
 });
 
+test("an anchored window regex matches the title alone", async () => {
+  const call = vi.fn<Driver["call"]>(async (name): Promise<DriverResult> => {
+    if (name === "list_windows") return { content: [], structuredContent: { windows: [{ pid: 4, window_id: 9, app_name: "explorer.exe", title: "Program Manager" }] } };
+    throw new Error(`Unexpected native call ${name}`);
+  });
+  const session = new ComputerSession({ call, identity: vi.fn(async () => "life"), close: vi.fn(async () => {}) }, () => "yolo");
+  const titles = async (query: string) => ((await session.windows(undefined, query)).details.state!.windows as { title: string }[]).map(window => window.title);
+  expect(await titles("regex:^Program Manager$")).toEqual(["Program Manager"]);
+  expect(await titles("regex:^explorer\\.exe$")).toEqual(["Program Manager"]);
+  expect(await titles("regex:^Manager")).toEqual([]);
+});
+
 function appSession(apps: { name: string; launch_path: string }[]) {
   const call = vi.fn<Driver["call"]>(async (name): Promise<DriverResult> => {
     if (name === "list_apps") return { content: [], structuredContent: { apps } };

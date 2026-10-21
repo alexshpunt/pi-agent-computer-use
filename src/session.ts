@@ -352,7 +352,8 @@ export class ComputerSession {
         const owned = [...this.entries.values()].filter(entry => entry.owned);
         const nativeWindows = this.getMode() === "safe" && !owned.length ? [] : await this.list(signal);
         for (const native of nativeWindows) {
-          if (!matches(`${native.app_name} ${native.title}`)) continue;
+          // An anchored regex names the title or the app alone, so each is tried as well as both together.
+          if (![native.title, native.app_name, `${native.app_name} ${native.title}`].some(text => matches(String(text ?? "")))) continue;
           const known = owned.find(entry => entry.target.pid === native.pid && entry.target.window_id === native.window_id);
           const entry = this.getMode() === "safe"
             ? known && await this.current(known.ref, signal)

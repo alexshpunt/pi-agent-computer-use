@@ -7,6 +7,7 @@ import { computerSource } from "../src/computer-address.ts";
 import { ComputerRequestError, ComputerResources, requireComputerAddress, type OpenedMachine, type OpenedSandbox } from "../src/computer-resources.ts";
 import { loadComputerConfig } from "../src/config.ts";
 import { checkRemoteWorker } from "../src/machine.ts";
+import { presentComputerResult } from "../src/provider.ts";
 import { remoteCommand, type CommandRunner } from "../src/runner.ts";
 import { ComputerSession, type Driver } from "../src/session.ts";
 
@@ -119,7 +120,8 @@ test("closing the computer session releases every machine, the local one include
   const closed = await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert");
   expect(f.machineClose).toHaveBeenCalledOnce();
   expect(closed.details.status).toBe("closed");
-  const lines = (closed.content[0] as { text: string }).text;
+  // What the model sees: a session's own close result carries a JSON projection that must not hide later parts.
+  const lines = presentComputerResult(closed);
   expect(lines).toMatch(/computer:machine\/zinpc: /);
   expect(lines).toMatch(/computer:machine\/local: /);
   // A closed machine starts again on its next use.

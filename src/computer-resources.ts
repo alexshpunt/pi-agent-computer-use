@@ -67,7 +67,8 @@ const failure = (error: unknown): ComputerResult => ({ content: [{ type: "text",
 /** One result for a release of several parts, each with its own outcome; any unknown part leaves the whole release unknown. */
 function report(parts: readonly (readonly [string | undefined, ComputerResult])[], heading?: string): ComputerResult {
   const unknown = parts.some(([, result]) => result.details.status === "unknown");
-  const lines = parts.map(([source, result]) => (source ? `${source}: ` : "") + text(result));
+  // Keep each part's message, not the JSON projection a session appends after it: one result shows one message.
+  const lines = parts.map(([source, result]) => (source ? `${source}: ` : "") + text(result).split("\n{", 1)[0]);
   return { content: [{ type: "text", text: [...(heading ? [heading] : []), ...lines].join("\n") }], details: { status: unknown ? "unknown" : "closed", mode: "yolo" } };
 }
 /**
