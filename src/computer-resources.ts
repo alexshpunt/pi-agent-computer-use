@@ -21,7 +21,7 @@ export const LOCAL_MACHINE = "local";
 /** How to use a machine address: the same on every machine. */
 export function machineGuide(source: string): string[] {
   return [`Search ${source}/windows for its windows and ${source}/apps for its installed apps; Read ${source}/displays for its displays (Insert resize into a display address to change its resolution).`,
-    `Insert open, open_browser, open_sandbox, open_session, put, get, files, clipboard_read, clipboard_write, record_start, record_stop, audio_record or close into ${source}.`];
+    `Insert open, open_browser, open_sandbox, open_session, webview2_debugging, put, get, files, clipboard_read, clipboard_write, record_start, record_stop, audio_record or close into ${source}.`];
 }
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -73,19 +73,21 @@ function report(parts: readonly (readonly [string | undefined, ComputerResult])[
 }
 /**
  * The target of an open command: an installed app by name, or an executable by absolute Windows path with
- * up to 32 command-line arguments (YOLO only, checked by the session).
+ * up to 32 command-line arguments (YOLO only, checked by the session). debugging starts it with WebView2 remote
+ * debugging in its environment.
  */
-function openTarget(command: Record<string, unknown>, where: string): string | { path: string; args: string[] } {
+function openTarget(command: Record<string, unknown>, where: string): string | { path: string; args: string[]; debugging?: boolean } {
   if (command.path === undefined) {
     only(command, ["action", "app"]);
     if (typeof command.app !== "string" || !command.app.trim()) throw new ComputerRequestError(`Open needs an app name installed ${where}, or path and args.`);
     return command.app;
   }
-  only(command, ["action", "path", "args"]);
+  only(command, ["action", "path", "args", "debugging"]);
+  if (command.debugging !== undefined && typeof command.debugging !== "boolean") throw new ComputerRequestError("debugging must be true or false.");
   if (typeof command.path !== "string" || !/^[A-Za-z]:\\.+\.exe$/i.test(command.path)) throw new ComputerRequestError("path must be an absolute Windows path to an .exe, for example C:\\Tools\\app.exe.");
   const args = command.args ?? [];
   if (!Array.isArray(args) || args.length > 32 || args.some(arg => typeof arg !== "string" || arg.length > 8192)) throw new ComputerRequestError("args must be up to 32 strings.");
-  return { path: command.path, args: args as string[] };
+  return { path: command.path, args: args as string[], ...(command.debugging ? { debugging: true } : {}) };
 }
 const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop", "audio_record"];
 /** Speech in a WAV file as text, with faster-whisper run through uv on the agent's own machine. */
@@ -615,6 +617,12 @@ export class ComputerResources {
       }
       const session = await this.machineSession(cwd, address.ref, signal);
       if (FILE_ACTIONS.includes(command.action as string)) return fileCommand(session, command, cwd);
+      if (command.action === "webview2_debugging") {
+        only(command, ["action", "app", "enabled"]);
+        if (typeof command.app !== "string" || !/^[^\\/:*?"<>|]{1,200}\.exe$/i.test(command.app)) throw new ComputerRequestError("webview2_debugging needs app: the app's executable file name, for example \"ms-teams.exe\".");
+        if (typeof command.enabled !== "boolean") throw new ComputerRequestError("webview2_debugging needs enabled: true or false.");
+        return session.webview2Debugging(command.app, command.enabled);
+      }
       if (command.action === "open_browser") {
         let options;
         try { options = validateWebLaunch(command); }
@@ -623,7 +631,7 @@ export class ComputerResources {
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
       if (command.action !== "open")
-        throw new ComputerRequestError(`A machine address accepts open, open_browser, open_sandbox, open_session, ${FILE_ACTIONS.join(", ")} or close.`);
+        throw new ComputerRequestError(`A machine address accepts open, open_browser, open_sandbox, open_session, webview2_debugging, ${FILE_ACTIONS.join(", ")} or close.`);
       const result = await session.open(openTarget(command, "on that machine"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }

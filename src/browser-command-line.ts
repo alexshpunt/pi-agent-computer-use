@@ -1,7 +1,7 @@
 /** How long an extension attach waits for the connection to be approved in the browser. */
 export const ATTACH_APPROVAL_MS = 120_000;
 
-/** What a running Chrome or Edge process reveals about how Playwright can attach to it. */
+/** What a running Chrome or Edge command line reveals for the toggle and Playwright Extension routes. */
 export interface BrowserProcess {
   /** Playwright channel of the executable. */
   channel: "chrome" | "msedge";
@@ -9,8 +9,6 @@ export interface BrowserProcess {
   /** A non-default user data directory, when the browser was started with one. */
   userDataDir?: string;
   profileDirectory?: string;
-  /** Remote debugging port; 0 means the browser chose one and wrote it to DevToolsActivePort. */
-  debuggingPort?: number;
 }
 
 const CHANNELS: Record<string, BrowserProcess["channel"]> = { "chrome.exe": "chrome", "msedge.exe": "msedge" };
@@ -26,7 +24,5 @@ export function parseBrowserCommandLine(commandLine: string): BrowserProcess | u
     const token = tokens.find(item => item.startsWith(prefix));
     return token?.slice(prefix.length).replace(/^"(.*)"$/, "$1");
   };
-  const port = flag("remote-debugging-port");
-  const debuggingPort = port !== undefined && /^\d{1,5}$/.test(port) ? Number(port) : undefined;
-  return { channel, executable, userDataDir: flag("user-data-dir"), profileDirectory: flag("profile-directory"), debuggingPort };
+  return { channel, executable, userDataDir: flag("user-data-dir"), profileDirectory: flag("profile-directory") };
 }

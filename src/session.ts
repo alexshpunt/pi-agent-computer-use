@@ -15,7 +15,7 @@ import { observationSource, sourceIdentity, type ObservationSource, type SourceI
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
 import { DEFAULT_MAX_LONG_EDGE, nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import type { DisplayMode } from "./display-mode.ts";
-import type { MachineHost, ProcessHealth, TextLine } from "./machine-host.ts";
+import { WEBVIEW2_DEBUGGING, type MachineHost, type ProcessHealth, type TextLine } from "./machine-host.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import type { StateDiff } from "./successor.ts";
@@ -423,8 +423,8 @@ export class ComputerSession {
     });
   }
   /**
-   * Attach Playwright to the running Chrome or Edge that shows this window (YOLO only): through its remote-debugging
-   * port, or through the Playwright Extension once the connection is approved in that browser. The wait for approval
+   * Attach Playwright to the running Chromium-based browser that shows this window (YOLO only): Chrome and Edge, or a
+   * browser embedded in another app (Electron, CEF, WebView2, VS Code's integrated browser). The wait for approval
    * runs outside the session queue, so another call can approve the extension's page with ordinary input meanwhile.
    * Closing the session detaches; the browser and its tabs stay open.
    */
@@ -453,7 +453,7 @@ export class ComputerSession {
       }
       this.browsers.set(`${entry.target.pid}:${entry.target.window_id}`, launched.browser);
       entry.web = launched.browser;
-      const via = { cdp: "its remote-debugging port", toggle: "the remote debugging turned on in the browser", extension: "the Playwright Extension" }[launched.opened.via ?? "extension"];
+      const via = { cdp: "its debugging endpoint", toggle: "the remote debugging turned on in the browser", extension: "the Playwright Extension", vscode: "VS Code's browser bridge" }[launched.opened.via ?? "extension"];
       return this.result("delivered", `Attached Playwright to this browser through ${via}. Read the window with dom for its active tab; every tab is listed there and switch_tab changes the active one. Closing the computer session detaches without closing the browser.`,
         { operation: "attach_browser", ...launched.opened }, this.addressed(entry));
     });
@@ -462,7 +462,7 @@ export class ComputerSession {
    * Open a new window of an installed app, or in YOLO an executable by its Windows path with command-line
    * arguments (for example an app with a script to run). The result binds exactly one genuinely new window.
    */
-  open(app: string | { path: string; args: string[] }, signal?: AbortSignal): Promise<ComputerResult> {
+  open(app: string | { path: string; args: string[]; debugging?: boolean }, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before app opening.");
       if (this.driver.windowLifetime === false) return this.result("refused",
@@ -473,7 +473,13 @@ export class ComputerSession {
       try {
         if (typeof app !== "string") {
           const name = app.path.split("\\").at(-1)!.replace(/\.exe$/i, "");
-          return await this.launchNew({ name }, { path: app.path, additional_arguments: app.args }, signal, () => dispatched = true);
+          if (app.debugging) {
+            // WebView2 reads its Chromium switches from the environment, which CUA's launch cannot set.
+            if (!this.host) return this.result("refused", "Starting with WebView2 debugging needs this machine's Windows host; nothing was launched.");
+            const host = this.host;
+            return await this.launchNew({ name }, async () => ({ pid: await host.startProcess(app.path, app.args, { WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: WEBVIEW2_DEBUGGING }) }), signal, () => dispatched = true);
+          }
+          return await this.launchNew({ name }, () => this.state("launch_app", { path: app.path, additional_arguments: app.args }, signal), signal, () => dispatched = true);
         }
         const state = await this.state("list_apps", {}, signal);
         if (!Array.isArray(state.apps)) throw new Error("Driver returned no app list.");
@@ -490,18 +496,18 @@ export class ComputerSession {
         }
         const selected = paths[0];
         const aumid = selected.launch_path!.match(/^shell:appsFolder\\(.+!.+)$/i)?.[1];
-        return await this.launchNew(selected, aumid ? { aumid } : { launch_path: selected.launch_path }, signal, () => dispatched = true);
+        return await this.launchNew(selected, () => this.state("launch_app", aumid ? { aumid } : { launch_path: selected.launch_path }, signal), signal, () => dispatched = true);
       } catch (error) { return this.failed(error, dispatched); }
     });
   }
 
   /** Launch with native arguments and bind the one new window of that process or app; called inside the queue. */
-  private async launchNew(selected: { name: string }, launch: Record<string, unknown>, signal: AbortSignal | undefined, dispatch: () => void): Promise<ComputerResult> {
+  private async launchNew(selected: { name: string }, start: () => Promise<Record<string, unknown>>, signal: AbortSignal | undefined, dispatch: () => void): Promise<ComputerResult> {
     const before = new Set<string>();
     for (const native of await this.list(signal)) before.add(`${native.pid}:${native.window_id}`);
     if (signal?.aborted) return this.result("refused", "Cancelled before launch dispatch.");
     dispatch();
-    const launched = await this.state("launch_app", launch, signal);
+    const launched = await start();
     const pid = launched.pid;
     if (!Number.isSafeInteger(pid) || (pid as number) <= 0) throw new Error("Launch returned no usable process ID; do not relaunch blindly.");
     let candidates: WindowEntry[] = [];
@@ -746,6 +752,19 @@ export class ComputerSession {
     });
   }
 
+  /** Turn WebView2 remote debugging on or off for one app's next start (YOLO only); see MachineHost.webview2Debugging. */
+  webview2Debugging(app: string, enabled: boolean): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (this.getMode() !== "yolo") return this.result("refused", "WebView2 debugging opens an app's pages to automation, so Safe mode refuses it. Only the user can select YOLO with /computer-mode.");
+      if (!this.host) return this.result("refused", "This desktop has no Windows host for WebView2 settings.");
+      try {
+        const value = await this.host.webview2Debugging(app, enabled);
+        return this.result("delivered", enabled
+          ? `WebView2 debugging is on for ${app} (${value}). It applies when the app next starts, whoever starts it, and stays until turned off; restart the app, then Insert attach_browser into its window.`
+          : `WebView2 debugging is off for ${app}. It applies when the app next starts.`, { operation: "webview2_debugging", app, enabled, value: value ?? null });
+      } catch (error) { return this.result("refused", `Changing the WebView2 policy failed: ${error instanceof Error ? error.message : error}`); }
+    });
+  }
   /** Replace the controlled machine's clipboard in YOLO with text or an image file already on that machine. */
   clipboardWrite(value: { text: string } | { imagePath: string }, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {

@@ -4,7 +4,7 @@ import readline from "node:readline";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
-import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, firefox, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
@@ -208,33 +208,75 @@ function trackTabs(owned: BrowserContext) {
   });
 }
 
+/** The window's process and every descendant, with command lines and the TCP ports they listen on. */
+async function processTree(pid: number): Promise<{ processes: { pid: number; name: string; commandLine: string }[]; ports: number[] }> {
+  const script = `$all = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine)
+$ids = [Collections.Generic.HashSet[int]]::new(); [void]$ids.Add(${Math.trunc(pid)})
+do { $n = $ids.Count; foreach ($p in $all) { if ($ids.Contains([int]$p.ParentProcessId)) { [void]$ids.Add([int]$p.ProcessId) } } } while ($ids.Count -ne $n)
+$tree = @($all | Where-Object { $ids.Contains([int]$_.ProcessId) } | ForEach-Object { @{ pid = [int]$_.ProcessId; name = [string]$_.Name; commandLine = [string]$_.CommandLine } })
+$ports = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $ids.Contains([int]$_.OwningProcess) } | ForEach-Object { [int]$_.LocalPort } | Sort-Object -Unique)
+ConvertTo-Json -Depth 4 -Compress @{ processes = $tree; ports = $ports }`;
+  const { stdout } = await promisify(execFile)("powershell.exe", ["-NoProfile", "-Command", script], { windowsHide: true, timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+  const tree = JSON.parse(stdout) as { processes: unknown; ports: unknown };
+  // PowerShell renders one-element arrays as their element.
+  const list = <T>(value: unknown) => (Array.isArray(value) ? value : value === null || value === undefined ? [] : [value]) as T[];
+  return { processes: list(tree.processes), ports: list(tree.ports) };
+}
+
+/** The first of these loopback ports that answers as a Chromium debugging endpoint (Chrome, Edge, Electron, CEF or WebView2). */
+async function debuggingEndpoint(ports: number[]): Promise<string | undefined> {
+  for (const port of ports) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) });
+      if (response.ok && typeof (await response.json() as { webSocketDebuggerUrl?: unknown }).webSocketDebuggerUrl === "string") return `http://127.0.0.1:${port}`;
+    } catch { /* not a debugging endpoint */ }
+  }
+  return undefined;
+}
+
+/** The VS Code browser bridge endpoint of a process in this tree, if its extension published one. */
+async function vscodeBridge(pids: Set<number>): Promise<string | undefined> {
+  const folder = path.join(process.env.LOCALAPPDATA ?? tmpdir(), "PiComputerUse", "vscode-browser");
+  for (const file of await readdir(folder).catch(() => [] as string[])) {
+    const owner = Number(file.replace(/\.json$/, ""));
+    if (!pids.has(owner)) continue;
+    const bridge = JSON.parse(await readFile(path.join(folder, file), "utf8")) as { port: number; token: string };
+    return `ws://127.0.0.1:${bridge.port}/${bridge.token}`;
+  }
+  return undefined;
+}
+
 /**
- * Attach to the running Chrome or Edge that owns a window. A remote-debugging port on its command line means CDP;
- * remote debugging turned on in the running browser (Chrome 144+) means its WebSocket endpoint after the browser's own
- * Allow prompt; otherwise Playwright's extension relay opens the Playwright Extension's connect page in that browser and
- * waits until the connection is approved there. The window's visible tab becomes active when its title identifies one tab.
+ * Attach to the running Chromium-based browser that owns a window: Chrome and Edge, or a browser embedded in another
+ * app. A debugging endpoint anywhere in the window's process tree (Electron or CEF started with
+ * --remote-debugging-port, WebView2 with debugging turned on, a browser with that flag) is used first. Otherwise Chrome
+ * and Edge use remote debugging turned on in the running browser (Chrome 144+, after its Allow prompt) or the Playwright
+ * Extension once its connect page is approved, and VS Code uses its integrated-browser bridge extension. The window's
+ * visible tab becomes active when its title identifies one tab.
  */
 async function attach({ pid, title }: { pid: number; title: string }) {
   if (context) throw new Error("This worker already owns a browser.");
-  const { stdout } = await promisify(execFile)("powershell.exe", ["-NoProfile", "-Command",
-    `(Get-CimInstance Win32_Process -Filter 'ProcessId=${Math.trunc(pid)}').CommandLine`], { windowsHide: true, timeout: 15_000 });
-  const found = parseBrowserCommandLine(stdout.trim());
-  if (!found) throw new Error("This window does not belong to Chrome or Edge, so Playwright cannot attach to it. Nothing was attached.");
-  let via: "cdp" | "toggle" | "extension";
+  const tree = await processTree(pid);
+  const root = tree.processes.find(item => item.pid === pid);
+  const found = root ? parseBrowserCommandLine(root.commandLine) : undefined;
+  let via: "cdp" | "toggle" | "extension" | "vscode";
+  const endpoint = await debuggingEndpoint(tree.ports);
+  const bridge = endpoint || found ? undefined : await vscodeBridge(new Set(tree.processes.map(item => item.pid)));
   // Without a debugging flag, a browser whose remote debugging was turned on at chrome://inspect/#remote-debugging
   // names its WebSocket endpoint in DevToolsActivePort; that server has no HTTP endpoint.
-  const dataDir = found.userDataDir ?? path.join(process.env.LOCALAPPDATA ?? "", ...(found.channel === "chrome" ? ["Google", "Chrome"] : ["Microsoft", "Edge"]), "User Data");
-  const [togglePort, togglePath] = found.debuggingPort === undefined
+  const dataDir = found && (found.userDataDir ?? path.join(process.env.LOCALAPPDATA ?? "", ...(found.channel === "chrome" ? ["Google", "Chrome"] : ["Microsoft", "Edge"]), "User Data"));
+  const [togglePort, togglePath] = dataDir && !endpoint
     ? (await readFile(path.join(dataDir, "DevToolsActivePort"), "utf8").catch(() => "")).trim().split("\n") : [];
-  if (found.debuggingPort !== undefined) {
-    let port = found.debuggingPort;
-    if (!port && found.userDataDir) port = Number((await readFile(path.join(found.userDataDir, "DevToolsActivePort"), "utf8").catch(() => "")).split("\n")[0]);
-    if (!port) throw new Error("The browser was started with --remote-debugging-port=0 but its chosen port is unknown. Nothing was attached.");
-    try { attached = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 15_000 }); }
-    catch (error) {
-      throw new Error(`Could not reach the browser's debugging port ${port}: ${error instanceof Error ? error.message.split("\n")[0] : error}. Chrome and Edge ignore remote debugging with their default profile; start the browser with its own --user-data-dir, or attach without the flag through the Playwright Extension. Nothing was attached.`);
-    }
+  if (endpoint) {
+    try { attached = await chromium.connectOverCDP(endpoint, { timeout: 15_000 }); }
+    catch (error) { throw new Error(`Could not attach to the debugging endpoint ${endpoint}: ${error instanceof Error ? error.message.split("\n")[0] : error}. Nothing was attached.`); }
     via = "cdp";
+  } else if (bridge) {
+    try { attached = await chromium.connectOverCDP(bridge, { timeout: 15_000 }); }
+    catch (error) { throw new Error(`VS Code's browser bridge did not accept the connection: ${error instanceof Error ? error.message.split("\n")[0] : error}. Open an integrated browser tab (Browser: Open Integrated Browser) and attach again. Nothing was attached.`); }
+    via = "vscode";
+  } else if (!found) {
+    throw new Error(`No Chromium debugging endpoint in this window's processes (${[...new Set(tree.processes.map(item => item.name))].slice(0, 6).join(", ")}). Start an Electron or CEF app with --remote-debugging-port=0 in open's args; for a WebView2 app, Insert {"action":"webview2_debugging","app":"<exe name>","enabled":true} into its machine and start the app again; for VS Code, install the browser bridge (docs:computer). Nothing was attached.`);
   } else if (togglePort && togglePath?.startsWith("/devtools/browser/")) {
     // Chrome asks "Allow remote debugging?" before it completes the handshake, so the connect waits for approval.
     try { attached = await chromium.connectOverCDP(`ws://127.0.0.1:${togglePort}${togglePath}`, { timeout: ATTACH_APPROVAL_MS }); }
