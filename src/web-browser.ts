@@ -2,6 +2,7 @@ import { spawn, execFile, type ChildProcessWithoutNullStreams } from "node:child
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { CommandRunner } from "./runner.ts";
+import { ATTACH_APPROVAL_MS } from "./browser-command-line.ts";
 
 const run = promisify(execFile);
 const WINDOWS_NODE = "/mnt/c/Program Files/nodejs/node.exe";
@@ -66,7 +67,14 @@ export type WebChannel = "chrome" | "msedge";
  * Browser launch request. `profile: "agent"` uses the agent's own persistent profile on that machine (YOLO only):
  * logins made there stay for later sessions; it is never the user's own profile.
  */
-export interface WebLaunchOptions { browser?: WebChannel; url?: string; profile?: "agent" }
+export interface WebLaunchOptions {
+  browser?: WebChannel; url?: string; profile?: "agent";
+  /**
+   * Attach to a running Chrome or Edge instead of launching one: the browser process and title of the window to work in.
+   * A remote-debugging port on its command line selects CDP; otherwise the Playwright Extension connects after approval.
+   */
+  attach?: { pid: number; title: string };
+}
 /** One open tab or popup of the owned browser. Ids are stable for the browser's lifetime. */
 export interface WebTab {
   id: string; url: string; title: string; active: boolean;
@@ -86,7 +94,11 @@ export interface WebPage {
   history?: { entries: WebLogEntry[]; first_seq: number; dropped: number };
   evaluation?: WebEvaluation;
 }
-export interface WebOpened { pid: number; version: string; url: string; title: string }
+export interface WebOpened {
+  pid: number; version: string; url: string; title: string;
+  /** How Playwright reached an attached browser. */
+  via?: "cdp" | "extension";
+}
 /** Starts one owned browser; the session binds its native window. */
 export type WebLauncher = (options: WebLaunchOptions, signal?: AbortSignal) => Promise<{ browser: WebBrowser; opened: WebOpened }>;
 
@@ -340,7 +352,9 @@ export class WebBrowser {
     }
     const browser = new WebBrowser(child, options.remote?.runner);
     try {
-      const opened = await browser.request<WebOpened>("open", { browser: options.browser ?? "chrome", ...(options.url ? { url: options.url } : {}), ...(options.profile ? { profile: options.profile } : {}) }, signal, 60_000);
+      const opened = await browser.request<WebOpened>("open", options.attach ? { attach: options.attach }
+        : { browser: options.browser ?? "chrome", ...(options.url ? { url: options.url } : {}), ...(options.profile ? { profile: options.profile } : {}) },
+        signal, options.attach ? ATTACH_APPROVAL_MS + 30_000 : 60_000);
       if (!Number.isSafeInteger(opened.pid) || opened.pid <= 0) throw new WebError("Browser launch did not report a process id.");
       return { browser, opened };
     } catch (error) {
@@ -390,7 +404,7 @@ export class WebBrowser {
     });
   }
 
-  /** Close the browser, delete its profile and wait for the worker to exit. Idempotent. */
+  /** Close the browser and delete its profile, or detach from an attached one, then wait for the worker to exit. Idempotent. */
   async close(): Promise<void> {
     if (this.alive) {
       await this.request("close", {}, undefined, 30_000).catch(() => undefined);

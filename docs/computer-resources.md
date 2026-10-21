@@ -70,7 +70,7 @@ Detail retains the original local rectangle and native scale through movement/re
 
 Web pages run through [Playwright](https://playwright.dev/). The browser window itself, its tabs and toolbar, system dialogs and every other application stay native Windows windows read and operated as above.
 
-Insert `{"action":"open_browser"}` into `computer:session` to launch a new visible browser with a disposable profile. Optional `"browser":"msedge"` selects installed Edge instead of Chrome, and `"url"` opens an HTTP(S) page. The result returns the browser's window address, owned by this session under Safe. Personal browsers and profiles are never attached, and DOM reads refuse in other windows. Never replay an uncertain launch. Closing the computer session closes these browsers and deletes their profiles.
+Insert `{"action":"open_browser"}` into `computer:session` to launch a new visible browser with a disposable profile. Optional `"browser":"msedge"` selects installed Edge instead of Chrome, and `"url"` opens an HTTP(S) page. The result returns the browser's window address, owned by this session under Safe. DOM reads refuse in windows that are neither opened this way nor [attached](#attach-to-a-running-browser). Never replay an uncertain launch. Closing the computer session closes these browsers and deletes their profiles.
 
 For sites that need a login, add `"profile":"agent"` (YOLO only): the browser then uses the agent's own persistent profile on that machine (`%LOCALAPPDATA%\PiComputerUse\browser-profiles\<browser>`), so logins made there stay for later sessions. It is a separate profile, never the user's own; the user signs in to the needed sites once inside it. Only one browser can use it at a time, and closing the session keeps it.
 
@@ -110,6 +110,15 @@ Every action accepts `timeout_ms` (1..60000; default 5000, 30000 for navigation,
 A delivered action returns the page's next snapshot as a new observation; check it for the application's response. A Playwright refusal, such as a strict-mode violation, sent nothing. A timeout or lost connection is `unknown`: the action may have reached the page, so read a fresh snapshot and never replay it blindly. Write, native input fields and address options do not apply to DOM observations.
 
 On a DOM observation, Read `image` for a screenshot of the page viewport, `element:crop,<ref>` for one element, or `element:highlight,<ref>` for the viewport with that element overlaid. These are page pixels: they ground no native input. Search the observation to filter its snapshot lines. A fresh window Read of any kind replaces the window's previous observations.
+
+### Attach to a running browser
+
+In YOLO, Playwright can also work in a Chrome or Edge that is already running, including the user's own browser and profile. Find its window with Search, then Insert `{"action":"attach_browser"}` into that window address. The browser's own command line decides how:
+
+- **Remote-debugging port.** A browser started with `--remote-debugging-port` is attached through it at once. Chrome and Edge ignore that switch for their default profile, so such a browser runs with its own `--user-data-dir`. The session cannot start one itself: `open` refuses remote-debugging switches.
+- **Playwright Extension.** Otherwise the browser needs Microsoft's [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm), installed once by the user. Attaching opens the extension's connect page in that browser and waits up to 2 minutes until a tab is approved there with "Allow & select". The page is ordinary UI: the user can approve it, or the agent can read and click it in another call while the attach waits (for example two calls in one Codemode script). Approval exposes the whole browser, including signed-in sessions, to this session.
+
+The result names the route (`via`) and the active tab. All DOM views and actions then work as in an opened browser. With the extension, only approved tabs are visible. When the window title does not identify exactly one tab, no tab is active until `switch_tab`. Closing the computer session detaches: the browser and its tabs stay open, and nothing is deleted. Safe refuses `attach_browser`. A window that does not belong to Chrome or Edge, a missing extension, an unreachable debugging port or an unapproved connection refuses with the reason; nothing is attached. Firefox cannot be attached.
 
 ### Tabs and dialogs
 

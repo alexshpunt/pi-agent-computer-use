@@ -1,10 +1,14 @@
-// Windows Node worker: one visible Playwright browser with a disposable profile, or the agent's persistent one.
-// EOF closes it and deletes a disposable profile.
+// Windows Node worker: one visible Playwright browser with a disposable profile, the agent's persistent one, or a
+// running Chrome/Edge it attached to. EOF closes an owned browser (deleting a disposable profile) or detaches.
 import readline from "node:readline";
-import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { promisify } from "node:util";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
+import { chromium, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
+import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-line.ts";
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 
@@ -13,6 +17,17 @@ interface DownloadRecord { info: WebDownload; download: Download; done: Promise<
 
 let context: BrowserContext | undefined;
 let profile: string | undefined;
+/** A running browser this worker attached to; closing only disconnects from it. */
+let attached: Browser | undefined;
+/**
+ * Playwright's own extension relay (the Playwright Extension's connect flow). It is not part of the public API, so it
+ * is reached through the bundle's tools export rather than reimplemented here.
+ */
+interface PlaywrightTools {
+  resolveCLIConfigForMCP(cli: object, env: object): Promise<object>;
+  createBrowserWithInfo(config: object, client: { clientName: string }, cli: object, bind: { title: string; workspaceDir: string }): Promise<{ browser: Browser & { unbind(): Promise<void> } }>;
+}
+const playwrightTools = () => (createRequire(import.meta.url)("playwright-core/lib/coreBundle") as { tools: PlaywrightTools }).tools;
 let serial = 0;
 let creating = false;
 const tabs: Tab[] = [];
@@ -135,7 +150,8 @@ function locate(page: Page, target: WebTarget): Locator {
   return parts.reduce((all, part) => all.and(part));
 }
 
-async function open({ browser, url, profile: kind }: WebLaunchOptions) {
+async function open({ browser, url, profile: kind, attach: target }: WebLaunchOptions) {
+  if (target) return attach(target);
   if (context) throw new Error("This worker already owns a browser.");
   // The agent's persistent profile lives in its own folder per browser and is kept on close; a disposable one is deleted.
   const directory = kind === "agent"
@@ -148,16 +164,7 @@ async function open({ browser, url, profile: kind }: WebLaunchOptions) {
     args: ["--user-data-dir=" + directory, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
       "--disable-sync", "--window-size=1100,800", "about:blank"],
   });
-  for (const page of context.pages()) adopt(page);
-  context.on("page", page => {
-    // new_tab adopts its own page and reports it as active.
-    if (creating || tabOf(page)) return;
-    const tab = adopt(page);
-    page.opener().then(opener => {
-      tab.opener = tabOf(opener)?.id;
-      note(`${tab.id}: new tab opened${tab.opener ? ` by ${tab.opener}` : ""}; it is not active until switch_tab`);
-    }, () => undefined);
-  });
+  trackTabs(context);
   active = tabs[0] ?? adopt(await context.newPage());
   const owner = context.browser();
   if (!owner) throw new Error("Playwright did not expose the launched browser.");
@@ -166,6 +173,69 @@ async function open({ browser, url, profile: kind }: WebLaunchOptions) {
   await cdp.detach();
   if (url) await active.page.goto(url, { waitUntil: "domcontentloaded" });
   return { pid: processInfo.find(item => item.type === "browser")?.id, version: owner.version(), url: active.page.url(), title: await active.page.title() };
+}
+
+/** Adopt a context's pages and every tab it opens later. */
+function trackTabs(owned: BrowserContext) {
+  for (const page of owned.pages()) adopt(page);
+  owned.on("page", page => {
+    // new_tab adopts its own page and reports it as active.
+    if (creating || tabOf(page)) return;
+    const tab = adopt(page);
+    page.opener().then(opener => {
+      tab.opener = tabOf(opener)?.id;
+      note(`${tab.id}: new tab opened${tab.opener ? ` by ${tab.opener}` : ""}; it is not active until switch_tab`);
+    }, () => undefined);
+  });
+}
+
+/**
+ * Attach to the running Chrome or Edge that owns a window. A remote-debugging port on its command line means CDP;
+ * otherwise Playwright's extension relay opens the Playwright Extension's connect page in that browser and waits until
+ * the connection is approved there. The window's visible tab becomes active when its title identifies one tab.
+ */
+async function attach({ pid, title }: { pid: number; title: string }) {
+  if (context) throw new Error("This worker already owns a browser.");
+  const { stdout } = await promisify(execFile)("powershell.exe", ["-NoProfile", "-Command",
+    `(Get-CimInstance Win32_Process -Filter 'ProcessId=${Math.trunc(pid)}').CommandLine`], { windowsHide: true, timeout: 15_000 });
+  const found = parseBrowserCommandLine(stdout.trim());
+  if (!found) throw new Error("This window does not belong to Chrome or Edge, so Playwright cannot attach to it. Nothing was attached.");
+  let via: "cdp" | "extension";
+  if (found.debuggingPort !== undefined) {
+    let port = found.debuggingPort;
+    if (!port && found.userDataDir) port = Number((await readFile(path.join(found.userDataDir, "DevToolsActivePort"), "utf8").catch(() => "")).split("\n")[0]);
+    if (!port) throw new Error("The browser was started with --remote-debugging-port=0 but its chosen port is unknown. Nothing was attached.");
+    try { attached = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 15_000 }); }
+    catch (error) {
+      throw new Error(`Could not reach the browser's debugging port ${port}: ${error instanceof Error ? error.message.split("\n")[0] : error}. Chrome and Edge ignore remote debugging with their default profile; start the browser with its own --user-data-dir, or attach without the flag through the Playwright Extension. Nothing was attached.`);
+    }
+    via = "cdp";
+  } else {
+    const cli = { extension: true, browser: found.channel,
+      ...(found.userDataDir ? { executablePath: found.executable, userDataDir: found.userDataDir } : {}),
+      ...(found.profileDirectory ? { profileDirName: found.profileDirectory } : {}) };
+    const relay = playwrightTools();
+    const connecting = relay.createBrowserWithInfo(await relay.resolveCLIConfigForMCP(cli, {}), { clientName: "Pi computer use" }, cli,
+      { title: "pi-computer-use", workspaceDir: tmpdir() });
+    let timer: NodeJS.Timeout | undefined;
+    const expired = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(
+      `The connection was not approved within ${ATTACH_APPROVAL_MS / 1000} s. Approve it on the Playwright Extension page that opened in the browser, then attach again. Nothing was attached.`)), ATTACH_APPROVAL_MS); });
+    try {
+      const { browser } = await Promise.race([connecting, expired]);
+      // Playwright shares the attached browser through a server of its own; this worker is the only client.
+      await browser.unbind().catch(() => undefined);
+      attached = browser;
+    } finally { clearTimeout(timer); }
+    via = "extension";
+  }
+  context = attached.contexts()[0];
+  if (!context) { await attached.close().catch(() => undefined); attached = undefined; throw new Error("The browser exposed no tabs to Playwright. Nothing was attached."); }
+  trackTabs(context);
+  const titled = await Promise.all(tabs.map(async tab => ({ tab, title: await tab.page.title().catch(() => "") })));
+  const visible = titled.filter(item => item.title && title.startsWith(item.title));
+  active = tabs.length === 1 ? tabs[0] : visible.length === 1 ? visible[0].tab : undefined;
+  if (!active) note("Several tabs are open and the window title matches none or several of them; switch_tab to choose one.");
+  return { pid, version: attached.version(), url: active?.page.url() ?? "", title: active ? await active.page.title() : "", via };
 }
 
 function logSince() {
@@ -364,9 +434,11 @@ async function screenshot({ target, highlight }: { target?: WebTarget; highlight
 }
 
 async function close() {
-  const owned = context, directory = profile;
-  context = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
-  await owned?.close();
+  const owned = context, directory = profile, connected = attached;
+  context = undefined; attached = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
+  // Closing an attached browser only disconnects: the browser and its tabs stay open.
+  if (connected) await connected.close();
+  else await owned?.close();
   if (directory) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   return {};
 }
@@ -392,5 +464,6 @@ input.on("close", () => {
   close().catch(error => {
     process.stderr.write(`Owned browser cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
-  });
+  // An unfinished extension attach keeps Playwright's relay listening; the worker ends with its input either way.
+  }).finally(() => process.exit());
 });

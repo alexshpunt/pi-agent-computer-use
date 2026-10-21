@@ -611,8 +611,12 @@ export class ComputerResources {
         this.retireWindow(address.ref);
         return session.killOwned(address.ref, signal);
       }
+      if (command.action === "attach_browser") {
+        only(command, ["action"]);
+        return session.attachBrowser(address.ref, signal);
+      }
       if (command.action !== "wait_for" && command.action !== "verify")
-        throw new ComputerRequestError("A window address accepts only wait_for, verify or kill. Input needs the observation address returned by a fresh window Read.");
+        throw new ComputerRequestError("A window address accepts only wait_for, verify, attach_browser or kill. Input needs the observation address returned by a fresh window Read.");
       let spec;
       try { spec = session.waitSpec(address.ref, command); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
