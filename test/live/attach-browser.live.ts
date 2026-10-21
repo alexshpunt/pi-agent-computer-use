@@ -48,15 +48,8 @@ async function fillThroughPlaywright(window: string, value: string) {
 }
 
 test("CDP: a browser started with a debugging port", async () => {
-  // CUA refuses to launch anything with a remote-debugging switch, so the browser is started the way a person would.
-  const args = [...flags(profiles[0]), "--remote-debugging-port=0", page("Attach CDP target")].map(arg => `'${arg.replace(/'/g, "''")}'`).join(",");
-  await live.powershell(`Start-Process -FilePath '${EDGE}' -ArgumentList ${args}`);
-  let window: string | undefined;
-  for (let i = 0; !window && i < 40; i++) {
-    window = addresses(await live.search(live.machine, "Attach CDP target"), "window")[0];
-    if (!window) await sleep(500);
-  }
-  if (!window) throw new Error("The debugging browser's window did not appear.");
+  // The agent starts the debugging browser itself (YOLO open by path; the driver allows remote-debugging switches).
+  const window = await openWindow(live, live.machine, EDGE, [...flags(profiles[0]), "--remote-debugging-port=0", page("Attach CDP target")], "Attach CDP target");
   const attached = await live.insert(window, { action: "attach_browser" });
   expect(attached.details.status, text(attached)).toBe("delivered");
   expect(attached.details.state).toMatchObject({ via: "cdp", title: "Attach CDP target" });
