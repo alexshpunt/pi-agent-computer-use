@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
+import { chromium, firefox, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
 import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-line.ts";
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
@@ -159,20 +159,39 @@ async function open({ browser, url, profile: kind, attach: target }: WebLaunchOp
     : profile = await mkdtemp(path.join(tmpdir(), "pi-browser-"));
   if (kind === "agent") await mkdir(directory, { recursive: true });
   // Playwright's default flags trade browser security for test determinism; keep only what an owned pipe/profile needs.
-  context = await chromium.launchPersistentContext(directory, {
-    channel: browser, headless: false, chromiumSandbox: true, viewport: null, ignoreDefaultArgs: true,
-    args: ["--user-data-dir=" + directory, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
-      "--disable-sync", "--window-size=1100,800", "about:blank"],
-  });
+  // Firefox is Playwright's own build, which needs Playwright's own flags.
+  context = browser === "firefox"
+    ? await firefox.launchPersistentContext(directory, { headless: false, viewport: null })
+    : await chromium.launchPersistentContext(directory, {
+      channel: browser, headless: false, chromiumSandbox: true, viewport: null, ignoreDefaultArgs: true,
+      args: ["--user-data-dir=" + directory, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
+        "--disable-sync", "--window-size=1100,800", "about:blank"],
+    });
   trackTabs(context);
   active = tabs[0] ?? adopt(await context.newPage());
   const owner = context.browser();
   if (!owner) throw new Error("Playwright did not expose the launched browser.");
-  const cdp = await owner.newBrowserCDPSession();
-  const { processInfo } = await cdp.send("SystemInfo.getProcessInfo");
-  await cdp.detach();
   if (url) await active.page.goto(url, { waitUntil: "domcontentloaded" });
-  return { pid: processInfo.find(item => item.type === "browser")?.id, version: owner.version(), url: active.page.url(), title: await active.page.title() };
+  return { pid: await browserPid(browser, owner, directory), version: owner.version(), url: active.page.url(), title: await active.page.title() };
+}
+
+/**
+ * The launched browser's main process. Chromium reports it over CDP; Firefox has no CDP, so its main process is the
+ * firefox.exe whose command line names this profile and that is neither Playwright's -wait-for-browser launcher nor a
+ * content or utility child.
+ */
+async function browserPid(browser: string | undefined, owner: Browser, directory: string): Promise<number | undefined> {
+  if (browser !== "firefox") {
+    const cdp = await owner.newBrowserCDPSession();
+    const { processInfo } = await cdp.send("SystemInfo.getProcessInfo");
+    await cdp.detach();
+    return processInfo.find(item => item.type === "browser")?.id;
+  }
+  const profile = directory.replace(/'/g, "''");
+  const { stdout } = await promisify(execFile)("powershell.exe", ["-NoProfile", "-Command",
+    `(Get-CimInstance Win32_Process -Filter "Name='firefox.exe'" | Where-Object { $_.CommandLine.Contains('${profile}') -and $_.CommandLine -notmatch '-contentproc|-wait-for-browser' } | Select-Object -First 1).ProcessId`],
+    { windowsHide: true, timeout: 15_000 });
+  return Number(stdout.trim()) || undefined;
 }
 
 /** Adopt a context's pages and every tab it opens later. */
