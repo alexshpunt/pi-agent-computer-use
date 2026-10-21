@@ -386,8 +386,8 @@ export class ComputerSession {
 
   /**
    * Launch one new visible browser through Playwright with a disposable profile, or in YOLO the agent's persistent
-   * profile, then bind its native window. Personal browsers and profiles are never attached. Closing the session closes
-   * this browser and deletes a disposable profile.
+   * profile, then bind its native window. Closing the session closes this browser and deletes a disposable profile.
+   * attachBrowser covers browsers that already run.
    */
   openBrowser(options: WebLaunchOptions = {}, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -421,6 +421,42 @@ export class ComputerSession {
         return this.result(cleanup === "confirmed" ? "refused" : "unknown", `The browser started but its window could not be bound, so it was closed (cleanup ${cleanup}). ${reason}`,
           { operation: "open_browser", cleanup });
       }
+    });
+  }
+  /**
+   * Attach Playwright to the running Chrome or Edge that shows this window (YOLO only): through its remote-debugging
+   * port, or through the Playwright Extension once the connection is approved in that browser. The wait for approval
+   * runs outside the session queue, so another call can approve the extension's page with ordinary input meanwhile.
+   * Closing the session detaches; the browser and its tabs stay open.
+   */
+  async attachBrowser(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    const prepared = await this.queue<ComputerResult | { pid: number; title: string }>(async () => {
+      if (signal?.aborted || !this.launchWeb || this.driver.windowLifetime === false)
+        return this.result("refused", "Attaching needs Windows window lifetime and the Playwright browser backend; nothing was attached.");
+      if (this.getMode() !== "yolo")
+        return this.result("refused", "Attaching Playwright to an existing browser exposes its signed-in sessions, so Safe mode allows only browsers the session opened. Only the user can select YOLO with /computer-mode.");
+      const entry = await this.current(ref, signal);
+      if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
+      if (entry.web) return this.result("refused", "Playwright already works in this browser; read the window with dom.", undefined, this.addressed(entry));
+      const windows = (await this.state("list_windows", { pid: entry.target.pid }, signal)).windows as Record<string, unknown>[] ?? [];
+      const title = windows.find(window => window.window_id === entry.target.window_id)?.title;
+      return { pid: entry.target.pid, title: typeof title === "string" ? title : "" };
+    });
+    if ("content" in prepared) return prepared;
+    let launched: Awaited<ReturnType<WebLauncher>>;
+    try { launched = await this.launchWeb!({ attach: prepared }, signal); }
+    catch (error) { return this.result("refused", `Attaching failed: ${error instanceof Error ? error.message : String(error)}`, { operation: "attach_browser" }); }
+    return this.queue(async () => {
+      const entry = this.entries.get(ref);
+      if (!entry || entry.web) {
+        const cleanup = await launched.browser.close().then(() => "confirmed", () => "unconfirmed");
+        return this.result("refused", `The window closed or Playwright attached to it meanwhile, so this attachment was released (detach ${cleanup}).`, { operation: "attach_browser" });
+      }
+      this.browsers.set(`${entry.target.pid}:${entry.target.window_id}`, launched.browser);
+      entry.web = launched.browser;
+      const via = launched.opened.via === "cdp" ? "its remote-debugging port" : "the Playwright Extension";
+      return this.result("delivered", `Attached Playwright to this browser through ${via}. Read the window with dom for its active tab; every tab is listed there and switch_tab changes the active one. Closing the computer session detaches without closing the browser.`,
+        { operation: "attach_browser", ...launched.opened }, this.addressed(entry));
     });
   }
   /**
@@ -996,7 +1032,7 @@ export class ComputerSession {
     try { entry = await this.current(ref, signal); }
     catch (error) { return this.result("refused", `Window lifetime check failed: ${error instanceof Error ? error.message : String(error)}`); }
     if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window. Discover again.");
-    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened with Insert {\"action\":\"open_browser\"} into computer:session. Use image/ui/full Reads for other windows.",
+    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened with Insert {\"action\":\"open_browser\"} into computer:session, or attached with Insert {\"action\":\"attach_browser\"} into a Chrome or Edge window address (YOLO). Use image/ui/full Reads for other windows.",
       undefined, this.addressed(entry));
     return entry;
   }
@@ -1658,7 +1694,7 @@ export class ComputerSession {
   /** Whether this session issued a still-registered display reference. */
   hasDisplay(ref: string): boolean { return this.displayEntries.has(ref); }
 
-  /** Close session-opened browsers (deleting their profiles) and release the native runtime. Other windows/files are not closed or saved. */
+  /** Close session-opened browsers (deleting their profiles), detach from attached ones and release the native runtime. Other windows/files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
       this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
@@ -1675,8 +1711,8 @@ export class ComputerSession {
       const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);
       if (unrestored.length) return this.result("unknown", `Native runtime released, but restoring the display mode of ${unrestored.join(", ")} failed. Signing out of Windows also restores it.`);
       if (!files) return this.result("unknown", "Native runtime released, but removing the session's file folder failed.");
-      if (failed) return this.result("unknown", `Native runtime released, but cleanup of ${failed} of ${browsers.length} owned browsers is unconfirmed.`);
-      return this.result("closed", "Owned computer-use runtime and session-opened browsers released. Other application documents were not closed or saved.");
+      if (failed) return this.result("unknown", `Native runtime released, but cleanup of ${failed} of ${browsers.length} Playwright browsers is unconfirmed.`);
+      return this.result("closed", "Owned computer-use runtime and session-opened browsers released; attached browsers were detached and stay open. Other application documents were not closed or saved.");
     });
   }
 }
