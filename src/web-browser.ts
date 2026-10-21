@@ -61,8 +61,8 @@ export interface WebDownload {
   state: "in_progress" | "completed" | "canceled" | "failed";
   path?: string; bytes?: number; error?: string;
 }
-/** Installed browser channel launched by Playwright. */
-export type WebChannel = "chrome" | "msedge";
+/** Installed Chrome or Edge launched by Playwright, or Playwright's own Firefox build (scripts/install-firefox.sh). */
+export type WebChannel = "chrome" | "msedge" | "firefox";
 /**
  * Browser launch request. `profile: "agent"` uses the agent's own persistent profile on that machine (YOLO only):
  * logins made there stay for later sessions; it is never the user's own profile.
@@ -277,7 +277,7 @@ export function validateWebAction(value: unknown): WebAction {
 /** Validate an `open_browser` command. */
 export function validateWebLaunch(value: Record<string, unknown>): WebLaunchOptions {
   only(value, ["action", "browser", "url", "profile"], "open_browser");
-  if (value.browser !== undefined && !["chrome", "msedge"].includes(value.browser as string)) throw Error("browser must be chrome or msedge.");
+  if (value.browser !== undefined && !["chrome", "msedge", "firefox"].includes(value.browser as string)) throw Error("browser must be chrome, msedge or firefox.");
   if (value.profile !== undefined && value.profile !== "agent") throw Error("profile must be \"agent\", the agent's own persistent profile; omit it for a disposable one.");
   return { ...(value.browser !== undefined ? { browser: value.browser as WebChannel } : {}),
     ...(value.url !== undefined ? { url: httpUrl(value.url) } : {}), ...(value.profile ? { profile: "agent" as const } : {}) };
