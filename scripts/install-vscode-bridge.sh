@@ -24,8 +24,9 @@ if [[ -z "$alias" ]]; then cp "$root/.tmp/pi-browser-bridge.vsix" "$vsix"; else 
 on_target "$code" "$vsix" "$argv" <<'EOF'
 set -euo pipefail
 cd /mnt/c
-# cmd.exe reads stdin, which here is the rest of this script.
-/mnt/c/Windows/System32/cmd.exe /c "$(wslpath -w "$1") --install-extension $(wslpath -w "$2") --force" < /dev/null | tr -d '\r' | grep -v DeprecationWarning | grep -v trace-deprecation || true
+# PowerShell quotes paths with spaces; its stdin would otherwise read the rest of this script.
+/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command "& '$(wslpath -w "$1")' --install-extension '$(wslpath -w "$2")' --force" < /dev/null \
+  | tr -d '\r' | grep -v -e DeprecationWarning -e trace-deprecation || true
 rm -f "$2"
 # argv.json is JSONC with comments: add the id to an existing enable-proposed-api list, or insert the key after the
 # opening brace, and never rewrite the rest of the file.
