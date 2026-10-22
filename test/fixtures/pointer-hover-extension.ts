@@ -3,7 +3,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
 import { ReactiveAnimationDriver } from "../../src/reactive-animation.ts";
-import { registerComputerTools } from "../../src/index.ts";
+import { registerFixtureComputerTools } from "./standalone-computer.ts";
 import { ComputerSession, type ComputerMode, type WindowTarget } from "../../src/session.ts";
 
 // Capability, identity and native outcomes are simulated; all production admission runs in real Pi.
@@ -23,7 +23,7 @@ export default function fixture(pi: ExtensionAPI): void {
     driver ??= new FixtureDriver(await loadComputerConfig(cwd));
     return session ??= new ComputerSession(new ReactiveAnimationDriver(driver, { glide_duration_ms: 1 }), () => mode);
   };
-  registerComputerTools(pi, getSession, async () => session!.close());
+  registerFixtureComputerTools(pi, getSession, async () => session!.close());
   pi.registerTool({
     name: "fixture_pointer_control", label: "Fixture pointer control", description: "Change synthetic fixture state only.",
     parameters: Type.Object({ operation: Type.Union(["safe", "partial", "malformed", "close_first", "recycle_second"].map(value => Type.Literal(value))) }),

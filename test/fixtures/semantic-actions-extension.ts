@@ -1,7 +1,7 @@
 import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
-import { registerComputerTools } from "../../src/index.ts";
+import { registerFixtureComputerTools } from "./standalone-computer.ts";
 import { ComputerSession, type WindowTarget } from "../../src/session.ts";
 
 // Only the capability and identity peer are simulated. Native app behavior is not tested here.
@@ -17,7 +17,7 @@ class FixtureDriver extends McpDriver {
 export default function fixture(pi: ExtensionAPI): void {
   createCodemodeExtension({ mode: "on" })(pi);
   let session: ComputerSession | undefined;
-  registerComputerTools(pi, async cwd => session ??= new ComputerSession(new FixtureDriver(await loadComputerConfig(cwd))),
+  registerFixtureComputerTools(pi, async cwd => session ??= new ComputerSession(new FixtureDriver(await loadComputerConfig(cwd))),
     async () => session!.close());
   pi.on("session_shutdown", async () => { await session?.close(); });
 }

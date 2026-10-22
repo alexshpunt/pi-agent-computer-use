@@ -10,9 +10,13 @@ export default function unifiedFixture(pi: ExtensionAPI): void {
     description: "Read the real production tool registry and callable loadout.",
     parameters: Type.Object({}),
     async execute(_id, _params, _signal, _update, ctx) {
-      const names = pi.getAllTools().map(tool => tool.name).filter(name => /^(computer_|browser_)/.test(name)).sort();
+      const registered = pi.getAllTools().filter(tool => /^(computer_|browser_)/.test(tool.name));
+      const names = registered.map(tool => tool.name).sort();
+      const exposure = Object.fromEntries(registered.map(tool => [tool.name, tool.exposure ?? "direct"]));
       const callable = ctx.tools.map(tool => tool.name).filter(name => /^(computer_|browser_)/.test(name)).sort();
-      return { content: [{ type: "text", text: JSON.stringify({ names, callable }) }], details: { names, callable } };
+      const active = pi.getActiveTools().filter(name => /^(computer_|browser_)/.test(name)).sort();
+      const details = { names, exposure, callable, active };
+      return { content: [{ type: "text", text: JSON.stringify(details) }], details };
     },
   });
 }

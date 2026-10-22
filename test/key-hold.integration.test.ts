@@ -3,6 +3,7 @@ import path from "node:path";
 import { assistantMessage, getToolExecution, getToolResultText, PiIntegrationTest,
   testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
+import { SCRIPT_HELPERS } from "./fixtures/standalone-computer.ts";
 
 test("real Pi admits one bounded hold, refuses an invalid pointer tail and preserves release uncertainty without replay", async () => {
   await mkdir(".tmp/key-holds", { recursive: true });
@@ -11,30 +12,28 @@ test("real Pi admits one bounded hold, refuses an invalid pointer tail and prese
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({
     command: process.execPath, args: [path.resolve("test/fixtures/complete-input-driver.mjs"), log],
   }));
-  const code = `const parse = raw => JSON.parse(raw.slice(raw.indexOf("{")));
-const opened = parse(await tools.computer_open({app:"Notepad"}));
-store("hold_window",opened.window_ref); store("hold_observation",opened.observation_id);
-const send = async command => {
- try { return parse(await tools.computer_act({window_ref:load("hold_window"),observation_id:load("hold_observation"),action:"hold",delivery_mode:"foreground",...command})); }
- catch(error) { return parse(error.message); }
-};
-if((await send({keys:["shift"],duration_ms:500,actions:[{action:"click",x:20,y:30},{action:"drag",from_x:20,from_y:30,via:[{x:501,y:40}],to_x:100,to_y:30}]})).status !== "refused") throw Error("Invalid pointer tail admitted");
-const complete = await send({keys:["shift","w"],duration_ms:500,actions:[{action:"click",x:20,y:30}]});
-if(complete.status !== "delivered" || !complete.state.summary.includes("keys_released=true")) throw Error("Complete hold receipt lost");
-store("hold_observation",(await tools.computer_observe({window_ref:load("hold_window")})).observation_id);
-const partial = await send({keys:["escape"],duration_ms:500});
-if(partial.status !== "unknown" || !partial.state.summary.includes("keys_released=false")) throw Error("Release uncertainty lost");
-text(partial.state);
-if((await send({keys:["w"],duration_ms:500})).status !== "refused") throw Error("Uncertain hold replay admitted");
-store("hold_observation",null); text("Bounded key hold guards passed");`;
+  // A refusal spends its observation, so each later hold acts on a fresh overview.
+  const code = `${SCRIPT_HELPERS}
+const opened = await openApp("Notepad");
+const fresh = async () => observation(await tools.computer_read({path:opened.window}));
+const send = (view, command) => insert(view, {action:"hold",delivery_mode:"foreground",...command});
+if((await send(opened.observation,{keys:["shift"],duration_ms:500,actions:[{action:"click",x:20,y:30},{action:"drag",from_x:20,from_y:30,via:[{x:501,y:40}],to_x:100,to_y:30}]})).outcome !== "refused") throw Error("Invalid pointer tail admitted");
+const complete = await send(await fresh(),{keys:["shift","w"],duration_ms:500,actions:[{action:"click",x:20,y:30}]});
+if(complete.outcome !== "delivered" || !complete.text.includes("keys_released=true")) throw Error("Complete hold receipt lost");
+const view = await fresh();
+const partial = await send(view,{keys:["escape"],duration_ms:500});
+if(partial.outcome !== "unknown" || !partial.text.includes("keys_released=false")) throw Error("Release uncertainty lost");
+text(partial.text);
+if((await send(view,{keys:["w"],duration_ms:500})).outcome !== "refused") throw Error("Uncertain hold replay admitted");
+text("Bounded key hold guards passed");`;
   try {
     const result = await new PiIntegrationTest({
       testName: "key-hold", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/held-path-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_open", "computer_observe", "computer_act", "computer_close"],
+      tools: ["codemode", "computer_insert"],
       conversation: [
         assistantMessage([toolCall({ id: "hold", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_close", arguments: {} })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Use one bounded hold. Never replay uncertain or partially completed input.");

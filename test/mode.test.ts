@@ -5,7 +5,7 @@ import { registerComputerMode } from "../src/mode.ts";
 import { registerComputerProvider } from "../src/provider.ts";
 
 // Policy is independent of the IDE event bus; real-Pi provider tests cover that boundary.
-vi.mock("../src/provider.ts", () => ({ registerComputerProvider: vi.fn(async () => {}) }));
+vi.mock("../src/provider.ts", () => ({ registerComputerProvider: vi.fn(async () => ({ resources: {}, guide: "", attached: () => true })) }));
 
 type Command = { handler(args: string, ctx: ExtensionCommandContext): Promise<void> };
 async function fixture(branch: unknown[] = []) {
@@ -14,10 +14,14 @@ async function fixture(branch: unknown[] = []) {
   const events = new Map<string, (event: unknown, ctx: ExtensionCommandContext) => unknown>();
   const appendEntry = vi.fn((customType: string, data: unknown) => branch.push({ type: "custom", customType, data }));
   const ctx = { hasUI: true, ui: { setStatus: vi.fn(), notify: vi.fn() },
-    sessionManager: { getBranch: () => branch } } as unknown as ExtensionCommandContext;
+    sessionManager: { getBranch: () => branch, getSessionId: () => "session" } } as unknown as ExtensionCommandContext;
   await extension({ registerCommand: (name: string, command: Command) => commands.set(name, command),
     registerTool: (tool: { name: string; execute(...args: unknown[]): Promise<unknown> }) => tools.set(tool.name, tool),
-    on: (name: string, handler: (event: unknown, ctx: ExtensionCommandContext) => unknown) => events.set(name, handler),
+    // Pi runs every handler of an event in registration order.
+    on: (name: string, handler: (event: unknown, ctx: ExtensionCommandContext) => unknown) => {
+      const previous = events.get(name);
+      events.set(name, previous ? async (event, context) => { await previous(event, context); return handler(event, context); } : handler);
+    },
     appendEntry } as unknown as ExtensionAPI);
   return { commands, tools, events, appendEntry, ctx,
     close: vi.mocked(registerComputerProvider).mock.calls.at(-1)![2] };

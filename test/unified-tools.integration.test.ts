@@ -16,30 +16,34 @@ test("production Pi exposes only computer tools, with no direct or Codemode brow
     const result = await new PiIntegrationTest({
       testName: "unified-production-tools", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/unified-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "registered_ui_tools", "computer_apps", "computer_open", "computer_windows",
-        "computer_observe", "computer_act", "computer_close"],
+      tools: ["codemode", "registered_ui_tools"],
       conversation: [
         assistantMessage([toolCall({ id: "registry", name: "registered_ui_tools", arguments: {} })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "direct-browser", name: "browser_tabs", arguments: {} })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "nested-browser", name: "codemode",
           arguments: { code: "text(await tools.browser_tabs({}));" } })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "apps", name: "codemode",
-          arguments: { code: 'text(await tools.computer_apps({query:"Notepad"}));' } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_close", arguments: {} })], { stopReason: "toolUse" }),
+          arguments: { code: 'text(await tools.computer_search({path:"computer:machine/local/apps",query:"Notepad"}));' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "codemode",
+          arguments: { code: 'text((await tools.computer_insert({path:"computer:session",text:JSON.stringify({action:"close"})})).outcome);' } })], { stopReason: "toolUse" }),
         assistantMessage([text("Unified tool loadout checked.")]),
       ],
     }).run("Check the production loadout. Only discover apps; never open a window or send input.");
-    const expected = ["computer_act", "computer_apps", "computer_close", "computer_observe", "computer_open", "computer_windows"];
+    // Without Pi Agent IDE, production computer use offers deferred tools that tool_search loads, plus the classifier.
+    const standalone = ["computer_insert", "computer_read", "computer_search", "computer_write"];
     expect(getToolExecutionDetails(getToolExecution(result, "registry"))).toEqual({
-      names: [...expected, "computer_classify", "computer_sequence", "computer_displays"].sort(), callable: expected,
+      names: [...standalone, "computer_classify"].sort(),
+      exposure: { ...Object.fromEntries(standalone.map(name => [name, "deferred"])), computer_classify: "direct" },
+      callable: standalone, active: [],
     });
     for (const id of ["direct-browser", "nested-browser"]) {
       expect(getToolExecution(result, id).isError).toBe(true);
       expect(getToolResultText(result, id)).toContain(id === "direct-browser" ? "browser_tabs" : "No tool calls were made.");
     }
-    expect(getToolExecution(result, "apps").isError).toBe(false);
+    expect(getToolExecution(result, "apps").isError, getToolResultText(result, "apps")).toBe(false);
     expect(getToolResultText(result, "apps")).toContain("Notepad");
-    expect(getToolExecution(result, "close").isError).toBe(false);
+    expect(getToolExecution(result, "close").isError, getToolResultText(result, "close")).toBe(false);
+    expect(getToolResultText(result, "close")).toContain("closed");
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
     expect(calls.filter(call => call.name)).toEqual([{ name: "list_apps", arguments: {} }]);
     expect(calls).toContainEqual({ event: "stdin-eof" });

@@ -2,7 +2,7 @@ import { appendFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerComputerTools } from "../../src/index.ts";
+import { registerFixtureComputerTools } from "./standalone-computer.ts";
 import { ComputerSession, type Driver } from "../../src/session.ts";
 import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "../../src/reactive-animation.ts";
 
@@ -10,7 +10,7 @@ import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "../../src/
 export default function reactiveAnimationFixture(pi: ExtensionAPI): void {
   createCodemodeExtension({ mode: "on" })(pi);
   let session: ComputerSession | undefined;
-  registerComputerTools(pi, async cwd => {
+  registerFixtureComputerTools(pi, async cwd => {
     if (!session) {
       let glide = 240, count = 0;
       const png = (await sharp({ create: { width: 500, height: 350, channels: 3, background: "white" } }).png().toBuffer()).toString("base64");

@@ -10,7 +10,7 @@ export default function classifierFixture(pi: ExtensionAPI): void {
   const close = registerClassifierTool(pi, async () => new VisualClassifier(
     { python: process.execPath, model: "fixture" },
     fileURLToPath(new URL("./visual-classifier-worker.mjs", import.meta.url))));
-  pi.registerTool({ name: "computer_close", label: "Close fixture classifier", description: "Release the owned fixture worker.",
+  pi.registerTool({ name: "close_fixture_classifier", label: "Close fixture classifier", description: "Release the owned fixture worker.",
     parameters: Type.Object({}), async execute() { await close(); return { content: [{type:"text",text:"Closed"}],details:{} }; } });
   pi.on("session_shutdown", close);
 }

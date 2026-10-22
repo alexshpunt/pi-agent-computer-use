@@ -1,16 +1,17 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { assistantMessage, getToolExecution, getToolResultText, PiIntegrationTest, testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
+import { assistantMessage, getToolExecution, getToolExecutions, getToolResultText, PiIntegrationTest, testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
+import { nestedCalls, SCRIPT_HELPERS } from "./fixtures/standalone-computer.ts";
 
 const fixture = (name: string) => path.resolve("test/fixtures", name);
-const prelude = `const parse=raw=>JSON.parse(raw.slice(raw.indexOf("{")));
-const act=async args=>{try{return parse(await tools.computer_act(args));}catch(e){const message=String(e.message);if(message.includes('Validation failed for tool "computer_act"'))return {status:"schema_refused"};return parse(message);}};
-const observe=async window=>tools.computer_observe({window_ref:window,capture:{hints:false}});
+// Any refused input spends its observation, so each check that must reach the session uses a fresh overview.
+const prelude = `${SCRIPT_HELPERS}
+const act=async(view,command)=>(await insert(typeof view==="string"?view:observation(view),command)).outcome;
+const observe=async window=>tools.computer_read({path:window,views:['capture:{"hints":false}']});
 const control=async operation=>tools.fixture_pointer_control({operation});
-const open=async()=>parse(await tools.computer_open({app:"Notepad"})).window_ref;
-const first=await open(),second=await open();
-store("first",first);store("second",second);`;
+const open=async()=>(await openApp("Notepad")).window;
+const first=await open(),second=await open();`;
 
 // Run standalone computer-use through Pi SDK Codemode, without loading Pi Agent IDE.
 async function scenario(testName: string, code: string) {
@@ -24,50 +25,56 @@ async function scenario(testName: string, code: string) {
       extensions: [fixture("pointer-hover-extension.ts")],
       isolateUserResources: true,
       piCommand: process.env.PI_HOVER_PI_COMMAND,
-      tools: ["codemode", "computer_open", "computer_windows", "computer_observe", "computer_act", "computer_close", "fixture_pointer_control"],
+      tools: ["codemode", "computer_insert", "fixture_pointer_control"],
       conversation: [assistantMessage([toolCall({ id: "pointer", name: "codemode", arguments: { code: prelude + "\n" + code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_close", arguments: {} })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")])],
     }).run("Exercise native pointer admission against synthetic MCP windows only. Never operate a real desktop.");
     expect(getToolExecution(result, "pointer").isError, getToolResultText(result, "pointer")).toBe(false);
     expect(getToolResultText(result, "pointer")).toContain("Pointer contract passed");
-    return (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+    return { calls: (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line)), nested: nestedCalls(getToolExecutions(result), "pointer") };
   } finally { await rm(cwd, { recursive: true, force: true }); }
 }
 
 // Protects the production Pi schema/Codemode/session/MCP boundary, not native hover UI effects.
 test("real Pi grounds move and bounded hover once and preserves refusal and uncertain receipts without fallback", async () => {
-  const calls = await scenario("native-pointer-receipts", `
-let view=await observe(first),other=await observe(second);
-const base={window_ref:first,observation_id:view.observation_id};
-if((await act({...base,action:"move",x:100,y:80,window_ref:second})).status!=="refused")throw Error("Wrong-window observation admitted");
-if((await act({...base,action:"hover",hint:other.ui.elements[0].hint,dwell_ms:100})).status!=="refused")throw Error("Foreign hint admitted");
-const background=await act({...base,action:"move",x:100,y:80});
-if(background.status!=="refused"||background.state.code!=="background_unavailable"||background.state.attempted!==false)throw Error("Background refusal lost");
-if((await act({...base,action:"move",x:100,y:80,delivery_mode:"foreground"})).status!=="refused")throw Error("Refused observation replayed");
+  const { calls, nested } = await scenario("native-pointer-receipts", `
+let view=await observe(first);const other=await observe(second);
+// The observation address binds its window; identity fields cannot redirect it.
+if(await act(view,{action:"move",x:100,y:80,window_ref:second})!=="refused")throw Error("Wrong-window observation admitted");
+if(await act(view,{action:"hover",hint:hints(other)[0],dwell_ms:100})!=="refused")throw Error("Foreign hint admitted");
 view=await observe(first);
-const hover={window_ref:first,observation_id:view.observation_id,action:"hover",hint:view.ui.elements[0].hint,dwell_ms:100,delivery_mode:"foreground"};
-const hovered=await act(hover);
-if(hovered.status!=="delivered"||hovered.state.dwell_elapsed_ms!==100||hovered.state.foreground_changed!==null||hovered.action_capability.actual_delivery!=="foreground")throw Error("Truthful hover completion lost");
-if((await act(hover)).status!=="refused")throw Error("Hover replayed");
-view=await tools.computer_observe({window_ref:first,capture:{granularity:"image"}});
-if((await act({window_ref:first,observation_id:view.observation_id,action:"move",x:120,y:90,delivery_mode:"foreground"})).status!=="delivered")throw Error("Image-only move refused");
+const background=await insert(observation(view),{action:"move",x:100,y:80});
+if(background.outcome!=="refused"||background.code!=="background_unavailable"||background.effect!=="not-applied")throw Error("Background refusal lost");
+if(await act(view,{action:"move",x:100,y:80,delivery_mode:"foreground"})!=="refused")throw Error("Refused observation replayed");
+view=await observe(first);
+const hover={action:"hover",hint:hints(view)[0],dwell_ms:100,delivery_mode:"foreground"};
+if(await act(view,hover)!=="delivered")throw Error("Truthful hover completion lost");
+if(await act(view,hover)!=="refused")throw Error("Hover replayed");
+view=await tools.computer_read({path:first,views:["image"]});
+if(await act(view,{action:"move",x:120,y:90,delivery_mode:"foreground"})!=="delivered")throw Error("Image-only move refused");
 await control("partial");view=await observe(first);
-const partial={window_ref:first,observation_id:view.observation_id,action:"hover",element_token:view.ui.elements[0].element_token,dwell_ms:100,delivery_mode:"foreground"};
-const interrupted=await act(partial);
-if(interrupted.status!=="unknown"||interrupted.state.attempted!==true||interrupted.state.delivered!==true||interrupted.state.dwell_elapsed_ms!==20)throw Error("Interrupted native prefix lost");
-if((await act(partial)).status!=="refused")throw Error("Unknown pointer replayed");
+const partial={action:"hover",hint:hints(view)[0],dwell_ms:100,delivery_mode:"foreground"};
+if(await act(view,partial)!=="unknown")throw Error("Interrupted native prefix lost");
+if(await act(view,partial)!=="refused")throw Error("Unknown pointer replayed");
 await control("malformed");view=await observe(first);
-const malformed={window_ref:first,observation_id:view.observation_id,action:"move",x:130,y:100,delivery_mode:"foreground"};
-if((await act(malformed)).status!=="unknown")throw Error("Malformed successful receipt called delivered");
-if((await act(malformed)).status!=="refused")throw Error("Malformed outcome replayed");
-view=await observe(first);
+const malformed={action:"move",x:130,y:100,delivery_mode:"foreground"};
+if(await act(view,malformed)!=="unknown")throw Error("Malformed successful receipt called delivered");
+if(await act(view,malformed)!=="refused")throw Error("Malformed outcome replayed");
 for(const command of [
  {action:"hover",x:10,y:10}, {action:"hover",x:10,y:10,dwell_ms:0}, {action:"hover",x:10,y:10,dwell_ms:10001},
  {action:"move",x:10,y:10,dwell_ms:1}, {action:"move",x:10,y:10,button:"left"},
  {action:"sequence",sequence:[{action:"move",x:10,y:10}]}
-])if(!["refused","schema_refused"].includes((await act({window_ref:first,observation_id:view.observation_id,...command})).status))throw Error("Unsupported pointer request admitted");
+]){view=await observe(first);if(await act(view,command)!=="refused")throw Error("Unsupported pointer request admitted: "+JSON.stringify(command));}
 text("Pointer contract passed: admission, receipts and no replay");`);
+  const outcomes = nested.filter(call => call.name === "computer_insert").map(call => call.computer);
+  const hovered = outcomes.find(item => item.status === "delivered" && item.state?.dwell_elapsed_ms !== undefined)!;
+  expect(hovered.state).toMatchObject({ dwell_elapsed_ms: 100, foreground_changed: null });
+  expect(hovered.action_capability.actual_delivery).toBe("foreground");
+  const interrupted = outcomes.find(item => item.status === "unknown" && item.state?.attempted === true)!;
+  expect(interrupted.state).toMatchObject({ attempted: true, delivered: true, dwell_elapsed_ms: 20 });
+  const refusedBackground = outcomes.find(item => item.state?.code === "background_unavailable")!;
+  expect(refusedBackground.state.attempted).toBe(false);
   const actions = calls.filter(c => !["list_apps", "list_windows", "launch_app", "fixture_identity", "get_window_state", "fixture_control"].includes(c.name));
   expect(actions.map(c => c.name)).toEqual(Array(5).fill("move_pointer"));
   expect(actions.map(c => c.arguments)).toEqual([
@@ -81,18 +88,18 @@ text("Pointer contract passed: admission, receipts and no replay");`);
 });
 
 test("real Pi never sends pointer input through Safe-disallowed, closed or reused window references", async () => {
-  const calls = await scenario("native-pointer-access", `
-const listed=parse(await tools.computer_windows({}));
-const external=listed.state.windows.find(w=>w.title==="Unowned fixture").window_ref;
+  const { calls } = await scenario("native-pointer-access", `
+const listed=await windows();
+const external=listed.split("\\n").find(line=>line.includes("| Unowned fixture |")).match(/computer:window\\/[\\w-]+/)[0];
 const externalView=await observe(external);
 await control("safe");
-if((await act({window_ref:external,observation_id:externalView.observation_id,action:"move",x:100,y:80,delivery_mode:"foreground"})).status!=="refused")throw Error("Safe sent input to external window");
+if(await act(externalView,{action:"move",x:100,y:80,delivery_mode:"foreground"})!=="refused")throw Error("Safe sent input to external window");
 let view=await observe(first);
-if((await act({window_ref:first,observation_id:view.observation_id,action:"hover",hint:view.ui.elements[0].hint,dwell_ms:100,delivery_mode:"foreground"})).status!=="delivered")throw Error("Safe denied owned window");
+if(await act(view,{action:"hover",hint:hints(view)[0],dwell_ms:100,delivery_mode:"foreground"})!=="delivered")throw Error("Safe denied owned window");
 view=await observe(first);await control("close_first");
-if((await act({window_ref:first,observation_id:view.observation_id,action:"move",x:100,y:80,delivery_mode:"foreground"})).status!=="refused")throw Error("Closed window admitted");
+if(await act(view,{action:"move",x:100,y:80,delivery_mode:"foreground"})!=="refused")throw Error("Closed window admitted");
 view=await observe(second);await control("recycle_second");
-if((await act({window_ref:second,observation_id:view.observation_id,action:"hover",hint:view.ui.elements[0].hint,dwell_ms:100,delivery_mode:"foreground"})).status!=="refused")throw Error("Reused handle admitted");
+if(await act(view,{action:"hover",hint:hints(view)[0],dwell_ms:100,delivery_mode:"foreground"})!=="refused")throw Error("Reused handle admitted");
 text("Pointer contract passed: Safe and native lifetime guards");`);
   const actions = calls.filter(c => !["list_apps", "list_windows", "launch_app", "fixture_identity", "get_window_state", "fixture_control"].includes(c.name));
   expect(actions).toEqual([{ name: "move_pointer", arguments: {

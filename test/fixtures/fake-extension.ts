@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
-import { registerComputerTools } from "../../src/index.ts";
 import { registerComputerMode } from "../../src/mode.ts";
 import { ComputerSession, type WindowTarget } from "../../src/session.ts";
+import { registerFixtureComputerTools } from "./standalone-computer.ts";
 
 // Test-only lifetime qualification. Tool registration, session logic, MCP and EOF are real.
 class FixtureDriver extends McpDriver {
@@ -16,13 +16,12 @@ class FixtureDriver extends McpDriver {
 export default function fixtureExtension(pi: ExtensionAPI): void {
   const getMode = registerComputerMode(pi);
   let session: ComputerSession | undefined;
-  registerComputerTools(pi, async cwd => {
+  registerFixtureComputerTools(pi, async cwd => {
     if (!session) {
       const driver = new FixtureDriver(await loadComputerConfig(cwd));
       session = new ComputerSession(driver, getMode);
     }
     return session;
-  },
-    async () => session!.close());
+  }, async () => session!.close());
   pi.on("session_shutdown", async () => { await session?.close(); });
 }

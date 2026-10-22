@@ -1,14 +1,14 @@
 import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
-import { registerComputerTools } from "../../src/index.ts";
+import { registerFixtureComputerTools } from "./standalone-computer.ts";
 import { ComputerSession, type Driver, type WindowTarget } from "../../src/session.ts";
 
 /** Deterministic held-path peer. This tests Pi/schema/session effects, not Windows release. */
 export default function heldPathFixture(pi: ExtensionAPI): void {
   createCodemodeExtension({ mode: "on" })(pi);
   let session: ComputerSession | undefined;
-  registerComputerTools(pi, async cwd => {
+  registerFixtureComputerTools(pi, async cwd => {
     if (!session) {
       const peer = new McpDriver(await loadComputerConfig(cwd));
       const driver: Driver = {

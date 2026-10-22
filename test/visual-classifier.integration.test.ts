@@ -37,7 +37,7 @@ for (const result of [yes,no,unknown]) {
  else throw Error("Not a typed predicate");
 }
 if(branches.join(",")!=="react,continue,inspect" || !error || !no.cache_hit || yes.cache_hit) throw Error("Broken classifier contract");
-await tools.computer_close({});
+await tools.close_fixture_classifier({});
 const fresh = await classify({});
 if(fresh.cache_hit) throw Error("Close kept the fixture worker warm");
 text({branches,error,cache_reused:no.cache_hit,fresh_after_close:!fresh.cache_hit});`;
@@ -45,7 +45,7 @@ text({branches,error,cache_reused:no.cache_hit,fresh_after_close:!fresh.cache_hi
     const result = await new PiIntegrationTest({
       testName:"visual-classifier",artifactsDir:testArtifactsDir(import.meta.filename),cwd,
       extensions:[path.resolve("test/fixtures/classifier-extension.ts")],isolateUserResources:true,
-      tools:["codemode","computer_classify","computer_close"],
+      tools:["codemode","computer_classify","close_fixture_classifier"],
       conversation:[assistantMessage([toolCall({id:"predicate",name:"codemode",arguments:{code}})],{stopReason:"toolUse"}),
         assistantMessage([text("Done")])],
     }).run("Check independent visual predicate branching without capture or input.");
