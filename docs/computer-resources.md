@@ -1,6 +1,11 @@
-# Computer resources through IDE tools
+# Computer resources
 
-Load Pi Agent IDE and this extension together, in either order. Computer use owns the native backend; IDE owns the ordinary tool surfaces. Normal loading exposes no duplicate `computer_*` tools except `computer_classify`. The `/computer-mode` and `/computer-debug` commands remain user controls.
+Computer use works with or without Pi Agent IDE. Each Pi session picks the mode on its own:
+
+- With Pi Agent IDE loaded, in either order, use the ordinary IDE Read, Search, Write and Insert tools on `computer:` addresses.
+- Without IDE, or with an IDE whose plugin API version does not match, use the `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools. They are deferred: find them with `tool_search`, and computer use turns `tool_search` on. Codemode scripts can call them directly.
+
+Both modes take the same addresses, views, JSON commands and Codemode values. In this guide, Read, Search, Write and Insert mean either tool family. Without IDE, Read `docs:computer` with `computer_read` for this guide. `computer_classify` is available in both modes. The `/computer-mode` and `/computer-debug` commands remain user controls.
 
 The current desktop scope is Windows controlled from WSL, on this machine or on another one over SSH. A different interface does not qualify a new runtime or platform. The production `windows-desktop` profile selects the same checked bytes as `windows-window-management`, so it qualifies wherever this guide names that profile or one it inherits. Safe permits session-opened windows and forbids display reads. YOLO permits task-authorized existing windows; it is not OS isolation.
 
@@ -359,4 +364,4 @@ On a browser observation, steps are the DOM actions above plus `wait_for` and `v
 
 Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into a machine address to release that machine, or into `computer:session` to release every machine, sandbox and isolated session this computer use started. This does not close unrelated application documents or save them. It does close the browsers the session opened and delete their profiles, detaches from attached browsers, destroys sandboxes and isolated sessions and stops remote drivers. The result lists each released part with its own outcome; a failed or uncertain cleanup is reported as `unknown` rather than called complete.
 
-For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This links the public peer SDK without modifying IDE or its dependencies. Normal loading still needs both extensions installed. Use the [development skill](../.pi/skills/develop-computer-use/SKILL.md) for isolated task loading and restoration. Installation/interface switching and new native runtime adoption are separate decisions.
+For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This links the IDE SDK to that checkout without modifying IDE or its dependencies. Use the [development skill](../.pi/skills/develop-computer-use/SKILL.md) for isolated task loading and restoration. Installation/interface switching and new native runtime adoption are separate decisions.

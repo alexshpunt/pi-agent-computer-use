@@ -9,7 +9,7 @@ Read [Computer Use](../computer-use/SKILL.md). Follow its **observe → inspect 
 
 ## Start the game
 
-Open https://neal.fun/not-a-robot/ in a task-authorized browser window using the `computer_*` tools. Start at the first level for a new run. If the user asks to resume, observe the existing game and continue from its current state. Do not reset a paused game without a request for a fresh run.
+Open https://neal.fun/not-a-robot/ in a task-authorized browser window using the computer tools (IDE Read/Insert on computer addresses, or computer_read/computer_insert without IDE). Start at the first level for a new run. If the user asks to resume, observe the existing game and continue from its current state. Do not reset a paused game without a request for a fresh run.
 
 Use only the visible game UI and the current computer-use tools. Read puzzle answers from the returned images. Accessibility elements can identify controls, not supply hidden answers. Do not read game source, hidden DOM state, scripts, network responses or walkthroughs. Do not use another backend to bypass a missing operation.
 
