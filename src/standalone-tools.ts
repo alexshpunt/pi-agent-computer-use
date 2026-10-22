@@ -41,7 +41,14 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
     renderCall: args => new Text(`computer_read ${plain(args.path)}${args.views?.length ? ` [${plain(args.views.join(", "))}]` : ""}`, 0, 0),
     renderResult: computerReadRenderer,
     async execute(_id, params, signal, _update, ctx) {
-      if (params.path === GUIDE) return { content: [{ type: "text", text: guide }], details: { source: GUIDE } };
+      if (params.path === GUIDE) {
+        const lines = guide.replace(/\n$/, "").split("\n"), offset = params.offset ?? 1;
+        const start = offset < 0 ? Math.max(0, lines.length + offset) : Math.max(0, offset - 1);
+        const end = params.limit === undefined ? lines.length : Math.min(lines.length, start + params.limit);
+        const rest = end < lines.length ? `\n\n[${lines.length - end} more lines in source. Read "${GUIDE}" with offset=${end + 1} to continue.]` : "";
+        return { content: [{ type: "text", text: lines.slice(start, end).join("\n") + rest }],
+          details: { source: GUIDE, startLine: start + 1, endLine: end, totalLines: lines.length } };
+      }
       const read = await readComputer(resources, params.path, ctx.cwd, params, false, signal);
       const note = read.canonical.find(block => block.type === "text")?.text ?? "";
       const images = read.canonical.filter(block => block.type === "image").map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType }));
