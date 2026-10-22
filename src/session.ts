@@ -673,7 +673,7 @@ export class ComputerSession {
           return { ...d, display_ref: entry.ref, source_identity: this.domained(sourceIdentity({ session_id: this.sessionId, display_ref: entry.ref, display_id: d.display_id, topology_id: topology }, d.display_id)) };
         });
         for (const ref of this.displayEntries.keys()) if (!current.has(ref)) this.displayEntries.delete(ref);
-        return this.result("listed", "Native connected Windows displays. Use display_ref with computer_observe. Image pixels start at zero; bounds are host-global. No input authority.",
+        return this.result("listed", "Native connected Windows displays. Read a returned display address for its pixels. Image pixels start at zero; bounds are host-global. No input authority.",
           { platform: "windows", topology_id: topology, displays: addressed });
       } catch (error) {
         this.displayEntries.clear();

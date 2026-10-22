@@ -6,7 +6,6 @@ import { ComputerSession } from "../src/session.ts";
 import { McpDriver } from "../src/driver.ts";
 import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "../src/reactive-animation.ts";
 import { loadComputerConfig } from "../src/config.ts";
-import { registerComputerTools } from "../src/index.ts";
 import { WindowHighlights, findWindowOverlay } from "../src/window-highlights.ts";
 import { startOverlayPeer } from "../src/window-overlay-peer.ts";
 import { createUiResourcesSite } from "../test/fixtures/ui-resources-site.mjs";
@@ -33,8 +32,6 @@ const decorated = {
 const highlights = new WindowHighlights(async () => startOverlayPeer(await findWindowOverlay(), [], config.interop));
 const observer = (frame, signal) => profile.child("overlay.flash", () => highlights.flash(frame, signal), r => r.status);
 const session = new ComputerSession(decorated, () => "yolo", undefined, observer);
-const tools = new Map();
-registerComputerTools({ registerTool: tool => tools.set(tool.name, tool) }, async () => session, async () => session.close());
 let fixture, site, completed = false, stage = "fixture_start", dimensions;
 const fixedOptions = { hints: false, guides: { grid: false, region: false, action: false } };
 const summaries = samples => {
@@ -62,9 +59,8 @@ try {
   const call = async (mode, phase) => {
     stage = `observe.${mode}`;
     const result = await profile.operation(stage, phase, async () => {
-      const r = await tools.get("computer_observe").execute("profile", {
-        window_ref, capture: mode === "ui" ? { granularity: mode } : { granularity: mode, ...fixedOptions },
-      }, abort.signal, () => {}, { cwd: process.cwd() });
+      const r = await session.observe(window_ref, abort.signal, undefined, undefined, undefined,
+        mode === "ui" ? { granularity: mode } : { granularity: mode, ...fixedOptions });
       return { ...r, status: r.details.status };
     }, "observed", async r => {
       assert.equal(r.details.granularity, mode);
@@ -97,7 +93,7 @@ finally {
     site: async () => { await site?.close(); },
   });
   const report = { schema: 1, ...cleanup, runtime: config.runtime, cap: 500, scale: 1, dimensions,
-    boundary: "Real registered computer_observe execute + ComputerSession. Native RPC includes Windows capture/encoding and IPC. Pi hooks, Codemode transport, model and TUI are excluded.",
+    boundary: "Real ComputerSession window observation. Native RPC includes Windows capture/encoding and IPC. Pi hooks, Codemode transport, model and TUI are excluded.",
     remaining: "Root minus union of identity, native RPC and overlay intervals; adapter/image metadata, annotation, projection and scheduling are not individually timed.",
     no_input_during_samples: completed, summary: summaries(profile.samples), samples: profile.samples };
   await writeFile(`${directory}/report.json`, JSON.stringify(report, null, 2) + "\n");
