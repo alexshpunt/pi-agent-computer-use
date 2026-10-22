@@ -1,11 +1,11 @@
 ---
 name: computer-use
-description: Read and operate authorized Windows app windows and displays through ordinary IDE Read, Search, Write and Insert. Use for native screenshots, UI inspection, crops, keyboard/pointer input and bounded temporal observations in any app, including browsers.
+description: Read and operate authorized Windows app windows and displays through Read, Search, Write and Insert on computer addresses (Pi Agent IDE tools, or computer_read/search/write/insert without IDE). Use for native screenshots, UI inspection, crops, keyboard/pointer input and bounded temporal observations in any app, including browsers.
 ---
 
 # Computer use
 
-Use **Search → Read → inspect → plan → input → Read**. Browsers are ordinary app windows. Read [the resource guide](../../../docs/computer-resources.md) before using computer addresses; the same guide is available as `docs:computer`.
+Use **Search → Read → inspect → plan → input → Read**. Browsers are ordinary app windows. Read [the resource guide](../../../docs/computer-resources.md) before using computer addresses; the same guide is available as `docs:computer`. Without Pi Agent IDE, find `computer_read`, `computer_search`, `computer_write` and `computer_insert` with `tool_search` and use them wherever this skill says Read, Search, Write or Insert.
 
 ## Observe and inspect
 
