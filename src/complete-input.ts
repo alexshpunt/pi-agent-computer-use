@@ -1,4 +1,3 @@
-import { Type } from "@earendil-works/pi-ai";
 import { isSemanticAction } from "./semantic-actions.ts";
 import { isCoordinateScroll } from "./scroll-actions.ts";
 
@@ -48,66 +47,7 @@ export type HoldPointer = Pick<InputCommand, "x" | "y" | "from_x" | "from_y" | "
 /** Wait before a complete step, measured from the previous step's completion. */
 export interface InputStep extends InputCommand { wait_ms?: number }
 
-const names = ["move", "hover", "invoke", "select", "type_text", "set_value", "click", "right_click", "double_click", "scroll", "drag", "select_all", "key", "hotkey", "hold", "timeline", "menu"] as const;
 const modifiers = ["ctrl", "shift", "alt", "win"];
-const enumSchema = (values: readonly string[]) => Type.Union(values.map(value => Type.Literal(value)));
-const optional = {
-  hint: Type.Optional(Type.String({ minLength: 1, description: "Short alias from this exact observation; cannot combine with element_token or pixels." })),
-  element_token: Type.Optional(Type.String({ minLength: 1 })),
-  x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
-  text: Type.Optional(Type.String({ maxLength: 2000 })),
-  key: Type.Optional(Type.String({ minLength: 1, description: "Complete key: letter/digit, return, tab, escape, space, backspace, delete, arrows, home/end, pageup/pagedown or f1..f12." })),
-  keys: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 8, uniqueItems: true, description: "hotkey: modifiers followed by one key. hold: 1..8 simultaneous ordinary keys or ctrl/shift/alt/win, released within this call." })),
-  modifiers: Type.Optional(Type.Array(enumSchema(modifiers), { maxItems: 4, uniqueItems: true })),
-  dwell_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "hover only: required native dwell after pointer arrival. move has no dwell. Completion is not tooltip verification." })),
-  delay_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 200, description: "type_text only: CUA's per-character delay; default 30." })),
-  button: Type.Optional(enumSchema(["left", "right", "middle"])),
-  direction: Type.Optional(enumSchema(["up", "down", "left", "right"])),
-  amount: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
-  by: Type.Optional(enumSchema(["line", "page"])),
-  // Keep number schemas: Pi normalizes integer fields before our validator can reject fractions.
-  delta_x: Type.Optional(Type.Number({ minimum: -50, maximum: 50, multipleOf: 1, description: "Coordinate scroll only: signed integer horizontal wheel detents; positive scrolls content right. Default zero; at least one axis must be nonzero." })),
-  delta_y: Type.Optional(Type.Number({ minimum: -50, maximum: 50, multipleOf: 1, description: "Coordinate scroll only: signed integer vertical wheel detents; positive scrolls content down. Default zero; at least one axis must be nonzero." })),
-  unit: Type.Optional(Type.Literal("wheel_detents", { description: "Required for coordinate scroll: use current overview x/y and delta_x/delta_y, not a hint/token or direction/amount/by. One detent is 120 native wheel-delta units, not pixels or text lines; the app controls displacement. Background refuses; explicit foreground leaves pointer/focus active. No animation/modifiers/sequence steps." })),
-  from_x: Type.Optional(Type.Number({ minimum: 0 })), from_y: Type.Optional(Type.Number({ minimum: 0 })),
-  to_x: Type.Optional(Type.Number({ minimum: 0 })), to_y: Type.Optional(Type.Number({ minimum: 0 })),
-  duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })),
-  steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
-  via: Type.Optional(Type.Array(Type.Object({ x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }) },
-    { additionalProperties: false }), { minItems: 1, maxItems: 254,
-    description: "drag only: intermediate window-local points for one held left-button stroke. Requires the qualified Windows fork and explicit foreground; no steps or modifiers." })),
-};
-/** Schema for the existing computer_act surface; semantic validation also runs before native input. */
-export const actionParameters = Type.Object({
-  window_ref: Type.String({ minLength: 1 }), observation_id: Type.String({ minLength: 1 }),
-  action: enumSchema([...names, "sequence"]),
-  delivery_mode: Type.Optional(Type.Union([Type.Literal("background"), Type.Literal("foreground")], { description: "Physical actions only: foreground after an observed refusal. Semantic invoke/select/set_value never accept foreground." })),
-  animation: Type.Optional(Type.Literal("reactive", { description: "Use configured minimal CUA cursor animation for this action only, then restore ordinary animation. Native click pauses stay unchanged." })),
-  actions: Type.Optional(Type.Array(Type.Object({
-    action: enumSchema(["click", "drag"]),
-    ...Object.fromEntries(["x", "y", "from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "via"].map(key => [key, optional[key as keyof typeof optional]])),
-  }, { additionalProperties: false }), { minItems: 1, maxItems: 32,
-    description: "hold only: complete left clicks/drags inside this key hold. Pixel targets from this overview; total pointer time must fit duration_ms. No tokens, modifiers or nested holds." })),
-  ...optional,
-  path: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { minItems: 1, maxItems: 16,
-    description: "menu only: exact labels from the top-level menu to the item, e.g. [\"File\",\"Save As...\"]; invoked through accessibility, never pixels." })),
-  events: Type.Optional(Type.Array(Type.Object({
-    at_ms: Type.Integer({ minimum: 0, maximum: 120000 }),
-    type: enumSchema(["key_down", "key_up", "button_down", "button_up", "move", "move_relative", "wheel", "pen_down", "pen_move", "pen_up"]),
-    key: Type.Optional(Type.String()), button: Type.Optional(enumSchema(["left", "right", "middle", "x1", "x2"])),
-    x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
-    dx: Type.Optional(Type.Integer()), dy: Type.Optional(Type.Integer()),
-    pressure: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })), tilt_x: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })), tilt_y: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })),
-    eraser: Type.Optional(Type.Boolean()), barrel: Type.Optional(Type.Boolean()),
-  }, { additionalProperties: false }), { minItems: 1, maxItems: 5000,
-    description: "timeline only: timed key/button/motion/wheel/pen events at at_ms offsets; points are overview pixels, move_relative is raw motion. Foreground only; everything held is released when the call ends." })),
-  sequence: Type.Optional(Type.Array(Type.Object({
-    action: enumSchema(["key", "hotkey", "type_text", "select_all", "drag", "click", "double_click", "right_click"]), ...optional,
-    wait_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 5000 })),
-  }, { additionalProperties: false }), { minItems: 1, maxItems: 2000,
-    description: "Known-target keyboard, click and stroke steps. Each step releases its keys and buttons. Up to 2000 steps and 15 minutes of requested waits/typing/drags; no nested sequence." })),
-}, { additionalProperties: false });
-
 const fields: Record<InputCommand["action"], string[]> = {
   move: [], hover: ["dwell_ms"],
   key: ["key", "modifiers"], hotkey: ["keys"], type_text: ["text", "delay_ms"], set_value: ["text"],

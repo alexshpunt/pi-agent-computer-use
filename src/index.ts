@@ -1,7 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
-import { registerSequenceTool } from "./sequence-tools.ts";
 import { registerClassifierTool } from "./classifier-tool.ts";
-import { actionParameters } from "./complete-input.ts";
 import { registerVisionDebug } from "./vision-debug.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -10,116 +7,18 @@ import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "./reactive
 import { McpDriver } from "./driver.ts";
 import { registerComputerMode } from "./mode.ts";
 import { WindowHighlights } from "./window-highlights.ts";
-import { ComputerSession, type ComputerResult, type Action } from "./session.ts";
+import { ComputerSession, type ComputerResult } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
+import { registerStandaloneTools } from "./standalone-tools.ts";
 import { WebBrowser } from "./web-browser.ts";
 import { localRunner } from "./runner.ts";
 import { MachineHost } from "./machine-host.ts";
 import { machineFactory, sandboxFactory } from "./machine.ts";
 
-/** Register standalone window tools against an owned session factory. The caller owns shutdown. */
-export function registerComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
-  closeSession: () => Promise<ComputerResult>): void {
-  registerSequenceTool(pi, getSession);
-  pi.registerTool({
-    name: "computer_displays", label: "Computer displays",
-    outputSchema: Type.Object({ status: Type.String(), state: Type.Optional(Type.Unknown()) }, { additionalProperties: true }),
-    description: "List connected Windows monitors in YOLO through an explicitly qualified selected-display runtime. Returns native identity, physical host bounds/work area, primary flag, known scale and session display_ref. No pixels or input authority. Save compact display_ref with store; reuse with computer_observe({display:load(...)}) rather than copying native IDs. Topology changes retire references and crops. Safe refuses discovery. No primary fallback.",
-    parameters: Type.Object({}, { additionalProperties: false }),
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    async execute(_id, _params, signal, _update, ctx) {
-      const result = await (await getSession(ctx.cwd)).displays(signal);
-      return { ...result, structuredContent: JSON.parse(JSON.stringify(result.details)) };
-    },
-  });
-  pi.registerTool({
-    name: "computer_apps", label: "Computer apps",
-    description: "Find installed native apps by optional query. Bundled Windows/WSL is GUI-qualified; Linux/macOS currently provide build/API-only support. Returns exact app names/app_id for computer_open. No app is launched. In Codemode, save the chosen app_id with store under a short task name and reuse it with load; do not retype returned IDs.",
-    parameters: Type.Object({ query: Type.Optional(Type.String()) }, { additionalProperties: false }),
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).apps(signal, params.query); },
-  });
-  pi.registerTool({
-    name: "computer_open", label: "Computer open",
-    description: "Open a genuinely NEW installed app window by exact app name or computer_apps app_id. Native lifetime binding is currently qualified only on Windows/WSL; Linux/macOS refuse before launch until that binding is verified. Returns window_ref plus first accessibility observation and screenshot, ready for one complete action or bounded keyboard/stroke sequence. No PID/HWND, target config, shell tool, or reload. Opening is attempted once; reuse of an existing window/tab is not success. Unknown means discover before deciding; never blindly relaunch. Safe permits only session-opened windows; YOLO permits desktop-wide UI access. Neither is an OS sandbox. In Codemode, save returned window_ref and current observation_id, element_tokens and agent_image.image_id with store under a short task name; reuse them with load, not copied ID literals. Store only compact references, not images or whole results.",
-    parameters: Type.Object({ app: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-    async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).open(params.app, signal); },
-  });
-  pi.registerTool({
-    name: "computer_windows", label: "Computer windows",
-    description: "Discover permitted native desktop windows (Safe: only session-opened; YOLO: also already open). Linux/macOS may list metadata but withhold window_ref/control while native lifetime binding is deferred, optionally filtered by app/title. Returns session window_ref identities and metadata, not UI contents. Use returned refs for observation/actions. A closed/reused HWND cannot keep an old ref. No app is launched. In Codemode, store the chosen window_ref under a short task name and reuse it with load; do not retype returned IDs.",
-    parameters: Type.Object({ query: Type.Optional(Type.String()) }, { additionalProperties: false }),
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).windows(signal, params.query); },
-  });
-  pi.registerTool({
-    name: "computer_observe", label: "Computer observe",
-    outputSchema: Type.Object({
-      status: Type.String(), text: Type.String(), source: Type.Optional(Type.Unknown()),
-      image: Type.Optional(Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() })),
-    }, { additionalProperties: true }),
-    description: "Observe exactly one native source. Windows/WSL window lifetime is qualified; Linux/macOS window control is deferred and explicitly refuses. Sources: window_ref for its accessibility tree and native window PNG, or display: primary / a returned computer_displays display_ref for read-only display PNGs in YOLO. Selected monitors require a qualified runtime; unknown, unavailable or changed topology refuses with no primary fallback. Native images use shared Vision settings (default 1280px); returned source metadata separates native platform image geometry from browser page semantics. Display reading and detail are read-only and forbidden in Safe. zoom uses the latest agent_image.image_id plus a rectangle in its returned PNG. Window detail is native padded JPEG; display detail crops a fresh full-resolution native capture above CUA. Details cannot nest or ground input; take a fresh overview before acting. Window observations return observation_id/element_token for one complete action or bounded keyboard/stroke sequence. Closed/reused references refuse. No fallback to desktop, automatic foregrounding or paint-readiness guarantee. Only the user can change mode. In Codemode, load the stored window_ref and replace stored observation_id, element_tokens and agent_image.image_id after each successful overview. Keep only compact references in store, not screenshots or whole results. Storage does not extend ID lifetime; detail consumes its overview. ui:{operation,observation_id,hint?,query?,role?,limit?} searches/scopes/inspects the current collected snapshot without native reread; highlight returns its marked overview, crop requests fresh native detail and consumes input authority. Returned ui.elements have snapshot-scoped short hints, native tokens, parent_hint, reported state/actions and separate native_screen/window_image bounds. Partial-tree absence is unknown. capture:{granularity:image|ui|full,backend:default|wgc,max_elements?,max_depth?,hints?,guides:{grid,region,action}} chooses fresh window parts; full is the default. The selected windows-persistent-wgc runtime uses WGC by default for image/full window reads; other runtimes keep native routing. Explicit backend:default selects the native route. WGC is Windows-only, retained per session/window with no fallback on failure. WGC native zoom/crop is unsupported; paint freshness stays unverified. Image-only skips accessibility and grounds pixel input with no current hints/tokens. UI-only skips pixels and grounds current hints/tokens only, not pixel input or image detail. Each read retires the previous adapter observation; absent parts are not inherited. UI query/walk controls need UI; image hints need full and image guides need pixels. Guides use returned window image pixels, never normalized or desktop coordinates. ui:{operation:region,observation_id,region:{x,y,width,height}} marks a chosen zoom/crop rectangle on the existing overview without rereading or consuming input. Last-action guides identify only completed pointer targets with proven geometry; missing mappings stay unavailable. Detail remains read-only. Hints are drawn on a separate annotated PNG; raw bytes stay private and image dimensions do not change.",
-    parameters: Type.Object({
-      window_ref: Type.Optional(Type.String({ minLength: 1 })),
-      display: Type.Optional(Type.String({ description: "primary or a returned computer_displays display_ref; YOLO-only, read-only and never grounds input. Selected monitor reads require a qualified runtime." })),
-      query: Type.Optional(Type.String({ description: "Native reread projected to matching labels/values and ancestors; replaces old hints. For local search use ui instead." })),
-      capture: Type.Optional(Type.Object({
-        granularity: Type.Optional(Type.Union(["image", "ui", "full"].map(value => Type.Literal(value)), { description: "Window overview: image-only grounds pixel input without a UI walk; UI-only grounds current hints/tokens without pixels; full is the default." })),
-        max_elements: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
-        max_depth: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
-        hints: Type.Optional(Type.Boolean()),
-        guides: Type.Optional(Type.Object({ grid: Type.Boolean(), region: Type.Boolean(), action: Type.Boolean() }, { additionalProperties: false })),
-      }, { additionalProperties: false })),
-      ui: Type.Optional(Type.Object({
-        operation: Type.Union(["search", "scope", "inspect", "highlight", "crop", "region"].map(value => Type.Literal(value))),
-        observation_id: Type.String({ minLength: 1 }),
-        hint: Type.Optional(Type.String({ minLength: 1 })),
-        query: Type.Optional(Type.String({ maxLength: 256 })),
-        role: Type.Optional(Type.String({ maxLength: 128 })),
-        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
-        region: Type.Optional(Type.Object({ x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }),
-          width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }) }, { additionalProperties: false })),
-      }, { additionalProperties: false })),
-      zoom: Type.Optional(Type.Object({
-        image_id: Type.String({ minLength: 1, description: "agent_image.image_id from the latest overview of this source, not a detail." }),
-        x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }),
-        width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }),
-        maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096, description: "Display detail only; default 1200. CUA window zoom keeps native JPEG padding and 500px width." })),
-        scale: Type.Optional(Type.Number({ minimum: 0.05, maximum: 1, description: "Display detail only; default 1. Does not change overview settings." })),
-      }, { additionalProperties: false })),
-    }, { additionalProperties: false }),
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    async execute(_id, params, signal, _update, ctx) {
-      if ((params.window_ref !== undefined) === (params.display !== undefined) ||
-        (params.display !== undefined && (params.query !== undefined || params.ui !== undefined || params.capture !== undefined)) ||
-        (params.zoom !== undefined && (params.query !== undefined || params.ui !== undefined || params.capture !== undefined)) ||
-        (params.ui !== undefined && (params.query !== undefined || params.capture !== undefined)))
-        return { content: [{ type: "text" as const, text: "Choose one source and one mode: native window overview (query/capture), local UI operation, or zoom. UI and capture are window-only." }], details: { status: "refused" }, isError: true };
-      const current = await getSession(ctx.cwd);
-      const result = await (params.display !== undefined ? current.observeDisplay(params.display, signal, params.zoom) : current.observe(params.window_ref!, signal, params.query, params.zoom, params.ui, params.capture));
-      const image = result.content.find(block => block.type === "image");
-      return { ...result, structuredContent: JSON.parse(JSON.stringify({ ...result.details,
-        text: result.content.filter(block => block.type === "text").map(block => block.text).join("\n"), ...(image ? { image } : {}) })) };
-    },
-  });
-  pi.registerTool({
-    name: "computer_act", label: "Computer act",
-    description: "Perform a complete grounded window action, or one bounded sequence, using the latest observation_id. Dispatch consumes the observation even on failure. Optional animation=reactive uses trusted local minimal cursor timing for this action only and restores ordinary animation; native click pauses are unchanged. Use its short hint, element_token or window-local screenshot x/y, never more than one target form. A hint belongs to the exact returned window/observation and is retired by a native reread; matching labels never rebind it. Reported disabled targets refuse before dispatch; physical pointer targets also need proven geometry. move and hover require the separately selected native Windows pointer runtime: one real movement, no keys/buttons. hover requires dwell_ms 1..10000; move has no dwell. Use capture-bound overview pixels or a current hint/token with proven native geometry. Background refuses without input; fresh observe before explicit foreground. Foreground leaves the target active and pointer in place. No animation/modifiers/sequence steps. Native delivery and completed dwell do not prove a tooltip or other app effect; observe again. Supports click/right_click/double_click, scroll (current element_token, or capture-bound overview point with the separately selected native Windows scroll runtime), drag, key/hotkey, type_text (delay_ms) and select_all. Explicit invoke/select/set_value require a separately qualified Windows semantic runtime and a current hint/token. They use UIA only, with no mouse/key fallback or requested foreground delivery; no pixels/modifiers/animation or sequence steps. set_value takes text. Experimental UIA calls can take foreground/focus through native behavior; do not assume non-interference. Provider completion is not app-effect or focus verification; observe again. Ordinary click keeps its native ladder. Drag endpoints are from_x/from_y/to_x/to_y; duration_ms 0..10000 and steps 1..200 for straight drags. Optional via has 1..254 intermediate local points for one continuous left-button stroke, only with the explicitly selected qualified Windows fork and foreground; no steps or modifiers with via. sequence accepts 1..32 known-target key/hotkey/type_text/select_all/drag steps, wait_ms 0..5000 each, up to 30s requested time and 45s elapsed admission budget. Entire list is validated before input; serial execution needs no intermediate overview. hold keeps 1..8 keys down for duration_ms 1..10000, optionally performing 1..32 grounded left click/drag actions while held; requested pointer time must fit the interval. Requires the qualified Windows key-hold runtime and explicit foreground after a background refusal. Whole hold validation happens before input. Keys release within this call; interrupted holds preserve the native key/pointer prefix, measured timing and release uncertainty. Hold cannot nest in sequence. Each drag releases the button; no cross-call held-input state. A via path holds only for that single stroke. Interrupted paths report their native point prefix/release receipt; never replay them. Stops on refusal/unknown/cancel/access or target loss, reporting actual attempted/completed prefix and dispatch/completion timings; never replay that prefix. In-flight native input may finish after cancellation. Delivery is not UI verification. Background is default. Foreground must be explicit and only after an observed failure/refusal. Unknown may have changed the app: never blindly retry. Observe to verify. Safe denies outside-session windows; YOLO permits them. Mode is a user choice, not a tool argument. Neither is OS isolation. Use only task-authorized windows/documents. In Codemode, load window_ref and current observation/target IDs from store instead of retyping them. Invalidate stored observation_id and element_tokens after every dispatch, even on failure; observe again and store fresh IDs before another action or sequence.",
-    parameters: actionParameters,
-    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    async execute(_id, params, signal, _update, ctx) { return (await getSession(ctx.cwd)).act(params as Action, signal); },
-  });
-  pi.registerTool({
-    name: "computer_close", label: "Computer close",
-    description: "Release this session's classifier worker, Driver and window-identity peer, invalidate window/observation refs. Does not close application windows or save documents. Clean up task-owned windows through grounded UI actions first. Discard saved window/observation/token/image IDs in Codemode storage after release; rediscover windows before saving new references.",
-    parameters: Type.Object({}, { additionalProperties: false }),
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    async execute() { return closeSession(); },
-  });
-}
-
-/** Register native computer resources with ordinary IDE tools and retain the separate visual classifier. */
+/**
+ * Register native computer resources with ordinary IDE tools when Pi Agent IDE accepts them, otherwise as
+ * deferred computer_* tools, and retain the separate visual classifier.
+ */
 export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   const closeClassifier = registerClassifierTool(pi);
   let overviewKernel: "lanczos3" | "bilinear" = "lanczos3";
@@ -144,7 +43,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   }
   const openSandbox = sandboxFactory({ settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
   const connectMachine = machineFactory({ getMode, settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
-  await registerComputerProvider(pi, getSession, async () => {
+  const provider = await registerComputerProvider(pi, getSession, async () => {
     await closeClassifier();
     const result: ComputerResult = session ? await session.close() : {
       content: [{ type: "text", text: "Not started." }],
@@ -156,6 +55,13 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
       details: { status: "unknown", mode: getMode() }, isError: true }; }
     return result;
   }, openSandbox, connectMachine);
+  // Every extension has loaded by session_start, so an IDE that accepts the provider has done so by now.
+  let standalone = false;
+  pi.on("session_start", () => {
+    if (standalone || provider.attached()) return;
+    standalone = true;
+    registerStandaloneTools(pi, provider.resources, provider.guide);
+  });
   pi.on("session_shutdown", async () => {
     await closeClassifier();
     if (loading) await loading.catch(() => undefined);
