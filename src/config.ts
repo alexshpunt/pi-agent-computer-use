@@ -61,8 +61,9 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
   if (!command && raw.args !== undefined) throw new Error("Bundled runtimes use their pinned MCP arguments; set a trusted command to override arguments.");
   const bundled = command ? undefined : await findBundledRuntime(raw.interop as string | undefined);
   // The shipped runtime is the qualified windows-desktop build, so it gets that profile's capabilities.
+  // A configured runtime always comes with its own trusted command.
   const runtime = (raw.runtime as ComputerConfig["runtime"]) ?? (bundled ? "windows-desktop" : undefined);
-  return { command: command ?? bundled!.command,
+  return { command: command || bundled!.command,
     ...(bundled ? { bundled } : {}),
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(raw.interop ? { interop: raw.interop as string } : {}),
     ...(runtime ? { runtime } : {}),

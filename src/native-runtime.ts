@@ -161,7 +161,8 @@ async function windowsCacheDirectory(interop?: string): Promise<string> {
 export async function findBundledRuntime(interop?: string): Promise<BundledRuntime> {
   executionTarget(process.platform, process.arch, await isWsl());
   const pins = await readRuntimePins();
-  await fetchRuntime(PACKAGED_RUNTIME, pins);
+  // A stalled first-use download must not hold session startup indefinitely.
+  await fetchRuntime(PACKAGED_RUNTIME, pins, AbortSignal.timeout(300_000));
   const runtime = await loadBundledRuntime(PACKAGED_RUNTIME, pins);
   return process.platform === "linux" ? cacheWindowsRuntime(runtime, await windowsCacheDirectory(interop)) : runtime;
 }
