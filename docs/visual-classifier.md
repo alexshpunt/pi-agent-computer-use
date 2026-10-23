@@ -74,6 +74,5 @@ One owned offline Python worker keeps the model warm. It caches up to 128 exact 
 
 Up to eight calls are serialized. A request has a 60-second execution timeout. Abort, timeout, closing `computer:session` and session shutdown stop the owned worker; no request is replayed. Queued requests cancelled by close do not restart it. Later calls may start a fresh worker. This does not close application windows or change the CUA runtime.
 
-Wording, negation, scale and distractors can change similarity. Prior research found overlapping positive/negative scores for “Is a mole visible?” and for a wooden log. Raising the model size did not make arbitrary natural-language predicates reliable. Choose thresholds deliberately; test positives and hard negatives and retain unknown for borderline scores. Unknown is a **numerical band**, not a promise that all semantic uncertainty has been detected.
+Wording, negation, scale and distractors can change similarity. Our tests found overlapping positive/negative scores for “Is a mole visible?” and for a wooden log. Raising the model size did not make arbitrary natural-language predicates reliable. Choose thresholds deliberately; test positives and hard negatives and retain unknown for borderline scores. Unknown is a **numerical band**, not a promise that all semantic uncertainty has been detected.
 
-See [the earlier negative experiments](research/larger-mole-negative-checks.md).

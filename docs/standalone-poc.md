@@ -2,7 +2,7 @@
 
 Pi runs in WSL and talks to Windows Cua Driver over owned stdio MCP. There is no SSH server, permanent service, or autostart. This guide covers setup, runtime selection and window lifetime; [the resource guide](computer-resources.md) covers the tools.
 
-**YOLO is the default.** It reaches new and already open desktop windows within normal user permissions. The user can select Safe, which allows only windows individually opened by this extension session. Neither mode is an OS sandbox; see [sandbox research](research/sandbox-boundaries.md). Use only the apps and documents authorized by the actual task.
+**YOLO is the default.** It reaches new and already open desktop windows within normal user permissions. The user can select Safe, which allows only windows individually opened by this extension session. Neither mode is an OS sandbox. Use only the apps and documents authorized by the actual task.
 
 ## Choose a mode
 

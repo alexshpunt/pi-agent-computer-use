@@ -70,4 +70,4 @@ Refusal, unknown/partial outcome, cancellation, access revocation or target life
 
 The native driver owns each gesture's normal key/button release. No separate key-down/up, cross-call button hold, application hover or global release-all is exposed. Held paths use the qualified fork's EOF-aware receiver; adapter cancellation closes its owned transport and attempts native release. A crash or forced process kill cannot guarantee release. Never interpret a timeout as a completed stroke.
 
-See the [operating skill](../.pi/skills/computer-use/SKILL.md) and [native capability research](research/cua-input-capabilities.md).
+See the [operating skill](../.pi/skills/computer-use/SKILL.md).
