@@ -1,41 +1,13 @@
 {
-  "format": 1,
-  "source": "819fa500b8bc3ec7ff8e008dd5e97c79f21ee1a0",
-  "version": "0.34.0-dev.819fa500b8bc",
-  "driverVersion": "0.34.0",
-  "targets": {
-    "darwin-arm64": {
-      "files": {
-        "cua-driver": "3ea993b8a564d45f2ea9bb2bf71d1ea3bf0c7e91b8c7d391069fb0acfe7a7ff0",
-        "cua-cursor-theme": "d94b017d023e897b8d872774fbbb9376eaae005f38f862c8f8e56fb6a306d386",
-        "LICENSE.md": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
-        "THIRD_PARTY_NOTICES.md": "3268421fe758ec53bc11a2644aac1451a397027c508c199e86745636bb5499db"
-      }
-    },
-    "darwin-x64": {
-      "files": {
-        "cua-driver": "73cde5d8a7701af42343281175c3136a018e20d0cc452806d12bac925ba4b0b4",
-        "cua-cursor-theme": "98ca88aa267c151a8c04ece2be4bae26d56969edde268429f8fc5e8993447420",
-        "LICENSE.md": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
-        "THIRD_PARTY_NOTICES.md": "3268421fe758ec53bc11a2644aac1451a397027c508c199e86745636bb5499db"
-      }
-    },
-    "linux-x64": {
-      "files": {
-        "cua-driver": "a06b9fa805e6a388d84b75c4f611c733521377d12992f7a08e95791a2c69862b",
-        "cua-cursor-theme": "68c36f9854f0fdf6475d7ee033e3dfc306c5363eb96ee9672d5c2dc5d79d07c6",
-        "LICENSE.md": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
-        "THIRD_PARTY_NOTICES.md": "3268421fe758ec53bc11a2644aac1451a397027c508c199e86745636bb5499db"
-      }
-    },
-    "win32-x64": {
-      "files": {
-        "cua-driver.exe": "24aa6ac88aab0275bf7894df9e9d1c151e231265d98db226a3d6045a44c93c74",
-        "cua-cursor-theme.exe": "c83f9087d856e0cc1abb86f425ed2a1508ef24cd905bce6b4fe850afd10765ef",
-        "cua-driver-uia.exe": "9999adb31284b90390bc8bba4beb6460f52d3062fb74bc94a7216cbf94890084",
-        "LICENSE.md": "d0a32419a44fa38d5023d1431dfcbedd1457eb5e7b2e6c7c87ca064facb41b41",
-        "THIRD_PARTY_NOTICES.md": "37f03af97a33e06e168a950dabef79b4674d1c007302a13e0148871d095c962a"
-      }
-    }
+  "format": 2,
+  "source": "13dbacca94e33fbdce56fd4ed6bd9bebc6aeb5a5",
+  "version": "0.37.0",
+  "url": "https://github.com/alexshpunt/cua/releases/download/pi-runtime-0.37.0-13dbacca/",
+  "files": {
+    "cua-driver.exe": "689487a1566b4cb04adee8b30f6732d4ae096290e53dd1d7570064e8a3265b67",
+    "cua-driver-uia.exe": "ab0ece2a0aae0f357e3cf7db82b56f4e2d9d3e15d5c770d6c8beeea410885dba",
+    "cua-cursor-theme.exe": "a6b3dc598ce3f95372d95ea2da72eb9f960c49fea24adbcb1664839d1528eb1a",
+    "LICENSE.md": "d0a32419a44fa38d5023d1431dfcbedd1457eb5e7b2e6c7c87ca064facb41b41",
+    "THIRD_PARTY_NOTICES.md": "88a24f59293f03b3e03655e8144bcfadc9861bef1182cfeea91639e11f573fd1"
   }
 }

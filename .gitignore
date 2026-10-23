@@ -1,5 +1,6 @@
 .tmp/
 node_modules/
+native-runtime/
 .pi/computer-use.json
 .pi/visual-classifier.json
 .pi/settings.json
