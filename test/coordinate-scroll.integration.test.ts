@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { assistantMessage, getToolExecution, getToolResultText, PiIntegrationTest, testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
+import { IDE_EXTENSION, PI_COMMAND } from "./fixtures/pi-agent-ide.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const fixture = (name: string) => path.join(root, "test/fixtures", name);
@@ -9,10 +10,7 @@ const fixture = (name: string) => path.join(root, "test/fixtures", name);
 // Pattern: real-Pi extensions example and the ordinary IDE computer-provider scenarios.
 // Contract: actual IDE Insert preserves capture authority and structured uncertain prefixes.
 async function scenario(testName: string, scenario: "receipts" | "authority", providerFirst: boolean) {
-  const ide = process.env.PI_SCROLL_IDE_SOURCE ?? "/root/dev/pi/pi-agent-ide";
-  const manifest = JSON.parse(await readFile(path.join(ide, "package.json"), "utf8"));
-  expect(manifest.name, "The integration consumer must be Pi Agent IDE").toBe("pi-agent-ide");
-  const consumer = path.join(ide, "src/pi-agent-ide.ts"), provider = fixture("coordinate-scroll-extension.ts");
+  const consumer = IDE_EXTENSION, provider = fixture("coordinate-scroll-extension.ts");
   await mkdir(path.join(root, ".tmp/lpt-730"), { recursive: true });
   const cwd = await mkdtemp(path.join(root, ".tmp/lpt-730/pi-scroll-")), log = path.join(cwd, "calls.jsonl");
   try {
@@ -22,7 +20,7 @@ async function scenario(testName: string, scenario: "receipts" | "authority", pr
     const result = await new PiIntegrationTest({ testName: `${testName}-${providerFirst ? "provider-first" : "core-first"}`,
       artifactsDir: testArtifactsDir(import.meta.filename), cwd, rawMode: false,
       extensions: providerFirst ? [provider, consumer] : [consumer, provider],
-      isolateUserResources: true, piCommand: process.env.PI_SCROLL_PI_COMMAND ?? "/usr/bin/pi", timeoutMs: 90_000,
+      isolateUserResources: true, piCommand: PI_COMMAND, timeoutMs: 90_000,
       tools: ["read", "search", "insert", "verify_coordinate_scroll"],
       conversation: [assistantMessage([toolCall({ id: "scroll", name: "verify_coordinate_scroll", arguments: { scenario } })], { stopReason: "toolUse" }),
         assistantMessage([text("Finished the synthetic coordinate-scroll fixture.")])],

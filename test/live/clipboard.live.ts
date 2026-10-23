@@ -5,7 +5,7 @@ import { addresses, connectLive, text } from "./remote.ts";
 import { WINDOWS_POWERSHELL } from "../../src/runner.ts";
 import type { ComputerResult } from "../../src/session.ts";
 
-// Clipboard round trips on LIVE_MACHINE (zinpc, or local) through a disposable WinForms text box this check starts.
+// Clipboard round trips on LIVE_MACHINE (lab, or local) through a disposable WinForms text box this check starts.
 // Notepad is avoided: its first launch restores the user's previous Notepad session. The user's clipboard text is restored.
 const live = await connectLive();
 const title = `pi-clipboard-fixture-${Date.now()}`;

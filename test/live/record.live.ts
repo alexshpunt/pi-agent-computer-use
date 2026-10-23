@@ -8,7 +8,7 @@ import { sshRunner } from "../../src/runner.ts";
 // LPT-817: a 10-second recording of a new Paint window shows the drawn stroke. Frames are decoded with
 // the machine's own ffmpeg (the one the driver records with).
 const live = await connectLive();
-const runner = sshRunner((await machineConfig(process.cwd(), process.env.LIVE_MACHINE ?? "zinpc")).ssh);
+const runner = sshRunner((await machineConfig(process.cwd(), process.env.LIVE_MACHINE ?? "lab")).ssh);
 let pid = 0;
 afterAll(async () => { if (pid) await live.kill(pid); await live.close(); });
 

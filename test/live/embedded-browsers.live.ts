@@ -29,7 +29,7 @@ async function portableVsCode() {
 [ -f app/Code.exe ] || python3 -c "import zipfile;zipfile.ZipFile('code.zip').extractall('app')"
 mkdir -p app/data; rm -f app/data/argv.json`], { timeoutMs: 600_000 });
   // The same installer a user runs: the extension, and its proposed API allowed in that VS Code's argv.json.
-  execFileSync("scripts/install-vscode-bridge.sh", [`${root}/app/bin/code.cmd`, `${root}/app/data/argv.json`, (await machineConfig(process.cwd(), "zinpc")).ssh], { stdio: "ignore" });
+  execFileSync("scripts/install-vscode-bridge.sh", [`${root}/app/bin/code.cmd`, `${root}/app/data/argv.json`, (await machineConfig(process.cwd(), "lab")).ssh], { stdio: "ignore" });
 }
 
 /** Read the attached page, then navigate it to the fixture and fill its field through Playwright. */

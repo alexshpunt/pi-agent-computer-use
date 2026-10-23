@@ -4,7 +4,7 @@ import { performance } from "node:perf_hooks";
 import { McpDriver } from "../../src/driver.ts";
 import { connectLive, text } from "./remote.ts";
 
-// Per-stage latency of the observe→act loop on LIVE_MACHINE (zinpc, or local). Run:
+// Per-stage latency of the observe→act loop on LIVE_MACHINE (lab, or local). Run:
 //   LIVE_MACHINE=local npx vitest run --config vitest.live.config.ts test/live/bench.live.ts
 // Stages: native capture (get_window_state), adapter work on that capture (Read minus native),
 // transport (a trivial native call), native input (click) and the full Read+click loop.
@@ -61,5 +61,5 @@ test("observe and act loop latency per stage", async () => {
   const report = Object.entries(stages).map(([stage, values]) => ({ stage, p50: percentile(values, 0.5), p95: percentile(values, 0.95) }));
   console.table(report);
   await mkdir(".tmp/m7", { recursive: true });
-  await writeFile(`.tmp/m7/bench-${process.env.LIVE_MACHINE ?? "zinpc"}-${Date.now()}.json`, JSON.stringify({ machine: process.env.LIVE_MACHINE ?? "zinpc", rounds: ROUNDS, report, stages }, null, 1));
+  await writeFile(`.tmp/m7/bench-${process.env.LIVE_MACHINE ?? "lab"}-${Date.now()}.json`, JSON.stringify({ machine: process.env.LIVE_MACHINE ?? "lab", rounds: ROUNDS, report, stages }, null, 1));
 });

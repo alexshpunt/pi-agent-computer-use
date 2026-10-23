@@ -9,7 +9,7 @@ import type { ComputerResult } from "../../src/session.ts";
 // Owned files, process health and OCR on the remote machine, through the same provider the extension uses.
 // Uses only a new Paint window, a disposable WinForms fixture and files in the session's own folder.
 const live = await connectLive();
-const runner = sshRunner((await machineConfig(process.cwd(), process.env.LIVE_MACHINE ?? "zinpc")).ssh);
+const runner = sshRunner((await machineConfig(process.cwd(), process.env.LIVE_MACHINE ?? "lab")).ssh);
 const opened: number[] = [];
 afterAll(async () => { for (const pid of opened) await live.kill(pid); await live.close(); });
 

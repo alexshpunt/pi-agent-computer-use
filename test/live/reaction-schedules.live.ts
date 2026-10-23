@@ -95,7 +95,7 @@ test("serial: capture, classify, act", async () => {
       if (at) await act(frame, at, frame.observation, stats);
     }
   });
-  // With the 1 ms glide a 600 ms target is caught most of the time (about 70% on ZinPC).
+  // With the 1 ms glide a 600 ms target is caught most of the time (about 70% on the test machine).
   if (REACTIVE && FLASH_MS >= 600) expect(row.hits).toBeGreaterThanOrEqual(row.shown / 3);
 });
 

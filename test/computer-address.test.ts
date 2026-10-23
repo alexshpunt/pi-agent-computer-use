@@ -10,7 +10,7 @@ describe("computer resource addresses", () => {
 
   it("keeps native discovery and observation identities separate", () => {
     expect(parseComputerAddress("computer:machine/local/windows")).toEqual({ kind: "machine", ref: "local", part: "windows", source: "computer:machine/local/windows" });
-    expect(parseComputerAddress("computer:machine/zinpc")).toEqual({ kind: "machine", ref: "zinpc", source: "computer:machine/zinpc" });
+    expect(parseComputerAddress("computer:machine/lab")).toEqual({ kind: "machine", ref: "lab", source: "computer:machine/lab" });
     expect(parseComputerAddress("computer:window/window-1")).toEqual({ kind: "window", ref: "window-1", source: "computer:window/window-1" });
     expect(parseComputerAddress("computer:observation/snapshot-1?hint=1:a&delivery=foreground&delay_ms=0")).toEqual({
       kind: "observation", ref: "snapshot-1", source: "computer:observation/snapshot-1?hint=1:a&delivery=foreground&delay_ms=0",

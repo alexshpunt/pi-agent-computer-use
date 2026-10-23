@@ -12,13 +12,13 @@ import { MachineHost } from "../../src/machine-host.ts";
 import { WebBrowser } from "../../src/web-browser.ts";
 
 /**
- * Connect to the machine named by LIVE_MACHINE (default zinpc) through the same factory the extension uses,
+ * Connect to the machine named by LIVE_MACHINE (default lab) through the same factory the extension uses,
  * or with LIVE_MACHINE=local to this machine's desktop through the configured local driver.
  * Live checks act on that machine's real desktop: use only new Notepad/Paint documents and synthetic pages.
  * `machine` is where to Insert machine commands such as open; `windows` and `displays` are its discovery addresses.
  */
 export async function connectLive(cwd = process.cwd()) {
-  const name = process.env.LIVE_MACHINE ?? "zinpc";
+  const name = process.env.LIVE_MACHINE ?? "lab";
   const images = new CuaImageSettings(() => "bilinear");
   const config = await loadComputerConfig(cwd);
   let local: ComputerSession | undefined;

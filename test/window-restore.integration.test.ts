@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { assistantMessage, getToolExecution, getToolResultText, PiIntegrationTest, testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
+import { IDE_EXTENSION, PI_COMMAND } from "./fixtures/pi-agent-ide.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const fixture = path.join(root, "test/fixtures/window-restore-extension.ts");
@@ -12,8 +13,7 @@ const driver = path.join(root, "test/fixtures/window-restore-driver.mjs");
 for (const scenario of ["workflow", "admission"] as const) test.each([false, true])(
   `ordinary IDE metadata-only restore protects ${scenario} (providerFirst=%s)`,
   async providerFirst => {
-    const ide = process.env.PI_RESTORE_IDE_SOURCE ?? "/root/dev/pi/pi-agent-ide";
-    const extension = path.join(ide, "src/pi-agent-ide.ts");
+    const extension = IDE_EXTENSION;
     await mkdir(path.join(root, ".tmp/lpt-703"), { recursive: true });
     const cwd = await mkdtemp(path.join(root, ".tmp/lpt-703/pi-restore-"));
     try {
@@ -22,7 +22,7 @@ for (const scenario of ["workflow", "admission"] as const) test.each([false, tru
       const result = await new PiIntegrationTest({
         testName: `ide-window-restore-${scenario}-${providerFirst ? "provider-first" : "core-first"}`,
         artifactsDir: testArtifactsDir(import.meta.filename), cwd, isolateUserResources: true, rawMode: false,
-        piCommand: process.env.PI_RESTORE_PI_COMMAND ?? "/usr/bin/pi",
+        piCommand: PI_COMMAND,
         extensions: providerFirst ? [fixture, extension] : [extension, fixture],
         tools: ["read", "search", "write", "insert", "verify_window_restore"], timeoutMs: 90_000,
         conversation: [assistantMessage([toolCall({ id: "restore-proof", name: "verify_window_restore", arguments: { scenario } })], { stopReason: "toolUse" }),

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { assistantMessage, getToolExecution, getToolExecutionDetails, getToolResultText, PiIntegrationTest, testArtifactsDir, text, toolCall } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
+import { IDE_EXTENSION, PI_COMMAND } from "./fixtures/pi-agent-ide.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const fixture = path.join(root, "test/fixtures/ide-provider-extension.ts");
@@ -28,10 +29,7 @@ test.each([false, true])(
 );
 
 async function runScenario(providerFirst: boolean, scenario: "workflow" | "admission") {
-  const ide = process.env.PI_COMPUTER_IDE_SOURCE ?? "/root/dev/pi/pi-agent-ide";
-  const extension = path.resolve(ide, "src/pi-agent-ide.ts");
-  const manifest = JSON.parse(await readFile(path.join(ide, "package.json"), "utf8"));
-  expect(manifest.name, "The integration consumer must be Pi Agent IDE").toBe("pi-agent-ide");
+  const extension = IDE_EXTENSION;
   await mkdir(path.join(root, ".tmp/lpt-750"), { recursive: true });
   const cwd = await mkdtemp(path.join(root, ".tmp/lpt-750/pi-provider-"));
   try {
@@ -40,7 +38,7 @@ async function runScenario(providerFirst: boolean, scenario: "workflow" | "admis
     const result = await new PiIntegrationTest({
       testName: `ide-computer-${scenario}-${providerFirst ? "provider-first" : "core-first"}`,
       artifactsDir: testArtifactsDir(import.meta.filename), cwd, isolateUserResources: true, rawMode: false,
-      piCommand: process.env.PI_COMPUTER_PI_COMMAND ?? "/usr/bin/pi",
+      piCommand: PI_COMMAND,
       extensions: providerFirst ? [fixture, extension] : [extension, fixture],
       tools: ["read", "search", "write", "insert", "verify_ide_computer"],
       timeoutMs: 90_000,

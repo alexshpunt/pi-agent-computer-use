@@ -27,8 +27,8 @@ test("machines come only from validated configuration", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "pi-machines-"));
   await mkdir(path.join(dir, ".pi"));
   const write = (machines: unknown) => writeFile(path.join(dir, ".pi/computer-use.json"), JSON.stringify({ command: "/x/cua-driver.exe", machines }));
-  await write({ zinpc: { ssh: "zinpc-benchmark", command: "/mnt/c/run/cua-driver.exe", runtime: "windows-desktop", node: "/mnt/c/node.exe", package: "/home/u/pkg" } });
-  expect((await loadComputerConfig(dir)).machines?.zinpc).toEqual({ ssh: "zinpc-benchmark", command: "/mnt/c/run/cua-driver.exe", runtime: "windows-desktop", node: "/mnt/c/node.exe", package: "/home/u/pkg" });
+  await write({ lab: { ssh: "lab-wsl", command: "/mnt/c/run/cua-driver.exe", runtime: "windows-desktop", node: "/mnt/c/node.exe", package: "/home/u/pkg" } });
+  expect((await loadComputerConfig(dir)).machines?.lab).toEqual({ ssh: "lab-wsl", command: "/mnt/c/run/cua-driver.exe", runtime: "windows-desktop", node: "/mnt/c/node.exe", package: "/home/u/pkg" });
   for (const bad of [{ "Bad Name": { ssh: "a", command: "/x" } }, { local: { ssh: "a", command: "/x" } }, { pc: { ssh: "a", command: "relative/cua.exe" } }, { pc: { ssh: "a", command: "/x", extra: 1 } }, { pc: { ssh: "a", command: "/x", runtime: "unknown" } }, []]) {
     await write(bad);
     await expect(loadComputerConfig(dir)).rejects.toThrow(/Invalid machines/);
@@ -60,16 +60,16 @@ async function fixture() {
   const host = new ComputerSession(hostDriver, () => "yolo");
   const remote = new ComputerSession(remoteDriver, () => "yolo"), guest = new ComputerSession(guestDriver, () => "yolo");
   const machineClose = vi.fn(() => remote.close()), sandboxClose = vi.fn(async () => {});
-  const machine: OpenedMachine = { ref: "zinpc", session: remote, describe: source => `# Remote machine\nAddress: ${source}`, close: machineClose };
+  const machine: OpenedMachine = { ref: "lab", session: remote, describe: source => `# Remote machine\nAddress: ${source}`, close: machineClose };
   const openSandbox = vi.fn(async (_cwd: string, _command: Record<string, unknown>, _signal?: AbortSignal, onMachine?: string): Promise<OpenedSandbox> =>
     ({ ref: "sb-1", session: guest, describe: source => source, close: sandboxClose, ...(onMachine ? { machine: onMachine } : {}) }));
   const start = vi.fn(async (_cwd: string, name: string) => {
-    if (name !== "zinpc") throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json.`);
+    if (name !== "lab") throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json.`);
     return machine;
   });
   const resources = new ComputerResources(async () => host, async () => host.close(), openSandbox, start);
   const names = (driver: Driver) => vi.mocked(driver.call).mock.calls.map(([name]) => name);
-  return { resources, hostDriver, remoteDriver, openSandbox, start, machineClose, sandboxClose, names, machineSource: computerSource("machine", "zinpc") };
+  return { resources, hostDriver, remoteDriver, openSandbox, start, machineClose, sandboxClose, names, machineSource: computerSource("machine", "lab") };
 }
 
 test("a machine starts on first use; its windows, apps and displays come only from its own driver", async () => {
@@ -98,11 +98,11 @@ test("an unknown machine refuses, and closing a machine releases it, its referen
   const view = await f.resources.read(address(computerSource("window", ref)), cwd, ["ui"]);
   const sandbox = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "open_sandbox" }), "insert");
   expect(sandbox.details.sandbox_ref).toBe("sb-1");
-  expect(f.openSandbox.mock.calls[0][3]).toBe("zinpc");
+  expect(f.openSandbox.mock.calls[0][3]).toBe("lab");
   const closed = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "close" }), "insert");
   // The report names each released part.
   expect(closed.details.status).toBe("closed");
-  expect(closed.content[0]).toMatchObject({ text: expect.stringMatching(/computer:sandbox\/sb-1: Sandbox[^\n]*destroyed[\s\S]*computer:machine\/zinpc: /) });
+  expect(closed.content[0]).toMatchObject({ text: expect.stringMatching(/computer:sandbox\/sb-1: Sandbox[^\n]*destroyed[\s\S]*computer:machine\/lab: /) });
   expect(f.sandboxClose).toHaveBeenCalledOnce();
   expect(f.machineClose).toHaveBeenCalledOnce();
   expect(() => f.resources.descriptor(address(computerSource("sandbox", "sb-1")))).toThrow(/expired/);
@@ -122,7 +122,7 @@ test("closing the computer session releases every machine, the local one include
   expect(closed.details.status).toBe("closed");
   // What the model sees: a session's own close result carries a JSON projection that must not hide later parts.
   const lines = presentComputerResult(closed);
-  expect(lines).toMatch(/computer:machine\/zinpc: /);
+  expect(lines).toMatch(/computer:machine\/lab: /);
   expect(lines).toMatch(/computer:machine\/local: /);
   // A closed machine starts again on its next use.
   await f.resources.search(address(`${f.machineSource}/windows`), cwd, "");
@@ -140,11 +140,11 @@ test("a remote browser refuses before launch when that machine's worker copy is 
     return output;
   }) });
   const current = runner(local);
-  await checkRemoteWorker(current, "/pkg", "scripts/setup-remote-machine.sh zinpc /rt zinpc");
+  await checkRemoteWorker(current, "/pkg", "scripts/setup-remote-machine.sh lab /rt lab");
   expect(current.run).toHaveBeenCalledWith("sha256sum", ["/pkg/src/web-worker.ts", "/pkg/node_modules/playwright-core/package.json"], expect.anything());
   const stale = local.replace(/^[0-9a-f]{64}/, "0".repeat(64));
-  await expect(checkRemoteWorker(runner(stale), "/pkg", "scripts/setup-remote-machine.sh zinpc /rt zinpc"))
-    .rejects.toThrow(/out of date \(src\/web-worker\.ts\); nothing was launched\. Refresh it from this package with scripts\/setup-remote-machine\.sh zinpc \/rt zinpc/);
+  await expect(checkRemoteWorker(runner(stale), "/pkg", "scripts/setup-remote-machine.sh lab /rt lab"))
+    .rejects.toThrow(/out of date \(src\/web-worker\.ts\); nothing was launched\. Refresh it from this package with scripts\/setup-remote-machine\.sh lab \/rt lab/);
   await expect(checkRemoteWorker(runner(new Error("No such file")), "/pkg", "setup"))
     .rejects.toBeInstanceOf(ComputerRequestError);
 });

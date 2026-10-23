@@ -4,10 +4,11 @@ import {
   assistantMessage, getToolCallNames, getToolExecution, getToolResultText, PiIntegrationTest, testArtifactsDir, text, toolCall,
 } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
+import { IDE_EXTENSION, PI_COMMAND } from "./fixtures/pi-agent-ide.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const computerUse = path.join(root, "src/index.ts");
-const ide = path.resolve(process.env.PI_COMPUTER_IDE_SOURCE ?? "/root/dev/pi/pi-agent-ide", "src/pi-agent-ide.ts");
+const ide = IDE_EXTENSION;
 
 async function run(name: string, extensions: string[], tools: string[], calls: { id: string; name: string; arguments: Record<string, unknown> }[]) {
   await mkdir(path.join(root, ".tmp"), { recursive: true });
@@ -15,7 +16,7 @@ async function run(name: string, extensions: string[], tools: string[], calls: {
   try {
     return await new PiIntegrationTest({
       testName: name, artifactsDir: testArtifactsDir(import.meta.filename), cwd, isolateUserResources: true,
-      piCommand: process.env.PI_COMPUTER_PI_COMMAND ?? "/usr/bin/pi", extensions, tools, timeoutMs: 90_000,
+      piCommand: PI_COMMAND, extensions, tools, timeoutMs: 90_000,
       conversation: [
         ...calls.map(call => assistantMessage([toolCall({ ...call, delayMs: 0 })], { stopReason: "toolUse" })),
         assistantMessage([text("Done.")]),

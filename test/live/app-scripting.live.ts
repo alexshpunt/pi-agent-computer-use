@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { connectLive, text } from "./remote.ts";
 
 // LPT-821: an app builds a scene through its own scripting while computer use observes and verifies it.
-// Blender runs portable from BLENDER_PATH on the machine (default: the ZinPC user folder; no installer needed).
+// Blender runs portable from BLENDER_PATH on the machine (default: the test machine user folder; no installer needed).
 const live = await connectLive();
 const blender = process.env.BLENDER_PATH ?? "C:\\Users\\user\\AppData\\Local\\Programs\\Blender\\blender-5.2.2-windows-x64\\blender.exe";
 let window = "";
