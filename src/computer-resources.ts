@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, resolve } from "node:path";
-import type { ComputerSession, ComputerResult, Action } from "./session.ts";
+import type { ComputerSession, ComputerResult, ComputerMode, Action } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
@@ -62,14 +62,14 @@ export interface OpenedMachine {
 export type MachineFactory = (cwd: string, name: string, signal?: AbortSignal) => Promise<OpenedMachine>;
 const text = (result: ComputerResult) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
 /** A cleanup that threw: what it released is unknown. */
-const failure = (error: unknown): ComputerResult => ({ content: [{ type: "text", text: `Cleanup failed; what it released is unknown: ${error instanceof Error ? error.message : error}` }],
-  details: { status: "unknown", mode: "yolo" } });
+const failure = (error: unknown, mode: ComputerMode): ComputerResult => ({ content: [{ type: "text", text: `Cleanup failed; what it released is unknown: ${error instanceof Error ? error.message : error}` }],
+  details: { status: "unknown", mode } });
 /** One result for a release of several parts, each with its own outcome; any unknown part leaves the whole release unknown. */
-function report(parts: readonly (readonly [string | undefined, ComputerResult])[], heading?: string): ComputerResult {
+function report(mode: ComputerMode, parts: readonly (readonly [string | undefined, ComputerResult])[], heading?: string): ComputerResult {
   const unknown = parts.some(([, result]) => result.details.status === "unknown");
   // Keep each part's message, not the JSON projection a session appends after it: one result shows one message.
   const lines = parts.map(([source, result]) => (source ? `${source}: ` : "") + text(result).split("\n{", 1)[0]);
-  return { content: [{ type: "text", text: [...(heading ? [heading] : []), ...lines].join("\n") }], details: { status: unknown ? "unknown" : "closed", mode: "yolo" } };
+  return { content: [{ type: "text", text: [...(heading ? [heading] : []), ...lines].join("\n") }], details: { status: unknown ? "unknown" : "closed", mode } };
 }
 /**
  * The target of an open command: an installed app by name, or an executable by absolute Windows path with
@@ -102,14 +102,14 @@ async function transcribe(wav: string): Promise<{ text: string; language: string
  * put copies a workspace file in, get copies one out, files lists the folder; closing the session removes it.
  * clipboard_read/clipboard_write are explicit YOLO-only calls on the clipboard the user also uses.
  */
-async function fileCommand(session: ComputerSession, command: Record<string, unknown>, cwd: string): Promise<ComputerResult> {
+async function fileCommand(session: ComputerSession, command: Record<string, unknown>, cwd: string, mode: ComputerMode): Promise<ComputerResult> {
   if (!session.host) throw new ComputerRequestError("This desktop has no owned file folder.");
   const host = session.host;
   const local = (value: unknown, field: string) => {
     if (typeof value !== "string" || !value.trim()) throw new ComputerRequestError(`${command.action} needs ${field}: a workspace file path.`);
     return resolve(cwd, value);
   };
-  const done = (text: string, state: Record<string, unknown>): ComputerResult => ({ content: [{ type: "text", text }], details: { status: "delivered", mode: "yolo", state } });
+  const done = (text: string, state: Record<string, unknown>): ComputerResult => ({ content: [{ type: "text", text }], details: { status: "delivered", mode, state } });
   try {
     if (command.action === "clipboard_read") {
       only(command, ["action", "image"]);
@@ -216,7 +216,7 @@ export class ComputerResources {
   }
   constructor(private readonly getSession: (cwd: string) => Promise<ComputerSession>,
     private readonly closeSession: () => Promise<ComputerResult>, private readonly openSandbox?: SandboxFactory,
-    private readonly startMachine?: MachineFactory) {}
+    private readonly startMachine?: MachineFactory, private readonly getMode: () => ComputerMode = () => "yolo") {}
 
   /** The session that issued a window or display reference: a sandbox's or another machine's, otherwise this host's. */
   private async sessionFor(cwd: string, target?: ObservationTarget | { window_ref?: string; display?: string }): Promise<ComputerSession> {
@@ -260,21 +260,21 @@ export class ComputerResources {
   private async closeMachine(name: string): Promise<ComputerResult> {
     const sandboxes = [...this.sandboxes.values()].filter(sandbox => (sandbox.machine ?? LOCAL_MACHINE) === name);
     const parts = await Promise.all(sandboxes.map(sandbox => this.closeSandbox(sandbox).then(result => [computerSource("sandbox", sandbox.ref), result] as const,
-      error => [computerSource("sandbox", sandbox.ref), failure(error)] as const)));
+      error => [computerSource("sandbox", sandbox.ref), failure(error, this.getMode())] as const)));
     let own: ComputerResult;
     if (name === LOCAL_MACHINE) {
       for (const [id, entry] of this.snapshots) if (!this.remoteOwner(entry.target)) this.snapshots.delete(id);
       for (const [id, entry] of this.windowStates) if (!this.remoteOwner({ window_ref: entry.window_ref })) this.windowStates.delete(id);
-      own = await this.closeSession().catch(failure);
+      own = await this.closeSession().catch(error => failure(error, this.getMode()));
     } else {
       const machine = this.machines.get(name);
-      if (!machine) return report([], `${computerSource("machine", name)} was not started.`);
+      if (!machine) return report(this.getMode(), [], `${computerSource("machine", name)} was not started.`);
       this.machines.delete(name);
       this.forget(machine.session);
-      own = await machine.close().catch(failure);
+      own = await machine.close().catch(error => failure(error, this.getMode()));
     }
     for (const [ref, app] of this.apps) if (app.machine === name) this.apps.delete(ref);
-    return report([...parts, [computerSource("machine", name), own]]);
+    return report(this.getMode(), [...parts, [computerSource("machine", name), own]]);
   }
   /** Whether a remote machine or a sandbox issued this window or display reference. */
   private remoteOwner(target: { window_ref?: string; display?: string }): boolean {
@@ -296,7 +296,7 @@ export class ComputerResources {
     this.sandboxes.set(sandbox.ref, sandbox);
     const source = computerSource("sandbox", sandbox.ref);
     return { content: [{ type: "text", text: `${command.action === "open_session" ? "Isolated session" : "Sandbox"} ready: ${source}\n${sandbox.describe(source)}` }],
-      details: { status: "delivered", mode: "yolo", sandbox_ref: sandbox.ref } };
+      details: { status: "delivered", mode: this.getMode(), sandbox_ref: sandbox.ref } };
   }
   private sandbox(ref: string): OpenedSandbox {
     const sandbox = this.sandboxes.get(ref);
@@ -308,7 +308,7 @@ export class ComputerResources {
     this.forget(sandbox.session);
     await sandbox.close();
     return { content: [{ type: "text", text: `Sandbox ${computerSource("sandbox", sandbox.ref)} destroyed. Its windows and observations are gone.` }],
-      details: { status: "closed", mode: "yolo", sandbox_ref: sandbox.ref } };
+      details: { status: "closed", mode: this.getMode(), sandbox_ref: sandbox.ref } };
   }
   /**
    * Release every machine, sandbox and isolated session this computer session started, the local machine included;
@@ -321,7 +321,7 @@ export class ComputerResources {
     this.snapshots.clear();
     this.windowStates.clear();
     this.apps.clear();
-    return report(results.map(result => [undefined, result]), "Computer use released. Application documents were not closed or saved.");
+    return report(this.getMode(), results.map(result => [undefined, result]), "Computer use released. Application documents were not closed or saved.");
   }
 
   private snapshot(id: string): Snapshot {
@@ -616,7 +616,7 @@ export class ComputerResources {
         return this.startSandbox(cwd, command, signal, remote);
       }
       const session = await this.machineSession(cwd, address.ref, signal);
-      if (FILE_ACTIONS.includes(command.action as string)) return fileCommand(session, command, cwd);
+      if (FILE_ACTIONS.includes(command.action as string)) return fileCommand(session, command, cwd, this.getMode());
       if (command.action === "webview2_debugging") {
         only(command, ["action", "app", "enabled"]);
         if (typeof command.app !== "string" || !/^[^\\/:*?"<>|]{1,200}\.exe$/i.test(command.app)) throw new ComputerRequestError("webview2_debugging needs app: the app's executable file name, for example \"ms-teams.exe\".");

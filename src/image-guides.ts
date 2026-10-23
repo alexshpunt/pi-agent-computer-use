@@ -1,25 +1,25 @@
 import { clipRect, type ScreenRect } from "./highlight-geometry.ts";
 
 /** Optional model-facing guides. They never change input coordinates or native image sizing. */
-export interface GuideOptions { grid: boolean; region: boolean; action: boolean }
+export interface GuideOptions { grid: boolean; action: boolean }
 /** Proven image-local geometry, or an explicit explanation of its absence. */
 export interface GuideMark { region?: ScreenRect; reason?: string; basis?: string }
 /** One snapshot's guide inputs; no pointers or image bytes are retained here. */
-export interface ImageGuides { options?: GuideOptions; region?: ScreenRect; action?: GuideMark }
+export interface ImageGuides { options?: GuideOptions; action?: GuideMark }
 interface GuideResult { status: "off" | "shown" | "unavailable"; reason?: string; region?: ScreenRect; clipped?: boolean; occluded?: boolean; basis?: string }
 /** Exact guide placement metadata in returned overview pixels, not a new target space. */
 export interface GuideAnnotation {
   grid: GuideResult & { coordinate_space: "window_image_pixels"; step?: number; omitted_labels?: number; labels?: { text: string; region: ScreenRect }[] };
-  region: GuideResult; action: GuideResult;
+  action: GuideResult;
 }
 
 /** Strict future-capture tuple; reject partial settings instead of silently enabling a guide. */
 export function guideOptions(value: unknown): GuideOptions {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Expected grid, region and action booleans.");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Expected grid and action booleans.");
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).sort().join(",") !== "action,grid,region" || [v.grid, v.region, v.action].some(x => typeof x !== "boolean"))
-    throw Error("Expected only grid, region and action booleans.");
-  return { grid: v.grid as boolean, region: v.region as boolean, action: v.action as boolean };
+  if (Object.keys(v).sort().join(",") !== "action,grid" || [v.grid, v.action].some(x => typeof x !== "boolean"))
+    throw Error("Expected only grid and action booleans.");
+  return { grid: v.grid as boolean, action: v.action as boolean };
 }
 const overlaps = (a: ScreenRect, b: ScreenRect) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
@@ -28,11 +28,11 @@ export function imageGuides(width: number, height: number, guides: ImageGuides, 
   const options = guides.options;
   const metadata: GuideAnnotation = {
     grid: { status: options?.grid ? "unavailable" : "off", coordinate_space: "window_image_pixels" },
-    region: { status: options?.region ? "unavailable" : "off" }, action: { status: options?.action ? "unavailable" : "off" },
+    action: { status: options?.action ? "unavailable" : "off" },
   };
   const svg: string[] = [];
   if (width <= 0 || height <= 0) {
-    for (const key of ["grid", "region", "action"] as const) if (options?.[key]) metadata[key].reason = "Native PNG geometry is unavailable.";
+    for (const key of ["grid", "action"] as const) if (options?.[key]) metadata[key].reason = "Native PNG geometry is unavailable.";
     return { svg, metadata };
   }
   const bounds = { x: 0, y: 0, width, height };
@@ -77,21 +77,21 @@ export function imageGuides(width: number, height: number, guides: ImageGuides, 
     for (let y = step; y < height; y += step) line(0, y, width - 1, y, "#549aa8", true);
     metadata.grid = { status: "shown", coordinate_space: "window_image_pixels", step, labels, omitted_labels: omitted, occluded: occlusions > 0 };
   }
-  const mark = (key: "region" | "action", value: GuideMark | undefined, color: string) => {
-    if (!options?.[key]) return;
+  // The last completed pointer action, when its geometry is proven.
+  const markAction = (value: GuideMark | undefined, color: string) => {
+    if (!options?.action) return;
     const original = value?.region;
     const region = clipRect(original, bounds);
-    if (!region || !original) { metadata[key] = { status: "unavailable", reason: value?.reason ?? (value?.region ? "Region is outside the current image." : "No proven region.") }; return; }
+    if (!region || !original) { metadata.action = { status: "unavailable", reason: value?.reason ?? (value?.region ? "Region is outside the current image." : "No proven region.") }; return; }
     const before = svg.length; const hidden = occlusions;
     // Borders only: no filled target and no text over its contents.
     const right = Math.min(width - 1, region.x + region.width); const bottom = Math.min(height - 1, region.y + region.height);
     line(region.x, region.y, right, region.y, color); line(right, region.y, right, bottom, color);
     line(region.x, bottom, right, bottom, color); line(region.x, region.y, region.x, bottom, color);
-    metadata[key] = { status: svg.length > before ? "shown" : "unavailable", region,
+    metadata.action = { status: svg.length > before ? "shown" : "unavailable", region,
       clipped: original.x < 0 || original.y < 0 || original.x + original.width > width || original.y + original.height > height, occluded: occlusions > hidden, ...(value?.basis ? { basis: value.basis } : {}),
       ...(svg.length === before ? { reason: "Known controls cover the guide border." } : {}) };
   };
-  mark("region", guides.region ? { region: guides.region, basis: "selected_overview_region" } : undefined, "#d98400");
-  mark("action", guides.action, "#e52678");
+  markAction(guides.action, "#e52678");
   return { svg, metadata };
 }

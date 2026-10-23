@@ -24,8 +24,8 @@ export interface UiResource {
 export interface UiCaptureOptions { granularity?: "image" | "ui" | "full"; maxLongEdge?: number; scale?: number; max_elements?: number; max_depth?: number; hints?: boolean; guides?: GuideOptions }
 /** Read-only operations on one current snapshot; crop consumes its input authority. */
 export interface UiRequest {
-  operation: "search" | "scope" | "inspect" | "highlight" | "crop" | "region";
-  observation_id: string; hint?: string; query?: string; role?: string; limit?: number; region?: ScreenRect;
+  operation: "search" | "scope" | "inspect" | "highlight" | "crop";
+  observation_id: string; hint?: string; query?: string; role?: string; limit?: number;
 }
 const text = (value: unknown) => typeof value === "string" ? value.slice(0, 1024) : null;
 const index = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null;
@@ -91,21 +91,15 @@ export function resolveUi(resource: UiResource, hint: string): UiElement {
 
 /** Search/scope only collected nodes. Parent chains are native indexed relationships, not a guessed full tree. */
 export function projectUi(resource: UiResource, request: UiRequest): UiResource {
-  if (!request || !["search", "scope", "inspect", "highlight", "crop", "region"].includes(request.operation) ||
-    Object.keys(request).some(k => !["operation", "observation_id", "hint", "query", "role", "limit", "region"].includes(k)) ||
+  if (!request || !["search", "scope", "inspect", "highlight", "crop"].includes(request.operation) ||
+    Object.keys(request).some(k => !["operation", "observation_id", "hint", "query", "role", "limit"].includes(k)) ||
     (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 2000))) throw Error("Invalid bounded UI operation.");
   if (request.observation_id !== resource.observation_id) throw Error("Retired observation. Observe again.");
-  if (!["search", "region"].includes(request.operation) && !request.hint) throw Error("This UI operation needs a current hint.");
+  if (request.operation !== "search" && !request.hint) throw Error("This UI operation needs a current hint.");
   if (!["search", "scope"].includes(request.operation) && [request.query, request.role, request.limit].some(v => v !== undefined))
     throw Error("Filters and limits belong to search or scope, not a selected-element operation.");
   if (request.query !== undefined && (typeof request.query !== "string" || request.query.length > 256)) throw Error("UI query must be text up to 256 characters.");
   if (request.role !== undefined && typeof request.role !== "string") throw Error("UI role must be text.");
-  if (request.operation === "region") {
-    const r = request.region;
-    if (request.hint || request.query !== undefined || request.role !== undefined || request.limit !== undefined || !r ||
-      Object.keys(r).sort().join(",") !== "height,width,x,y" || ![r.x, r.y, r.width, r.height].every(Number.isFinite) ||
-      r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0) throw Error("Region needs only a finite positive overview rectangle.");
-  } else if (request.region !== undefined) throw Error("A rectangle belongs only to the region operation.");
   let rows = resource.elements;
   if (request.hint) {
     const selected = resolveUi(resource, request.hint);

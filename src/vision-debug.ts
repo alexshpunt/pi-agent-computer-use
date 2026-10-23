@@ -37,12 +37,15 @@ export function registerVisionDebug(pi: ExtensionAPI, images: CuaImageSettings =
   pi.on("session_shutdown", async (_event, ctx) => {
     await close(); ctx.ui.setStatus("vision-debug", undefined);
   });
-  const tracked = (name: string) => /^(browser_|computer_)/.test(name);
+  // Computer actions arrive as standalone computer_* tools or, with Pi Agent IDE, as ordinary tools on computer: paths.
+  const tracked = (name: string, input: unknown) => name.startsWith("computer_")
+    || (["read", "search", "write", "insert"].includes(name) && typeof (input as { path?: unknown } | undefined)?.path === "string"
+      && (input as { path: string }).path.startsWith("computer:"));
   pi.on("tool_call", (event) => {
-    if (enabled && tracked(event.toolName)) trace.startAction(event.toolCallId, event.toolName, event.input, event.parentToolCallId);
+    if (enabled && tracked(event.toolName, event.input)) trace.startAction(event.toolCallId, event.toolName, event.input, event.parentToolCallId);
   });
   pi.on("tool_result", (event) => {
-    if (enabled && tracked(event.toolName)) trace.finishAction(event.toolCallId, event.content, event.details, event.isError);
+    if (enabled && tracked(event.toolName, event.input)) trace.finishAction(event.toolCallId, event.content, event.details, event.isError);
   });
   pi.on("before_provider_request", (event, ctx) => {
     if (!enabled) return;

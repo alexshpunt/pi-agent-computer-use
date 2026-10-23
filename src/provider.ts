@@ -11,7 +11,7 @@ import type { WebLogEntry } from "./web-browser.ts";
 import type { StateDiff } from "./successor.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
-import type { ComputerSession, ComputerResult, Content } from "./session.ts";
+import type { ComputerSession, ComputerResult, ComputerMode, Content } from "./session.ts";
 
 const owns = (source: unknown): source is string => typeof source === "string" && source.startsWith("computer:");
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -353,14 +353,14 @@ function nativeBlocks(body: string, result: ComputerResult | undefined, uiOnly: 
  * this plugin API version leaves it false, so the caller can offer the standalone tools instead.
  */
 export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
-  closeSession: () => Promise<ComputerResult>, openSandbox?: SandboxFactory, connectMachine?: MachineFactory,
+  closeSession: () => Promise<ComputerResult>, openSandbox?: SandboxFactory, connectMachine?: MachineFactory, getMode?: () => ComputerMode,
 ): Promise<{ readonly resources: ComputerResources; readonly guide: string; readonly attached: () => boolean }> {
   const accepted = new Set<string>();
   const guide = await readFile(new URL("../docs/computer-resources.md", import.meta.url), "utf8");
   connectAgentDocumentation(pi, [{ id: "computer", description: "Native computer resources, readonly vision and observation-bound input through ordinary IDE tools",
     markdown: guide,
     triggers: ["read", "search", "write", "insert"].map(tool => ({ tool, resourcePrefixes: ["computer:"] })) }]);
-  const resources = new ComputerResources(getSession, closeSession, openSandbox, connectMachine);
+  const resources = new ComputerResources(getSession, closeSession, openSandbox, connectMachine, getMode);
   // Pi shutdown releases every machine, sandbox and session this computer use started.
   pi.on("session_shutdown", () => resources.closeAll().then(() => undefined));
   const resolver: ResourceResolver = {
