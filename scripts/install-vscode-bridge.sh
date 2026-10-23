@@ -2,24 +2,40 @@
 # Build and install the Pi Browser Bridge into a Windows VS Code, and allow its proposed browser API in that VS Code's
 # argv.json. VS Code must then be quit fully and started again; Reload Window does not reread argv.json.
 #
-# Usage: scripts/install-vscode-bridge.sh <code.cmd as a WSL path> <argv.json as a WSL path> [ssh alias]
-#   Installed VS Code:  ".../Microsoft VS Code/bin/code.cmd"  "/mnt/c/Users/<user>/.vscode/argv.json"
-#   Portable VS Code:   ".../VSCode/bin/code.cmd"            ".../VSCode/data/argv.json"
+# Usage: scripts/install-vscode-bridge.sh local|SSH_ALIAS [CODE_CMD ARGV_JSON]
+#   Without paths, an installed VS Code is found on the target: its bin/code.cmd and %USERPROFILE%\.vscode\argv.json.
+#   For a portable VS Code, pass both as WSL paths on the target: ".../VSCode/bin/code.cmd" ".../VSCode/data/argv.json".
 set -euo pipefail
 
-code="${1:?usage: install-vscode-bridge.sh <code.cmd> <argv.json> [ssh alias]}"
-argv="${2:?usage: install-vscode-bridge.sh <code.cmd> <argv.json> [ssh alias]}"
-alias="${3:-}"
+target="${1:?usage: install-vscode-bridge.sh local|SSH_ALIAS [CODE_CMD ARGV_JSON]}"
+code="${2:-}"
+argv="${3:-}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-"$root/scripts/package-vscode-bridge.sh" "$root/.tmp/pi-browser-bridge.vsix" >/dev/null
+build="$(mktemp -d)"
+trap 'rm -rf "$build"' EXIT
+bash "$root/scripts/package-vscode-bridge.sh" "$build/pi-browser-bridge.vsix" >/dev/null
 
 # Run a bash script from stdin on the target machine's WSL; the remote login shell may be fish.
-on_target() { if [[ -z "$alias" ]]; then bash -s -- "$@"; else ssh -o BatchMode=yes "$alias" bash -s -- "$@"; fi; }
+on_target() { if [[ "$target" == local ]]; then bash -s -- "$@"; else ssh -o BatchMode=yes "$target" bash -s -- "$@"; fi; }
+
+if [[ -z "$code" || -z "$argv" ]]; then
+  read -r -d '' found < <(on_target <<'EOF'
+cd /mnt/c
+win() { wslpath "$(/mnt/c/Windows/System32/cmd.exe /c "echo %$1%" | tr -d '\r')"; }
+for code in "$(win LOCALAPPDATA)/Programs/Microsoft VS Code/bin/code.cmd" "/mnt/c/Program Files/Microsoft VS Code/bin/code.cmd"; do
+  [[ -f "$code" ]] && { printf '%s\n%s\n' "$code" "$(win USERPROFILE)/.vscode/argv.json"; exit; }
+done
+EOF
+  ) || true
+  code="$(sed -n 1p <<<"$found")"; argv="$(sed -n 2p <<<"$found")"
+  [[ -n "$code" ]] || { echo "No installed VS Code found on $target. For a portable one, pass its bin/code.cmd and data/argv.json." >&2; exit 1; }
+fi
+
 vsix="$(on_target <<'EOF'
 cd /mnt/c && wslpath "$(/mnt/c/Windows/System32/cmd.exe /c 'echo %TEMP%' | tr -d '\r')"
 EOF
 )/pi-browser-bridge.vsix"
-if [[ -z "$alias" ]]; then cp "$root/.tmp/pi-browser-bridge.vsix" "$vsix"; else scp -q "$root/.tmp/pi-browser-bridge.vsix" "$alias:$vsix"; fi
+if [[ "$target" == local ]]; then cp "$build/pi-browser-bridge.vsix" "$vsix"; else scp -q "$build/pi-browser-bridge.vsix" "$target:$vsix"; fi
 
 on_target "$code" "$vsix" "$argv" <<'EOF'
 set -euo pipefail

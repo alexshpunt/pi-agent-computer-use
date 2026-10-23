@@ -161,7 +161,11 @@ async function open({ browser, url, profile: kind, attach: target }: WebLaunchOp
   // Playwright's default flags trade browser security for test determinism; keep only what an owned pipe/profile needs.
   // Firefox is Playwright's own build, which needs Playwright's own flags.
   context = browser === "firefox"
-    ? await firefox.launchPersistentContext(directory, { headless: false, viewport: null })
+    ? await firefox.launchPersistentContext(directory, { headless: false, viewport: null }).catch((error: Error) => {
+      if (!/Executable doesn't exist/.test(error.message)) throw error;
+      throw new Error("Playwright's Firefox is not installed on this machine. Ask the user before installing it; with their permission run "
+        + "/computer-setup firefox (add the machine name for another machine), then open the browser again.");
+    })
     : await chromium.launchPersistentContext(directory, {
       channel: browser, headless: false, chromiumSandbox: true, viewport: null, ignoreDefaultArgs: true,
       args: ["--user-data-dir=" + directory, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",

@@ -44,7 +44,7 @@ Computer use owns one MCP child. It disables telemetry and update checks, requir
 
 - The Windows binaries are unsigned. Shipping a UIAccess helper does not grant UIAccess rights or bypass Windows trust policy.
 - WSL needs a working Windows interop endpoint.
-- The optional Windows Qt overlay and the classifier model environment are separate and not part of the runtime.
+- The optional Windows Qt overlay is separate and not part of the runtime.
 
 ## Overrides
 

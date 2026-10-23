@@ -23,7 +23,7 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
  * An isolated Windows agent session from Microsoft Execution Containers (MXC `isolation_session`): a fresh agent user
  * with its own session, desktop, clipboard and input on the same machine, removed again on close. Several can run at
  * once, unlike Windows Sandbox. A CUA driver runs inside; the host reaches it through a reverse relay because the
- * session can dial the host's loopback but not the other way round. Needs `wxc-exec.exe` from scripts/install-mxc.sh.
+ * session can dial the host's loopback but not the other way round. Needs `wxc-exec.exe` from /computer-setup mxc.
  */
 export class IsolatedSession {
   readonly ref = "is-" + randomUUID().slice(0, 8);
@@ -66,7 +66,7 @@ export class IsolatedSession {
     const local = (await this.ps("$env:LOCALAPPDATA", signal)).trim();
     this.wxc = `${local}\\PiComputerUse\\mxc\\wxc-exec.exe`;
     if ((await this.ps(`Test-Path -LiteralPath ${psString(this.wxc)}`, signal)).trim() !== "True")
-      throw new ComputerRequestError(`MXC is not installed on this machine (${this.wxc}). Run scripts/install-mxc.sh for it, then open the session again.`);
+      throw new ComputerRequestError(`MXC is not installed on this machine (${this.wxc}). Ask the user before installing it; with their permission run /computer-setup mxc (add the machine name for another machine), then open the session again.`);
     const windows = `${local}\\PiComputerUse\\sessions\\${this.ref}`;
     this.workdir = { windows, unix: await this.host.path(`${local}\\PiComputerUse\\sessions`, "unix").then(parent => `${parent}/${this.ref}`) };
     await this.host.mkdir(this.workdir.unix);

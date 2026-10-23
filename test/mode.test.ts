@@ -30,7 +30,7 @@ async function fixture(branch: unknown[] = []) {
 test("only a user command changes mode; the computer tool surface cannot promote it", async () => {
   const f = await fixture();
   expect(f.commands.has("computer-mode")).toBe(true);
-  expect([...f.tools.keys()]).toEqual(["computer_classify"]);
+  expect([...f.tools.keys()]).toEqual([]);
   expect(await f.close()).toMatchObject({ details: { mode: "yolo" } });
   await f.commands.get("computer-mode")!.handler("safe", f.ctx);
   expect(await f.close()).toMatchObject({ details: { mode: "safe" } });

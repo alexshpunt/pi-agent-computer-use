@@ -1333,7 +1333,9 @@ export class ComputerSession {
       const observed = this.entries.get(ref)?.observation;
       if (observed?.id !== id || !observed.captureId) throw new Error("This observation's native capture is no longer current. Read the window with regions again.");
       const native = await this.driver.call("parse_visual_regions", { capture_id: observed.captureId, options: { max_regions: 300 } }, signal);
-      if (native.isError) throw new Error(native.content.filter(c => c.type === "text").map(c => c.text).join(" ") || "parse_visual_regions failed");
+      if (native.isError) throw new Error((native.content.filter(c => c.type === "text").map(c => c.text).join(" ") || "parse_visual_regions failed")
+        + " The regions view needs the Cua perception extension on this machine; if it is missing, ask the user before installing it "
+        + "(about 420 MB) and with their permission run /computer-setup perception (add the machine name for another machine).");
       const parsed = native.structuredContent as { capture: { screenshot: { width: number } }; regions: {
         kind: "icon" | "text"; bounds: { x: number; y: number; width: number; height: number }; text?: string | null; label?: string | null; confidence: number }[] };
       const scale = (observed.width ?? parsed.capture.screenshot.width) / parsed.capture.screenshot.width;

@@ -1,4 +1,3 @@
-import { registerClassifierTool } from "./classifier-tool.ts";
 import { registerVisionDebug } from "./vision-debug.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -6,6 +5,7 @@ import { loadComputerConfig } from "./config.ts";
 import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "./reactive-animation.ts";
 import { McpDriver } from "./driver.ts";
 import { registerComputerMode } from "./mode.ts";
+import { registerSetupCommand } from "./setup-command.ts";
 import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
@@ -17,15 +17,15 @@ import { machineFactory, sandboxFactory } from "./machine.ts";
 
 /**
  * Register native computer resources with ordinary IDE tools when Pi Agent IDE accepts them, otherwise as
- * deferred computer_* tools, and retain the separate visual classifier.
+ * deferred computer_* tools.
  */
 export default async function computerUse(pi: ExtensionAPI): Promise<void> {
-  const closeClassifier = registerClassifierTool(pi);
   let overviewKernel: "lanczos3" | "bilinear" = "lanczos3";
   const images = new CuaImageSettings(() => overviewKernel);
   const debug = registerVisionDebug(pi, images);
   const highlights = new WindowHighlights();
   const getMode = registerComputerMode(pi, () => highlights.clear());
+  registerSetupCommand(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;
   async function getSession(cwd: string): Promise<ComputerSession> {
@@ -44,7 +44,6 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   const openSandbox = sandboxFactory({ settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
   const connectMachine = machineFactory({ getMode, settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
   const provider = await registerComputerProvider(pi, getSession, async () => {
-    await closeClassifier();
     const result: ComputerResult = session ? await session.close() : {
       content: [{ type: "text", text: "Not started." }],
       details: { status: "closed", mode: getMode() },
@@ -63,7 +62,6 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     registerStandaloneTools(pi, provider.resources, provider.guide);
   });
   pi.on("session_shutdown", async () => {
-    await closeClassifier();
     if (loading) await loading.catch(() => undefined);
     try { await session?.close(); } finally { await highlights.close(); }
     session = undefined;
