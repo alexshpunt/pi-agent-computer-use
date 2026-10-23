@@ -59,6 +59,6 @@ Never install on your own. Tell the user what is missing, what it adds, its size
 
 ## Access and cleanup
 
-Only the user changes Safe/YOLO with `/computer-mode`. Safe limits UI access to session-opened windows and forbids displays; YOLO permits authorized existing windows. Neither mode is OS isolation or permission for unrelated tasks. Current live support is Windows controlled from WSL, on this machine or on a configured machine over SSH.
+Only the user changes Safe/YOLO with `/computer-mode`. Safe limits UI access to session-opened windows and forbids displays; YOLO permits authorized existing windows. Neither mode is OS isolation or permission for unrelated tasks. Current live support is Windows, with Pi on it directly or in WSL, on this machine or on a configured machine over SSH.
 
 Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into a machine address to release that machine, or into `computer:session` to release everything this computer use started; the result lists each released part and its outcome. Closing ends the browsers the session opened, deletes their profiles, detaches from attached browsers and destroys sandboxes and sessions; it does not save or close unrelated documents. Discard stored references after close/reload. Preserve paused user tasks, personal windows and documents.

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { displayModes as nativeDisplayModes, type DisplayModes } from "./display-mode.ts";
-import { WINDOWS_POWERSHELL, runPowerShell, type CommandRunner } from "./runner.ts";
+import { powershellOf, runPowerShell, runnerFiles, type CommandRunner, type RunnerFiles } from "./runner.ts";
 /** The Chromium switch a WebView2 app gets for debugging; port 0 lets each app choose a free port. */
 export const WEBVIEW2_DEBUGGING = "--remote-debugging-port=0";
 /** Quote one argument for a Windows command line as CommandLineToArgvW and the C runtime read it back. */
@@ -23,18 +23,26 @@ export interface TextLine { text: string; x: number; y: number; width: number; h
 export class MachineHost {
   private folder?: Promise<{ windows: string; wsl: string }>;
   private readonly folderId = randomUUID();
+  private readonly fs: RunnerFiles;
 
-  constructor(private readonly runner: CommandRunner, readonly displayModes: DisplayModes = nativeDisplayModes(runner)) {}
-
-  private powershell(script: string, input?: string | Buffer, timeoutMs = 60_000): Promise<string> {
-    return runPowerShell(this.runner, WINDOWS_POWERSHELL, script, { ...(input !== undefined ? { input } : {}), timeoutMs });
+  constructor(private readonly runner: CommandRunner, readonly displayModes: DisplayModes = nativeDisplayModes(runner)) {
+    this.fs = runnerFiles(runner);
   }
 
-  /** This session's folder in the machine's Windows temp directory, created on first use. */
+  private powershell(script: string, input?: string | Buffer, timeoutMs = 60_000): Promise<string> {
+    return runPowerShell(this.runner, powershellOf(this.runner), script, { ...(input !== undefined ? { input } : {}), timeoutMs });
+  }
+
+  /** A file in the owned folder as the runner addresses it. */
+  private async inFolder(name: string): Promise<string> {
+    return this.fs.join((await this.files()).wsl, checkedName(name));
+  }
+
+  /** This session's folder in the machine's Windows temp directory, created on first use; `wsl` is the runner's own path. */
   files(): Promise<{ windows: string; wsl: string }> {
     this.folder ??= (async () => {
       const windows = await this.powershell(`$d = Join-Path ([IO.Path]::GetTempPath()) 'pi-computer-use\\${this.folderId}'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $d`);
-      const wsl = (await this.runner.run("wslpath", ["-u", windows])).trim();
+      const wsl = await this.fs.native(windows);
       return { windows, wsl };
     })();
     this.folder.catch(() => { this.folder = undefined; });
@@ -44,27 +52,23 @@ export class MachineHost {
   /** Write bytes as a file in the owned folder and return its Windows path. */
   async put(name: string, bytes: Buffer): Promise<string> {
     const folder = await this.files();
-    await this.runner.run("dd", ["status=none", `of=${folder.wsl}/${checkedName(name)}`], { input: bytes });
+    await this.fs.write(await this.inFolder(name), bytes);
     return `${folder.windows}\\${name}`;
   }
 
   /** Read a file from the owned folder. */
   async get(name: string): Promise<Buffer> {
-    const folder = await this.files();
-    return Buffer.from((await this.runner.run("base64", ["-w0", `${folder.wsl}/${checkedName(name)}`], { timeoutMs: 120_000 })).trim(), "base64");
+    return this.fs.read(await this.inFolder(name));
   }
 
   /** Rename a file inside the owned folder. */
   async rename(from: string, to: string): Promise<void> {
-    const folder = await this.files();
-    await this.runner.run("mv", ["-f", "--", `${folder.wsl}/${checkedName(from)}`, `${folder.wsl}/${checkedName(to)}`]);
+    await this.fs.rename(await this.inFolder(from), await this.inFolder(to));
   }
 
   /** Files in the owned folder with their sizes. */
   async list(): Promise<{ name: string; bytes: number }[]> {
-    const folder = await this.files();
-    const out = await this.runner.run("find", [folder.wsl, "-maxdepth", "1", "-type", "f", "-printf", "%f\\t%s\\n"]);
-    return out.split("\n").filter(Boolean).map(line => { const [name, bytes] = line.split("\t"); return { name, bytes: Number(bytes) }; });
+    return this.fs.list((await this.files()).wsl);
   }
 
   /** Remove the owned folder; called when the computer session closes. */
@@ -72,7 +76,7 @@ export class MachineHost {
     if (!this.folder) return;
     const folder = await this.folder.catch(() => undefined);
     this.folder = undefined;
-    if (folder) await this.runner.run("rm", ["-rf", "--", folder.wsl]);
+    if (folder) await this.fs.remove(folder.wsl);
   }
 
   /**
@@ -95,7 +99,7 @@ export class MachineHost {
     const script = await this.put("audio-loopback.ps1", await readFile(new URL("../scripts/audio-loopback.ps1", import.meta.url)));
     const folder = await this.files();
     try {
-      await this.runner.run(WINDOWS_POWERSHELL, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, String(seconds), `${folder.windows}\\${checkedName(name)}`],
+      await this.runner.run(powershellOf(this.runner), ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, String(seconds), `${folder.windows}\\${checkedName(name)}`],
         { timeoutMs: seconds * 1000 + 30_000 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -159,7 +163,7 @@ if ($proc) { @{ pid = [int]$p; name = $proc.ProcessName } | ConvertTo-Json -Comp
     const saved = await this.powershell(`Add-Type -AssemblyName System.Windows.Forms, System.Drawing; $i = [Windows.Forms.Clipboard]::GetImage(); if ($i) { $i.Save('${folder.windows.replace(/'/g, "''")}\\${name}', [Drawing.Imaging.ImageFormat]::Png); 'saved' }`, undefined, 20_000);
     if (saved !== "saved") return undefined;
     try { return await this.get(name); }
-    finally { await this.runner.run("rm", ["-f", "--", `${folder.wsl}/${name}`]).catch(() => undefined); }
+    finally { await this.fs.remove(await this.inFolder(name)).catch(() => undefined); }
   }
 
   /**
@@ -184,8 +188,7 @@ if ($proc) { @{ pid = [int]$p; name = $proc.ProcessName } | ConvertTo-Json -Comp
       const lines = out ? JSON.parse(out) as TextLine[] : [];
       return lines.map(line => ({ ...box(line), words: line.words.map(word => box(word) as TextLine["words"][number]) }));
     } finally {
-      const folder = await this.files();
-      await this.runner.run("rm", ["-f", "--", `${folder.wsl}/${name}`]).catch(() => undefined);
+      await this.fs.remove(await this.inFolder(name)).catch(() => undefined);
     }
   }
 }

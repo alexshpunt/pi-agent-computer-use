@@ -126,6 +126,7 @@ async function resolveTarget(cwd: string, machine: string | undefined, deps: Set
     return { label: `machine ${machine}`, runner: deps.ssh(config.ssh), powershell: WINDOWS_POWERSHELL, native: false, machine: config };
   }
   if (deps.platform === "win32") return { label: "this machine", runner: deps.local(), powershell: "powershell.exe", native: true };
+  // Pi in WSL: Windows reached through interop.
   if (deps.platform === "linux" && await deps.wsl())
     return { label: "this machine", runner: deps.local(settings.interop), powershell: WINDOWS_POWERSHELL, native: false, ...(settings.interop ? { interop: settings.interop } : {}) };
   throw new SetupError("Setup needs Pi on Windows or in WSL; nothing was installed.");

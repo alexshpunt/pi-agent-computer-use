@@ -5,7 +5,7 @@ import { connect, createServer, type AddressInfo } from "node:net";
 import path from "node:path";
 import type { ComputerConfig } from "./config.ts";
 import { ComputerRequestError } from "./computer-resources.ts";
-import { SSH_OPTIONS, WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
+import { SSH_OPTIONS, powershellOf, runnerFiles, type CommandRunner } from "./runner.ts";
 
 /** Host-side commands for the sandbox lifecycle; replaced by a fake in tests. */
 export interface SandboxHost {
@@ -85,19 +85,20 @@ export function sandboxConfig(runtime: string, config: string, out: string, shar
 export function runnerHost(runner: CommandRunner): SandboxHost {
   const run = async (file: string, args: string[], signal?: AbortSignal, timeoutMs = 60_000, input?: string) =>
     (await runner.run(file, args, { signal, timeoutMs, input })).replace(/\r/g, "");
+  const files = runnerFiles(runner);
   return {
     // Plain-text errors: an encoded command otherwise reports progress and errors as CLIXML on stderr.
-    powershell: (script, signal, timeout) => run(WINDOWS_POWERSHELL,
+    powershell: (script, signal, timeout) => run(powershellOf(runner),
       ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(
         // Continue: under Stop, Windows PowerShell turns redirected native stderr into exceptions. Scripts throw real failures.
         // Explicit exit 0: -Command otherwise exits 1 when the last command only set $? to false.
         `$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Continue'\ntry {\n${script}\nexit 0\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,
         "utf16le").toString("base64")], signal, timeout),
-    path: async (value, to) => (await run("wslpath", [to === "windows" ? "-w" : "-u", value])).trim(),
-    mkdir: async dir => { await run("mkdir", ["-p", dir]); },
-    writeFile: async (file, content) => { await run("dd", ["status=none", `of=${file}`], undefined, 60_000, content); },
-    readFile: file => run("cat", [file]).catch(() => ""),
-    remove: async dir => { await run("rm", ["-rf", dir]); },
+    path: (value, to) => to === "windows" ? files.windows(value) : files.native(value),
+    mkdir: dir => files.mkdir(dir),
+    writeFile: (file, content) => files.write(file, content),
+    readFile: file => files.read(file).then(bytes => bytes.toString("utf8").replace(/\r/g, ""), () => ""),
+    remove: dir => files.remove(dir),
     forward: async (port, signal) => runner.ssh ? tunnel(runner.ssh, port, signal) : { port, close: () => {} },
   };
 }

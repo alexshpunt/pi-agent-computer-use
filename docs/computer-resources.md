@@ -7,7 +7,7 @@ Computer use works with or without Pi Agent IDE. Each Pi session picks the mode 
 
 Both modes take the same addresses, views, JSON commands and Codemode values. In this guide, Read, Search, Write and Insert mean either tool family. Without IDE, Read `docs:computer` with `computer_read` for this guide. The `/computer-mode`, `/computer-debug` and `/computer-setup` commands remain user controls. An agent installs an optional part with Insert `{"action":"setup","part":"browser|firefox|perception|mxc|vscode-bridge"}` into a machine address, or prepares another machine with `{"action":"setup","part":"machine","ssh":"<alias>","name":"<name>"}` into `computer:machine/local`, only after the user explicitly allows it. Setup does not start that machine's driver.
 
-The current desktop scope is Windows controlled from WSL, on this machine or on another one over SSH. A different interface does not qualify a new runtime or platform. The production `windows-desktop` profile selects the same checked bytes as `windows-window-management`, so it qualifies wherever this guide names that profile or one it inherits. Safe permits session-opened windows and forbids display reads. YOLO permits task-authorized existing windows; it is not OS isolation.
+The current desktop scope is Windows, with Pi running on it directly or in its WSL, on this machine or on another one over SSH. A different interface does not qualify a new runtime or platform. The production `windows-desktop` profile selects the same checked bytes as `windows-window-management`, so it qualifies wherever this guide names that profile or one it inherits. Safe permits session-opened windows and forbids display reads. YOLO permits task-authorized existing windows; it is not OS isolation.
 
 ## Discover and read
 

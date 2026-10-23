@@ -1,4 +1,4 @@
-import { WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
+import { powershellOf, type CommandRunner } from "./runner.ts";
 
 /** A display resolution in physical pixels. */
 export interface DisplayMode { width: number; height: number }
@@ -70,7 +70,7 @@ if ($status -ne 0) { throw "Windows refused the mode change (code $status)." }
 /** Display modes changed through Windows PowerShell started by the runner. */
 export function displayModes(runner: CommandRunner): DisplayModes {
   const change = async (request: Record<string, unknown>, signal?: AbortSignal): Promise<DisplayModeChange> => {
-    const output = await runner.run(WINDOWS_POWERSHELL, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand",
+    const output = await runner.run(powershellOf(runner), ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand",
       Buffer.from(`$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'\ntry {\n${SCRIPT}\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`, "utf16le").toString("base64")],
       { input: JSON.stringify(request), signal, timeoutMs: 30_000 });
     return JSON.parse(output.trim()) as DisplayModeChange;
