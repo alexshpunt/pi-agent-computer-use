@@ -110,7 +110,7 @@ The marker check and Driver dispatch are separate native operations, not an atom
 
 Without Pi Agent IDE, or with an IDE whose plugin API version does not match, computer use registers deferred `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools and turns `tool_search` on. See [the resource guide](computer-resources.md).
 
-Normal sessions load the globally configured package. There is no tracked project extension loader: loading both the package and a wrapper registers the same tools twice. For development, follow [the worktree skill](../.pi/skills/develop-computer-use/SKILL.md) to temporarily disable the global extension, load this checkout, check dependencies, and restore normal loading.
+Normal sessions load the globally configured package. There is no tracked project extension loader: loading both the package and a wrapper registers the same tools twice. For development, point the package entry in your Pi settings at the checkout you are working on, install its dependencies, and point the entry back when you are done.
 
 ## Contract checks
 
