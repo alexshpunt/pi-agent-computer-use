@@ -12,4 +12,4 @@ This is straight window drag only. `via` paths, zoom, held-key pointer actions a
 
 Native delivery and application success are separate. Keep the native route/refusal and verify the intended application changed. This profile does not certify focus isolation, virtual desktops or concurrent-agent arbitration. Monitor membership and DPI remain unknown without native evidence.
 
-[Qualification results](window-monitor-actions-results.md) distinguish the old regression, exact candidate checks and live application evidence. Runtime selection is an owner decision; there is no automatic update or install.
+Runtime selection is an owner decision; there is no automatic update or install.

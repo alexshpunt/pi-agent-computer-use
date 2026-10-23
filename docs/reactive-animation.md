@@ -1,5 +1,7 @@
 # Reactive cursor animation
 
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
 Ordinary actions keep CUA's current cursor animation. A bounded reactive program can opt into a short glide for one `computer_act` call:
 
 ```js
@@ -29,7 +31,7 @@ The default is 1ms. The value must be an integer in 1..5000. Zero is rejected be
 
 This controls decorative cursor glide only. Native click press/release and post-click waits stay unchanged (35ms and 50ms on the inspected Windows Chromium path). A 1ms glide does **not** mean a 1ms click. Identity checks, native transport, profile switching, delivery and scheduling still take time.
 
-The same option works on a configured machine and in a sandbox; their drivers use the configuration of the workspace that connects to them. It matters: by default CUA waits for the visible cursor to arrive at each new point before clicking. On ZinPC that made a click on a new spot take 650–930 ms, against about 160 ms with the 1 ms glide (LPT-702).
+The same option works on a configured machine and in a sandbox; their drivers use the configuration of the workspace that connects to them. It matters: by default CUA waits for the visible cursor to arrive at each new point before clicking. On a 4K test machine that made a click on a new spot take 650–930 ms, against about 160 ms with the 1 ms glide (LPT-702).
 
 ## Receipts and failures
 

@@ -1,5 +1,7 @@
 # Complete window input
 
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
 Use the existing `computer_act` with a current window overview. CUA remains the only input backend. A display capture or detail cannot ground input.
 
 For an explicit per-action short cursor glide, use `animation:"reactive"`. Ordinary animation is restored afterward; native click pauses do not change. See [reactive animation and local configuration](reactive-animation.md).
@@ -76,7 +78,7 @@ try {
 
 A partial path returns `unknown`, preserving native `delivery.delivered_count` and the press/release summary. These count point moves, not completed batch steps. Later steps stop. Never replay the whole stroke or its uncertain remainder. Check the app's actual pixels before choosing another action.
 
-See [trusted runtime selection](standalone-poc.md#continuous-path-candidate).
+See [trusted runtime selection](standalone-poc.md#qualified-continuous-paths).
 
 ## Bounded key holds
 

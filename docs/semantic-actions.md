@@ -1,5 +1,7 @@
 # Strict semantic window actions
 
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
 `computer_act` accepts explicit `invoke`, `select` and `set_value` intents with a current hint or element token. They need the separately qualified Windows semantic runtime. Older runtimes refuse before dispatch. Ordinary `click` keeps its existing native action ladder.
 
 - `invoke` calls the control's UIA Invoke pattern.
@@ -24,4 +26,4 @@ The native tool admits one exact snapshot target and one UIA pattern. It has no 
 
 Limits from the same checks: many apps expose only their frame through UIA while on another desktop (Notepad, WinForms), so their content cannot be acted on there; Edge reports its page elements under another process, which the driver refuses before any call (`semantic_element_process_changed`). Browser pages belong to Playwright anyway. A passing app is not a guarantee for every UIA provider; read back the application state.
 
-Use `node scripts/check-semantic-artifact.mjs <artifact-directory> <exact-source-commit>` to check exact executable hashes and the advertised strict API without launching apps or sending input. It does not qualify app behavior. See [qualification results](semantic-actions-results.md).
+Use `node scripts/check-semantic-artifact.mjs <artifact-directory> <exact-source-commit>` to check exact executable hashes and the advertised strict API without launching apps or sending input. It does not qualify app behavior.

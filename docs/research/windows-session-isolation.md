@@ -1,14 +1,14 @@
 # Windows session isolation for agents (LPT-848)
 
-Can computer use run in a separate Windows session for the agent? The aim is an agent with its own account, desktop, clipboard and input that never touches the human's session, without a Windows Sandbox. Checked live on ZinPC on 2026-10-20.
+Can computer use run in a separate Windows session for the agent? The aim is an agent with its own account, desktop, clipboard and input that never touches the human's session, without a Windows Sandbox. Checked live on a Windows 11 test machine on 2026-10-20.
 
 ## What exists
 
 - **Agent Workspace and Microsoft Execution Containers (MXC).** Windows' agent isolation is published as [MXC](https://github.com/microsoft/mxc), MIT, SDK v1.0.1 at the time of this check. Its `isolation_session` backend asks Windows to provision a fresh agent user account with its own session, runs a process there, and removes both afterwards.
-- **Supported builds.** Per the [OS-version table](https://github.com/microsoft/mxc/blob/main/docs/backends/process-container/os-version-support.md), session isolation needs Windows 11 25H2 26200.9550 or later, 24H2 26100.9550, or 26H2 26300.9550. ZinPC and ZinLaptop run 25H2 26200.9711 Professional with VBS on, so both qualify. Nothing had to be enabled.
+- **Supported builds.** Per the [OS-version table](https://github.com/microsoft/mxc/blob/main/docs/backends/process-container/os-version-support.md), session isolation needs Windows 11 25H2 26200.9550 or later, 24H2 26100.9550, or 26H2 26300.9550. The two test machines run 25H2 26200.9711 Professional with VBS on, so both qualify. Nothing had to be enabled.
 - **Ways to call it.** The `wxc-exec.exe` CLI with a JSON request, a one-shot SDK call, or the lifecycle API (provision, start, exec, stop, deprovision) for several commands in one session. Network access cannot be restricted, so requests must state unrestricted egress and ingress. MXC says no profile is a security boundary yet.
 
-## Live results on ZinPC
+## Live results
 
 All steps used `wxc-exec.exe --experimental` from MXC v1.0.1 and ran as the normal, non-elevated user.
 

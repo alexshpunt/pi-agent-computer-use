@@ -48,7 +48,7 @@ Install the runtime files in `%LOCALAPPDATA%/Programs/PiComputerUsePoC/window-ov
 
 ## Verification
 
-The [region/action results](region-highlight-results.md) cover protocol 2, native capture/focus checks, human confirmation and the window-movement/resize correction. Read-only detail keeps its original local region and scale, clips smaller bounds and positions a new mark against current bounds. Hiding an old drawing after geometry changes does not invalidate the window or its next detail read.
+Read-only detail keeps its original local region and scale, clips smaller bounds and positions a new mark against current bounds. Hiding an old drawing after geometry changes does not invalidate the window or its next detail read.
 
 Unit contracts cover lazy startup, generations, cancellation, mode restoration, ownership, failure isolation and confirmed/unknown cleanup. The real-Pi browser contract checks unchanged PNG/JPEG delivery and frame acknowledgements without exposing private lifetime markers. Pipe tests verify EOF and malformed replies without request replay.
 

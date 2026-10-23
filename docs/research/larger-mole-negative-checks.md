@@ -37,13 +37,13 @@ SigLIP2 selected the absence description for every tile with both the visible an
 
 TinyCLIP-39M's with/without pair passed the saved grass set but produced seven synthetic false positives: soil patch, empty dark hole, log, stump, orange ball, stone and flower. The containing pair called the soil patch, hole, log, stump and ball moles. The visible pair called the soil patch, hole, stump and ball moles and missed tiny mole control 2. The shows pair missed both tiny controls.
 
-SigLIP2's with/without and shows pairs each missed tiny mole control 1. Complete confusion counts and failed frames are preserved in the [TinyCLIP-39M summaries](../evidence/mole-classifier/negatives/tinyclip-39m/) and [SigLIP2 summaries](../evidence/mole-classifier/negatives/siglip2-base/).
+SigLIP2's with/without and shows pairs each missed tiny mole control 1.
 
 ## Artifacts and verification
 
-We reused the downloaded, pinned checkpoints and the same isolated Transformers environment on the local RTX 3060 Laptop GPU. Exact source revisions and weight hashes are in [provenance.json](../evidence/mole-classifier/alternatives/provenance.json); licensing and earlier timing are in the [comparison](permissive-mole-classifiers.md). No new dependency or production tool change was needed.
+We reused the downloaded, pinned checkpoints and the same isolated Transformers environment on the local RTX 3060 Laptop GPU. Licensing and earlier timing are in the [comparison](permissive-mole-classifiers.md). No new dependency or production tool change was needed.
 
-The twenty runs completed serially. Each frame used three warm-ups and one timed repetition. These timings are not a new latency comparison: machine load and power state were not controlled. All 7,680 cosine values were finite, and every prediction matched the fixed comparison rule. Both saved-frame baselines preserved their earlier perfect counts. See [larger-checks.json](../evidence/mole-classifier/negatives/larger-checks.json).
+The twenty runs completed serially. Each frame used three warm-ups and one timed repetition. These timings are not a new latency comparison: machine load and power state were not controlled. All 7,680 cosine values were finite, and every prediction matched the fixed comparison rule. Both saved-frame baselines preserved their earlier perfect counts.
 
 To repeat, follow the [negative experiment commands](mole-classifier-negatives.md#repeat), replace `TinyCLIP-8M` with `TinyCLIP-39M` or `SigLIP2-Base`, and use that model's exact snapshot path from the earlier comparison. Keep the same five pairs and separate output directories. Raw scores and private images remain in ignored `.tmp/mole-classifier`, retained at the user's request.
 

@@ -31,4 +31,4 @@ The original LPT-617 foundation used Windows fork `3b3305044b7b327310615aa99d330
 
 CUA's validated action result publishes route, effect and actual delivery. Background refusal publishes a code and optional foreground escalation. The adapter projects these fields without predicting capabilities from app names or UIA pattern labels.
 
-This foundation does not add other-monitor capture, virtual-desktop management or concurrent input arbitration. Those remain separate parts of LPT-615. See [verification results](source-capabilities-results.md).
+This foundation does not add other-monitor capture, virtual-desktop management or concurrent input arbitration. Those remain separate parts of LPT-615.

@@ -1,6 +1,6 @@
 # Native UI resources and hints
 
-Verified Windows scope and provider limits: [results](ui-resource-results.md).
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
 
 Use the same `computer_*` tools for browsers and other Windows apps. A window overview returns `ui`, a bounded projection of CUA's native accessibility snapshot, and one PNG with short labels when placement is possible. This is not a DOM tree or a promise that every visible control has an accessibility node.
 
