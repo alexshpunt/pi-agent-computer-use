@@ -116,7 +116,7 @@ Each session has its own folder on the controlled machine for files an app opens
 
 ## Platforms
 
-Computer use is tested on Windows 11 x64, controlled from Pi running in WSL on the same machine or on another one over SSH. Linux and macOS aren't supported: window control there isn't verified, so no runtime ships for them and computer use says so when it starts. Some features need more: Windows Sandbox needs a Windows edition that has it, and isolated sessions need Windows 11 24H2 or newer.
+Computer use is tested on Windows 11 x64, controlled from Pi running in WSL on the same machine or on another one over SSH. Linux and macOS aren't supported: window control there isn't verified, so no runtime ships for them and computer use refuses with a clear message. Some features need more: Windows Sandbox needs a Windows edition that has it, and isolated sessions need Windows 11 24H2 or newer.
 
 This is experimental and changes often, so interfaces and behavior may still move around.
 
