@@ -33,7 +33,6 @@ text(found.ui);
 - `inspect`: one exact element, no image or input.
 - `highlight`: one exact element marked on the existing overview. Badge placement still respects other collected controls.
 - `crop`: fresh native padded JPEG detail from the element's proven screenshot bounds. This consumes the overview's input authority. Observe again before acting.
-- `region`: mark a chosen `{x,y,width,height}` rectangle on this overview without a native read or consuming input. It must fit the image. See [optional coordinate guides](image-guides.md).
 
 Only search/scope accept filters and limits. Local operations keep original aliases and observation identity. Lifetime and permissions are still checked. The adapter keeps at most three recent overview PNGs for local annotation; eviction leaves structured inspection available but scope/highlight ask for a new overview. Detail never uses these saved pixels.
 
