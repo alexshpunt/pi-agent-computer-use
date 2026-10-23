@@ -54,7 +54,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     catch { return { content: [{ type: "text", text: "Qt frame shutdown is unconfirmed." }],
       details: { status: "unknown", mode: getMode() }, isError: true }; }
     return result;
-  }, openSandbox, connectMachine);
+  }, openSandbox, connectMachine, getMode);
   // Every extension has loaded by session_start, so an IDE that accepts the provider has done so by now.
   let standalone = false;
   pi.on("session_start", () => {

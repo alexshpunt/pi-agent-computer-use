@@ -133,7 +133,7 @@ export interface ComputerResult {
 /** One icon or text area detected in an observation's pixels; the box is in its overview pixels. */
 export interface VisualRegion { kind: "icon" | "text"; x: number; y: number; width: number; height: number; text?: string; label?: string; confidence: number }
 
-interface Observation { texts?: Map<string, string>; id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; region?: ScreenRect; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"];
+interface Observation { texts?: Map<string, string>; id: string; tokens: Set<string>; width?: number; height?: number; captureId?: string; bounds?: ScreenRect; frames: Map<string, ScreenRect>; ui?: UiResource; rawImage?: Content; source?: ObservationSource; settings: CuaVisionSettings; actionMark?: GuideMark; mapping?: DetailContext["windowMapping"];
   /** Kept after pixel-only input: coordinates stay valid until a freshness check finds a changed size or state; UI tokens and the native capture are spent. */
   pixelsOnly?: boolean }
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
@@ -1452,7 +1452,7 @@ export class ComputerSession {
     const observed = entry.observation;
     if (!observed || observed.id !== request.observation_id) return this.result("refused", "Retired UI observation. Observe again.");
     if (!observed.ui) return this.result("refused", "Image-only observation has no UI resource. Request a UI or full observation.");
-    if (!observed.width && ["highlight", "scope", "crop", "region"].includes(request.operation))
+    if (!observed.width && ["highlight", "scope", "crop"].includes(request.operation))
       return this.result("refused", "This local image operation needs a full observation; UI-only captured no pixels.");
     let ui: UiResource;
     try { ui = projectUi(observed.ui, request); }
@@ -1467,17 +1467,11 @@ export class ComputerSession {
       if (clipped.width <= 0 || clipped.height <= 0) return this.result("refused", "Element is outside the observed image.");
       return this.windowDetail(entry, { image_id: observed.id, ...clipped }, signal);
     }
-    if (request.operation === "region") {
-      const r = request.region!;
-      if (!observed.width || !observed.height || r.x + r.width > observed.width || r.y + r.height > observed.height)
-        return this.result("refused", "Region must fit within the current overview image.");
-      observed.region = { ...r };
-    }
-    if (["highlight", "scope", "region"].includes(request.operation)) {
+    if (["highlight", "scope"].includes(request.operation)) {
       if (!observed.rawImage) return this.result("refused", "Snapshot image was evicted. Read a new overview; its hints will change.");
       const rendered = await annotateUi(observed.rawImage, ui, observed.width, observed.height,
         observed.settings.hints ?? true, request.operation === "highlight" ? request.hint : undefined, observed.ui.elements,
-        { options: observed.settings.guides, region: observed.region, action: observed.actionMark });
+        { options: observed.settings.guides, action: observed.actionMark });
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "UI inspection revoked or cancelled; pixels withheld.");
       if (rendered.image !== observed.rawImage) this.retainRaw?.(observed.rawImage);
       const metadata = this.imageMetadata([rendered.image], { screenshot_width: observed.width, screenshot_height: observed.height }, observed.settings);
