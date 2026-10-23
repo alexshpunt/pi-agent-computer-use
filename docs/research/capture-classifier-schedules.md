@@ -32,4 +32,4 @@ Other measurements:
 - **Always use `animation:"reactive"` for reaction loops.** The glide, not capture or classification, was the largest delay.
 - **No new capability is needed.** Classification throughput is not the limit: newest-only skipped about a third of its frames without losing hits. No burst or parallel capture API is proposed.
 
-The skill `reactive-visual-classifier` carries these rules.
+The computer-use skill carries these rules.

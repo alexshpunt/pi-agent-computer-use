@@ -53,8 +53,7 @@
       "./src/index.ts"
     ],
     "skills": [
-      "./.pi/skills/computer-use",
-      "./.pi/skills/reactive-visual-classifier"
+      "./.pi/skills/computer-use"
     ],
     "image": "https://raw.githubusercontent.com/alexshpunt/pi-agent-computer-use/develop/assets/banner.png"
   },
@@ -99,7 +98,6 @@
     "native-runtime/",
     "vscode-browser-bridge/",
     ".pi/skills/computer-use/",
-    ".pi/skills/reactive-visual-classifier/",
     "docs/",
     "assets/banner.png",
     "LICENSE",
