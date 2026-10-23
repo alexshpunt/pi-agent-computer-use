@@ -26,7 +26,7 @@ Overviews have a 1280 px long edge by default; smaller windows are not enlarged.
 
 Insert into a machine address with `text` containing `{"action":"open","app":"Exact installed name"}` to open a genuinely new window. An app_id or a Win32 executable name such as `notepad` also works; a miss suggests close installed names. Alternatively, Insert `{"action":"open"}` into an app address returned by Search. In YOLO, `{"action":"open","path":"C:\\Tools\\app.exe","args":["--flag"]}` starts an executable by its absolute Windows path with up to 32 arguments and binds its new window; Safe refuses it because it runs arbitrary programs. Never replay an unknown launch.
 
-Apps with their own scripting (Blender, for example) can build content while computer use checks the result: `put` the script into the session folder, open the app with the script's returned path in `args` (`--factory-startup --python <path>` for Blender), then Read the window with `ocr` and `state`. See [app scripting](research/app-scripting.md).
+Apps with their own scripting (Blender, for example) can build content while computer use checks the result: `put` the script into the session folder, open the app with the script's returned path in `args` (`--factory-startup --python <path>` for Blender), then Read the window with `ocr` and `state`.
 
 Read a returned `computer:window/...` for its native accessibility structure and small overview PNG. Read `computer:display/primary`, or a returned display address, for readonly display pixels; add `capture:{"maxLongEdge":320}` for another size. Successful overviews issue `computer:observation/...` addresses. References are session-local and disappear on close/reload.
 
@@ -191,7 +191,7 @@ Limits:
 - The session's desktop is 640×480, without a desktop compositor and with the classic window style.
 - The app list is the agent user's own. Some apps are missing by name, such as Notepad; start them by path, for example `{"action":"open","path":"C:\\Windows\\System32\\notepad.exe"}`.
 - No files are shared with the session yet.
-- The machine needs Windows 11 24H2 or 25H2 build 9550 or later, and MXC's `wxc-exec.exe` in the Windows user's `%LOCALAPPDATA%\PiComputerUse\mxc`. Install it with `scripts/install-mxc.sh local` or `scripts/install-mxc.sh <ssh alias>`. Without them, `open_session` refuses with the reason. See [the research note](research/windows-session-isolation.md).
+- The machine needs Windows 11 24H2 or 25H2 build 9550 or later, and MXC's `wxc-exec.exe` in the Windows user's `%LOCALAPPDATA%\PiComputerUse\mxc`. Install it with `scripts/install-mxc.sh local` or `scripts/install-mxc.sh <ssh alias>`. Without them, `open_session` refuses with the reason.
 
 ## Work on another machine
 
@@ -288,7 +288,7 @@ For an app with a menu bar, Insert `{"action":"menu","path":["File","Save As..."
 
 To end an app this session opened that does not close normally (for example a hung one), Insert `{"action":"kill"}` into its window address. It force-closes the process and loses unsaved work, and refuses for windows the session did not open or for a process that also shows other windows.
 
-Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabilities retain their runtime gates and native limits. A sequence contains up to 2000 known keyboard, click and stroke steps, up to 15 minutes of requested work and a 30-minute elapsed budget; a long drawing program fits into one call. Cancelling a sequence lets the current step finish and release its keys and buttons, then stops; the receipt reports the completed prefix. No cross-call held buttons/keys exist. See [complete input](complete-input.md), [strict semantics](semantic-actions.md) and [native pointer limits](research/native-hover-capabilities.md) for backend contracts; their older standalone tool examples are historical.
+Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabilities retain their runtime gates and native limits. A sequence contains up to 2000 known keyboard, click and stroke steps, up to 15 minutes of requested work and a 30-minute elapsed budget; a long drawing program fits into one call. Cancelling a sequence lets the current step finish and release its keys and buttons, then stops; the receipt reports the completed prefix. No cross-call held buttons/keys exist. See [complete input](complete-input.md) and [strict semantics](semantic-actions.md) for backend contracts.
 
 When Windows refuses to activate the target (`foreground_unavailable`), the result names the process that holds the foreground. If that is a system service, for example after a UAC prompt, Windows also blocks all injected input on that desktop until a person clicks or presses a key there; ask the user, then Read again.
 

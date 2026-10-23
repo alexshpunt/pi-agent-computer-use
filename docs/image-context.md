@@ -10,7 +10,7 @@ Vision debug keeps three recent application-boundary cards and bounded action/re
 
 ## Verification
 
-Synthetic real-Pi, serializer and SDK checks confirm that tool, Codemode and user images stay in context across batches, reload and manual compaction, and that normal compaction reduces request context while the original image entries stay in session history. These checks use synthetic images and local provider peers. They prove retention/serialization, not remote billing, cache-hit rate, provider vision quality or universal provider compatibility. Keeping a stable prefix can help caching; it does not guarantee a cache hit. See [the cache boundary](research/pi-cache-controls.md).
+Synthetic real-Pi, serializer and SDK checks confirm that tool, Codemode and user images stay in context across batches, reload and manual compaction, and that normal compaction reduces request context while the original image entries stay in session history. These checks use synthetic images and local provider peers. They prove retention/serialization, not remote billing, cache-hit rate, provider vision quality or universal provider compatibility. Keeping a stable prefix can help caching; it does not guarantee a cache hit.
 
 ## Reproduce
 
