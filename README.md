@@ -10,7 +10,7 @@
 
 [![npm version](https://img.shields.io/npm/v/pi-agent-computer-use)](https://www.npmjs.com/package/pi-agent-computer-use)
 [![npm downloads](https://img.shields.io/npm/dm/pi-agent-computer-use)](https://www.npmjs.com/package/pi-agent-computer-use)
-[![CI status](https://github.com/alexshpunt/pi-agent-computer-use/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/alexshpunt/pi-agent-computer-use/actions/workflows/ci.yml)
+[![CI status](https://github.com/alexshpunt/pi-agent-computer-use/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/alexshpunt/pi-agent-computer-use/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/npm/l/pi-agent-computer-use)](./LICENSE)
 
 </div>

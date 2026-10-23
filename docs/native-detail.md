@@ -1,42 +1,14 @@
 # Window zoom and display detail
 
-> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
 CUA 0.33.2 is the qualified Windows runtime for window, display and browser tools. It remains unmodified. Native window zoom is reused directly; the driver still has no display-region capture, so our adapter crops a fresh full-resolution display PNG.
 
-Use existing `computer_observe` and Pi Codemode. No new executor or top-level tool is added.
-
 ## Select from an overview
 
-First read one source:
+Read one source first: a window or a display. Then select a rectangle from that returned PNG, not from remembered pixels or CSS coordinates, and read it as detail from that overview's observation. Use the current image's actual bounds. Results report refusals through their status; check it before continuing.
 
-```js
-const overview = await tools.computer_observe({display:"primary"});
-text(overview.source);
-text(overview.agent_image.image_id);
-image(overview.image);
-```
-
-Then select a rectangle from that returned PNG, not from remembered pixels or CSS coordinates:
-
-```js
-const detail = await tools.computer_observe({
-  display:"primary",
-  zoom:{image_id:overview.agent_image.image_id,
-        x:100,y:80,width:100,height:80,maxLongEdge:1200,scale:1}
-});
-if (detail.status !== "observed") {
-  text(detail.text);
-} else {
-  text(detail.source);
-  text(detail.agent_image);
-  image(detail.image);
-}
-```
-
-The example coordinates are illustrative: use the current image's actual bounds. A separate Codemode call can retain the overview ID with `store`/`load`. Structured observation results report refusals through `status`; check it before continuing.
-
-For a desktop window, substitute `window_ref` for `display` and omit `maxLongEdge`/`scale`. Use the image ID from that window's latest overview. Window zoom is CUA's fresh JPEG with native padding and a 500px width limit; height can exceed 500. There is no automatic foregrounding or display fallback. Browser zoom and its input contract are unchanged.
+A window detail uses that window's latest overview. Window zoom is CUA's fresh JPEG with native padding and a 500px width limit; height can exceed 500. There is no automatic foregrounding or display fallback. Browser zoom and its input contract are unchanged.
 
 ## Fresh pixels, not a saved crop
 
@@ -50,7 +22,7 @@ Only geometry metadata is retained between calls. A new overview replaces its so
 
 ## Read-only boundary
 
-These new window/display details grant **no input**. A window detail disarms its earlier input observation; take a new overview before `computer_act`. Display details have no window reference or action observation ID.
+These new window/display details grant **no input**. A window detail disarms its earlier input observation; take a new overview before input. Display details have no window reference or input observation.
 
 Safe denies display overview and detail. Permissions, cancellation and window lifetime are checked around awaited native work; display permission/cancellation is checked again after crop processing. Revoked pixels and private intermediate diagnostics are withheld. Only the user changes Safe/YOLO.
 

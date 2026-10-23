@@ -1,45 +1,23 @@
 # Temporal capture
 
-> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-`computer_sequence` captures one authorized Windows window or the primary display. Browser windows use the same native path. It does not encode video, raise a window, walk its accessibility tree or grant input authority.
+A `sequence` Read captures one authorized Windows window or the primary display. Browser windows use the same native path. It does not encode video, raise a window, walk its accessibility tree or grant input authority.
 
-## Capture and select in Codemode
+## Capture, then select
 
-```js
-const captured = await tools.computer_sequence({
-  window_ref: load("task_window"),
-  capture: { duration_ms: 3000, fps: 4, scale: 0.5 }
-});
-text(captured.sequence); // Metadata only. Capture sends no image.
-if (captured.status !== "observed") throw Error(captured.text);
-store("task_sequence", captured.sequence.sequence_id);
-store("task_observation", null); store("task_image", null);
-```
+Capture returns metadata only and sends no image. Capture and selection are separate decisions: read the timestamps, count and stop reason before choosing frames from the returned sequence.
 
-Capture and selection are separate decisions. Read the timestamps, count and stop reason before choosing frames.
-
-```js
-const selected = await tools.computer_sequence({
-  sequence_id: load("task_sequence"), selection: "endpoints"
-});
-if (selected.status !== "observed") throw Error(selected.text);
-for (const frame of selected.frames) {
-  text({ index: frame.index, time_ms: frame.timestamp_ms, source: frame.source });
-  image(frame.image);
-}
-```
-
-Use `display:"primary"` instead of `window_ref` for a read-only display sequence in YOLO. Safe denies display and unowned window captures. Stored frame selection checks current access and the window's lifetime again. Revocation withholds metadata and pixels. A closed or recreated window cannot return its retained frames.
+Capture the primary display instead of a window for a read-only display sequence in YOLO. Safe denies display and unowned window captures. Stored frame selection checks current access and the window's lifetime again. Revocation withholds metadata and pixels. A closed or recreated window cannot return its retained frames.
 
 ## Bounds and settings
 
-| Field in `capture` | Bounds / default |
+| Field | Bounds / default |
 | --- | --- |
-| `duration_ms` | Required, 1..10000 |
-| `fps` | 1..10, default 4; a goal, not guaranteed throughput |
-| `max_frames` | 1..40, default 40 |
-| `timeout_ms` | At least duration, at most 30000; default 15000 |
+| `duration_ms` | Required, 1..60000 |
+| `fps` | 1..30, default 4; a goal, not guaranteed throughput |
+| `max_frames` | 1..300, default 40; one selection returns at most 40 |
+| `timeout_ms` | At least duration, at most 90000; default 15000 |
 | `maxLongEdge` | 64..4096; defaults to current native image setting |
 | `scale` | 0.05..1; defaults to current native image setting |
 | `region` | Optional integer `{x,y,width,height}` in the first uncropped returned-image pixels |

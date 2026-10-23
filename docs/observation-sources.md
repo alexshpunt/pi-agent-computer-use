@@ -1,18 +1,12 @@
 # Observation sources
 
-> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
 Window and display Reads share one source contract. Native CUA remains the only capture backend.
 
-```js
-const view = await tools.computer_observe({ display: "primary" });
-text(view.source);
-image(view.image);
-```
+Read exactly one source: a window or a display. A UI query is window-only. A display read is allowed in YOLO and refused in Safe before capture. If Safe is selected or the request is cancelled while native work is pending, its pixels are withheld. Only the user selects mode with `/computer-mode`; no observation argument promotes access.
 
-Choose exactly one `display` or `window_ref`. `query` is window-only. A display read is allowed in YOLO and refused in Safe before capture. If Safe is selected or the request is cancelled while native work is pending, its pixels are withheld. Only the user selects mode with `/computer-mode`; no observation argument promotes access.
-
-A display image is read-only. It has no window reference or action observation ID, so it cannot ground `computer_act`. This task does not expose desktop-wide input. [Selected-display reads](selected-displays.md) require a separately qualified Windows runtime and a returned native display reference; they never fall back to primary. [Read-only window zoom and fresh display detail](native-detail.md) use a rectangle and image ID from the latest overview. Failed window capture never falls back to the desktop.
+A display image is read-only. It has no window reference or input observation, so it cannot ground input. This task does not expose desktop-wide input. [Selected-display reads](selected-displays.md) require a separately qualified Windows runtime and a returned native display reference; they never fall back to primary. [Read-only window zoom and fresh display detail](native-detail.md) use a rectangle and image ID from the latest overview. Failed window capture never falls back to the desktop.
 
 ## Common metadata
 

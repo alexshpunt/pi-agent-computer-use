@@ -1,22 +1,14 @@
 # Strict semantic window actions
 
-> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-`computer_act` accepts explicit `invoke`, `select` and `set_value` intents with a current hint or element token. They need the separately qualified Windows semantic runtime. Older runtimes refuse before dispatch. Ordinary `click` keeps its existing native action ladder.
+An Insert action accepts explicit `invoke`, `select` and `set_value` intents with a current hint or element token. They need the separately qualified Windows semantic runtime. Older runtimes refuse before dispatch. Ordinary `click` keeps its existing native action ladder.
 
 - `invoke` calls the control's UIA Invoke pattern.
 - `select` calls UIA SelectionItem.Select, not Ctrl+A or a pointer click.
 - `set_value` takes `text` (up to 2000 characters) and calls Value.SetValue, or RangeValue.SetValue when Value is unavailable before the call. An empty string is allowed for a text value.
 
 These actions accept no pixels, modifiers, foreground delivery or cursor animation. They are single actions, not sequence steps. UI-only observations are enough; pixel visibility is not a semantic prerequisite. A disabled control still refuses. Safe access, current observation, exact window lifetime and cancellation checks remain in force.
-
-```js
-// Save the window and chosen current hint from a real observation first.
-try {
-  text(await tools.computer_act({window_ref:load("window"),observation_id:load("observation"),
-    action:"invoke",hint:load("control")}));
-} finally {store("observation",null);store("control",null);}
-```
 
 The native tool admits one exact snapshot target and one UIA pattern. It has no mouse/key dispatch or foreground retry. Missing patterns, disabled/read-only controls and invalid range values refuse before the application call. Provider failure after a call starts is unknown; never repeat it blindly. Dispatch consumes the overview even on failure.
 

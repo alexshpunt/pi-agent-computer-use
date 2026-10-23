@@ -125,4 +125,4 @@ The real-Pi MCP fixture substitutes Windows lifetime identity only; real registr
 
 For a read-only native schema probe, set `CUA_DRIVER_PATH` and working inherited `WSL_INTEROP`, then run `npm run probe:driver`. It writes `.tmp/driver-tools.json` without capturing UI or sending input.
 
-[The resource guide](computer-resources.md) describes the current tools. Earlier releases exposed a separate `computer_observe`/`computer_act` tool set; it has been removed.
+[The resource guide](computer-resources.md) describes the current tools.
