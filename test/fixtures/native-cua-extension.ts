@@ -2,7 +2,7 @@ import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-c
 import computerUse from "../../src/index.ts";
 
 /** Real-model qualification uses the production entry and native runtime unchanged. */
-export default function nativeCua(pi: ExtensionAPI): void {
+export default async function nativeCua(pi: ExtensionAPI): Promise<void> {
   createCodemodeExtension({ mode: "on" })(pi);
-  computerUse(pi);
+  await computerUse(pi);
 }
