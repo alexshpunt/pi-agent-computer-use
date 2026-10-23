@@ -15,6 +15,7 @@ import { diffDom, diffUi } from "./successor.ts";
 import type { UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
+import { SETUP_PARTS, SetupError, runSetup, type SetupPart } from "./setup.ts";
 
 /** The machine this extension runs on, by its address name. */
 export const LOCAL_MACHINE = "local";
@@ -181,6 +182,30 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
   } catch (error) {
     if (error instanceof ComputerRequestError) throw error;
     throw new ComputerRequestError(`File ${command.action} failed: ${error instanceof Error ? error.message : error}`);
+  }
+}
+/** Install an optional part on a machine, or prepare another one from this machine; the user must have allowed it. */
+async function setupCommand(command: Record<string, unknown>, machine: string | undefined, cwd: string, mode: ComputerMode, signal?: AbortSignal): Promise<ComputerResult> {
+  only(command, ["action", "part", "ssh", "name", "code", "argv"]);
+  const part = command.part;
+  if (typeof part !== "string" || !SETUP_PARTS.some(item => item.name === part))
+    throw new ComputerRequestError(`setup needs part: one of ${SETUP_PARTS.map(item => item.name).join(", ")}. Install only after the user explicitly allowed that part on that machine.`);
+  const strings: Record<string, string> = {};
+  for (const key of ["ssh", "name", "code", "argv"]) {
+    if (command[key] === undefined) continue;
+    if (typeof command[key] !== "string" || !command[key]) throw new ComputerRequestError(`setup ${key} must be a non-empty string.`);
+    strings[key] = command[key] as string;
+  }
+  if (part === "machine" && machine) throw new ComputerRequestError("Prepare another machine from computer:machine/local.");
+  if (part !== "machine" && (strings.ssh || strings.name)) throw new ComputerRequestError("ssh and name belong to setup part machine.");
+  if (part !== "vscode-bridge" && (strings.code || strings.argv)) throw new ComputerRequestError("code and argv belong to setup part vscode-bridge.");
+  try {
+    const text = await runSetup({ part: part as SetupPart, ...(machine ? { machine } : {}), ...strings }, cwd, { ...(signal ? { signal } : {}) });
+    return { content: [{ type: "text", text }], details: { status: "delivered", mode, state: { operation: "setup", part, machine: machine ?? LOCAL_MACHINE } } };
+  } catch (error) {
+    if (error instanceof SetupError) throw new ComputerRequestError(error.message);
+    return { content: [{ type: "text", text: `Setup of ${part} failed: ${error instanceof Error ? error.message : error}` }],
+      details: { status: "refused", mode, state: { operation: "setup", part, machine: machine ?? LOCAL_MACHINE } }, isError: true };
   }
 }
 const unresponsive = (health: ProcessHealth) => `The app ${health.name} (pid ${health.pid}) is not responding; it uses ${health.memory_mb} MB memory. Capture and input cannot recover a hung app: wait and read again, or close it.`;
@@ -610,6 +635,8 @@ export class ComputerResources {
       const command = commandObject(value);
       if (command.action === "close") { only(command, ["action"]); return this.closeMachine(address.ref); }
       const remote = address.ref === LOCAL_MACHINE ? undefined : address.ref;
+      // Setup prepares a machine, so it must not start that machine's driver first.
+      if (command.action === "setup") return setupCommand(command, remote, cwd, this.getMode(), signal);
       if (command.action === "open_sandbox" || command.action === "open_session") {
         // A remote machine starts before its sandbox, so an unknown name refuses first.
         if (remote) await this.machine(cwd, remote, signal);
@@ -631,7 +658,7 @@ export class ComputerResources {
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
       if (command.action !== "open")
-        throw new ComputerRequestError(`A machine address accepts open, open_browser, open_sandbox, open_session, webview2_debugging, ${FILE_ACTIONS.join(", ")} or close.`);
+        throw new ComputerRequestError(`A machine address accepts open, open_browser, open_sandbox, open_session, webview2_debugging, setup, ${FILE_ACTIONS.join(", ")} or close.`);
       const result = await session.open(openTarget(command, "on that machine"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }

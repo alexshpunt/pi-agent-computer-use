@@ -61,7 +61,7 @@ export interface WebDownload {
   state: "in_progress" | "completed" | "canceled" | "failed";
   path?: string; bytes?: number; error?: string;
 }
-/** Installed Chrome or Edge launched by Playwright, or Playwright's own Firefox build (/computer-setup firefox). */
+/** Installed Chrome or Edge launched by Playwright, or Playwright's own Firefox build (setup part firefox). */
 export type WebChannel = "chrome" | "msedge" | "firefox";
 /**
  * Browser launch request. `profile: "agent"` uses the agent's own persistent profile on that machine (YOLO only):

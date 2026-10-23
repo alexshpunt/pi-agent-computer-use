@@ -157,7 +157,7 @@ Window control works right after the install. A few parts are extra downloads, a
 | `vscode-bridge`       | VS Code's integrated browser.                                                                  |
 | `machine <ssh alias>` | Another Windows machine with WSL, reached over SSH.                                            |
 
-Add a machine name to install a part there, for example `/computer-setup perception lab`. `/computer-setup` is a Bash script, so run it from Pi in WSL. Everything goes into your Windows user's own folders, and every download is checked against a pinned SHA-256. If a task needs a part you don't have, the agent tells you what's missing and asks before it installs anything.
+Add a machine name to install a part there, for example `/computer-setup perception lab`. Everything goes into your Windows user's own folders, and every download is checked against a pinned SHA-256. If a task needs a part you don't have, the agent tells you what's missing and asks before it installs anything.
 
 ### Unsigned binaries
 

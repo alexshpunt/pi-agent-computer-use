@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "vitest";
 import { connectLive, serveFixture, text } from "./remote.ts";
 
-// LPT-853: open_browser launches Playwright's own Firefox build (scripts/install-firefox.sh) with a disposable profile,
+// LPT-853: open_browser launches Playwright's own Firefox build (setup part firefox) with a disposable profile,
 // binds its native window and serves the same DOM views and actions as Chrome and Edge; closing removes it.
 const live = await connectLive();
 const fixture = await serveFixture(live.runner);

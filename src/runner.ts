@@ -16,6 +16,26 @@ export interface CommandRunner {
 /** Windows PowerShell as seen from WSL. */
 export const WINDOWS_POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
 
+/**
+ * Run a PowerShell script on the runner's Windows with UTF-8 output and stop-on-error; a thrown error exits 1 with
+ * its message on stderr. `powershell` is the executable as the runner sees it: WINDOWS_POWERSHELL from WSL,
+ * "powershell.exe" when Pi itself runs on Windows.
+ */
+export function runPowerShell(runner: CommandRunner, powershell: string, script: string,
+  options: { input?: string | Buffer; timeoutMs?: number; signal?: AbortSignal; scriptOnStdin?: boolean } = {}): Promise<string> {
+  // UTF-8 output: the console code page would turn characters such as • into control bytes.
+  const wrapped = `$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.Encoding]::UTF8\ntry {\n${script}\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`;
+  const run = (args: string[], input?: string | Buffer) => runner.run(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", ...args],
+    { ...(input !== undefined ? { input } : {}), timeoutMs: options.timeoutMs ?? 60_000, ...(options.signal ? { signal: options.signal } : {}) })
+    .then(output => output.replace(/\r/g, "").trim());
+  // Some long -EncodedCommand values fail to start through WSL interop ("Invalid argument"); a long script can
+  // instead arrive on stdin as base64 of UTF-8, behind a short fixed command line.
+  if (options.scriptOnStdin) return run(["-Command",
+    "& ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()))))"],
+  Buffer.from(wrapped, "utf8").toString("base64"));
+  return run(["-EncodedCommand", Buffer.from(wrapped, "utf16le").toString("base64")], options.input);
+}
+
 /** Run helpers on this machine. Windows programs need the WSL interop socket. */
 export function localRunner(interop?: string): CommandRunner {
   const environment = (env?: Record<string, string>) => ({ ...process.env, ...(interop ? { WSL_INTEROP: interop } : {}), ...env });
