@@ -1,9 +1,8 @@
 # Window observation granularity
 
-> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-Use `computer_observe({window_ref,capture:{granularity:"image"|"ui"|"full"}})`.
-Omitting granularity keeps `full`. This choice applies only to fresh window reads, not displays, local refinement or temporal sequences.
+Choose the parts of a fresh window Read with the `image`, `ui` or `full` view. Omitting it keeps `full`. This choice applies only to fresh window reads, not displays, local refinement or temporal sequences.
 
 | Mode | Fresh parts | Current input | Not available |
 | --- | --- | --- | --- |
@@ -19,17 +18,9 @@ Each successful fresh read replaces that window's previous observation. An actio
 
 Start with full when learning a layout or identifying controls. Use image-only for a bounded visual loop whose regions and pixel targets are already understood:
 
-```js
-const view = await tools.computer_observe({
-  window_ref:load("task_window"), capture:{granularity:"image"}
-});
-if(view.status!=="observed")throw Error("Observation failed");
-// Inspect/classify view.image privately. Act only on this observation's pixels.
-```
-
 Do not carry a full read's hints into an image-only read. Determine selection or completion from current pixels if the loop has no current UI resource. Stop on layout changes, uncertain state or an expired decision.
 
-Use UI-only when current reported labels, values and supported native control actions are enough. Local `search` and `inspect` work without another native read. `scope`, `highlight`, `region`, `crop` and `zoom` need image data and refuse after UI-only reads. Current UI nodes have native-screen bounds where reported, not window-image bounds. Do not convert those bounds into pixel input.
+Use UI-only when current reported labels, values and supported native control actions are enough. Local `search` and `inspect` work without another native read. `scope`, `highlight`, `crop` and region detail need image data and refuse after UI-only reads. Current UI nodes have native-screen bounds where reported, not window-image bounds. Do not convert those bounds into pixel input.
 
 Image-only accepts image guides but rejects UI query, walk limits and enabled hint labels. UI-only accepts UI query/walk limits but rejects hints and guides. Full keeps the existing controls. Invalid combinations fail explicitly rather than silently changing mode.
 

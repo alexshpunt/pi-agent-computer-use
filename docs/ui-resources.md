@@ -1,32 +1,16 @@
 # Native UI resources and hints
 
-> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-Use the same `computer_*` tools for browsers and other Windows apps. A window overview returns `ui`, a bounded projection of CUA's native accessibility snapshot, and one PNG with short labels when placement is possible. This is not a DOM tree or a promise that every visible control has an accessibility node.
+Browsers and other Windows apps use the same window Reads. A window overview returns `ui`, a bounded projection of CUA's native accessibility snapshot, and one PNG with short labels when placement is possible. This is not a DOM tree or a promise that every visible control has an accessibility node.
 
 ## Observe once, refine locally
-
-```js
-const view = await tools.computer_observe({window_ref:load("task_window")});
-if (view.status !== "observed") throw Error(view.text);
-store("task_observation",view.observation_id);
-text({complete:view.ui.complete, collected:view.ui.collected,
-  elements:view.ui.elements.map(e=>({hint:e.hint,name:e.name,role:e.role,enabled:e.enabled,hint_display:e.hint_display}))});
-image(view.image);
-```
 
 Each element has a short `hint`, the exact native `element_token`, reported role/name/value, enabled/selected state, actions, depth and `parent_hint`. `name` comes from the native label, which may fall back to value or help text. Missing properties stay null or absent. An empty `actions` array is not proof that pixel input is impossible.
 
 `bounds.native_screen` and `bounds.window_image` are different coordinate spaces. Only reported screenshot-local bounds address pixels in the returned image. No adapter conversion invents missing bounds. Tree and pixels are not atomic, and neither proves paint freshness.
 
-Refine the same observation without another native UI walk or input:
-
-```js
-const found = await tools.computer_observe({window_ref:load("task_window"),
-  ui:{operation:"search",observation_id:load("task_observation"),query:"Save",role:"Button",limit:20}});
-text(found.ui);
-// Duplicate names remain separate candidates. Choose from actual context, not the first match.
-```
+Search or refine the same observation without another native UI walk or input. Duplicate names remain separate candidates; choose from actual context, not the first match.
 
 - `search`: filter collected names/values and optional role; an optional hint limits the search to that node and its collected descendants.
 - `scope`: a required hint selects that node and descendants. Optional query/role/limit narrow the returned nodes. It also returns a marked copy of the existing overview, not fresh pixels.
@@ -47,14 +31,6 @@ Structured Codemode results retain the full bounded resource. Plain tool text sh
 ## Act through exact current hints
 
 Store only the chosen compact hint and observation ID. A hint is an address within this window/observation, not persistent control identity. A new native overview, detail, input, close or reload can retire it. Never rebind an old hint by matching its label.
-
-```js
-// Save one hint selected from the current observed candidates as "task_hint".
-try {
-  text(await tools.computer_act({window_ref:load("task_window"),
-    observation_id:load("task_observation"),action:"click",hint:load("task_hint")}));
-} finally {store("task_hint",null);store("task_observation",null);}
-```
 
 Use one target form: `hint`, native `element_token`, or window-local pixels. Reported disabled and outside-image targets refuse before input. Hints also address supported token-based text/value input and scrolling; they do not add new native APIs. CUA may invoke, toggle, select or expand through its click route. Read the actual receipt, then verify application state. Unsupported routes remain refusals; unknown delivery is never replayed automatically.
 

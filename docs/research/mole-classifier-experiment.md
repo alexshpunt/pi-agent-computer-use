@@ -57,7 +57,7 @@ Sources: [Apple MobileCLIP](https://github.com/apple-aiml-research/ml-mobileclip
 
 ## Repeating the probe
 
-The reusable [probe script](../../scripts/probe-mole-classifier.py) cannot capture a screen or send input. Its recorder accepts exact `computer_observe.image` JSON over stdin; capture remains with the computer-use tools. Keep captures, models, caches and environments in ignored `.tmp/` storage. Check the complete board and crop geometry before classification.
+The reusable [probe script](../../scripts/probe-mole-classifier.py) cannot capture a screen or send input. Its recorder accepts a JSON object on stdin whose `image` field is an image block (`data`, `mimeType`); capture remains with the computer-use tools. Keep captures, models, caches and environments in ignored `.tmp/` storage. Check the complete board and crop geometry before classification.
 
 The environment used for this experiment was installed with:
 

@@ -1,21 +1,8 @@
 # Reactive cursor animation
 
-> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-Ordinary actions keep CUA's current cursor animation. A bounded reactive program can opt into a short glide for one `computer_act` call:
-
-```js
-// Use IDs and a hint from the latest authorized window overview.
-try {
-  const receipt = await tools.computer_act({
-    window_ref: load("window"), observation_id: load("observation"),
-    action: "click", hint: load("target"), animation: "reactive"
-  });
-  // Keep receipts private inside a loop; publish only a bounded final summary.
-} finally {
-  store("observation", null); store("target", null);
-}
-```
+Ordinary actions keep CUA's current cursor animation. A bounded reactive program can opt into a short glide for one Insert action by adding `"animation":"reactive"` to its JSON.
 
 The adapter reads the current CUA glide, applies the configured reactive glide, checks native state, runs the original input command, then restores and checks the previous glide. Calls are serialized so an ordinary action cannot inherit another action's temporary profile. A sequence opts in once at the top level; each native step restores the ordinary profile before the next step.
 
