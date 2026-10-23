@@ -1,16 +1,62 @@
 {
   "name": "pi-agent-computer-use",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Window-first computer use for Pi with bundled platform-native CUA runtimes.",
+  "version": "0.1.0",
+  "description": "Computer use for the Pi coding agent: Windows apps, browsers and desktops through native UI trees, screenshots and real input, as a Pi Agent IDE plugin or standalone tools",
+  "keywords": [
+    "accessibility",
+    "agent-tools",
+    "ai-agent",
+    "automation",
+    "browser-automation",
+    "cdp",
+    "chrome",
+    "codemode",
+    "computer-use",
+    "cua",
+    "desktop-automation",
+    "edge",
+    "electron",
+    "gui-automation",
+    "ocr",
+    "pi",
+    "pi-agent",
+    "pi-agent-ide",
+    "pi-coding-agent",
+    "pi-extension",
+    "pi-package",
+    "playwright",
+    "rpa",
+    "sandbox",
+    "screenshot",
+    "ui-automation",
+    "uia",
+    "vision",
+    "webview2",
+    "windows",
+    "windows-automation",
+    "windows-sandbox",
+    "wsl"
+  ],
+  "license": "MIT",
+  "author": "Alex Shpunt",
+  "homepage": "https://github.com/alexshpunt/pi-agent-computer-use#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexshpunt/pi-agent-computer-use.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alexshpunt/pi-agent-computer-use/issues"
+  },
   "type": "module",
   "pi": {
     "extensions": [
       "./src/index.ts"
     ],
     "skills": [
-      "./.pi/skills"
-    ]
+      "./.pi/skills/computer-use",
+      "./.pi/skills/reactive-visual-classifier"
+    ],
+    "image": "https://raw.githubusercontent.com/alexshpunt/pi-agent-computer-use/develop/assets/banner.png"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -47,8 +93,13 @@
   "files": [
     "src/",
     "scripts/",
-    ".pi/skills/",
+    "native/",
+    "vscode-browser-bridge/",
+    ".pi/skills/computer-use/",
+    ".pi/skills/reactive-visual-classifier/",
     "docs/",
+    "assets/banner.png",
+    "LICENSE",
     "README.md"
   ],
   "optionalDependencies": {
