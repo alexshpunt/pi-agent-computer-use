@@ -29,11 +29,11 @@ test("production Pi exposes only computer tools, with no direct or Codemode brow
         assistantMessage([text("Unified tool loadout checked.")]),
       ],
     }).run("Check the production loadout. Only discover apps; never open a window or send input.");
-    // Without Pi Agent IDE, production computer use offers deferred tools that tool_search loads, plus the classifier.
+    // Without Pi Agent IDE, production computer use offers deferred tools that tool_search loads.
     const standalone = ["computer_insert", "computer_read", "computer_search", "computer_write"];
     expect(getToolExecutionDetails(getToolExecution(result, "registry"))).toEqual({
-      names: [...standalone, "computer_classify"].sort(),
-      exposure: { ...Object.fromEntries(standalone.map(name => [name, "deferred"])), computer_classify: "direct" },
+      names: standalone,
+      exposure: Object.fromEntries(standalone.map(name => [name, "deferred"])),
       callable: standalone, active: [],
     });
     for (const id of ["direct-browser", "nested-browser"]) {

@@ -140,8 +140,8 @@ export async function cacheWindowsRuntime(runtime: BundledRuntime, base: string,
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 
-/** Read the Windows user's cache location through a bounded system query; do not guess a user or install location. */
-async function windowsCacheDirectory(interop?: string): Promise<string> {
+/** The Windows user's Local Application Data folder as a WSL path, through a bounded system query; never guessed. */
+export async function windowsLocalAppData(interop?: string): Promise<string> {
   const run = promisify(execFile);
   const { stdout } = await run("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", [
     "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
@@ -151,7 +151,11 @@ async function windowsCacheDirectory(interop?: string): Promise<string> {
   if (!/^[A-Za-z]:\\/.test(local) || /[\r\n]/.test(local)) throw new Error("native_runtime_windows_cache_unavailable");
   const mapped = (await run("wslpath", ["-u", local], { timeout: 5_000, maxBuffer: 16_384 })).stdout.trim();
   if (!path.isAbsolute(mapped)) throw new Error("native_runtime_windows_cache_unavailable");
-  return path.join(mapped, "PiComputerUse", "native-runtimes");
+  return mapped;
+}
+
+async function windowsCacheDirectory(interop?: string): Promise<string> {
+  return path.join(await windowsLocalAppData(interop), "PiComputerUse", "native-runtimes");
 }
 
 /**

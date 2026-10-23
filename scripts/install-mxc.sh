@@ -15,7 +15,7 @@ on_target() { if [[ "$target" == local ]]; then bash -s -- "$@"; else ssh -o Bat
 
 download="$(mktemp -d)"
 trap 'rm -rf "$download"' EXIT
-gh release download "$release" -R microsoft/mxc -D "$download" -p mxc-release-binaries.zip
+curl -fsSL -o "$download/mxc-release-binaries.zip" "https://github.com/microsoft/mxc/releases/download/$release/mxc-release-binaries.zip"
 echo "$sha256  $download/mxc-release-binaries.zip" | sha256sum -c --quiet
 python3 -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract('x64/wxc-exec.exe', sys.argv[2])" "$download/mxc-release-binaries.zip" "$download"
 

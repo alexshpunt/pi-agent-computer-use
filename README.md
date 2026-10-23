@@ -106,10 +106,6 @@ The browser's toolbar, tabs and system dialogs are still ordinary windows, so th
 
 Each session has its own folder on the controlled machine for files an app opens or saves. In YOLO mode the agent can also read and write the clipboard, record the screen to video, and record what the machine plays, optionally with a transcript.
 
-### Local image classifier
-
-`computer_classify` checks one visual condition on an image with a small local model (TinyCLIP). It's for fast loops such as games, where asking the main model about every frame takes too long.
-
 ### Debug viewer and overlay
 
 `/computer-debug` opens a private viewer with the images the agent actually received, its action trace and the capture settings. On Windows an optional overlay briefly outlines the window and target the agent is working on, without taking focus.
@@ -148,14 +144,32 @@ pi install npm:pi-agent-ide
 
 Pi packages run with your full system permissions, and this one drives your desktop. Read the code before you install it.
 
-A few features need a one-time setup on the Windows side: Firefox for Playwright, Cua perception for `regions`, MXC for isolated sessions and the VS Code bridge. [The resource guide](docs/computer-resources.md) explains each one.
+### Optional parts
+
+Window control works right after the install. A few parts are extra downloads, and you install them with `/computer-setup`:
+
+| Part                  | What it's for                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------- |
+| `browser`             | Node.js for Windows, which Playwright browsers need. Skip it if Node is already on Windows.    |
+| `firefox`             | Playwright's own Firefox build. Chrome and Edge work without it.                               |
+| `perception`          | The `regions` view. About 420 MB, and its icon detector is AGPL-3.0.                           |
+| `mxc`                 | Isolated agent sessions. Needs Windows 11 24H2 or newer.                                       |
+| `vscode-bridge`       | VS Code's integrated browser.                                                                  |
+| `machine <ssh alias>` | Another Windows machine with WSL, reached over SSH.                                            |
+
+Add a machine name to install a part there, for example `/computer-setup perception lab`. Everything goes into your Windows user's own folders, and every download is checked against a pinned SHA-256. If a task needs a part you don't have, the agent tells you what's missing and asks before it installs anything.
+
+### Unsigned binaries
+
+The Windows binaries aren't code-signed. Signing certificates are hard to get for a solo developer, and a fork of someone else's code doesn't qualify for the free open source programs. Started from WSL, they don't get a SmartScreen prompt, but antivirus, Smart App Control or company policy can still block them. Every file is checked against its pinned SHA-256 before it runs.
 
 ## Commands
 
-| Command                       | Effect                                                |
-| ----------------------------- | ----------------------------------------------------- |
-| `/computer-mode safe\|yolo`   | Switch between Safe and YOLO for this session          |
-| `/computer-debug on\|off`     | Start or stop the private vision debug viewer          |
+| Command                          | Effect                                                   |
+| -------------------------------- | -------------------------------------------------------- |
+| `/computer-mode safe\|yolo`      | Switch between Safe and YOLO for this session            |
+| `/computer-debug on\|off`        | Start or stop the private vision debug viewer            |
+| `/computer-setup PART [MACHINE]` | Install an optional part; without a part it lists them   |
 
 ## Feedback and contributions
 
@@ -174,7 +188,6 @@ I use this every day on real tasks, but I can only test the machines, apps and w
 | [Temporal capture](docs/temporal-capture.md)              | Frame sequences and their timing                                      |
 | [Selected displays](docs/selected-displays.md)            | Monitor discovery and display reads                                   |
 | [Image guides](docs/image-guides.md)                      | Coordinate grid and last-action marks                                 |
-| [Visual classifier](docs/visual-classifier.md)            | `computer_classify` setup and use                                     |
 | [Vision debug viewer](docs/vision-debug.md)               | What the agent saw and the capture controls                           |
 | [Bundled runtime](docs/bundled-runtime.md)                | Native runtime packages and platform boundaries                       |
 
