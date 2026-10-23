@@ -39,6 +39,8 @@ test("real Pi restores Safe, filters foreign windows, rejects policy arguments, 
     });
     expect(getToolExecution(result, "close").isError, getToolResultText(result, "close")).toBe(false);
     expect(getToolResultText(result, "close")).toContain("Computer closed");
+    expect((getToolExecutionDetails(getToolExecution(result, "close")) as { metadata: { semanticAction: unknown } }).metadata.semanticAction)
+      .toMatchObject({ status: "closed", mode: "safe" });
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
     expect(calls.filter(call => call.name === "launch_app")).toHaveLength(1);
     expect(calls.filter(call => call.name === "get_window_state")).toHaveLength(1);

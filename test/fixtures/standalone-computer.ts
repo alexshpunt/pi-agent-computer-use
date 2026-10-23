@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ComputerResources } from "../../src/computer-resources.ts";
-import type { ComputerResult, ComputerSession } from "../../src/session.ts";
+import type { ComputerMode, ComputerResult, ComputerSession } from "../../src/session.ts";
 import { registerStandaloneTools } from "../../src/standalone-tools.ts";
 
 export const STANDALONE_TOOLS = ["computer_read", "computer_search", "computer_write", "computer_insert"];
@@ -10,8 +10,8 @@ export const STANDALONE_TOOLS = ["computer_read", "computer_search", "computer_w
  * discovery itself is covered by extension-modes.integration.test.ts; these fixtures test the tools.
  */
 export function registerFixtureComputerTools(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
-  closeSession: () => Promise<ComputerResult>): ComputerResources {
-  const resources = new ComputerResources(getSession, closeSession);
+  closeSession: () => Promise<ComputerResult>, getMode?: () => ComputerMode): ComputerResources {
+  const resources = new ComputerResources(getSession, closeSession, undefined, undefined, getMode);
   pi.on("session_start", () => {
     registerStandaloneTools(pi, resources, "Fixture computer guide.");
     pi.setActiveTools([...new Set([...pi.getActiveTools(), ...STANDALONE_TOOLS])]);

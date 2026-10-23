@@ -29,15 +29,25 @@ export default function visionFixture(pi: ExtensionAPI): void {
         structuredContent: { status: "observed", text: "Synthetic image.", image } };
     },
   });
-  imageTool("sample_open");
-  imageTool("sample_observe");
+  imageTool("computer_sample_open");
+  imageTool("computer_sample_observe");
+  // Stands in for Pi Agent IDE's read, which serves computer: paths alongside ordinary files.
   pi.registerTool({
-    name: "sample_fail", label: "sample_fail", description: "Always refuse.",
+    name: "read", label: "read", description: "Read a path; computer: paths return one synthetic PNG.",
+    parameters: Type.Object({ path: Type.String() }, { additionalProperties: false }),
+    async execute(_id, params) {
+      return params.path.startsWith("computer:")
+        ? { content: [{ type: "text" as const, text: "Synthetic image." }, image], details: { status: "observed" } }
+        : { content: [{ type: "text" as const, text: "plain file" }], details: { status: "read" } };
+    },
+  });
+  pi.registerTool({
+    name: "computer_sample_fail", label: "computer_sample_fail", description: "Always refuse.",
     parameters: Type.Object({}, { additionalProperties: false }),
     async execute() { return { content: [{ type: "text" as const, text: "Refused." }], details: { status: "refused" }, isError: true }; },
   });
   pi.registerTool({
-    name: "sample_close", label: "sample_close", description: "Return text only.",
+    name: "computer_sample_close", label: "computer_sample_close", description: "Return text only.",
     parameters: Type.Object({}, { additionalProperties: false }),
     async execute() { return { content: [{ type: "text" as const, text: "Closed." }], details: { status: "closed" } }; },
   });

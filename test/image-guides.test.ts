@@ -14,7 +14,7 @@ async function fixture(width = 500, height = 320) {
 test.each([500, 800, 1024])("grid uses %ipx output coordinates without covering reported controls", async width => {
   const f = await fixture(width);
   const result = await annotateUi(f.image, f.ui, width, 320, false, undefined, f.ui.elements,
-    { options: { grid: true, region: false, action: false } });
+    { options: { grid: true, action: false } });
   expect(result.annotation.guides.grid).toMatchObject({ status: "shown", coordinate_space: "window_image_pixels" });
   expect(result.image.type).toBe("image");
   if (result.image.type !== "image") throw Error("Missing image");
@@ -26,22 +26,20 @@ test.each([500, 800, 1024])("grid uses %ipx output coordinates without covering 
   expect(f.image.data).toBe(f.bytes.toString("base64"));
 });
 
-test("selected region and completed action have separate metadata and cannot claim missing geometry", async () => {
+test("a completed action without proven geometry cannot claim a mark", async () => {
   const f = await fixture();
   const result = await annotateUi(f.image, f.ui, 500, 320, false, undefined, f.ui.elements,
-    { options: { grid: false, region: true, action: true }, region: { x: 30, y: 40, width: 180, height: 110 },
-      action: { reason: "Native geometry unavailable." } });
-  expect(result.annotation.guides.region).toMatchObject({ status: "shown", region: { x: 30, y: 40, width: 180, height: 110 } });
+    { options: { grid: false, action: true }, action: { reason: "Native geometry unavailable." } });
   expect(result.annotation.guides.action).toMatchObject({ status: "unavailable", reason: "Native geometry unavailable." });
 });
 
 test("turning guides off preserves raw bytes exactly and never mutates a previous annotation", async () => {
   const f = await fixture();
   const enabled = await annotateUi(f.image, f.ui, 500, 320, false, undefined, f.ui.elements,
-    { options: { grid: true, region: true, action: true }, action: { region: { x: 90, y: 90, width: 60, height: 40 } } });
+    { options: { grid: true, action: true }, action: { region: { x: 90, y: 90, width: 60, height: 40 } } });
   const frozen = JSON.stringify(enabled.annotation);
   const off = await annotateUi(f.image, f.ui, 500, 320, false, undefined, f.ui.elements,
-    { options: { grid: false, region: false, action: false } });
+    { options: { grid: false, action: false } });
   expect(off.image).toEqual(f.image);
   expect(off.annotation.guides.grid.status).toBe("off");
   expect(JSON.stringify(enabled.annotation)).toBe(frozen);
@@ -49,33 +47,33 @@ test("turning guides off preserves raw bytes exactly and never mutates a previou
 
 test("omitted grid labels and partially hidden borders are explicit", async () => {
   const {imageGuides} = await import("../src/image-guides.ts");
-  const result=imageGuides(500,320,{options:{grid:true,region:true,action:false},region:{x:10,y:10,width:160,height:100}},
+  const result=imageGuides(500,320,{options:{grid:true,action:true},action:{region:{x:10,y:10,width:160,height:100}}},
     [{x:0,y:0,width:500,height:25},{x:0,y:295,width:500,height:25}]);
   expect(result.metadata.grid.omitted_labels).toBe(6);
-  expect(result.metadata.region).toMatchObject({status:"shown",occluded:true});
+  expect(result.metadata.action).toMatchObject({status:"shown",occluded:true});
 });
 
 test("fractional native projections are not reported as clipped by floating-point subtraction", async () => {
   const {imageGuides} = await import("../src/image-guides.ts");
   const region={x:124.48101265822785,y:104.22784810126582,width:8+1/3.16,height:8+1/3.16};
-  const result=imageGuides(500,320,{options:{grid:false,region:false,action:true},action:{region}},[]);
+  const result=imageGuides(500,320,{options:{grid:false,action:true},action:{region}},[]);
   expect(result.metadata.action).toMatchObject({status:"shown",clipped:false});
 });
 
 test("a native title bar does not silently remove the entire X axis", async () => {
   const {imageGuides} = await import("../src/image-guides.ts");
-  const result=imageGuides(500,320,{options:{grid:true,region:false,action:false}},[{x:0,y:0,width:500,height:25}]);
+  const result=imageGuides(500,320,{options:{grid:true,action:false}},[{x:0,y:0,width:500,height:25}]);
   expect(result.metadata.grid.labels).toContainEqual({text:"100",region:{x:103,y:302,width:27,height:16}});
   expect(result.metadata.grid.omitted_labels).toBe(0);
 });
 
 test("guide controls are strict, immutable and independent of native image sizing", () => {
   const store = new CuaImageSettings(); const original = store.settings();
-  expect(store.setGuides({ grid: true, region: true, action: true })).toMatchObject({ guides: { grid: true, region: true, action: true }, version: 1 });
+  expect(store.setGuides({ grid: true, action: true })).toMatchObject({ guides: { grid: true, action: true }, version: 1 });
   expect(original.guides).toBeUndefined();
   const frozen = store.settings(); frozen.guides!.grid = false;
   expect(store.settings().guides!.grid).toBe(true);
-  for (const input of [{ grid: "yes" }, { grid: true, mode: "yolo" }, {}]) expect(() => store.setGuides(input)).toThrow();
+  for (const input of [{ grid: "yes" }, { grid: true, mode: "yolo" }, { grid: true, region: true, action: true }, {}]) expect(() => store.setGuides(input)).toThrow();
   store.update({ kernel: "lanczos3", maxLongEdge: 800, scale: 1 });
-  expect(store.settings()).toMatchObject({ guides: { grid: true, region: true, action: true }, maxLongEdge: 800 });
+  expect(store.settings()).toMatchObject({ guides: { grid: true, action: true }, maxLongEdge: 800 });
 });

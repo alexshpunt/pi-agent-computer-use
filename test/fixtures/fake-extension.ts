@@ -22,6 +22,6 @@ export default function fixtureExtension(pi: ExtensionAPI): void {
       session = new ComputerSession(driver, getMode);
     }
     return session;
-  }, async () => session!.close());
+  }, async () => session!.close(), getMode);
   pi.on("session_shutdown", async () => { await session?.close(); });
 }

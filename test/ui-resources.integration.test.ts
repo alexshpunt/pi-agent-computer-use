@@ -18,7 +18,7 @@ const listed = await windows();
 const [win, otherWin] = [...listed.matchAll(/computer:window\\/[\\w-]+/g)].map(match => match[0]);
 const read = views => tools.computer_read({path:win,...(views?{views}:{})});
 const click = async (view,hint) => (await insert(observation(view),{action:"click",hint})).outcome;
-const first = await read(['capture:{"max_elements":200,"max_depth":15,"guides":{"grid":true,"region":true,"action":true}}']);
+const first = await read(['capture:{"max_elements":200,"max_depth":15,"guides":{"grid":true,"action":true}}']);
 if (!/UI: collected=200, complete=false/.test(body(first))) throw Error("Lost full resource");
 const candidates = await tools.computer_search({path:observation(first),query:"Save",limit:2});
 const [uiHint, disabledHint] = hints(candidates);

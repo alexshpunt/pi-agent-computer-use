@@ -21,7 +21,7 @@ test("guide writes require a complete same-origin tuple and keep prior settings 
   const images = new CuaImageSettings(); const original = images.settings();
   const server = await startVisionServer(new VisionTrace("guides"), images);
   const url = new URL("guides", server.url); const headers = { Origin: url.origin, "Content-Type": "application/json" };
-  const guides = { grid: true, region: true, action: true };
+  const guides = { grid: true, action: true };
   try {
     for (const input of [{ grid: true }, { ...guides, mode: "yolo" }, { ...guides, action: 1 }])
       expect((await fetch(url, { method: "POST", headers, body: JSON.stringify(input) })).status).toBe(400);

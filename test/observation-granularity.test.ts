@@ -94,7 +94,7 @@ test("UI-only returns no pixels or old image geometry and permits current hints"
 test("invalid modes and incompatible controls do not take a native snapshot", async () => {
   const f = await fixture();
   for (const [mode, extra, query] of [["bad", {}, undefined], ["image", { max_elements: 10 }, undefined],
-    ["image", { hints: true }, undefined], ["image", {}, "Save"], ["ui", { guides: { grid: true, region: false, action: false } }, undefined]] as const) {
+    ["image", { hints: true }, undefined], ["image", {}, "Save"], ["ui", { guides: { grid: true, action: false } }, undefined]] as const) {
     expect((await f.observe(mode, extra, query)).details.status).toBe("refused");
   }
   expect(vi.mocked(f.driver.call).mock.calls.some(([name]) => name === "get_window_state")).toBe(false);

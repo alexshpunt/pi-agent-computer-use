@@ -36,24 +36,6 @@ async function fixture() {
 }
 function ui(result: Awaited<ReturnType<ComputerSession["observe"]>>) { return result.details.ui!; }
 
-test("a selected overview region is local, bounded, read-only and keeps the input observation", async () => {
-  const f = await fixture();
-  const view = await f.session.observe(f.ref, undefined, undefined, undefined, undefined,
-    { guides: { grid: true, region: true, action: true } });
-  const before = nativeCalls(f.driver);
-  const marked = await f.session.observe(f.ref, undefined, undefined, undefined,
-    { operation: "region", observation_id: view.details.observation_id!, region: { x: 30, y: 40, width: 180, height: 110 } });
-  expect(marked.details.status).toBe("observed");
-  expect(marked.details.observation_id).toBe(view.details.observation_id);
-  expect(marked.content.filter(b => b.type === "image")).toHaveLength(1);
-  expect(marked.details.agent_image).toMatchObject({ annotation: { guides: { region: { status: "shown" } } } });
-  expect(nativeCalls(f.driver)).toEqual(before);
-  const invalid = await f.session.observe(f.ref, undefined, undefined, undefined,
-    { operation: "region", observation_id: view.details.observation_id!, region: { x: 490, y: 30, width: 50, height: 20 } });
-  expect(invalid.details.status).toBe("refused");
-  expect(nativeCalls(f.driver)).toEqual(before);
-  expect((await f.session.act({ window_ref: f.ref, observation_id: view.details.observation_id!, action: "click", hint: ui(view).elements[1].hint })).details.status).toBe("delivered");
-});
 test("completed token target marks follow window movement, while an uncertain pointer never creates a mark", async () => {
   const f = await fixture(); const call = f.driver.call; let moved = false; let uncertain = false;
   f.driver.call = vi.fn(async (name, args, signal) => {
@@ -70,7 +52,7 @@ test("completed token target marks follow window movement, while an uncertain po
     if (name === "click" && uncertain) return { content: [], structuredContent: { status: "unknown" } };
     return result;
   });
-  const options = { guides: { grid: false, region: false, action: true } };
+  const options = { guides: { grid: false, action: true } };
   const first = await f.session.observe(f.ref, undefined, undefined, undefined, undefined, options);
   const target = ui(first).elements.find(e => e.name === "Save" && e.enabled)!;
   expect((await f.session.act({ window_ref: f.ref, observation_id: first.details.observation_id!, action: "click", hint: target.hint })).details.status).toBe("delivered");
