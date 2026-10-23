@@ -4,7 +4,7 @@
 
 <h1 align="center">Pi Agent Computer Use</h1>
 
-<p align="center">Give your Pi agent a computer: see Windows apps, browsers and desktops, then click, type, draw and verify like a person would.</p>
+<p align="center">Lets your Pi agent use Windows apps and browsers: it reads the window, clicks, types, draws and checks what happened.</p>
 
 <div align="center">
 
@@ -23,11 +23,11 @@
 
 </div>
 
-Ask your agent to do something on your computer. For example: “Open Paint and draw a house”, “Fill in this form in my browser”, or “Check what the settings window says”. The agent finds the window, reads its controls and screenshot, acts, and reads again to check the result.
+Ask your agent to do something on your computer, for example "open Paint and draw a house", "fill in this form in my browser" or "check what the settings window says". It finds the window, reads its controls and screenshot, acts, and reads it again to see whether it worked.
 
 ## Summary
 
-Pi Agent Computer Use gives the [Pi coding agent](https://pi.dev/) one window-first interface for every app, browsers included. The agent discovers a window, reads its native accessibility tree and screenshot, and then types, clicks, drags or runs a browser action. Every input is grounded in the latest observation, and every result says what was delivered and what is still unknown.
+Pi Agent Computer Use gives the [Pi coding agent](https://pi.dev/) one interface for every Windows app, browsers included. The agent finds a window, reads its accessibility tree and screenshot, and then types, clicks, drags or runs a browser action. Input always targets the latest thing the agent saw, and every result says what was delivered and what is still unknown.
 
 | Work                                   | How                                                                         |
 | -------------------------------------- | --------------------------------------------------------------------------- |
@@ -38,85 +38,87 @@ Pi Agent Computer Use gives the [Pi coding agent](https://pi.dev/) one window-fi
 | Check the result                       | `wait_for`, `verify`, change lists and fresh Reads                          |
 | Work away from your desktop            | Windows Sandbox, isolated agent sessions and other machines over SSH        |
 
-Desktop control is backed by [Cua Driver](https://github.com/trycua/cua), and web pages by [Playwright](https://playwright.dev/).
+[Cua Driver](https://github.com/trycua/cua) does the native capture and input, and [Playwright](https://playwright.dev/) handles web pages.
 
-### Works with Pi Agent IDE, or on its own
+### With Pi Agent IDE or without it
 
-With [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide) installed, computer use plugs into its ordinary `read`, `search`, `write` and `insert` tools. The agent uses the same tools for files and for windows, and computer results render in the IDE's tool panels.
+If you have [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide), computer use plugs into its `read`, `search`, `write` and `insert` tools. The agent then uses the same tools for files and windows, and the results show up in the IDE's tool panels.
 
-Without Pi Agent IDE, it adds its own `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools. They stay out of the tool list until the agent needs them: the agent finds them with `tool_search` and then calls them directly. Both modes use the same addresses, commands and results, and both work from Codemode scripts. Each Pi session picks the mode on its own; nothing needs configuring.
+Without the IDE, computer use adds its own `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools. They stay out of the tool list until the agent looks for them with `tool_search`, and after that it calls them directly. Both modes take the same addresses and commands, return the same results and work from Codemode scripts. Each Pi session picks the mode itself, so you don't configure anything.
 
-### Built for YOLO, with Safe mode when you need it
+### YOLO and Safe mode
 
-Computer use is designed for an agent you trust with your desktop. In the default YOLO mode, the agent can read and operate any window you ask it to, read whole displays, attach to browsers that are already running and start programs by path. That is where it is most useful.
+Computer use is built for an agent you trust with your desktop. In YOLO mode, the default, the agent can read and operate any window you point it at, read whole displays, attach to browsers that are already running and start programs by path. You get the most out of it this way.
 
-When you want limits, switch with `/computer-mode safe`. Safe mode lets the agent see and touch only the windows it opened itself, refuses display reads and refuses running arbitrary programs. Neither mode is OS isolation; for that, use a sandbox or an isolated session (below).
+YOLO also means the agent can click and type anywhere you could. If a misclick would fuck up something you care about, switch to Safe mode with `/computer-mode safe`, or give the agent a sandbox. In Safe mode the agent only sees and touches windows it opened itself, and it can't read displays or start arbitrary programs. Neither mode isolates anything at the OS level; sandboxes and isolated sessions do that (see below).
 
-### See structure, not only pixels
+### UI structure and screenshots
 
-A window Read returns the app's native UI tree from Windows UI Automation: roles, names, values, enabled state and bounds, with a short hint such as `1:a` on each element. Hints are drawn on the screenshot too, so the agent can point at a button by its hint instead of guessing coordinates.
+A window Read returns the app's UI Automation tree: roles, names, values, enabled state and bounds. Each element gets a short hint such as `1:a`, and the hints are drawn on the screenshot too, so the agent can point at a button by its hint instead of guessing coordinates.
 
-- Search an observation's UI tree without capturing again.
-- Inspect, scope or highlight one element, or read its full text.
-- Choose `image`, `ui` or `full` reads to skip what is not needed.
-- Use `changes` to see only what changed since the last read.
-- Add `ocr` for text in canvases and games, or `regions` for icons and text areas detected by Cua perception.
-- Zoom into a region of the latest overview, or crop one element at full resolution.
-- Capture a short `sequence` of frames to watch an animation or progress bar, then pick the frames that matter.
-- Read a window's `state` to see whether it is hung and how much memory its process uses.
+From there the agent can:
 
-### Act like a person, with real input
+- search the tree of an observation without capturing again;
+- inspect, scope or highlight one element, or read its full text;
+- ask for only the `image`, only the `ui`, or both (`full`);
+- read only what changed since the last read with `changes`;
+- run `ocr` on canvases and games, or `regions` for icons and text areas found by Cua perception;
+- zoom into part of the latest overview, or crop one element at full resolution;
+- capture a short `sequence` of frames to watch an animation or a progress bar, then pick the frames it needs;
+- read a window's `state` to see whether the app is hung and how much memory it uses.
 
-Input goes through the same window the agent observed:
+### Input
 
-- type literal text, press keys and chords, hold several keys at once;
-- click, double-click, right-click, hover, scroll by wheel detents;
-- drag straight lines or continuous brush strokes through many points;
-- run a timeline of timed key, button, mouse and pen events, including raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
-- run up to 2000 known keyboard, click and stroke steps in one call, so a whole drawing fits in one action;
+Input goes to the window the agent observed. It can:
+
+- type literal text, press keys and chords, and hold several keys at once;
+- click, double-click, right-click, hover and scroll by wheel detents;
+- drag in straight lines or draw continuous brush strokes through many points;
+- run a timeline of timed key, button, mouse and pen events, with raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
+- send up to 2000 known keyboard, click and stroke steps in one call, which is enough for a whole drawing;
 - invoke, select or set values through UI Automation, and open menu items by their labels.
 
-Input starts in the background where Windows allows it, so your own pointer and focus stay where they are. Foreground input is an explicit second step, and it pauses whenever you touch the keyboard or mouse yourself.
+Input starts in the background where Windows allows it, so your own pointer and focus stay put. Foreground input is a separate step the agent has to ask for, and it pauses whenever you touch the keyboard or mouse.
 
-### Know what actually happened
+### Results and checks
 
-Every action returns a receipt: `delivered`, `refused` (nothing was sent) or `unknown` (it may have reached the app). The agent never replays an uncertain action blindly. Add `"expect"` to an action to check its postcondition, or `"successor":true` to get a compact list of what changed. `wait_for` and `verify` check UI conditions, and `batch` runs a short chain that stops at the first failure. In Codemode these receipts are plain objects, so scripts branch on `outcome` without parsing text.
+Every action returns a receipt. `delivered` means it went through, `refused` means nothing was sent, and `unknown` means it may have reached the app, so the agent reads again before doing anything else instead of repeating it. Add `"expect"` to an action to check a condition afterwards, or `"successor":true` to get a short list of what changed. `wait_for` and `verify` check UI conditions, and `batch` runs a short chain that stops at the first failure. In Codemode the receipts are plain objects, so a script branches on `outcome` without parsing text.
 
-### Use browsers and apps built on them
+### Browsers and apps built on them
 
-Web pages run through Playwright, with aria snapshots, element refs, locator actions and Playwright's own waiting. The agent can:
+Web pages go through Playwright, with aria snapshots, element refs, locator actions and Playwright's waiting. The agent can:
 
-- open its own Chrome, Edge or Firefox with a disposable profile, or with a persistent agent profile for sites that need a login;
-- attach to a Chrome or Edge that is already running, including your own profile when you allow it;
-- attach to browsers inside Electron, CEF and WebView2 apps, and to VS Code's integrated browser through the included Pi Browser Bridge;
+- open its own Chrome, Edge or Firefox with a throwaway profile, or with a persistent agent profile for sites that need a login;
+- attach to a Chrome or Edge that is already running, including your own profile if you let it;
+- attach to browsers inside Electron, CEF and WebView2 apps, and to VS Code's built-in browser through the included Pi Browser Bridge;
 - switch tabs, answer JavaScript dialogs, upload and download files, run page code and read the console and network log.
 
-The browser's own toolbar, tabs and system dialogs stay ordinary windows, so the agent can still use native input there.
+The browser's toolbar, tabs and system dialogs are still ordinary windows, so the agent can use native input there as well.
 
-### Work without touching your desktop
+### Sandboxes, sessions and other machines
 
-- **Windows Sandbox:** a disposable Windows with its own driver. Share only the folders you choose.
-- **Isolated agent sessions:** a separate Windows session on the same machine with its own desktop, clipboard and input. Several agents can work at once, each with foreground input, without disturbing you.
-- **Owned browsers:** disposable profiles that are deleted when the session closes.
-- **Other machines:** operate another Windows machine with WSL over SSH, using the same addresses. No ports are opened.
+- Windows Sandbox gives the agent a throwaway Windows with its own driver. You choose which folders it can see.
+- An isolated agent session is a separate Windows session on the same machine with its own desktop, clipboard and input. Several agents can work at once, each with foreground input, and none of them touches your desktop.
+- Browsers the agent opens use throwaway profiles that get deleted when the session closes.
+- Another Windows machine with WSL can be controlled over SSH with the same addresses. No ports are opened on either side.
 
-### Move files, media and text in and out
+### Files, clipboard and recordings
 
-Each session has its own folder on the controlled machine for files an app opens or saves. In YOLO mode the agent can also read and write the clipboard, record the screen to video, and record what the machine plays with an optional transcript.
+Each session has its own folder on the controlled machine for files an app opens or saves. In YOLO mode the agent can also read and write the clipboard, record the screen to video, and record what the machine plays, optionally with a transcript.
 
-### Check images with a local classifier
+### Local image classifier
 
-`computer_classify` evaluates one visual condition on an image with a small local model (TinyCLIP). It is useful in fast reaction loops, for example in games, where calling the main model for every frame is too slow.
+`computer_classify` checks one visual condition on an image with a small local model (TinyCLIP). It's for fast loops such as games, where asking the main model about every frame takes too long.
 
-### Watch what the agent sees
+### Debug viewer and overlay
 
-A private debug viewer (`/computer-debug`) shows the images the agent actually received, the action trace and capture settings. On Windows, an optional overlay briefly outlines the windows and targets the agent is working on, without stealing focus.
+`/computer-debug` opens a private viewer with the images the agent actually received, its action trace and the capture settings. On Windows an optional overlay briefly outlines the window and target the agent is working on, without taking focus.
 
 ## Platforms
 
-Computer use is qualified on **Windows 11 x64 controlled from Pi running in WSL**, on the same machine or on another one over SSH. Linux and macOS are not supported: window control there is not verified, so no runtime ships for them and computer use refuses with a clear message. Some features have their own requirements, for example Windows Sandbox needs a Windows edition that includes it, and isolated sessions need Windows 11 24H2 or newer.
+Computer use is tested on Windows 11 x64, controlled from Pi running in WSL on the same machine or on another one over SSH. Linux and macOS aren't supported: window control there isn't verified, so no runtime ships for them and computer use says so when it starts. Some features need more: Windows Sandbox needs a Windows edition that has it, and isolated sessions need Windows 11 24H2 or newer.
 
-Pi Agent Computer Use is experimental and under active development. Interfaces and behavior may change.
+This is experimental and changes often, so interfaces and behavior may still move around.
 
 ## Installation
 
@@ -138,15 +140,15 @@ To try it for one session without changing your settings:
 pi -e npm:pi-agent-computer-use
 ```
 
-The package carries the native Cua Driver runtime for Windows; nothing else needs downloading. An installation from GitHub downloads the same pinned runtime once on first use. For the shared Read/Search/Write/Insert tools, also install [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide):
+The package carries the Windows Cua Driver runtime, so there's nothing else to download. An install from GitHub downloads the same pinned runtime once on first use. If you want the shared Read/Search/Write/Insert tools, install [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide) too:
 
 ```bash
 pi install npm:pi-agent-ide
 ```
 
-Pi packages run with your full system permissions, and this one controls your desktop. Review it before installing.
+Pi packages run with your full system permissions, and this one drives your desktop. Read the code before you install it.
 
-Some features need one-time setup on the Windows side, such as Firefox for Playwright, Cua perception for `regions`, MXC for isolated sessions or the VS Code bridge. See [the resource guide](docs/computer-resources.md) for each one.
+A few features need a one-time setup on the Windows side: Firefox for Playwright, Cua perception for `regions`, MXC for isolated sessions and the VS Code bridge. [The resource guide](docs/computer-resources.md) explains each one.
 
 ## Commands
 
@@ -157,7 +159,7 @@ Some features need one-time setup on the Windows side, such as Firefox for Playw
 
 ## Feedback and contributions
 
-Computer use is developed through daily use on real tasks, but I can only test the machines, apps and workflows available to me. If something breaks or does not fit your workflow, please [open an issue](https://github.com/alexshpunt/pi-agent-computer-use/issues) or start a [discussion](https://github.com/alexshpunt/pi-agent-computer-use/discussions). Bug reports, ideas, questions and pull requests are welcome.
+I use this every day on real tasks, but I can only test the machines, apps and workflows I have. If something breaks or doesn't fit how you work, [open an issue](https://github.com/alexshpunt/pi-agent-computer-use/issues) or start a [discussion](https://github.com/alexshpunt/pi-agent-computer-use/discussions). Bug reports, ideas, questions and pull requests are all welcome.
 
 ## Documentation
 
