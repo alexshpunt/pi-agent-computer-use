@@ -34,4 +34,4 @@ A set of GUIDs derived from returned windows is **window-derived and incomplete*
 
 Other Windows sessions, undocumented COM, registry inventory, desktop lifecycle and automatic switching/moving are outside this feature. Knowing membership does not prove hidden-window capture, cross-desktop input, background focus behavior or concurrent-agent safety.
 
-The native candidate is tracked in [fork RFC #8](https://github.com/alexshpunt/cua/issues/8) and [draft PR #9](https://github.com/alexshpunt/cua/pull/9). The exact candidate passed Windows build, protocol and live two-desktop checks; see [results and limits](shell-desktop-membership-results.md). Runtime retention is an explicit owner choice, not an automatic update.
+The native candidate is tracked in [fork RFC #8](https://github.com/alexshpunt/cua/issues/8) and [draft PR #9](https://github.com/alexshpunt/cua/pull/9). The exact candidate passed Windows build, protocol and live two-desktop checks. Runtime retention is an explicit owner choice, not an automatic update.

@@ -28,7 +28,7 @@ The fixed text prompts were:
 
 OpenCLIP loaded the `dfndr2b` checkpoints, set evaluation mode and reparameterized the image encoder with timm. Text embeddings were encoded and normalized once per process. Each image batch was encoded, normalized and compared with those cached text embeddings. A tile counted as a mole when its mole cosine similarity exceeded its grass similarity. There was no generated text, fine-tuning, prompt search or fitted threshold. Cosine scores are not calibrated probabilities.
 
-The experiment kept the text tower loaded; it did not measure a minimal image-only runtime's memory use. Model initialization and the first text encoding are separate from the warm image timing. FP16 means CUDA autocast for the image encoder, with normalization and similarity comparisons in FP32. Twenty synchronized warm measurements were made per frame after three warm-up passes. GPU runs were serial, not concurrent. Python 3.14.4 ran in an isolated environment on the local NVIDIA GeForce RTX 3060 Laptop GPU, with four CPU threads. Dependency versions are in the [environment record](../evidence/mole-classifier/environment.txt).
+The experiment kept the text tower loaded; it did not measure a minimal image-only runtime's memory use. Model initialization and the first text encoding are separate from the warm image timing. FP16 means CUDA autocast for the image encoder, with normalization and similarity comparisons in FP32. Twenty synchronized warm measurements were made per frame after three warm-up passes. GPU runs were serial, not concurrent. Python 3.14.4 ran in an isolated environment on the local NVIDIA GeForce RTX 3060 Laptop GPU, with four CPU threads.
 
 The two FP32 reports predate the optional precision field in the probe script. Their commands used its FP32 default. The FP16 reports explicitly record precision.
 
@@ -91,7 +91,7 @@ python3 scripts/probe-mole-classifier.py \
   --output .tmp/mole-classifier/assessment
 ```
 
-The [redacted evidence](../evidence/mole-classifier/) keeps measurements, failures, labels and image hashes. It does not contain private screenshots, window identities or URLs. Without the private pixels, it is an audit record, not a redistributable benchmark dataset.
+The experiment used private screenshots, which are not published; this note is an audit record, not a redistributable benchmark dataset.
 
 ## What this does not settle
 

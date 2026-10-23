@@ -39,6 +39,6 @@ The user chose a foreground-only native contract. Background refuses without nat
 
 The focused addition is tracked in [fork RFC #21](https://github.com/alexshpunt/cua/issues/21) and [draft PR #22](https://github.com/alexshpunt/cua/pull/22). It reuses native capture/token admission, checks frozen geometry before input, and bounds pointer arrival and hover dwell. Win32 hit testing and global `SendInput` are not atomic against external desktop changes. This is not OS input isolation or proof of an application hover effect.
 
-The exact candidate `ce28c95175efc97a040cebebd80fec63526aec64` passed its Windows build, strict protocol tests and the two-window production-tool scenario. See [live evidence, reproduction and remaining gates](native-hover-results.md). The byte-checked `windows-native-pointer` profile is opt-in. Earlier profiles remain unavailable for these actions; no production runtime has been replaced.
+The exact candidate `ce28c95175efc97a040cebebd80fec63526aec64` passed its Windows build, strict protocol tests and the two-window production-tool scenario. The byte-checked `windows-native-pointer` profile is opt-in. Earlier profiles remain unavailable for these actions; no production runtime has been replaced.
 
-The live run loaded the isolated worktree loader and `/root/dev/pi/pi-agent-ide`, package 0.8.0, source `394f3784fb3e34a46a1727f3c9cdaf1c5af408ed`, clean and matching fetched origin/develop. Recheck the IDE source before each Pi run.
+The live run loaded the isolated worktree loader and a local Pi Agent IDE checkout, package 0.8.0, source `394f3784fb3e34a46a1727f3c9cdaf1c5af408ed`, clean and matching fetched origin/develop. Recheck the IDE source before each Pi run.

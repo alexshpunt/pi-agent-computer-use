@@ -1,70 +1,181 @@
-# Pi Agent Computer Use
+<p align="center">
+  <img src="assets/banner.png" alt="Pi Agent Computer Use" width="100%">
+</p>
 
-Native computer use for Pi. With [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide) it plugs into the ordinary Read, Search, Write and Insert tools; without IDE it adds deferred `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools that the agent finds through `tool_search`. Read and Search expose computer resources; literal Write and JSON Insert interact with a current observed window. CUA is the native capture/input backend; Playwright drives web pages in browsers the session opens. See [the resource interface and setup](docs/computer-resources.md).
+<h1 align="center">Pi Agent Computer Use</h1>
 
-## Why a separate extension
+<p align="center">Give your Pi agent a computer: see Windows apps, browsers and desktops, then click, type, draw and verify like a person would.</p>
 
-Pi Agent IDE already has vision and other capabilities beyond code work. Its scope has grown. Over time, the IDE should return to code editing, code understanding, debugging, and related development work. This extension should become the computer-use implementation.
+<div align="center">
 
-We want one window-first computer-use interface for all apps, including browsers: discover a window, read its native UI tree and screenshot, then click or type. Use Cua Driver's capabilities first and add missing behavior in the adapter when its public API allows it. A user-approved CUA fork may add missing native capabilities; continuous Windows drawing is the first approved case. Continuous paths use an explicitly selected, qualified Windows fork; the existing 0.33.2 install remains available. Do not add a separate tool family for each kind of app.
+[![npm version](https://img.shields.io/npm/v/pi-agent-computer-use)](https://www.npmjs.com/package/pi-agent-computer-use)
+[![npm downloads](https://img.shields.io/npm/dm/pi-agent-computer-use)](https://www.npmjs.com/package/pi-agent-computer-use)
+[![CI status](https://github.com/alexshpunt/pi-agent-computer-use/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/alexshpunt/pi-agent-computer-use/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/npm/l/pi-agent-computer-use)](./LICENSE)
 
-The provider uses IDE's public SDK without computer-specific code inside IDE. It preserves the existing backend's runtime qualifications and safety limits; changing the tool surface does not qualify new capabilities.
+</div>
 
-A separate read-only `computer_classify` tool evaluates one visual condition on supplied pixels with local TinyCLIP-39M. The agent supplies the cosine threshold; results are typed true/false/unknown, not calibrated probabilities. See [the predicate API and local setup](docs/visual-classifier.md) and [the skill for bounded reaction loops](.pi/skills/reactive-visual-classifier/SKILL.md).
+<div align="center">
 
-## Migration boundary
+[![Pi package](https://img.shields.io/badge/pi-package-6b4fbb)](https://pi.dev/packages/pi-agent-computer-use)
+[![Works with Pi Agent IDE](https://img.shields.io/badge/works%20with-Pi%20Agent%20IDE-2f7d4a)](https://github.com/alexshpunt/pi-agent-ide)
+[![Platform: Windows from WSL](https://img.shields.io/badge/platform-Windows%20from%20WSL-0078d4)](#platforms)
 
-The independent-tool proof of concept is retained as historical backend evidence and test fixtures. With IDE loaded, computer use connects through public IDE provider APIs, in either load order; without it, the same provider backs the deferred `computer_*` tools. `computer_classify` is a separate tool in both modes. A demonstrated generic SDK gap may use an isolated IDE branch/worktree; computer-specific implementations stay here, and Pi core remains read-only. Persistent installation switches need owner approval.
+</div>
 
-The ownership of shared infrastructure, including processes, terminals, browser reads, and images, still needs investigation. It is not decided simply because a resource appears in this pitch.
+Ask your agent to do something on your computer. For example: “Open Paint and draw a house”, “Fill in this form in my browser”, or “Check what the settings window says”. The agent finds the window, reads its controls and screenshot, acts, and reads again to check the result.
 
-## Backend qualification notes
+## Summary
 
-Use the resource guide above for the current tool interface. The linked standalone reports and their `computer_observe`/`computer_act` examples describe earlier verification of a removed tool set, not the current `computer_*` tools.
+Pi Agent Computer Use gives the [Pi coding agent](https://pi.dev/) one window-first interface for every app, browsers included. The agent discovers a window, reads its native accessibility tree and screenshot, and then types, clicks, drags or runs a browser action. Every input is grounded in the latest observation, and every result says what was delivered and what is still unknown.
 
-The extension selects its native CUA runtime from packages installed with the extension. Windows/WSL is the live-qualified GUI environment; Linux/macOS delivery and API checks do not enable unverified window lifetime/control. See [bundled runtime selection, installation and limits](docs/bundled-runtime.md). Experimental tools find apps, open a new window with its first observation, discover existing windows, read UI state and screenshots, capture/select temporal frames, act, and release the runtime. Opening needs no per-window config, PID/HWND lookup, or reload. Live checks opened separate Notepad windows and Calculator, and edited an authorized disposable window from another session. See [the YOLO results and limits](docs/yolo-windows-results.md) and [setup](docs/standalone-poc.md).
+| Work                                   | How                                                                         |
+| -------------------------------------- | --------------------------------------------------------------------------- |
+| Find windows, apps and displays        | Search or Read `computer:machine/local/windows`, `/apps` and `/displays`     |
+| See a window                           | Read `computer:window/...` for its UI tree, short element hints and a screenshot |
+| Act on what it saw                     | Write text or Insert one JSON action into the returned observation          |
+| Work in web pages                      | Playwright snapshots and actions in browsers it opens or attaches to        |
+| Check the result                       | `wait_for`, `verify`, change lists and fresh Reads                          |
+| Work away from your desktop            | Windows Sandbox, isolated agent sessions and other machines over SSH        |
 
-Fresh window Reads can choose `image`, `ui` or `full` views: `image` skips the UI walk and grounds pixel input; `ui` skips pixels and grounds current hint/token actions; `full` remains the default. Omitted parts are not reused from older observations. See [mode options and limits](docs/observation-granularity.md).
+Desktop control is backed by [Cua Driver](https://github.com/trycua/cua), and web pages by [Playwright](https://playwright.dev/).
 
-Window overviews use the driver's default capture route. A retained WGC route was removed in M7 (LPT-806): on the measured machines it was slower and timed out on windows that do not repaint. See [persistent WGC](docs/persistent-wgc.md) for the history.
+### Works with Pi Agent IDE, or on its own
 
-`npm run bench:windows` runs ten Windows tasks with a real agent in a Windows Sandbox on a configured machine and reports success, time and tokens per task. See [the task-success benchmark](docs/research/task-success-benchmark.md).
+With [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide) installed, computer use plugs into its ordinary `read`, `search`, `write` and `insert` tools. The agent uses the same tools for files and for windows, and computer results render in the IDE's tool panels.
 
-This installation selects a separately qualified Windows fork that resizes captured pixels before encoding one final overview PNG. The format, native capture route and input/detail contracts stay unchanged; the previous runtime remains available. See [single-PNG qualification and measured latency](docs/single-png-overviews.md).
+Without Pi Agent IDE, it adds its own `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools. They stay out of the tool list until the agent needs them: the agent finds them with `tool_search` and then calls them directly. Both modes use the same addresses, commands and results, and both work from Codemode scripts. Each Pi session picks the mode on its own; nothing needs configuring.
 
-This installation explicitly selects a qualified runtime using pinned fast_image_resize Bilinear for capped Windows window and display overviews. Approved merge, isolated qualification and production tool/TUI checks passed; the previous runtime and bundled default packages are retained. See [the exact artifact and qualification contract](docs/windows-bilinear-overviews.md).
-The approved direct-process profile replaces two process-name scans with one best-effort known-PID query. It keeps Bilinear, PNG, the guarded PrintWindow route and input/identity rules unchanged. The earlier runtime remains available for rollback. See [comparison, checks and adoption status](docs/window-capture-latency.md).
+### Built for YOLO, with Safe mode when you need it
 
-Bounded temporal observations use a sequence Read: capture metadata first, then Read explicitly selected timestamped readonly frames. Codemode composition is optional. The native window/display path reports real timing, missed slots and geometry changes without promising requested FPS. See [temporal capture](docs/temporal-capture.md) and [live results](docs/temporal-capture-results.md).
+Computer use is designed for an agent you trust with your desktop. In the default YOLO mode, the agent can read and operate any window you ask it to, read whole displays, attach to browsers that are already running and start programs by path. That is where it is most useful.
 
-YOLO is the default desktop-wide UI mode. The user can select session-owned Safe access with `/computer-mode safe` and return with `/computer-mode yolo`, without reload or target config. Live Notepad checks verified old-reference denial and separate ownership for windows sharing one PID. See [the Safe results and limits](docs/safe-windows-results.md). Neither mode is OS isolation. The primary provider surface uses ordinary IDE tools. The [earlier single-window PoC report](docs/standalone-poc-results.md) is historical.
+When you want limits, switch with `/computer-mode safe`. Safe mode lets the agent see and touch only the windows it opened itself, refuses display reads and refuses running arbitrary programs. Neither mode is OS isolation; for that, use a sandbox or an isolated session (below).
 
-Browser windows use the same computer resources as other apps. YOLO permits existing windows without a session-ownership or browser-page binding requirement; Safe remains session-owned. Read [the operating skill](.pi/skills/computer-use/SKILL.md). Native window captures default to a 1280px long-edge cap; filter metadata follows the qualified runtime (Bilinear in this installation, Lanczos3 in the retained older profiles). Window input uses returned-image coordinates local to the window; window identity remains separate from geometry: read-only zoom keeps its original local region through movement, resizing and scale changes.
+### See structure, not only pixels
 
-Insert JSON actions support complete keys/chords, text with per-character delay, right/double clicks, scroll and straight drags. Known keyboard or independent-stroke sequences can consume one overview and run without intermediate captures. They stop with a truthful completed prefix on refusal or uncertainty. No raw cross-call holds are exposed. Native `move` and bounded `hover` passed a two-window Windows/WSL check with the separately byte-checked `windows-native-pointer` candidate; older profiles refuse them. It is not the production default and its CUA certification gate remains open. See [native hover results and limits](docs/research/native-hover-results.md). Optional `drag.via` keeps the left button down through intermediate points when a qualified Windows fork is explicitly selected; the legacy 0.33.2 driver refuses this path before batch input. See [complete input usage](docs/complete-input.md) and [verified results and native limits](docs/complete-input-results.md).
-The public fork passed unchanged Windows build, native cancellation/release, compatibility and a real Paint brush picture. This installation now selects its exact qualified bytes from a separate user-local directory; old separately installed runtimes remain available as trusted overrides; fresh installations select the bundled runtime. See [Windows held-path results](docs/windows-held-path-results.md). Bounded simultaneous key holds, including Shift-held clicks and brush paths, now use a separately qualified key-hold fork in this installation. Keys release within one command; no cross-call hold is exposed. See [Windows key-hold results](docs/windows-key-hold-results.md).
+A window Read returns the app's native UI tree from Windows UI Automation: roles, names, values, enabled state and bounds, with a short hint such as `1:a` on each element. Hints are drawn on the screenshot too, so the agent can point at a button by its hint instead of guessing coordinates.
 
-Web pages use [Playwright](https://playwright.dev/) in a visible Chrome, Edge or Playwright-built Firefox that the session opens with a disposable profile: aria snapshots with refs, locator actions with Playwright's waiting, and page or element screenshots. In YOLO, Playwright can also attach to a Chromium-based browser that is already running: Chrome or Edge, such as the user's own, and browsers embedded in Electron, CEF and WebView2 apps or VS Code's integrated browser. The browser's own toolbar, tabs and dialogs stay native CUA windows. See [Browser pages](docs/computer-resources.md#browser-pages). Sharp is used for fresh display-region crop/resize and hint annotation above CUA pixels. The earlier [resampling results](docs/vision-scale-results.md) are historical, not current API promises. Native pixels can lag live UI state; input success is not proof of fresh paint.
+- Search an observation's UI tree without capturing again.
+- Inspect, scope or highlight one element, or read its full text.
+- Choose `image`, `ui` or `full` reads to skip what is not needed.
+- Use `changes` to see only what changed since the last read.
+- Add `ocr` for text in canvases and games, or `regions` for icons and text areas detected by Cua perception.
+- Zoom into a region of the latest overview, or crop one element at full resolution.
+- Capture a short `sequence` of frames to watch an animation or progress bar, then pick the frames that matter.
+- Read a window's `state` to see whether it is hung and how much memory its process uses.
 
-Window overviews now expose bounded native `ui` resources and snapshot-scoped short hints. Codemode can search, scope and inspect the collected tree without another native walk, highlight an exact element, request fresh native element detail and use current hints for supported input. Labelled PNGs preserve raw returned bytes privately; the viewer has a later-capture hint switch and exact raw/sent comparison. See [usage and limits](docs/ui-resources.md). LPT-386–388 passed native, production Codemode and viewer/TUI checks; see [results and limits](docs/ui-resource-results.md).
+### Act like a person, with real input
 
-Window discovery, observations and action receipts share session-scoped source identity. Missing monitor/virtual-desktop membership stays unknown. Action receipts describe only that attempt's native delivery evidence, not app-wide support. See [identity and capability metadata](docs/source-capabilities.md).
-Read-only [shell desktop membership](docs/shell-desktop-membership.md) projects documented native GUID/current-desktop samples with independent errors. Its exact Windows candidate passed [two-desktop membership checks](docs/shell-desktop-membership-results.md); no full desktop inventory or cross-desktop input support is claimed.
+Input goes through the same window the agent observed:
 
-Optional overview grid, selected detail-region border and proven last-pointer marker use those same returned-image pixels. They preserve native raw bytes and dimensions, send one marked image and never invent missing action geometry. Private viewer controls apply to later captures. See [guide usage](docs/image-guides.md) and [verified coordinate/guide results](docs/coordinate-guide-results.md).
+- type literal text, press keys and chords, hold several keys at once;
+- click, double-click, right-click, hover, scroll by wheel detents;
+- drag straight lines or continuous brush strokes through many points;
+- run a timeline of timed key, button, mouse and pen events, including raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
+- run up to 2000 known keyboard, click and stroke steps in one call, so a whole drawing fits in one action;
+- invoke, select or set values through UI Automation, and open menu items by their labels.
 
-Read a machine's `displays` address (`computer:machine/local/displays` for this one) to enumerate native monitors with a qualified selected-display runtime. Read a returned display resource for an exact overview, then its observation address for a fresh readonly crop; see [selected displays](docs/selected-displays.md). Read `computer:display/primary` for the legacy primary route in YOLO; Safe refuses all display reads. Display and window images share source metadata and the native 1280px cap settings. Display reads grant no input; in YOLO, a display address also accepts `resize` to change its resolution until the session closes ([details](docs/computer-resources.md#change-a-displays-resolution)). Read-only window zoom and fresh display crop use a rectangle in the latest overview; see [detail usage](docs/native-detail.md). See [the source contract](docs/observation-sources.md) and [verified results](docs/observation-sources-results.md).
+Input starts in the background where Windows allows it, so your own pointer and focus stay where they are. Foreground input is an explicit second step, and it pauses whenever you touch the keyboard or mouse yourself.
 
-On Windows, an optional user-local Qt Widgets helper flashes human-only overview outlines, requested zoom/crop regions and grounded action targets. It does not change CUA captures/input or the user's keyboard focus. See [the helper contract](docs/window-overlay.md), [verified costs and limits](docs/window-overlay-results.md), [region/action results](docs/region-highlight-results.md), and [the computer-use E2E ledger](docs/computer-use-e2e-ledger.md).
+### Know what actually happened
 
-Images stay in normal Pi context, including user attachments, tool/Codemode images and detail. This extension does not remove older images or rewrite history. Pi's normal compaction owns context reduction; the debug viewer keeps only three display cards. See [the retention contract and transport checks](docs/image-context.md).
+Every action returns a receipt: `delivered`, `refused` (nothing was sent) or `unknown` (it may have reached the app). The agent never replays an uncertain action blindly. Add `"expect"` to an action to check its postcondition, or `"successor":true` to get a compact list of what changed. `wait_for` and `verify` check UI conditions, and `batch` runs a short chain that stops at the first failure. In Codemode these receipts are plain objects, so scripts branch on `outcome` without parsing text.
 
-- [Linear project](https://linear.app/alexshpunt/project/pi-agent-computer-use-614e5fa78124)
-- [Research task: define the first safe migration](https://linear.app/alexshpunt/issue/LPT-355/define-the-first-safe-computer-use-migration)
-- [Research references](docs/research-references.md)
+### Use browsers and apps built on them
 
-[External source research](docs/research/external-implementations.md) is available. Automatic YOLO opening is tracked in [LPT-363](https://linear.app/alexshpunt/issue/LPT-363). [Safe access](https://linear.app/alexshpunt/issue/LPT-365) follows YOLO; [sandbox research](https://linear.app/alexshpunt/issue/LPT-364) is separate. Further extraction of IDE-owned legacy capabilities is separate from this provider's ordinary-tool integration.
+Web pages run through Playwright, with aria snapshots, element refs, locator actions and Playwright's own waiting. The agent can:
 
-Agents can work in a disposable Windows Sandbox instead of the human's desktop; see [Work in a Windows Sandbox](docs/computer-resources.md#work-in-a-windows-sandbox). [Sandbox boundary research](docs/research/sandbox-boundaries.md) compares Windows Sandbox, a Windows VM and a private Linux desktop in WSL.
+- open its own Chrome, Edge or Firefox with a disposable profile, or with a persistent agent profile for sites that need a login;
+- attach to a Chrome or Edge that is already running, including your own profile when you allow it;
+- attach to browsers inside Electron, CEF and WebView2 apps, and to VS Code's integrated browser through the included Pi Browser Bridge;
+- switch tabs, answer JavaScript dialogs, upload and download files, run page code and read the console and network log.
 
-Agents can also operate another Windows machine with WSL over SSH, including a browser and a sandbox on it; see [Work on another machine](docs/computer-resources.md#work-on-another-machine).
+The browser's own toolbar, tabs and system dialogs stay ordinary windows, so the agent can still use native input there.
+
+### Work without touching your desktop
+
+- **Windows Sandbox:** a disposable Windows with its own driver. Share only the folders you choose.
+- **Isolated agent sessions:** a separate Windows session on the same machine with its own desktop, clipboard and input. Several agents can work at once, each with foreground input, without disturbing you.
+- **Owned browsers:** disposable profiles that are deleted when the session closes.
+- **Other machines:** operate another Windows machine with WSL over SSH, using the same addresses. No ports are opened.
+
+### Move files, media and text in and out
+
+Each session has its own folder on the controlled machine for files an app opens or saves. In YOLO mode the agent can also read and write the clipboard, record the screen to video, and record what the machine plays with an optional transcript.
+
+### Check images with a local classifier
+
+`computer_classify` evaluates one visual condition on an image with a small local model (TinyCLIP). It is useful in fast reaction loops, for example in games, where calling the main model for every frame is too slow.
+
+### Watch what the agent sees
+
+A private debug viewer (`/computer-debug`) shows the images the agent actually received, the action trace and capture settings. On Windows, an optional overlay briefly outlines the windows and targets the agent is working on, without stealing focus.
+
+## Platforms
+
+Computer use is qualified on **Windows 11 x64 controlled from Pi running in WSL**, on the same machine or on another one over SSH. Linux and macOS are not supported: window control there is not verified, so no runtime ships for them and computer use refuses with a clear message. Some features have their own requirements, for example Windows Sandbox needs a Windows edition that includes it, and isolated sessions need Windows 11 24H2 or newer.
+
+Pi Agent Computer Use is experimental and under active development. Interfaces and behavior may change.
+
+## Installation
+
+Install [Pi](https://pi.dev/) in WSL first, then install the package:
+
+```bash
+pi install npm:pi-agent-computer-use
+```
+
+Or install it directly from GitHub:
+
+```bash
+pi install git:github.com/alexshpunt/pi-agent-computer-use
+```
+
+To try it for one session without changing your settings:
+
+```bash
+pi -e npm:pi-agent-computer-use
+```
+
+The package carries the native Cua Driver runtime for Windows; nothing else needs downloading. An installation from GitHub downloads the same pinned runtime once on first use. For the shared Read/Search/Write/Insert tools, also install [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide):
+
+```bash
+pi install npm:pi-agent-ide
+```
+
+Pi packages run with your full system permissions, and this one controls your desktop. Review it before installing.
+
+Some features need one-time setup on the Windows side, such as Firefox for Playwright, Cua perception for `regions`, MXC for isolated sessions or the VS Code bridge. See [the resource guide](docs/computer-resources.md) for each one.
+
+## Commands
+
+| Command                       | Effect                                                |
+| ----------------------------- | ----------------------------------------------------- |
+| `/computer-mode safe\|yolo`   | Switch between Safe and YOLO for this session          |
+| `/computer-debug on\|off`     | Start or stop the private vision debug viewer          |
+
+## Feedback and contributions
+
+Computer use is developed through daily use on real tasks, but I can only test the machines, apps and workflows available to me. If something breaks or does not fit your workflow, please [open an issue](https://github.com/alexshpunt/pi-agent-computer-use/issues) or start a [discussion](https://github.com/alexshpunt/pi-agent-computer-use/discussions). Bug reports, ideas, questions and pull requests are welcome.
+
+## Documentation
+
+| Document                                                  | Contents                                                              |
+| --------------------------------------------------------- | --------------------------------------------------------------------- |
+| [Computer resources](docs/computer-resources.md)          | Addresses, views, commands, browsers, sandboxes, sessions, machines   |
+| [Operating skill](.pi/skills/computer-use/SKILL.md)       | How the agent observes, plans, acts and verifies                      |
+| [Complete input](docs/complete-input.md)                  | Keys, pointer, drags, sequences and their limits                      |
+| [Semantic actions](docs/semantic-actions.md)              | UI Automation invoke, select and set value                            |
+| [UI resources and hints](docs/ui-resources.md)            | The native UI tree, hints and local UI operations                     |
+| [Window zoom and display detail](docs/native-detail.md)   | Readonly detail from the latest overview                              |
+| [Temporal capture](docs/temporal-capture.md)              | Frame sequences and their timing                                      |
+| [Selected displays](docs/selected-displays.md)            | Monitor discovery and display reads                                   |
+| [Image guides](docs/image-guides.md)                      | Coordinate grid and last-action marks                                 |
+| [Visual classifier](docs/visual-classifier.md)            | `computer_classify` setup and use                                     |
+| [Vision debug viewer](docs/vision-debug.md)               | What the agent saw and the capture controls                           |
+| [Bundled runtime](docs/bundled-runtime.md)                | Native runtime packages and platform boundaries                       |
+
+## License
+
+[MIT](./LICENSE)

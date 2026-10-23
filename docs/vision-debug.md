@@ -44,4 +44,4 @@ The integration writes `vision-trace.json` and `provider-bodies.json` beside its
 
 For a parent session, `node scripts/verify-vision-debug.mjs <viewer-url> <session-jsonl> [output-directory]` compares retained assets with forwarded Pi tool-result bytes and saves proof. Run it after synthetic observations, a captured-only frame and an input refusal. Its timing measures local state reads only.
 
-[Verified results and visible evidence](vision-debug-results.md) include parent reload, browser reconnect and the real TUI capture. Action rows keep their expanded state during polling.
+Action rows keep their expanded state during polling.

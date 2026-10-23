@@ -9,11 +9,11 @@ A small, repeatable WindowsAgentArena-style suite. It gives a comparable success
 - A task passes when the output folder holds the expected file, or when the agent's final `ANSWER:` line matches. The checks have unit tests in `test/windows-tasks.test.ts`.
 - A trial has 20 minutes. A timeout fails that task only. Afterwards the suite removes the trial's folders and closes any sandbox the agent left open.
 
-Run it with `npm run bench:windows -- [--model provider/id] [--thinking high] [--task <id>] [--machine zinpc]`. Model and thinking default to Pi's own settings. Results go to `.tmp/bench/results`, with a Markdown table per run.
+Run it with `npm run bench:windows -- [--model provider/id] [--thinking high] [--task <id>] [--machine lab]`. Model and thinking default to Pi's own settings. Results go to `.tmp/bench/results`, with a Markdown table per run.
 
 ## Results
 
-ZinPC (Windows 11 25H2, 4K console), model `openai-codex/gpt-5.6-luna`, thinking high, 2026-10-20. Times are seconds, tokens are input plus output.
+A Windows 11 25H2 test machine with a 4K console, model `openai-codex/gpt-5.6-luna`, thinking high, 2026-10-20. Times are seconds, tokens are input plus output.
 
 ### Baseline: runtime fb7d1909
 
@@ -74,7 +74,7 @@ Claude models run through the installed `pi-claude-subscription-connector`. The 
 
 The first trials found product bugs. They were fixed before or between the runs above:
 
-- **Windows Sandbox did not start on ZinPC.** Since the October 2026 Windows updates, fresh guests enforce Smart App Control, which blocked the unsigned driver. Guest setup now turns it off inside the disposable guest only.
+- **Windows Sandbox did not start on the test machine.** Since the October 2026 Windows updates, fresh guests enforce Smart App Control, which blocked the unsigned driver. Guest setup now turns it off inside the disposable guest only.
 - **A second sandbox waited 120 s and timed out.** Windows runs one sandbox at a time and only shows an error dialog. `open_sandbox` now refuses at once, and closing also ends the sandbox client, since `wsb stop` can fail over SSH.
 - **`Enter`, `ESC` and `-` were "Unsupported key".** Key names now ignore case, accept common spellings and unshifted punctuation, and an unknown key lists the valid names.
 - **Typed text never reached Windows PowerShell.** PSReadLine ignores Unicode (`VK_PACKET`) input. The driver now types characters on the target's keyboard layout as real keystrokes (fork 9921ae54). In an A/B sandbox check, the previous runtime showed pressed keys but no typed text, and the new one showed both.

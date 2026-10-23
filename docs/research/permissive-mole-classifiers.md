@@ -23,7 +23,7 @@ For context, [original MobileCLIP-S0](legacy-mobileclip-experiment.md) previousl
 
 The [probe](../../scripts/probe-mole-classifier.py) now supports these pinned Hugging Face checkpoints through Transformers 5.9.0. It uses local files only, checks the safetensors weight hash and refuses remote model code. No game source, DOM, network state, new screenshots or desktop input were used.
 
-We created a separate ignored Python environment for Transformers. The existing MobileCLIP environment was not modified. Torch, torchvision and Pillow versions stayed the same as in the earlier experiment; complete selected versions are in [environment.txt](../evidence/mole-classifier/alternatives/environment.txt). All GPU runs were serial on the local RTX 3060 Laptop GPU, using four CPU threads and the SDPA attention backend.
+We created a separate ignored Python environment for Transformers. The existing MobileCLIP environment was not modified. Torch, torchvision and Pillow versions stayed the same as in the earlier experiment. All GPU runs were serial on the local RTX 3060 Laptop GPU, using four CPU threads and the SDPA attention backend.
 
 The prompts remained:
 
@@ -34,11 +34,11 @@ Each model used its own processor. SigLIP2 text used its required maximum-length
 
 SigLIP's positive logit scale and common bias do not change this two-class ordering, so the probe compares cosine scores directly. This does not test calibrated sigmoid thresholds or multi-label events. Scores are not probabilities.
 
-We checked the cached-feature route against each model's complete multimodal forward pass on the first 16-tile batch, including scale and SigLIP bias. The logits matched within 1e-4 tolerance and both routes selected tile 2. Every recorded cosine score across all six runs was finite. A deliberately wrong HF checkpoint was refused before model loading without producing scores. A one-repeat original MobileCLIP-S0 smoke check preserved all 23 frame predictions after the loader changes; its timing is not included in the comparison. See [checks.json](../evidence/mole-classifier/alternatives/checks.json).
+We checked the cached-feature route against each model's complete multimodal forward pass on the first 16-tile batch, including scale and SigLIP bias. The logits matched within 1e-4 tolerance and both routes selected tile 2. Every recorded cosine score across all six runs was finite. A deliberately wrong HF checkpoint was refused before model loading without producing scores. A one-repeat original MobileCLIP-S0 smoke check preserved all 23 frame predictions after the loader changes; its timing is not included in the comparison.
 
 Transformers emitted warnings about BOS/EOS identifiers in a default 32k SigLIP configuration. A separate read-only check confirmed that the pinned configuration actually has a 256k vocabulary, that the processor produced 64-token sequences and that every token was in range. We did not patch the model or library.
 
-Image timing covers the encoder, normalization, two-column comparison and CUDA synchronization after three warm-up passes. There are twenty timed repetitions per frame. FP16 means CUDA image autocast, not a fully half-precision resident model or an optimized exported runtime. The text tower stayed loaded. Preprocessing, transfer, import/initialization and first text encoding have separate timings in the [six summaries](../evidence/mole-classifier/alternatives/).
+Image timing covers the encoder, normalization, two-column comparison and CUDA synchronization after three warm-up passes. There are twenty timed repetitions per frame. FP16 means CUDA image autocast, not a fully half-precision resident model or an optimized exported runtime. The text tower stayed loaded. Preprocessing, transfer, import/initialization and first text encoding were timed separately.
 
 The inherited 884.5 ms capture median in those summaries belongs to the earlier overview/detail capture pairs. It is not a new capture measurement. This comparison does not measure the newer temporal-capture tool, frame age, input latency or a live reaction loop.
 
@@ -52,7 +52,7 @@ The pinned publisher model cards declare **MIT** for both TinyCLIP checkpoints a
 | TinyCLIP-39M | [`wkcn/TinyCLIP-ViT-39M-16-Text-19M-YFCC15M`, `07a4b0bc751cb64fecd2b661c048c1dd98d69444`](https://huggingface.co/wkcn/TinyCLIP-ViT-39M-16-Text-19M-YFCC15M/tree/07a4b0bc751cb64fecd2b661c048c1dd98d69444) | 332,443,148 bytes |
 | SigLIP2 Base | [`google/siglip2-base-patch16-224`, `75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2`](https://huggingface.co/google/siglip2-base-patch16-224/tree/75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2) | 1,500,800,904 bytes |
 
-We downloaded those explicit revisions, including cards, configs and tokenizers, and verified the weights against the publisher's Git LFS hashes. [provenance.json](../evidence/mole-classifier/alternatives/provenance.json) records every downloaded file's size and SHA256. Model size names are not total memory estimates: the complete checkpoints contain about 23.45M, 83.10M and 375.19M tensor entries respectively, including text embeddings and stored buffers.
+We downloaded those explicit revisions, including cards, configs and tokenizers, and verified the weights against the publisher's Git LFS hashes. Model size names are not total memory estimates: the complete checkpoints contain about 23.45M, 83.10M and 375.19M tensor entries respectively, including text embeddings and stored buffers.
 
 The HF snapshots have no standalone LICENSE file. TinyCLIP's cards link the [Microsoft MIT license](https://github.com/microsoft/Cream/blob/main/TinyCLIP/LICENSE). The [original Google repository](https://github.com/google-research/big_vision/blob/main/big_vision/configs/proj/image_text/README_siglip2.md) separately assigns CC-BY-4.0 to non-software materials; we used Google's Apache-2.0-labelled HF checkpoint, not an unidentified conversion. Do not treat every artifact called SigLIP2 as the same licensed distribution.
 

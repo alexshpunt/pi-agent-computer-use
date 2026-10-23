@@ -25,7 +25,7 @@ One native screenshot of a newly created synthetic UI fixture, 1237×1327 pixels
 | image Triangle | 10.593 / 13.663 | 9.476 / 10.660 |
 | image Lanczos3 | 18.999 / 21.702 | 17.817 / 19.767 |
 
-[All 66 methods in both runs](../evidence/resize-benchmark/run.json). Each run used three warmups and 40 samples per method, with rotating order. All 66 output PNGs were byte-identical between runs.
+Each run used three warmups and 40 samples per method, with rotating order. All 66 output PNGs were byte-identical between runs.
 
 The timer covers resize, destination allocation, coefficients and scratch allocation. Every call starts without a cached plan or reusable scratch buffers. It excludes capture, PNG decode/encode, file I/O and final output destruction. Source pixels were decoded once, fully opaque RGBA, without gamma conversion or alpha premultiplication. Threading features were disabled. This compares real library implementations, not just abstract kernels.
 
@@ -39,10 +39,6 @@ I viewed all 66 outputs in six contact sheets at their actual 466×500 size, the
 - **Lanczos3:** clean, sharp small text and boundaries. More work than Bilinear, but both SIMD implementations are far faster than `image` here.
 - **pic Box/Area:** noticeably blurred small labels; not preferred for this screenshot.
 - Most remaining filters produce understandable controls but do not beat Spline16 on speed. Some soft filters blur the fine text; wider kernels cost more without an obvious benefit on this fixture.
-
-The comparison below crops off the browser toolbar, but does not resize the outputs again:
-
-![Nearest, Spline16, Bilinear and image Lanczos3](../evidence/resize-benchmark/comparison.png)
 
 This is a visual judgement on one static UI image, not an OCR score, model accuracy test, photo-quality test or game benchmark. It does not establish the best filter for all inputs.
 

@@ -1,5 +1,7 @@
 # Temporal capture
 
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
 `computer_sequence` captures one authorized Windows window or the primary display. Browser windows use the same native path. It does not encode video, raise a window, walk its accessibility tree or grant input authority.
 
 ## Capture and select in Codemode
@@ -68,4 +70,3 @@ Choose `all`, `first`, `last`, `endpoints`, `changed`, `{indexes:[0,2]}` or incl
 
 The existing debug viewer keeps its three ordinary boundary cards. A temporal dropdown also lists up to 40 sequence image blocks in the latest application-boundary request and lets the human inspect their exact bytes. Selection alone is not forwarding. Byte matching can be ambiguous when screenshots are identical; the viewer lists every retained possible source instead of inventing a timestamp. Asset eviction is visible. Final wire delivery remains unconfirmed.
 
-[Live results and limits](temporal-capture-results.md)

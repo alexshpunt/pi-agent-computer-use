@@ -4,7 +4,7 @@ LPT-381 is canceled at the user's request. Computer-use leaves cache and prefill
 
 ## Actual local probe
 
-Active Pi is 1.0.2; the TUI shows openai-codex / gpt-6.1-sol. The development dependency is pi-ai 1.0.0, while the active installation includes pi-ai 1.0.2. Their Codex serializer bytes match, but their public Responses files differ. The runner accepts a package root so the final [nine-request evidence](../evidence/cache-controls/run.json) uses the active installation, not an assumption about the dev dependency.
+Active Pi is 1.0.2; the TUI shows openai-codex / gpt-6.1-sol. The development dependency is pi-ai 1.0.0, while the active installation includes pi-ai 1.0.2. Their Codex serializer bytes match, but their public Responses files differ. The runner accepts a package root so the final nine-request check uses the active installation, not an assumption about the dev dependency.
 
 ```sh
 node scripts/probe-pi-cache-controls.mjs /usr/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai

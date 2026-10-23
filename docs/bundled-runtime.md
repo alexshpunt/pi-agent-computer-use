@@ -1,58 +1,51 @@
 # Bundled CUA runtime
 
-Computer Use selects a native CUA package installed with the extension. It does not download a driver at first use or search for a separate CUA installation.
-See the [build, installation and Windows/WSL verification results](bundled-runtime-results.md).
-
-The private package installation uses the existing Verdaccio registry:
+The npm package carries one native runtime: Cua Driver 0.37.0 for Windows x64, built from the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork at source `13dbacca`. It is the qualified `windows-desktop` profile, so a fresh installation gets every native capability without any configuration:
 
 ```sh
-pi install npm:@alexshp/pi-agent-computer-use
+pi install npm:pi-agent-computer-use
 ```
 
-Keep optional dependencies enabled. They carry the native packages. An update installs a new extension version with its exact native package versions; it does not auto-update CUA at startup.
+An update installs a new extension version with its exact runtime. Computer use never updates the driver on its own.
 
-## Platform boundary
+## Where the files come from
 
-| Execution target | Package | Current boundary |
-| --- | --- | --- |
-| Windows x64, including Windows-host control from WSL x64 | `@alexshp/cua-runtime-win32-x64` | Windows/WSL is the live-qualified GUI environment. |
-| Linux x64 outside WSL | `@alexshp/cua-runtime-linux-x64` | Build, installation and API checks; window lifetime/control deferred. |
-| macOS Intel | `@alexshp/cua-runtime-darwin-x64` | Build, installation and API checks; window lifetime/control deferred. |
-| macOS Apple Silicon | `@alexshp/cua-runtime-darwin-arm64` | Build, installation and API checks; window lifetime/control deferred. |
+The files are published as the fork release [`pi-runtime-0.37.0-13dbacca`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.37.0-13dbacca): `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`. They are byte-identical to the fork's CI build of that commit.
 
-npm sees WSL as Linux. The Windows package therefore permits Linux x64 installation too. WSL selects Windows-host control; ordinary Linux selects Linux. Windows ARM64 and Linux ARM64 are outside this build matrix.
+`src/runtime-pins.json` pins the source, the version, the release URL and the SHA-256 of every file. Before packing, `npm pack` runs `scripts/fetch-runtime.mjs`, which downloads the files into `native-runtime/win32-x64/runtime/` and checks each hash. The directory is not committed to Git.
 
-All platforms use the same `computer_*` tools. Linux/macOS can expose read-only native app/window metadata, subject to native permissions. They do not issue usable window references or launch/control windows until native lifetime binding is verified. This is an explicit `window_lifetime_unavailable` refusal, not a pid/window_id substitute. Those platforms never start the Windows PowerShell identity peer. Unsupported native routes refuse without another backend or input fallback.
+An installation from Git has no packaged files. On first use, computer use downloads the same pinned files once into that directory, with the same checks. A failed download or a changed file refuses; nothing is replaced silently.
 
-A successful build or MCP startup is not a live GUI qualification. Neither UIA nor background delivery guarantees that the user's focus stays unchanged. See the [accepted semantic-action limits](semantic-actions-results.md).
+## Platforms
 
-## Files and startup
+| Pi runs on | Runtime |
+| --- | --- |
+| Windows x64 | Runs the packaged files directly. Not live-verified yet. |
+| WSL x64 on Windows | Copies the packaged files to a Windows-host cache and controls the Windows desktop. |
+| Linux outside WSL, macOS, ARM64 | No runtime is shipped; computer use refuses with `unsupported_native_target`. |
 
-Each native package carries a source/version manifest, every runtime file hash, MIT licensing and third-party notices. Windows includes `cua-driver.exe`, `cua-cursor-theme.exe` and `cua-driver-uia.exe`. Linux/macOS include `cua-driver` and `cua-cursor-theme`.
+Linux and macOS window control is not verified, so no runtime is shipped for them.
 
-The extension pins the complete set's source, version and hashes separately from package metadata. Missing packages, a wrong target/source/version, missing companions/notices or changed bytes refuse before driver startup. No startup repair silently replaces those files.
+## Startup checks
 
-On WSL, verified Windows files are copied into a source-specific cache under the Windows user's Local Application Data directory:
+Every start checks all five pinned files. A missing file, a changed byte or a symlink refuses before any driver process starts.
+
+From WSL, the verified files are copied into a source-specific cache under the Windows user's Local Application Data directory:
 
 ```text
 PiComputerUse/native-runtimes/<source>/win32-x64/runtime/
 ```
 
-A bounded system query finds that directory. Copying uses a private staging directory and atomic promotion. Every reuse/startup checks the pinned bytes. A changed existing cache refuses; it is not overwritten. Old installed runtime directories remain untouched. This avoids depending on Linux executable bits for npm's `.exe` files.
+A bounded system query finds that directory. Copying uses a private staging directory and atomic promotion, and every reuse checks the pinned bytes again. A changed existing cache refuses; it is not overwritten. Old runtime directories stay untouched. Running from a Windows path avoids depending on Linux executable bits for the `.exe` files.
 
-The extension owns one MCP child. It disables telemetry/update checks, requires the pinned server version and EOF-aware receiver, and reads available native tool schemas. Unsupported tools never become physical fallback calls. Closing the session releases the child and any Windows identity peer, not application windows.
+Computer use owns one MCP child. It disables telemetry and update checks, requires the pinned server version and the EOF-aware receiver, and reads the native tool schemas. Unsupported tools never fall back to other input. Closing the session releases the child and any Windows identity peer, not application windows.
 
 ## System requirements
 
-- Windows artifacts are unsigned development builds. Shipping a UIAccess helper does not grant UIAccess rights or bypass Windows trust policy. WSL needs a working Windows interop endpoint.
-- Linux targets glibc 2.31 or newer. CUA needs the relevant X11/Wayland libraries, a working display/session bus and any compositor/portal permissions. Portal input is built in; PipeWire ScreenCast is not. Do not assume every Wayland compositor supports capture or input.
-- macOS packages have a macOS 13 deployment target and build/start on matching macOS 26 CI runners. They are not notarized or signed with a developer identity. Accessibility and Screen Recording approval remain OS requirements; no permission-policy bypass is included.
-- The optional Windows Qt overlay and classifier/model environment are separate. Their runtimes are not included in the native driver package.
+- The Windows binaries are unsigned. Shipping a UIAccess helper does not grant UIAccess rights or bypass Windows trust policy.
+- WSL needs a working Windows interop endpoint.
+- The optional Windows Qt overlay and the classifier model environment are separate and not part of the runtime.
 
-## Overrides and rebuilding
+## Overrides
 
-Trusted `.pi/computer-use.json` settings and `CUA_DRIVER_PATH` still override automatic package selection. Existing qualified Windows profiles keep their exact byte/version checks. Agent tool arguments cannot select an executable or profile.
-
-The fork's `native-runtime-build.yml` builds Windows x64, Linux x64 and both Mac architectures from one immutable commit. Each native runner installs its npm archive, verifies companions/notices/hashes and repeats read-only initialize/tools/list checks from the installed path. Only a complete four-target set can be pinned and distributed. The workflow does not publish publicly, install services, change PATH or use signing credentials.
-
-The Linux/macOS window-lifetime work is deliberately deferred by the owner. It needs its own live qualification before window control can be enabled.
+A trusted `.pi/computer-use.json` (`command`, `runtime`) or `CUA_DRIVER_PATH` overrides the packaged runtime, for example to try another qualified fork build. Each named profile keeps its exact byte and version check. Agent tool arguments can never select an executable or a profile.

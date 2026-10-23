@@ -197,14 +197,14 @@ Limits:
 
 Another Windows machine with WSL can be operated from this one over SSH: its windows, displays, an owned browser and a sandbox on it. Only machines named under `machines` in `.pi/computer-use.json` can be reached; the agent passes a name, never a host or path, and an unknown name refuses before any SSH work.
 
-Use `computer:machine/<name>` with the configured name, for example `computer:machine/zinpc`. The first use of any of its addresses starts that machine's CUA driver over SSH; later uses share it. Its addresses work as described in [Discover and read](#discover-and-read):
+Use `computer:machine/<name>` with the configured name, for example `computer:machine/lab`. The first use of any of its addresses starts that machine's CUA driver over SSH; later uses share it. Its addresses work as described in [Discover and read](#discover-and-read):
 
 | Address and call | Effect |
 | --- | --- |
-| Search `computer:machine/zinpc/windows` | That machine's windows, as `computer:window/...` addresses |
-| Search `computer:machine/zinpc/apps` | Its installed apps, as `computer:app/...` addresses that open there |
-| Read `computer:machine/zinpc/displays` | Its displays, as `computer:display/...` addresses; Insert `resize` into one to change its resolution |
-| Insert `{"action":"open","app":"notepad"}` into `computer:machine/zinpc` | Start an app there and return its window |
+| Search `computer:machine/lab/windows` | That machine's windows, as `computer:window/...` addresses |
+| Search `computer:machine/lab/apps` | Its installed apps, as `computer:app/...` addresses that open there |
+| Read `computer:machine/lab/displays` | Its displays, as `computer:display/...` addresses; Insert `resize` into one to change its resolution |
+| Insert `{"action":"open","app":"notepad"}` into `computer:machine/lab` | Start an app there and return its window |
 | Insert `{"action":"open_browser"}` | Launch an owned browser there (optional `browser`, `url`) |
 | Insert `{"action":"open_sandbox"}` | Start a Windows Sandbox on that machine (with `import`/`export` folders of that machine) |
 | Insert `{"action":"close"}` | Close its sandboxes, sessions and browsers and stop its driver; its addresses expire, and its next use starts it again |
@@ -225,8 +225,8 @@ The `regions` view needs Cua's signed perception extension on the machine whose 
 
 ```json
 "machines": {
-  "zinpc": {
-    "ssh": "zinpc-benchmark",
+  "lab": {
+    "ssh": "lab-wsl",
     "runtime": "windows-desktop",
     "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-13dbacca/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
@@ -288,7 +288,7 @@ For an app with a menu bar, Insert `{"action":"menu","path":["File","Save As..."
 
 To end an app this session opened that does not close normally (for example a hung one), Insert `{"action":"kill"}` into its window address. It force-closes the process and loses unsaved work, and refuses for windows the session did not open or for a process that also shows other windows.
 
-Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabilities retain their runtime gates and native limits. A sequence contains up to 2000 known keyboard, click and stroke steps, up to 15 minutes of requested work and a 30-minute elapsed budget; a long drawing program fits into one call. Cancelling a sequence lets the current step finish and release its keys and buttons, then stops; the receipt reports the completed prefix. No cross-call held buttons/keys exist. See [complete input](complete-input.md), [strict semantics](semantic-actions.md) and [native pointer limits](research/native-hover-results.md) for backend contracts; their older standalone tool examples are historical.
+Existing keyboard, pointer, semantic, drag, held-key and bounded-sequence capabilities retain their runtime gates and native limits. A sequence contains up to 2000 known keyboard, click and stroke steps, up to 15 minutes of requested work and a 30-minute elapsed budget; a long drawing program fits into one call. Cancelling a sequence lets the current step finish and release its keys and buttons, then stops; the receipt reports the completed prefix. No cross-call held buttons/keys exist. See [complete input](complete-input.md), [strict semantics](semantic-actions.md) and [native pointer limits](research/native-hover-capabilities.md) for backend contracts; their older standalone tool examples are historical.
 
 When Windows refuses to activate the target (`foreground_unavailable`), the result names the process that holds the foreground. If that is a system service, for example after a UAC prompt, Windows also blocks all injected input on that desktop until a person clicks or presses a key there; ask the user, then Read again.
 

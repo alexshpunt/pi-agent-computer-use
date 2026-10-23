@@ -1,8 +1,10 @@
 # Selected Windows displays
 
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
 `computer_displays` lists native connected monitors. `computer_observe` reads one returned `display_ref` or a fresh crop of that monitor. Both are read-only and YOLO-only. They never authorize desktop input.
 
-Selected reads need an explicitly qualified Windows runtime. The older default, held-path and key-hold profiles refuse them before native dispatch. The exact Windows fork `38f50121` passed build, contract and live two-monitor checks. The owner approved keeping it in a separate folder; older builds were preserved. See [verification and limits](selected-displays-results.md). Runtime selection remains explicit; there is no automatic install or update.
+Selected reads need an explicitly qualified Windows runtime. The older default, held-path and key-hold profiles refuse them before native dispatch. The exact Windows fork `38f50121` passed build, contract and live two-monitor checks. The owner approved keeping it in a separate folder; older builds were preserved. Runtime selection remains explicit; there is no automatic install or update.
 
 ## Discover, read, then crop
 

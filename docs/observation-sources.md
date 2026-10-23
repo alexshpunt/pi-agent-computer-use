@@ -1,6 +1,8 @@
 # Observation sources
 
-LPT-376 adds primary-display reading to the existing `computer_observe` tool. Native CUA remains the only capture backend. See [the verified results and limits](observation-sources-results.md).
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
+Window and display Reads share one source contract. Native CUA remains the only capture backend.
 
 ```js
 const view = await tools.computer_observe({ display: "primary" });

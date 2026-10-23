@@ -11,7 +11,7 @@ Do not use a project `.pi/settings.json` override with `extensions: []` plus a p
 
 ## Set up the task session
 
-1. Use Teleport to create and enter the task's branch/worktree. In `~/.pi/agent/settings.json`, find the `packages` entry for the global computer-use checkout (currently `/root/dev/pi/pi-agent-computer-use`). Resolve relative sources from the settings directory.
+1. Use Teleport to create and enter the task's branch/worktree. In `~/.pi/agent/settings.json`, find the `packages` entry for the global computer-use checkout (for example `/path/to/pi-agent-computer-use`). Resolve relative sources from the settings directory.
 2. Back up `~/.pi/agent/settings.json` in the worktree's ignored `.tmp/` directory and record its SHA-256. Other agents may change the file while you work, so restore only your own line later, never the whole backup.
 3. Replace only that package path with the absolute worktree path. Keep every other entry unchanged. Remove any leftover project loader (`.pi/extensions/computer-use.ts`) or project package override from older setups.
 4. Put the runtime selection the check needs in the worktree's ignored `.pi/computer-use.json` (`command`, `runtime`, `interop`). The global checkout's own `.pi/computer-use.json` may name a profile the worktree code no longer has, so do not start Pi from the global checkout while the path is swapped.

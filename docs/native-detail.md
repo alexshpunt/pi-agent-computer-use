@@ -1,5 +1,7 @@
 # Window zoom and display detail
 
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
 CUA 0.33.2 is the qualified Windows runtime for window, display and browser tools. It remains unmodified. Native window zoom is reused directly; the driver still has no display-region capture, so our adapter crops a fresh full-resolution display PNG.
 
 Use existing `computer_observe` and Pi Codemode. No new executor or top-level tool is added.
@@ -55,8 +57,6 @@ Safe denies display overview and detail. Permissions, cancellation and window li
 Fresh capture is not proof of fresh paint. External changes can occur between native checks; the adapter does not claim an atomic desktop transaction.
 
 ## Preview and verification
-
-Completed verification: [LPT-407 results](native-detail-results.md).
 
 Vision debug mirrors the exact final PNG/JPEG and source/region/settings metadata. Display detail reports native extraction bounds and output pixels separately. It does not publish the intermediate full-size capture or prove final provider delivery.
 

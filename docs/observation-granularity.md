@@ -1,5 +1,7 @@
 # Window observation granularity
 
+> **History:** This page was written for the earlier `computer_observe`/`computer_act` tool set, which has been removed. Its behavior and limits still apply. Use the matching `computer:` addresses, Read views and Insert commands from [the resource guide](computer-resources.md) instead of the tool calls shown here.
+
 Use `computer_observe({window_ref,capture:{granularity:"image"|"ui"|"full"}})`.
 Omitting granularity keeps `full`. This choice applies only to fresh window reads, not displays, local refinement or temporal sequences.
 
@@ -31,6 +33,4 @@ Use UI-only when current reported labels, values and supported native control ac
 
 Image-only accepts image guides but rejects UI query, walk limits and enabled hint labels. UI-only accepts UI query/walk limits but rejects hints and guides. Full keeps the existing controls. Invalid combinations fail explicitly rather than silently changing mode.
 
-This avoids unnecessary capture work; it does not guarantee fresh paint, instant input or a fixed speedup. Temporal sequence frames remain read-only. See [live results](observation-granularity-results.md) and [bounded reactive loops](../.pi/skills/reactive-visual-classifier/SKILL.md).
-
-For a stage-by-stage opt-in measurement, use [the window observation profiler](window-observe-profile.md). It keeps lifetime checks and the ordinary human frame enabled, and separates native RPC, identity, overlay and adapter remainder.
+This avoids unnecessary capture work; it does not guarantee fresh paint, instant input or a fixed speedup. Temporal sequence frames remain read-only. See [bounded reactive loops](../.pi/skills/reactive-visual-classifier/SKILL.md).

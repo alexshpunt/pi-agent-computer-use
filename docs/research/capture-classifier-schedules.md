@@ -4,7 +4,7 @@ Which schedule of capture, classification and input catches a target that is vis
 
 ## Setup
 
-- **Machine and page.** ZinPC, owned Edge window on a synthetic page (`/flash` in `scripts/web-fixture.mjs`). The page shows a 60 px red square at a random spot every 1.5 s, for 600 ms or 400 ms. It journals each appearance, each hit with its reaction time from appearance to `pointerdown`, and each miss.
+- **Machine and page.** A Windows 11 test machine, owned Edge window on a synthetic page (`/flash` in `scripts/web-fixture.mjs`). The page shows a 60 px red square at a random spot every 1.5 s, for 600 ms or 400 ms. It journals each appearance, each hit with its reaction time from appearance to `pointerdown`, and each miss.
 - **Detection.** The local TinyCLIP classifier (`computer_classify`'s model) looks at a 4×4 grid of the 640 px overview in one batch. The threshold of 0.24 was calibrated on this page: about 0.26 on the square's cell and 0.21 elsewhere. The click goes to the red pixels inside the chosen cell. One capture takes 40–90 ms, one batch 75–170 ms.
 - **Input.** A foreground pixel click through the latest observation.
 - **Test.** `test/live/reaction-schedules.live.ts`, 30 s per schedule. `FLASH_MS`, `RUN_MS` and `REACTIVE` select the variant.
