@@ -18,6 +18,4 @@ Synthetic real-Pi, serializer and SDK checks confirm that tool, Codemode and use
 npm test
 npm run typecheck
 npm run test:integration
-node --experimental-transform-types scripts/verify-image-context-wire.mjs
-node --experimental-transform-types scripts/verify-image-context-lifecycle.mjs
 ```

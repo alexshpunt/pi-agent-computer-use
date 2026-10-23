@@ -82,15 +82,13 @@ The bundle includes the pinned Windows fork routes. To use the older separately 
 
 This is trusted user setup, not an agent tool parameter. Selection does not install or replace a runtime. The executable must match the exact source/version/SHA-256 in `HELD_PATH_RUNTIME` in `src/driver.ts`; different bytes refuse before startup. Fork arguments are fixed to owned direct embedded MCP. The adapter sets child-local `CUA_DRIVER_MCP_ENVELOPES=1` and requires the upstream EOF-aware capability. Default serial MCP cannot cancel a held path safely on EOF.
 
-Keep the supplied runtime companions beside the executable. Do not change signing trust, elevation or OS policy to run it. `scripts/install-cua-held-path.ps1 -Artifact <downloaded-CI-directory>` installs the exact checked artifact into a separate user-local `cua-driver-0.34.0-held-bba07a9` directory. It verifies all three executable hashes, keeps notices/build metadata and refuses to overwrite an existing directory. It changes no PATH, services, registry, autostart or trust settings. If UNC script execution is refused, execute the reviewed installer text with PowerShell `ScriptBlock.Create`; do not change execution policy or install modules.
+Keep the supplied runtime companions beside the executable. Do not change signing trust, elevation or OS policy to run it.
 
 The key-hold selection below can replace this local choice. Close the current computer runtime and reload after a selection change. Remove the local selection to return to the bundled runtime; no startup update runs.
 
 ### Qualified key holds
 
 For bounded keys and modifier-held pointer work, explicitly select `runtime:"windows-key-holds"` with the permanent qualified executable. The exact version/source/hash is `KEY_HOLD_RUNTIME` in `src/driver.ts`; both forks use fixed owned MCP arguments and the acknowledged EOF receiver above. The older mouse-path fork cannot hold keys.
-
-`scripts/install-cua-key-hold.ps1 -Artifact <downloaded-CI-directory>` installs a checked key-hold artifact into a separate user-local `cua-driver-0.34.0-keys-3b330504` directory. The installer verifies all three EXEs, preserves notices/metadata and refuses overwrite. Older directories remain available. No automatic installation or OS setting change occurs. Select this trusted local runtime, close the current runtime and reload.
 
 ### WSL interop
 
@@ -122,7 +120,5 @@ npm run typecheck
 ```
 
 The real-Pi MCP fixture substitutes Windows lifetime identity only; real registration, session logic, MCP, result forwarding, and EOF run. Unit checks cover new/existing windows, activation PID mismatch, ambiguous/missing apps, stale/cross-window references, lifetime reuse, cancellation, input uncertainty, and scoped pixel bounds. Safe checks also cover old refs, shared-PID siblings, runtime ownership loss, user-command restoration, invalid policy arguments, and mode changes during queued/native work. Fixtures are not native Windows input evidence.
-
-For a read-only native schema probe, set `CUA_DRIVER_PATH` and working inherited `WSL_INTEROP`, then run `npm run probe:driver`. It writes `.tmp/driver-tools.json` without capturing UI or sending input.
 
 [The resource guide](computer-resources.md) describes the current tools.

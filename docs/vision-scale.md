@@ -35,9 +35,6 @@ Processing runs in the parent Pi process, not in a new Windows service. Timings 
 
 - `npm test` and `npm run typecheck` protect dimensions, no enlargement, four actual kernels, tuple validation, frozen settings, point/crop mapping, polling and server security.
 - `npm run test:integration` includes a native loopback provider adapter that receives the real Pi tool/Codemode PNGs at the default 500 and an edited 400 pixels and checks source-mapped input. It uses no paid model calls.
-- `node --experimental-transform-types scripts/verify-vision-scale.mjs` runs an opt-in synthetic Windows browser check, including real panel dropdown/slider/size input and cleanup.
-- `node scripts/benchmark-vision-images.mjs <original.png> [directory]` compares all four kernels at caps 800, 600, 400 and 200. One explicit local processing warm-up and five measured runs per candidate; no model/cache warming. It saves images, hashes, bytes and stage medians.
-- `node --experimental-transform-types scripts/verify-vision-trial.mjs` exercises the actual trial form, twelve fields, exact scale input/slider synchronization, grading, cleared inputs and the next capture's physical size. Its deliberately wrong answers test the UI contract, not model readability.
 
 ## Interactive reading trial
 

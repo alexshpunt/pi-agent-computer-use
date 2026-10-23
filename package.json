@@ -61,13 +61,11 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "bench:windows": "node --experimental-transform-types --disable-warning=ExperimentalWarning bench/run-windows-tasks.ts",
     "prepack": "node scripts/fetch-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "pi-test run -- vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
     "dev:ide": "node scripts/link-ide-source.mjs",
-    "probe:driver": "node scripts/probe-driver.mjs",
     "test:live": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {

@@ -36,8 +36,5 @@ Window and display routes use the selected qualified CUA runtime. Arbitrary wind
 npm test
 npm run typecheck
 npm run test:integration
-# Only after explicit permission to read all visible primary-display contents:
-node --experimental-transform-types scripts/verify-display-observation.mjs --allow-primary-display
 ```
 
-The opt-in native probe uses trusted test mode changes, not interactive user input. It verifies Safe zero-dispatch, shared caps, unchanged native pixels and in-flight revocation. Private display PNGs stay in ignored `.tmp/display-observation/`; never upload them to Git or Linear. Durable evidence must exclude private window text and pixels.

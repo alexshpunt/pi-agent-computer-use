@@ -42,6 +42,4 @@ The panel polls current state once per second. That refresh interval is not an i
 
 The integration writes `vision-trace.json` and `provider-bodies.json` beside its normal run artifacts. A scripted test provider that skips `onPayload` cannot qualify this boundary; use the native-adapter fixture instead.
 
-For a parent session, `node scripts/verify-vision-debug.mjs <viewer-url> <session-jsonl> [output-directory]` compares retained assets with forwarded Pi tool-result bytes and saves proof. Run it after synthetic observations, a captured-only frame and an input refusal. Its timing measures local state reads only.
-
 Action rows keep their expanded state during polling.
