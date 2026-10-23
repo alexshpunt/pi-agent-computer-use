@@ -20,7 +20,7 @@ An installation from Git has no packaged files. On first use, computer use downl
 
 | Pi runs on | Runtime |
 | --- | --- |
-| Windows x64 | Runs the packaged files directly. Not live-verified yet. |
+| Windows x64 | Runs the packaged files directly. |
 | WSL x64 on Windows | Copies the packaged files to a Windows-host cache and controls the Windows desktop. |
 | Linux outside WSL, macOS, ARM64 | No runtime is shipped; computer use refuses with `unsupported_native_target`. |
 

@@ -1,6 +1,6 @@
 # Vision debug viewer
 
-[LPT-373](https://linear.app/alexshpunt/issue/LPT-373) added the local observation viewer for the current Pi session. [The native CUA route](computer-resources.md) now supplies exact PNG/JPEG captures and cap/scale controls. The old Sharp kernel trial and saved-original route are retired. It uses existing extension hooks, not a provider override, a second JavaScript executor or a new model-facing tool.
+`/computer-debug` opens a local observation viewer for the current Pi session. [The native CUA route](computer-resources.md) supplies exact PNG/JPEG captures and cap/scale controls. The viewer uses existing extension hooks, not a provider override, a second JavaScript executor or a new model-facing tool.
 
 ## Open and stop
 
@@ -12,11 +12,11 @@ Closing/reloading the Pi session closes the server. A new session has a new view
 
 ## What the panel proves
 
-The user chose to use only Pi's existing API. `before_provider_request` provides a mutable application-boundary payload. The viewer copies image bytes from that event and hashes the decoded bytes with SHA-256. It also keeps bounded text excerpts and the payload paths where they appeared. It never mutates the payload, filters model history or fetches remote images.
+The viewer uses only Pi's existing API. `before_provider_request` provides a mutable application-boundary payload. The viewer copies image bytes from that event and hashes the decoded bytes with SHA-256. It also keeps bounded text excerpts and the payload paths where they appeared. It never mutates the payload, filters model history or fetches remote images.
 
 **Final delivery is unconfirmed.** Later extension handlers can replace the payload. Codex WebSocket can derive a delta request and use server-side context. Provider-internal resize and embeddings are not available. A provider response is recorded, but does not prove the original hook payload was sent unchanged. Frames remain `prepared`, not `sent`.
 
-The three displayed images are a viewer limit, not the effective image budget tracked in LPT-380. Existing context can contain more images.
+The three displayed images are a viewer limit, not an image budget. Existing context can contain more images.
 
 ## Images, structure and actions
 
@@ -26,7 +26,7 @@ The three displayed images are a viewer limit, not the effective image budget tr
 - Adapter structure is labelled separately from observed provider text. Metadata in tool `details` is not automatically model input. Text excerpts are labelled when truncated.
 - Native window captures can carry snapshot hints added above the returned PNG. When annotation changes pixels, the private comparison retains the exact raw returned PNG with its hash. This is not a full-resolution original or a second capture. Missing or evicted comparison bytes remain unavailable.
 - The UI hints switch affects later captures only; per-capture overrides are recorded. Stored sent images are not rewritten. A boundary card with available raw bytes can switch between exact marked and raw pixels.
-- Requested settings and known adapter timings are recorded. Effective settings not reported by the adapter remain unknown. The viewer cannot change Safe/YOLO. LPT-375 adds only resizing controls; the broader options in LPT-374 remain separate.
+- Requested settings and known adapter timings are recorded. Effective settings not reported by the adapter remain unknown. The viewer cannot change Safe/YOLO; its only controls are capture size settings.
 
 ## Bounds and cleanup
 

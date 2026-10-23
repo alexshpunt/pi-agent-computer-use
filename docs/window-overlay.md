@@ -14,7 +14,7 @@ Window coordinates remain in the CUA physical-pixel domain. Qt positions its own
 
 Qt may round its own transparent canvas outwards at fractional DPI. The helper allows only that bounded canvas overscan, maps drawing against the actual HWND extent and clips it to the exact source rectangle. Source identity and geometry checks, and CUA input coordinates, remain unchanged.
 
-Window zoom outlines the requested rectangle, not CUA's extra padding. CUA 0.33.2 does not publish the padded rectangle. The adapter recovers the window zoom transform only when native AX frames and their rounded screenshot frames prove one unique native width. Missing or ambiguous geometry clears the old mark and reports unavailable; it never guesses a ratio. Display crop uses the exact region of the fresh full-resolution capture.
+Window zoom outlines the requested rectangle, not CUA's extra padding. Cua Driver does not publish the padded rectangle. The adapter recovers the window zoom transform only when native AX frames and their rounded screenshot frames prove one unique native width. Missing or ambiguous geometry clears the old mark and reports unavailable; it never guesses a ratio. Display crop uses the exact region of the fresh full-resolution capture.
 
 AX action targets use the observed element's native bounds, clipped to the window. Pixel clicks use the resolved physical point from a recognized successful CUA receipt, after the one dispatch. Receipts without coordinates produce no point. Other ungrounded keyboard targets are not invented. Drawing failure does not change or repeat input. The helper watches primary-display geometry and hides a display mark if it changes.
 
