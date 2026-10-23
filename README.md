@@ -112,13 +112,13 @@ Each session has its own folder on the controlled machine for files an app opens
 
 ## Platforms
 
-Computer use is tested on Windows 11 x64, controlled from Pi running in WSL on the same machine or on another one over SSH. Linux and macOS aren't supported: window control there isn't verified, so no runtime ships for them and computer use refuses with a clear message. Some features need more: Windows Sandbox needs a Windows edition that has it, and isolated sessions need Windows 11 24H2 or newer.
+Computer use works on Windows 11 x64, with Pi running on Windows itself or in WSL, on the same machine or on another one over SSH. Linux and macOS aren't supported: window control there isn't verified, so no runtime ships for them and computer use refuses with a clear message. Some features need more: Windows Sandbox needs a Windows edition that has it, and isolated sessions need Windows 11 24H2 or newer.
 
 This is experimental and changes often, so interfaces and behavior may still move around.
 
 ## Installation
 
-Install [Pi](https://pi.dev/) in WSL first, then install the package:
+Install [Pi](https://pi.dev/) on Windows or in WSL, then install the package:
 
 ```bash
 pi install npm:pi-agent-computer-use
@@ -157,7 +157,7 @@ Window control works right after the install. A few parts are extra downloads, a
 | `vscode-bridge`       | VS Code's integrated browser.                                                                  |
 | `machine <ssh alias>` | Another Windows machine with WSL, reached over SSH.                                            |
 
-Add a machine name to install a part there, for example `/computer-setup perception lab`. Everything goes into your Windows user's own folders, and every download is checked against a pinned SHA-256. If a task needs a part you don't have, the agent tells you what's missing and asks before it installs anything.
+Add a machine name to install a part there, for example `/computer-setup perception lab`. `/computer-setup` is a Bash script, so run it from Pi in WSL. Everything goes into your Windows user's own folders, and every download is checked against a pinned SHA-256. If a task needs a part you don't have, the agent tells you what's missing and asks before it installs anything.
 
 ### Unsigned binaries
 
@@ -190,6 +190,7 @@ I use this every day on real tasks, but I can only test the machines, apps and w
 | [Image guides](docs/image-guides.md)                      | Coordinate grid and last-action marks                                 |
 | [Vision debug viewer](docs/vision-debug.md)               | What the agent saw and the capture controls                           |
 | [Bundled runtime](docs/bundled-runtime.md)                | Native runtime packages and platform boundaries                       |
+| [Setup and modes](docs/setup.md)                          | Install, Safe and YOLO, runtime overrides and window lifetime         |
 
 ## License
 

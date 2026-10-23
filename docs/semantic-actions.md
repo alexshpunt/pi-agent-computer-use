@@ -2,7 +2,7 @@
 
 See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-An Insert action accepts explicit `invoke`, `select` and `set_value` intents with a current hint or element token. They need the separately qualified Windows semantic runtime. Older runtimes refuse before dispatch. Ordinary `click` keeps its existing native action ladder.
+An Insert action accepts explicit `invoke`, `select` and `set_value` intents with a current hint or element token. The bundled runtime supports them; an older runtime selected by override refuses before dispatch. Ordinary `click` keeps its existing native action ladder.
 
 - `invoke` calls the control's UIA Invoke pattern.
 - `select` calls UIA SelectionItem.Select, not Ctrl+A or a pointer click.

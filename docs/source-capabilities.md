@@ -27,8 +27,8 @@ Pre-dispatch validation failures have no native action capability receipt. Neith
 
 ## Native basis and limits
 
-The original LPT-617 foundation used Windows fork `3b3305044b7b327310615aa99d3307948a63061c`. Its public window state carries PID/HWND, screenshot/window bounds, snapshot tokens and UIA pattern names. It does not expose monitor, Windows session or Task View desktop membership. Its primary desktop capture alias does not name a physical monitor. Internal virtual-screen coordinate checks are not Windows virtual-desktop membership.
+The public window state carries PID/HWND, screenshot/window bounds, snapshot tokens and UIA pattern names. Monitors come from [selected displays](selected-displays.md) and Task View desktops from [shell desktop membership](shell-desktop-membership.md); internal virtual-screen coordinate checks are not Windows virtual-desktop membership.
 
 CUA's validated action result publishes route, effect and actual delivery. Background refusal publishes a code and optional foreground escalation. The adapter projects these fields without predicting capabilities from app names or UIA pattern labels.
 
-This foundation does not add other-monitor capture, virtual-desktop management or concurrent input arbitration. Those remain separate parts of LPT-615.
+This contract does not cover virtual-desktop management or concurrent input arbitration.

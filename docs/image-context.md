@@ -1,6 +1,6 @@
 # Images stay in normal Pi context
 
-The user superseded LPT-380's last-three request limit. This extension no longer removes or replaces older image blocks, rewrites text dumps, or creates a separate image archive. User attachments, tool results, Codemode images, overview and detail follow the same Pi history lifecycle as other messages.
+This extension never removes or replaces older image blocks, rewrites text dumps, or creates a separate image archive. User attachments, tool results, Codemode images, overview and detail follow the same Pi history lifecycle as other messages.
 
 Pi's normal compaction may summarize older context and keep recent messages. It does not erase the original session entries. Reload alone does not remove images. This extension does not change compaction settings or provider cache controls. Other extensions and provider processing can still affect final delivery.
 

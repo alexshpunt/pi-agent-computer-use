@@ -2,7 +2,7 @@
 
 See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-CUA 0.33.2 is the qualified Windows runtime for window, display and browser tools. It remains unmodified. Native window zoom is reused directly; the driver still has no display-region capture, so our adapter crops a fresh full-resolution display PNG.
+The bundled Cua Driver runtime serves window, display and browser tools. Native window zoom is reused directly; the driver still has no display-region capture, so our adapter crops a fresh full-resolution display PNG.
 
 ## Select from an overview
 
@@ -16,7 +16,7 @@ Window detail calls native `zoom` with the original overview rectangle. Moving, 
 
 Display detail maps the overview rectangle to native pixels once, rounding outwards. It requests `get_desktop_state(max_image_dimension:0)`, checks display/raster geometry and extracts only that region. A small Sharp processor optionally downsizes it with Lanczos3. No image is artificially enlarged.
 
-Display detail defaults to long-edge cap 1200 and scale 1. Bounds are 64..4096 and 0.05..1; effective cap is `floor(maxLongEdge * scale)`. These per-request settings do not change the shared 500px overview settings. Full-resolution intermediate display pixels stay local to that call and are not forwarded to the model or Vision debug.
+Display detail defaults to long-edge cap 1200 and scale 1. Bounds are 64..4096 and 0.05..1; effective cap is `floor(maxLongEdge * scale)`. These per-request settings do not change the shared overview settings (1280 px long edge by default). Full-resolution intermediate display pixels stay local to that call and are not forwarded to the model or Vision debug.
 
 Only geometry metadata is retained between calls. A new overview replaces its source's previous context. A dispatched detail consumes that context, so another detail needs a new overview. Missing/retired IDs, rectangles outside the original overview and nested details refuse. Window geometry changes do not retire an overview. Display detail still checks its distinct display/raster mapping; neither route guesses DPI or captures a wider fallback.
 

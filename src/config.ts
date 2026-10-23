@@ -47,7 +47,7 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
   try {
     raw = JSON.parse(await readFile(path.join(cwd, ".pi", "computer-use.json"), "utf8"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; use the optional environment-only config in docs/standalone-poc.md.");
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)
     || Object.keys(raw).some(key => !["command", "args", "interop", "runtime", "machines"].includes(key))
