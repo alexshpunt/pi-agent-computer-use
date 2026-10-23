@@ -7,7 +7,9 @@ import { createHash } from "node:crypto";
 // Code generator: writes only ignored diagnostic source, never the CUA checkout.
 export const SOURCE = process.argv[3] ?? "506239da08cfdafa63dac1857f5471752fb70f5e";
 assert.match(SOURCE, /^[0-9a-f]{40}$/);
-const repo = process.argv[2] ?? "/root/dev/cua";
+// Path to a local checkout of the CUA fork.
+const repo = process.argv[2] ?? process.env.CUA_SOURCE;
+if (!repo) throw new Error("Pass the CUA fork checkout as the first argument or set CUA_SOURCE.");
 const directory = path.resolve(process.argv[4] ?? ".tmp/native-observe-profile/generated");
 const rust = "libs/cua-driver/rust/crates/";
 const core = `${rust}cua-driver-core/src/`;

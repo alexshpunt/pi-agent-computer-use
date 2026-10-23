@@ -1,7 +1,7 @@
 /**
  * Run the Windows task-success benchmark (LPT-838) with a real model on a configured machine.
  *
- *   npm run bench:windows -- [--machine zinpc] [--model provider/id] [--thinking high] [--task <id>]
+ *   npm run bench:windows -- [--machine lab] [--model provider/id] [--thinking high] [--task <id>]
  *
  * Every trial opens its own Windows Sandbox on that machine, so trials run one at a time. Model and thinking default to
  * Pi's own defaults in ~/.pi/agent/settings.json. Results land in .tmp/bench/results with a Markdown summary table.
@@ -16,7 +16,7 @@ import { WINDOWS_POWERSHELL, sshRunner } from "../src/runner.ts";
 import { WINDOWS_TASKS, windowsTaskSuite, type BenchHost } from "./windows-tasks.ts";
 
 const repo = path.resolve(import.meta.dirname, "..");
-const { values } = parseArgs({ options: { machine: { type: "string", default: "zinpc" }, model: { type: "string" },
+const { values } = parseArgs({ options: { machine: { type: "string", default: "lab" }, model: { type: "string" },
   thinking: { type: "string" }, task: { type: "string" } } });
 const settings = JSON.parse(await readFile(path.join(homedir(), ".pi/agent/settings.json"), "utf8")) as Record<string, string>;
 const model = values.model ?? `${settings.defaultProvider}/${settings.defaultModel}`;
