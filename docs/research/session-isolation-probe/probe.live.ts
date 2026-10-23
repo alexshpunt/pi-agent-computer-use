@@ -1,4 +1,4 @@
-// Research probe for LPT-848 (docs/research/windows-session-isolation.md): the CUA driver inside an MXC isolation session on ZinPC.
+// Research probe for LPT-848 (docs/research/windows-session-isolation.md): the CUA driver inside an MXC isolation session on the test machine.
 // Run with a vitest config that includes this file; needs wxc-exec.exe in %TEMP%\mxc and the runtime in C:\Users\Public\pi-mxc.
 import { test } from "vitest";
 import { readFile, writeFile } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { WINDOWS_POWERSHELL, sshRunner } from "../../../src/runner.ts";
 import { runnerHost, waitForGuestDriver } from "../../../src/sandbox.ts";
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 test("cua driver inside an MXC isolation session", async () => {
-  const runner = sshRunner("zinpc-benchmark");
+  const runner = sshRunner("lab-wsl");
   const script = Buffer.from(await readFile(new URL("session.ps1", import.meta.url), "utf8"), "utf16le").toString("base64");
   const config = { version: "0.9.0-alpha", containerId: "PiCuaProbe", containment: "isolation_session",
     process: { commandLine: `powershell.exe -NoProfile -EncodedCommand ${script}`, cwd: "C:\\Windows", inheritDefaultEnv: true, timeout: 200000 },
@@ -24,7 +24,7 @@ test("cua driver inside an MXC isolation session", async () => {
   child.stderr.on("data", d => console.log("SESSION-ERR", String(d).trim().slice(0, 300)));
   await sleep(12000);
   const tunnel = await runnerHost(runner).forward(clientPort);
-  const driver = new McpDriver({ command: "/mnt/c/Users/Public/pi-mxc/runtime/cua-driver.exe", runtime: "windows-desktop", ssh: "zinpc-benchmark",
+  const driver = new McpDriver({ command: "/mnt/c/Users/Public/pi-mxc/runtime/cua-driver.exe", runtime: "windows-desktop", ssh: "lab-wsl",
     endpoint: { url: `http://127.0.0.1:${tunnel.port}/mcp`, token: "pi-mxc-probe-token-0123456789abcdef0123456789", identityPort: 1 } });
   try {
     await waitForGuestDriver(driver, undefined, 60_000);

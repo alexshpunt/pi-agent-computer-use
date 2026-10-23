@@ -6,7 +6,9 @@ import { createHash } from "node:crypto";
 
 // Generate the narrow fork patch without editing the active CUA checkout.
 export const SOURCE = "506239da08cfdafa63dac1857f5471752fb70f5e";
-const repo = process.argv[2] ?? "/root/dev/cua";
+// Path to a local checkout of the CUA fork.
+const repo = process.argv[2] ?? process.env.CUA_SOURCE;
+if (!repo) throw new Error("Pass the CUA fork checkout as the first argument or set CUA_SOURCE.");
 const testsOnly = process.argv.includes("--tests-only");
 const directory = path.resolve(`.tmp/single-png/${testsOnly ? "red" : "generated"}`);
 const root = "libs/cua-driver/rust/crates/";
