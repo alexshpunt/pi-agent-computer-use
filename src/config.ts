@@ -60,10 +60,12 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
   const command = raw.command as string | undefined ?? process.env.CUA_DRIVER_PATH;
   if (!command && raw.args !== undefined) throw new Error("Bundled runtimes use their pinned MCP arguments; set a trusted command to override arguments.");
   const bundled = command ? undefined : await findBundledRuntime(raw.interop as string | undefined);
+  // The shipped runtime is the qualified windows-desktop build, so it gets that profile's capabilities.
+  const runtime = (raw.runtime as ComputerConfig["runtime"]) ?? (bundled ? "windows-desktop" : undefined);
   return { command: command ?? bundled!.command,
     ...(bundled ? { bundled } : {}),
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(raw.interop ? { interop: raw.interop as string } : {}),
-    ...(raw.runtime ? { runtime: raw.runtime as ComputerConfig["runtime"] } : {}),
+    ...(runtime ? { runtime } : {}),
     ...(raw.machines !== undefined ? { machines: parseMachines(raw.machines) } : {}) };
 }
 

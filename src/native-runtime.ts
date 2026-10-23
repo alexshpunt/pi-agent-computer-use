@@ -1,20 +1,21 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, stat } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-/** Build targets shipped by this extension; execution target is separate from the npm host. */
-export type NativeTarget = "win32-x64" | "linux-x64" | "darwin-x64" | "darwin-arm64";
-/** Complete-set evidence pinned in the extension, not trusted from installed package metadata. */
+/** The only native target this extension ships: Windows x64, also controlled from WSL. */
+export type NativeTarget = "win32-x64";
+/** Exact runtime release evidence pinned in the extension; files are checked before every start. */
 export interface RuntimePins {
-  format: 1;
+  format: 2;
   source: string;
   version: string;
-  driverVersion: string;
-  targets: Partial<Record<NativeTarget, { files: Record<string, string> }>>;
+  /** Base URL of the release assets, ending in a slash. */
+  url: string;
+  files: Record<string, string>;
 }
 /** Verified owned-child runtime selection. Never accepted from an agent tool argument. */
 export interface BundledRuntime {
@@ -27,13 +28,16 @@ export interface BundledRuntime {
   files: Record<string, string>;
 }
 
-/** Keep Windows-host control in WSL; reject targets outside the approved build matrix. */
+const REQUIRED = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"];
+/** Where the package carries its runtime: `native-runtime/win32-x64/runtime/<files>`. */
+export const PACKAGED_RUNTIME = fileURLToPath(new URL("../native-runtime/win32-x64", import.meta.url));
+
+/** Keep Windows-host control in WSL; other platforms have no shipped runtime. */
 export function executionTarget(platform: string, arch: string, wsl: boolean): NativeTarget {
-  const os = platform === "linux" && wsl ? "win32" : platform;
-  const target = `${os}-${arch}`;
-  if (!["win32-x64", "linux-x64", "darwin-x64", "darwin-arm64"].includes(target))
-    throw new Error(`unsupported_native_target: ${target}`);
-  return target as NativeTarget;
+  const target = `${platform === "linux" && wsl ? "win32" : platform}-${arch}`;
+  if (target !== "win32-x64")
+    throw new Error(`unsupported_native_target: ${target}. Computer use ships a Windows x64 runtime only; run Pi on Windows or in WSL.`);
+  return target;
 }
 
 /** Detect WSL without treating ordinary Linux or an unavailable interop endpoint as Windows. */
@@ -43,17 +47,22 @@ export async function isWsl(): Promise<boolean> {
   return /microsoft/i.test(release);
 }
 
-const requiredFiles = (target: NativeTarget): string[] => target === "win32-x64"
-  ? ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"]
-  : ["cua-driver", "cua-cursor-theme", "LICENSE.md", "THIRD_PARTY_NOTICES.md"];
+/** Read and validate the pins shipped with the extension. */
+export async function readRuntimePins(): Promise<RuntimePins> {
+  const pins: RuntimePins = JSON.parse(await readFile(new URL("./runtime-pins.json", import.meta.url), "utf8"));
+  if (pins.format !== 2 || !/^[0-9a-f]{40}$/.test(pins.source) || !/^https:\/\/.+\/$/.test(pins.url)
+    || Object.keys(pins.files).sort().join("\n") !== [...REQUIRED].sort().join("\n")
+    || !Object.values(pins.files).every(hash => /^[0-9a-f]{64}$/.test(hash)))
+    throw new Error("native_runtime_pin_invalid");
+  return pins;
+}
 
 /** Recheck all pinned runtime companions before starting a native process; stream large files. */
 export async function verifyBundledRuntime(runtime: BundledRuntime, signal?: AbortSignal): Promise<void> {
-  const expected = requiredFiles(runtime.target);
-  if (Object.keys(runtime.files).sort().join("\n") !== expected.sort().join("\n"))
+  if (Object.keys(runtime.files).sort().join("\n") !== [...REQUIRED].sort().join("\n"))
     throw new Error("native_runtime_files_mismatch");
   const directory = path.join(runtime.root, "runtime");
-  for (const name of expected) {
+  for (const name of REQUIRED) {
     signal?.throwIfAborted();
     const file = path.join(directory, name);
     if (!(await stat(file).catch(() => undefined))?.isFile()) throw new Error(`native_runtime_file_missing: ${name}`);
@@ -65,32 +74,42 @@ export async function verifyBundledRuntime(runtime: BundledRuntime, signal?: Abo
   signal?.throwIfAborted();
 }
 
-/** Resolve one installed package against extension-owned evidence, without executing or downloading it. */
-export async function loadBundledRuntime(directory: string, target: NativeTarget, pins: RuntimePins): Promise<BundledRuntime> {
-  if (pins.format !== 1 || !/^[0-9a-f]{40}$/.test(pins.source)) throw new Error("native_runtime_pin_invalid");
+/** Describe the pinned runtime in one directory and check every file, without executing it. */
+export async function loadBundledRuntime(directory: string, pins: RuntimePins): Promise<BundledRuntime> {
   const root = await realpath(directory);
-  const manifest = JSON.parse(await readFile(path.join(root, "runtime.json"), "utf8"));
-  const metadata = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-  if (manifest.format !== 1 || manifest.target !== target) throw new Error("native_runtime_target_mismatch");
-  if (manifest.source !== pins.source) throw new Error("native_runtime_source_mismatch");
-  const files = pins.targets[target]?.files;
-  if (!files || manifest.driver_version !== pins.driverVersion || manifest.version !== pins.version
-    || JSON.stringify(Object.entries(manifest.files ?? {}).sort()) !== JSON.stringify(Object.entries(files).sort()))
-    throw new Error("native_runtime_pin_mismatch");
-  if (metadata.name !== `@alexshp/cua-runtime-${target}` || metadata.version !== pins.version)
-    throw new Error("native_runtime_package_mismatch");
-  const command = `runtime/${target === "win32-x64" ? "cua-driver.exe" : "cua-driver"}`;
-  if (manifest.command !== command) throw new Error("native_runtime_command_mismatch");
-  const runtime = { root, command: path.join(root, command), target, source: pins.source,
-    version: pins.version, driverVersion: pins.driverVersion, files: { ...files } };
+  const runtime = { root, command: path.join(root, "runtime", "cua-driver.exe"), target: "win32-x64" as const,
+    source: pins.source, version: pins.version, driverVersion: pins.version, files: { ...pins.files } };
   await verifyBundledRuntime(runtime);
   return runtime;
 }
 
+/**
+ * Download the pinned release files into `directory/runtime` when they are absent. Each file must match its
+ * pinned hash before the set is moved into place; an existing directory is never replaced.
+ */
+export async function fetchRuntime(directory: string, pins: RuntimePins, signal?: AbortSignal): Promise<void> {
+  if (await lstat(path.join(directory, "runtime")).catch(() => undefined)) return;
+  await mkdir(directory, { recursive: true });
+  const staging = await mkdtemp(path.join(directory, ".staging-"));
+  try {
+    await mkdir(path.join(staging, "runtime"));
+    for (const [name, expected] of Object.entries(pins.files)) {
+      const response = await fetch(new URL(name, pins.url), { signal });
+      if (!response.ok) throw new Error(`native_runtime_download_failed: ${name} (HTTP ${response.status})`);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (createHash("sha256").update(bytes).digest("hex") !== expected) throw new Error(`native_runtime_hash_mismatch: ${name}`);
+      await writeFile(path.join(staging, "runtime", name), bytes);
+    }
+    try { await rename(path.join(staging, "runtime"), path.join(directory, "runtime")); }
+    catch (error) {
+      if (!["EEXIST", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+    }
+  } finally { await rm(staging, { recursive: true, force: true }); }
+}
+
 /** Copy checked Windows files to a source-specific host cache. Never replace an existing runtime. */
 export async function cacheWindowsRuntime(runtime: BundledRuntime, base: string, signal?: AbortSignal): Promise<BundledRuntime> {
-  if (runtime.target !== "win32-x64" || !/^[0-9a-f]{40}$/.test(runtime.source))
-    throw new Error("native_runtime_cache_target_mismatch");
+  if (!/^[0-9a-f]{40}$/.test(runtime.source)) throw new Error("native_runtime_cache_target_mismatch");
   await verifyBundledRuntime(runtime, signal);
   const parent = path.join(base, runtime.source);
   const root = path.join(parent, runtime.target);
@@ -108,7 +127,7 @@ export async function cacheWindowsRuntime(runtime: BundledRuntime, base: string,
   const staging = await mkdtemp(path.join(parent, ".staging-"));
   try {
     await mkdir(path.join(staging, "runtime"));
-    for (const name of requiredFiles(runtime.target)) {
+    for (const name of REQUIRED) {
       signal?.throwIfAborted();
       await copyFile(path.join(runtime.root, "runtime", name), path.join(staging, "runtime", name));
     }
@@ -134,14 +153,15 @@ async function windowsCacheDirectory(interop?: string): Promise<string> {
   if (!path.isAbsolute(mapped)) throw new Error("native_runtime_windows_cache_unavailable");
   return path.join(mapped, "PiComputerUse", "native-runtimes");
 }
-/** Select the pinned platform package already installed with the extension; no first-use network access. */
+
+/**
+ * Select the runtime shipped in this package. A Git checkout has no packaged files, so they are downloaded once
+ * from the pinned release with the same hash checks. From WSL the files run from a Windows-host cache.
+ */
 export async function findBundledRuntime(interop?: string): Promise<BundledRuntime> {
-  const target = executionTarget(process.platform, process.arch, await isWsl());
-  const pins: RuntimePins = JSON.parse(await readFile(new URL("./runtime-pins.json", import.meta.url), "utf8"));
-  let directory: string;
-  try { directory = path.dirname(createRequire(import.meta.url).resolve(`@alexshp/cua-runtime-${target}/package.json`)); }
-  catch { throw new Error(`native_runtime_package_missing: @alexshp/cua-runtime-${target}. Reinstall the extension with optional dependencies; no driver will be downloaded at first use.`); }
-  const runtime = await loadBundledRuntime(directory, target, pins);
-  return target === "win32-x64" && process.platform === "linux"
-    ? cacheWindowsRuntime(runtime, await windowsCacheDirectory(interop)) : runtime;
+  executionTarget(process.platform, process.arch, await isWsl());
+  const pins = await readRuntimePins();
+  await fetchRuntime(PACKAGED_RUNTIME, pins);
+  const runtime = await loadBundledRuntime(PACKAGED_RUNTIME, pins);
+  return process.platform === "linux" ? cacheWindowsRuntime(runtime, await windowsCacheDirectory(interop)) : runtime;
 }
