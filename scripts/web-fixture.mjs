@@ -1,0 +1,150 @@
+// Synthetic local pages for live browser checks. Run `node scripts/web-fixture.mjs`; it prints the base URL.
+// GET /journal returns every page event the fixture recorded, so checks do not rely on the agent's own report.
+import { createServer } from "node:http";
+
+const journal = [];
+const page = (title, body) => `<!doctype html><meta charset="utf-8"><title>${title}</title>
+<script>
+const log = (type, detail = {}) => fetch("/journal", { method: "POST", body: JSON.stringify({ page: location.pathname, type, ...detail }) });
+addEventListener("load", () => log("load", { nonce: sessionStorage.nonce ?? null }));
+</script>${body}`;
+
+const pages = {
+  "/": page("Fixture home", `<h1>Fixture home</h1><a href="/tabs">Tabs and dialogs</a>`),
+  "/tabs": page("Tabs and dialogs", `<h1>Tabs and dialogs</h1>
+<label>Context <input id="context" aria-label="Context"></label>
+<button onclick="sessionStorage.nonce = document.querySelector('#context').value; log('saved', { nonce: sessionStorage.nonce }); out('saved ' + sessionStorage.nonce)">Save context</button>
+<button onclick="log('popup'); window.open('/popup', '_blank')">Open popup</button>
+<button onclick="out('alert closed'); alert('Hello from alert'); log('alert')">Alert</button>
+<button onclick="const ok = confirm('Delete the draft?'); log('confirm', { ok }); out('confirm ' + ok)">Confirm</button>
+<button onclick="const v = prompt('Your name?', 'guest'); log('prompt', { value: v }); out('prompt ' + v)">Prompt</button>
+<button onclick="setTimeout(() => { const ok = confirm('Late question?'); log('late', { ok }); out('late ' + ok) }, 800)">Late confirm</button>
+<p role="status" id="out">idle</p>
+<iframe title="Inner frame" src="/frame" width="300" height="90"></iframe>
+<script>function out(text) { document.querySelector('#out').textContent = text; }</script>`),
+  // Native input witness: every key, button, wheel, pen and pointer-lock movement is journaled with its details.
+  "/input": page("Input log", `<h1>Input log</h1>
+<div id="pad" style="position:fixed;inset:80px 0 0 0;background:#eef;touch-action:none"></div>
+<script>
+const pad = document.querySelector('#pad');
+const ptr = e => ({ pointerType: e.pointerType, button: e.button, buttons: e.buttons, pressure: Math.round(e.pressure * 100) / 100, tiltX: e.tiltX, tiltY: e.tiltY, shift: e.shiftKey, ctrl: e.ctrlKey });
+for (const type of ['pointerdown', 'pointerup']) pad.addEventListener(type, e => log(type, ptr(e)));
+let moves = 0; pad.addEventListener('pointermove', e => { if (e.buttons && moves++ % 5 === 0) log('pointermove', ptr(e)); });
+pad.addEventListener('contextmenu', e => e.preventDefault());
+pad.addEventListener('auxclick', e => e.preventDefault());
+pad.addEventListener('wheel', e => { e.preventDefault(); log('wheel', { deltaX: e.deltaX, deltaY: e.deltaY, buttons: e.buttons }); }, { passive: false });
+for (const type of ['keydown', 'keyup']) addEventListener(type, e => { if (!e.repeat) log(type, { key: e.key, buttons: window.lastButtons ?? 0 }); });
+pad.addEventListener('dblclick', () => pad.requestPointerLock());
+let locked = { x: 0, y: 0 };
+document.addEventListener('pointerlockchange', () => { log('pointerlock', { locked: document.pointerLockElement === pad }); locked = { x: 0, y: 0 }; });
+document.addEventListener('mousemove', e => { if (document.pointerLockElement === pad) { locked.x += e.movementX; locked.y += e.movementY; } });
+setInterval(() => { if (document.pointerLockElement === pad && (locked.x || locked.y)) { log('locked-move', { ...locked }); locked = { x: 0, y: 0 }; } }, 200);
+</script>`),
+  // Reaction target: a red square jumps every 1.5 s; a click on it is journaled with the time since it moved.
+  "/target": page("Reaction target", `<style>body{margin:0;background:#fff}#t{position:fixed;width:60px;height:60px;background:#e00010}</style><div id="t"></div>
+<script>
+const t = document.querySelector('#t'); let moved = performance.now(), hit = false;
+const jump = () => { t.style.left = Math.round(80 + Math.random() * (innerWidth - 220)) + 'px'; t.style.top = Math.round(80 + Math.random() * (innerHeight - 220)) + 'px'; moved = performance.now(); hit = false; };
+jump(); setInterval(jump, 1500);
+t.addEventListener('pointerdown', () => { if (!hit) { hit = true; log('hit', { reaction_ms: Math.round(performance.now() - moved) }); } });
+</script>`),
+  // Short-lived target (LPT-702): a red square shows for ?ms= milliseconds (600 by default) at a random spot every 1.5 s.
+  // Each appearance and each click on a visible square is journaled; a click while it is hidden counts as a miss.
+  "/flash": page("Flash target", `<style>body{margin:0;background:#fff}#t{position:fixed;width:60px;height:60px;background:#e00010;display:none}
+#c{position:fixed;left:0;bottom:0;width:48px;height:48px}</style><div id="t"></div><div id="c"></div>
+<script>
+// The bottom-left block turns black or white on every click, so a test can time a click until a frame shows it.
+const c = document.querySelector('#c'); let dark = false; c.style.background = '#fff'; c.style.outline = '1px solid #888';
+document.addEventListener('pointerdown', () => { dark = !dark; c.style.background = dark ? '#000' : '#fff'; });
+const t = document.querySelector('#t'); let shown = 0, n = 0, hit = false;
+setInterval(() => {
+  t.style.left = Math.round(80 + Math.random() * (innerWidth - 220)) + 'px'; t.style.top = Math.round(80 + Math.random() * (innerHeight - 220)) + 'px';
+  t.style.display = 'block'; shown = performance.now(); hit = false; log('shown', { n: ++n });
+  setTimeout(() => { t.style.display = 'none'; }, Number(new URLSearchParams(location.search).get('ms')) || 600);
+}, 1500);
+document.addEventListener('pointerdown', e => {
+  if (e.target === t && !hit) { hit = true; log('hit', { n, reaction_ms: Math.round(performance.now() - shown) }); }
+  else if (e.target !== t) { const r = t.getBoundingClientRect(); log('miss', { n, x: e.clientX, y: e.clientY, square: t.style.display === 'none' ? null : [Math.round(r.left), Math.round(r.top)], w: innerWidth, h: innerHeight }); }
+});
+</script>`),
+  "/frame": page("Inner frame", `<button onclick="const ok = confirm('Frame question?'); log('frame-confirm', { ok }); document.body.dataset.answer = ok; this.textContent = 'frame ' + ok">Frame confirm</button>`),
+  "/popup": page("Popup", `<h1>Popup</h1><a href="/popup/next">Next page</a> <button onclick="window.close()">Close me</button>`),
+  "/popup/next": page("Popup next", `<h1>Popup next</h1><a href="javascript:history.back()">Back</a>`),
+  "/diag": page("Diagnostics", `<h1>Diagnostics</h1>
+<button onclick="fetch('/missing.json').then(r => out('fetched ' + r.status))">Fetch 404</button>
+<button onclick="fetch('/status/500').then(r => out('fetched ' + r.status))">Fetch 500</button>
+<button onclick="fetch('http://127.0.0.1:9/unreachable').catch(e => out('fetch failed'))">Fetch unreachable</button>
+<button onclick="setTimeout(() => { throw new Error('fixture exception ' + Date.now()) }); out('threw')">Throw</button>
+<button onclick="console.error('fixture console error'); console.log('fixture console log'); out('logged')">Console</button>
+<button disabled>Disabled action</button>
+<p role="status" id="out">idle</p>
+<ul id="items"><li>alpha</li><li>beta</li></ul>
+<script>function out(text) { document.querySelector('#out').textContent = text; }</script>`),
+  "/wait": page("Wait", `<h1>Wait</h1>
+<label>Name <input id="name" aria-label="Name"></label>
+<button onclick="const name = document.querySelector('#name').value; out('saving'); setTimeout(() => { out('saved ' + name); log('saved', { name }) }, 800)">Save</button>
+<button id="later" disabled>Continue</button>
+<button onclick="setTimeout(() => document.querySelector('#later').disabled = false, 600)">Unlock later</button>
+<button onclick="setTimeout(() => document.querySelector('#banner')?.remove(), 600)">Dismiss banner</button>
+<p id="banner" role="alert">Welcome banner</p>
+<button onclick="let n = 0; const t = setInterval(() => { out('tick ' + (++n)); if (n === 20) clearInterval(t) }, 150)">Flicker</button>
+<p role="status" id="out">idle</p>
+<script>function out(text) { document.querySelector('#out').textContent = text; }</script>`),
+  "/long": page("Long list", `<h1>Long list</h1><ol>${Array.from({ length: 1500 }, (_, i) => `<li>Item ${i + 1}</li>`).join("")}</ol><p role="status">end of list</p>`),
+  "/files": page("Files", `<h1>Files</h1>
+<label>Attachment <input type="file" id="direct" multiple></label>
+<input type="file" id="hidden" hidden>
+<button onclick="document.querySelector('#hidden').click()">Choose file</button>
+<a href="/download/report.txt">Download report</a>
+<a href="/download/slow.bin">Download slow file</a>
+<p role="status" id="out">idle</p>
+<script>
+for (const input of document.querySelectorAll('input[type=file]')) input.addEventListener('change', async () => {
+  const files = await Promise.all([...input.files].map(async file => ({ name: file.name, size: file.size, text: (await file.text()).slice(0, 40) })));
+  log('upload', { input: input.id, files });
+  document.querySelector('#out').textContent = input.id + ': ' + files.map(file => file.name + ' ' + file.size).join(', ');
+});
+</script>`),
+};
+
+/** Start the fixture on an ephemeral 127.0.0.1 port. */
+export async function startWebFixture() {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://localhost");
+    if (url.pathname === "/journal" && request.method === "POST") {
+      let body = "";
+      request.on("data", chunk => { body += chunk; });
+      request.on("end", () => { journal.push({ at: new Date().toISOString(), ...JSON.parse(body || "{}") }); response.end(); });
+      return;
+    }
+    if (url.pathname === "/journal") return response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(journal, null, 1));
+    if (url.pathname === "/status/500") return response.writeHead(500).end("fixture failure");
+    if (url.pathname === "/download/report.txt") {
+      journal.push({ at: new Date().toISOString(), page: url.pathname, type: "download-served" });
+      return response.writeHead(200, { "content-type": "text/plain", "content-disposition": "attachment; filename=report.txt" }).end("fixture report\n");
+    }
+    if (url.pathname === "/download/slow.bin") {
+      // 20 chunks over 10 seconds, so a check can wait, time out or cancel while it is in progress.
+      response.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": "attachment; filename=slow.bin", "content-length": String(20 * 1024) });
+      let sent = 0;
+      const timer = setInterval(() => {
+        response.write(Buffer.alloc(1024, sent));
+        if (++sent === 20) { clearInterval(timer); response.end(); journal.push({ at: new Date().toISOString(), page: url.pathname, type: "slow-finished" }); }
+      }, 500);
+      response.on("close", () => { if (sent < 20) { clearInterval(timer); journal.push({ at: new Date().toISOString(), page: url.pathname, type: "slow-aborted", sent }); } });
+      return;
+    }
+    const html = pages[url.pathname];
+    if (!html) return response.writeHead(404).end("not found");
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(html);
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  return { url: `http://127.0.0.1:${server.address().port}/`, journal, close: () => new Promise(resolve => server.close(resolve)) };
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const fixture = await startWebFixture();
+  console.log(`FIXTURE ${fixture.url}`);
+  // Live checks run it over SSH and end its stdin to stop it; killing the local ssh alone leaves it running there.
+  process.stdin.on("end", () => process.exit()).resume();
+}

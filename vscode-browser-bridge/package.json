@@ -1,0 +1,15 @@
+{
+  "name": "pi-browser-bridge",
+  "displayName": "Pi Browser Bridge",
+  "description": "Lets Pi computer use attach Playwright to VS Code's integrated browser over a token-protected loopback CDP channel.",
+  "version": "0.1.0",
+  "publisher": "alexshpunt",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/alexshpunt/pi-agent-computer-use" },
+  "engines": { "vscode": "^1.110.0" },
+  "extensionKind": ["ui"],
+  "enabledApiProposals": ["browser"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "dependencies": { "ws": "8.22.0" }
+}

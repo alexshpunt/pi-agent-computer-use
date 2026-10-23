@@ -1,0 +1,13 @@
+{
+  "format": 2,
+  "source": "13dbacca94e33fbdce56fd4ed6bd9bebc6aeb5a5",
+  "version": "0.37.0",
+  "url": "https://github.com/alexshpunt/cua/releases/download/pi-runtime-0.37.0-13dbacca/",
+  "files": {
+    "cua-driver.exe": "689487a1566b4cb04adee8b30f6732d4ae096290e53dd1d7570064e8a3265b67",
+    "cua-driver-uia.exe": "ab0ece2a0aae0f357e3cf7db82b56f4e2d9d3e15d5c770d6c8beeea410885dba",
+    "cua-cursor-theme.exe": "a6b3dc598ce3f95372d95ea2da72eb9f960c49fea24adbcb1664839d1528eb1a",
+    "LICENSE.md": "d0a32419a44fa38d5023d1431dfcbedd1457eb5e7b2e6c7c87ca064facb41b41",
+    "THIRD_PARTY_NOTICES.md": "88a24f59293f03b3e03655e8144bcfadc9861bef1182cfeea91639e11f573fd1"
+  }
+}
