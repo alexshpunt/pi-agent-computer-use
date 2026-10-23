@@ -38,7 +38,7 @@ Pi Agent Computer Use gives the [Pi coding agent](https://pi.dev/) one interface
 | Check the result                       | `wait_for`, `verify`, change lists and fresh Reads                          |
 | Work away from your desktop            | Windows Sandbox, isolated agent sessions and other machines over SSH        |
 
-[Cua Driver](https://github.com/trycua/cua) does the native capture and input, and [Playwright](https://playwright.dev/) handles web pages.
+Native capture and input come from our fork of [Cua Driver](https://github.com/trycua/cua), [alexshpunt/cua](https://github.com/alexshpunt/cua). It adds the Windows features computer use needs and upstream doesn't have yet: held brush paths, key holds, input timelines with pen pressure, window management, strict UI Automation actions, pausing while you use the mouse and more. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists them all. [Playwright](https://playwright.dev/) handles web pages.
 
 ### With Pi Agent IDE or without it
 

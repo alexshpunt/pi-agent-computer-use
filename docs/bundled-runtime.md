@@ -1,6 +1,6 @@
 # Bundled CUA runtime
 
-The npm package carries one native runtime: Cua Driver 0.37.0 for Windows x64, built from the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork at source `13dbacca`. It is the qualified `windows-desktop` profile, so a fresh installation gets every native capability without any configuration:
+The npm package carries one native runtime: Cua Driver 0.37.0 for Windows x64, built from the `pi-computer-use` branch of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork at source `13dbacca`. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists what the fork adds to upstream Cua Driver. It is the qualified `windows-desktop` profile, so a fresh installation gets every native capability without any configuration:
 
 ```sh
 pi install npm:pi-agent-computer-use
