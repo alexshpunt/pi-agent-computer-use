@@ -38,15 +38,16 @@ test("old profiles cannot dispatch management or acquire its admission through d
   }
 });
 
-test.each(["linux-x64", "darwin-x64", "darwin-arm64"] as const)("%s never starts a Windows identity peer or advertises Windows-only fork routes", async target => {
-  const bundled: BundledRuntime = { target, root: "/missing-package", command: "/missing-package/runtime/cua-driver", source: "a".repeat(40), version: "0.34.0-dev.fixture", driverVersion: "0.34.0", files: {} };
-  const backend = new McpDriver({ command: bundled.command, bundled });
+test("the shipped Windows runtime gets the desktop capabilities and refuses a missing package before any native call", async () => {
+  const bundled: BundledRuntime = { target: "win32-x64", root: "/missing-package", command: "/missing-package/runtime/cua-driver.exe",
+    source: "a".repeat(40), version: "0.37.0", driverVersion: "0.37.0", files: {} };
+  const backend = new McpDriver({ command: bundled.command, bundled, runtime: "windows-desktop" });
   try {
-    expect(backend.platform).toBe(target.startsWith("darwin") ? "macos" : "linux");
-    expect(backend.windowLifetime).toBe(false);
-    expect([backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual([false, false, false, false, false]);
-    await expect(backend.identity({ pid: 42, window_id: 99 }, true)).resolves.toBeUndefined();
-    expect(await backend.call("semantic_action", { operation: "invoke" })).toMatchObject({ isError: true, structuredContent: { code: "semantic_action_unavailable", attempted: false } });
+    expect(backend.platform).toBe("windows");
+    expect(backend.windowLifetime).toBe(true);
+    expect([backend.windowManagement, backend.windowRestore, backend.coordinateScroll, backend.nativePointer, backend.heldPaths,
+      backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual(Array(9).fill(true));
+    await expect(backend.call("list_windows", {})).rejects.toThrow("native_runtime_files_mismatch");
   } finally { await backend.close(); }
 });
 
