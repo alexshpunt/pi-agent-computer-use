@@ -6,7 +6,7 @@ VS Code's proposed `browser` API gives each integrated browser tab a Chrome DevT
 
 Setup:
 
-1. Install it with `/computer-setup vscode-bridge`, or build it with `scripts/package-vscode-bridge.sh` and install the `.vsix` with `code --install-extension`.
+1. Install it with `/computer-setup vscode-bridge`, or package this folder with `npx @vscode/vsce package` after `npm install --omit=dev` and install the `.vsix` with `code --install-extension`.
 2. Run **Preferences: Configure Runtime Arguments** and add `"enable-proposed-api": ["alexshpunt.pi-browser-bridge"]`.
 3. Quit VS Code fully and start it again; Reload Window does not reread that file.
 

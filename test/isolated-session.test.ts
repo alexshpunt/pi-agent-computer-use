@@ -61,7 +61,7 @@ test("a session provisions, starts its driver through the reverse relay, and clo
 
 test("a machine without MXC refuses before provisioning anything", async () => {
   const f = await fakeHost({ installed: false });
-  await expect(IsolatedSession.open(f.host, "/mnt/c/runtime/cua-driver.exe")).rejects.toThrow(/MXC is not installed.*Ask the user.*\/computer-setup mxc/);
+  await expect(IsolatedSession.open(f.host, "/mnt/c/runtime/cua-driver.exe")).rejects.toThrow(/MXC is not installed.*Ask the user.*"part":"mxc"/);
   expect(f.phases).toEqual([]);
 });
 

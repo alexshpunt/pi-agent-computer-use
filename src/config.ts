@@ -70,6 +70,18 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     ...(raw.machines !== undefined ? { machines: parseMachines(raw.machines) } : {}) };
 }
 
+/** The trusted file's interop socket and machines, without selecting or downloading a runtime. */
+export async function readMachineSettings(cwd: string): Promise<{ interop?: string; machines: Record<string, MachineConfig> }> {
+  let raw: unknown = {};
+  try { raw = JSON.parse(await readFile(path.join(cwd, ".pi", "computer-use.json"), "utf8")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
+  const { interop, machines } = raw as Record<string, unknown>;
+  return { ...(typeof interop === "string" ? { interop } : {}), machines: machines === undefined ? {} : parseMachines(machines) };
+}
+
 function parseMachines(value: unknown): Record<string, MachineConfig> {
   const invalid = () => { throw new Error("Invalid machines in .pi/computer-use.json: use {\"<name>\": {\"ssh\", \"command\", \"runtime\"?, \"node\"?, \"package\"?}}."); };
   if (!value || typeof value !== "object" || Array.isArray(value)) return invalid();

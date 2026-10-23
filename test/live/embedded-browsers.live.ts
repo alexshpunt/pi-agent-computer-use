@@ -1,7 +1,6 @@
-import { execFileSync } from "node:child_process";
 import { afterAll, expect, test } from "vitest";
 import { connectLive, openWindow, serveFixture, text } from "./remote.ts";
-import { machineConfig } from "../../src/machine.ts";
+import { runSetup } from "../../src/setup.ts";
 
 // LPT-857..859: Playwright attaches to browsers embedded in other apps. Everything here is started by the check in
 // temporary folders on the machine: a portable VS Code (Electron) with its own data folder, the Pi Browser Bridge
@@ -29,7 +28,7 @@ async function portableVsCode() {
 [ -f app/Code.exe ] || python3 -c "import zipfile;zipfile.ZipFile('code.zip').extractall('app')"
 mkdir -p app/data; rm -f app/data/argv.json`], { timeoutMs: 600_000 });
   // The same installer a user runs: the extension, and its proposed API allowed in that VS Code's argv.json.
-  execFileSync("scripts/install-vscode-bridge.sh", [`${root}/app/bin/code.cmd`, `${root}/app/data/argv.json`, (await machineConfig(process.cwd(), "lab")).ssh], { stdio: "ignore" });
+  await runSetup({ part: "vscode-bridge", machine: "lab", code: `${root}/app/bin/code.cmd`, argv: `${root}/app/data/argv.json` }, process.cwd());
 }
 
 /** Read the attached page, then navigate it to the fixture and fill its field through Playwright. */

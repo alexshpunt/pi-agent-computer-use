@@ -12,7 +12,7 @@ pi install npm:pi-agent-computer-use
 
 The package carries the Windows runtime, so no driver download or executable config is needed. From WSL it controls the Windows host, not a Linux desktop. See [the bundled runtime](bundled-runtime.md) for platforms and checks.
 
-Optional parts install with `/computer-setup PART [MACHINE]`: `browser`, `firefox`, `perception`, `mxc`, `vscode-bridge` and `machine`. The command runs `scripts/setup.sh`, which is a Bash script for Pi running in WSL. Everything goes into the Windows user's own folders, and downloads are checked against pinned SHA-256 sums. An agent runs it only after the user explicitly allows that part.
+Optional parts install with `/computer-setup PART [MACHINE]`: `browser`, `firefox`, `perception`, `mxc`, `vscode-bridge` and `machine`. It works with Pi on Windows and in WSL: each part runs as a PowerShell script on the target Windows, locally or over SSH. Everything goes into the Windows user's own folders, and downloads are checked against pinned SHA-256 sums on that Windows before use. An agent installs a part with Insert `{"action":"setup","part":...}` into a machine address, and only after the user explicitly allows that part.
 
 ## Choose a mode
 

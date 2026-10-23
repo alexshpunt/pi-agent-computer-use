@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { displayModes as nativeDisplayModes, type DisplayModes } from "./display-mode.ts";
-import { WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
+import { WINDOWS_POWERSHELL, runPowerShell, type CommandRunner } from "./runner.ts";
 /** The Chromium switch a WebView2 app gets for debugging; port 0 lets each app choose a free port. */
 export const WEBVIEW2_DEBUGGING = "--remote-debugging-port=0";
 /** Quote one argument for a Windows command line as CommandLineToArgvW and the C runtime read it back. */
@@ -27,10 +27,7 @@ export class MachineHost {
   constructor(private readonly runner: CommandRunner, readonly displayModes: DisplayModes = nativeDisplayModes(runner)) {}
 
   private powershell(script: string, input?: string | Buffer, timeoutMs = 60_000): Promise<string> {
-    return this.runner.run(WINDOWS_POWERSHELL, ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand",
-      // UTF-8 output: the console code page would turn characters such as • into control bytes.
-      Buffer.from(`$ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.Encoding]::UTF8\ntry {\n${script}\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`, "utf16le").toString("base64")],
-    { ...(input !== undefined ? { input } : {}), timeoutMs }).then(output => output.replace(/\r/g, "").trim());
+    return runPowerShell(this.runner, WINDOWS_POWERSHELL, script, { ...(input !== undefined ? { input } : {}), timeoutMs });
   }
 
   /** This session's folder in the machine's Windows temp directory, created on first use. */
