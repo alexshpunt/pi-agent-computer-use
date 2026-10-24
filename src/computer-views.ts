@@ -25,8 +25,15 @@ function keys(value: Record<string, unknown>, allowed: readonly string[]): void 
 /** Validate owned views before capturing; text offsets are never image coordinates.
  * `ocr` adds Windows text recognition to a window overview, an observation or a region detail.
  * `changes` reads a window's UI and lists only what changed since its previous observation.
- * `regions` adds icons and text areas found by Cua perception to a window overview or its current observation. */
-export function parseComputerViews(views: readonly string[] = []): ComputerViews & { ocr?: true; changes?: true; regions?: true } {
+ * `regions` adds icons and text areas found by Cua perception to a window overview or its current observation.
+ * `aria` reads a window's UI as a Playwright aria snapshot whose refs are the observation's hints. */
+export function parseComputerViews(views: readonly string[] = []): ComputerViews & { ocr?: true; changes?: true; regions?: true; aria?: true } {
+  if (views.includes("aria")) {
+    const view = parseView(views.filter(view => view !== "aria"));
+    if (view.kind !== "overview" || (view.capture.granularity ?? "ui") !== "ui")
+      throw Error("Use aria alone or with ui capture options such as max_elements; it renders the UI tree as a Playwright aria snapshot.");
+    return { kind: "overview", capture: { ...view.capture, granularity: "ui" }, aria: true };
+  }
   if (views.includes("regions")) {
     const rest = parseComputerViews(views.filter(view => view !== "regions"));
     if (rest.ocr || rest.changes || rest.kind !== "overview" || rest.capture.granularity === "ui")

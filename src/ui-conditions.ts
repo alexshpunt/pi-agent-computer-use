@@ -1,6 +1,7 @@
 import type { UiResource } from "./ui-resources.ts";
 import { validateWebTarget, type WebTarget } from "./web-browser.ts";
-import { checkedState, isVisible, nativeSelector, queryNative, type ParsedSelector } from "./native-locator.ts";
+import { checkedState, isVisible, nativeAriaSnapshot, nativeAriaTree, nativeSelector, queryNative, type ParsedSelector } from "./native-locator.ts";
+import { matchesAriaTemplate, parseAriaTemplate } from "./aria-match.ts";
 
 /** Three-valued verdict. `unknown` means the evidence cannot decide, never a hidden `false`. */
 export type Verdict = "satisfied" | "unsatisfied" | "unknown";
@@ -18,6 +19,10 @@ export interface UiCondition {
   is?: ElementState;
   value?: string;
   contains?: string;
+  /** Like toHaveCount: exactly this many elements match the target. */
+  count?: number;
+  /** Like toMatchAriaSnapshot: a Playwright aria snapshot template the target's subtree (or the whole window or page) contains. */
+  aria?: string;
   /** Page conditions for browser windows. */
   url_contains?: string;
   title?: string;
@@ -48,7 +53,7 @@ export function validateWait(command: Record<string, unknown>, browser: boolean)
   const conditions = command.conditions.map((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw Error(`conditions[${index}] must be an object.`);
     const value = raw as Record<string, unknown>;
-    const fields = ["target", "is", "value", "contains", ...(browser ? ["url_contains", "title"] : [])];
+    const fields = ["target", "is", "value", "contains", "count", "aria", ...(browser ? ["url_contains", "title"] : [])];
     const unknown = Object.keys(value).filter(key => !fields.includes(key));
     if (unknown.length) throw Error(`conditions[${index}] does not accept: ${unknown.join(", ")}.`);
     const condition: UiCondition = {};
@@ -62,17 +67,25 @@ export function validateWait(command: Record<string, unknown>, browser: boolean)
         if (typeof value[key] !== "string" || (value[key] as string).length > 2000) throw Error(`conditions[${index}].${key} must be a string of at most 2000 characters.`);
         condition[key] = value[key] as string;
       }
+    if (value.count !== undefined) condition.count = integer(value.count, 0, 10_000, 0, `conditions[${index}].count`);
+    if (value.aria !== undefined) {
+      if (typeof value.aria !== "string" || !value.aria.trim() || value.aria.length > 20_000) throw Error(`conditions[${index}].aria must be a YAML aria snapshot of at most 20000 characters.`);
+      try { parseAriaTemplate(value.aria); } catch (error) { throw Error(`conditions[${index}].aria is not a valid aria snapshot: ${error instanceof Error ? error.message : error}`); }
+      condition.aria = value.aria;
+    }
     if (value.target !== undefined) {
       if (browser) condition.target = validateWebTarget(value.target);
-      else condition.selector = nativeSelector(value.target, `conditions[${index}].target`);
+      // Native targets keep their source form for reports; the parsed selector is what evaluates.
+      else { condition.selector = nativeSelector(value.target, `conditions[${index}].target`); condition.target = value.target as WebTarget; }
     }
-    const checks = [condition.is, condition.value, condition.contains].filter(item => item !== undefined).length;
-    if (checks > 1) throw Error(`conditions[${index}] takes one of is, value or contains; use separate conditions for several checks.`);
+    const checks = [condition.is, condition.value, condition.contains, condition.count, condition.aria].filter(item => item !== undefined).length;
+    if (checks > 1) throw Error(`conditions[${index}] takes one of is, value, contains, count or aria; use separate conditions for several checks.`);
     const elementCheck = checks === 1;
     const pageCheck = condition.url_contains !== undefined || condition.title !== undefined;
     const targeted = condition.target !== undefined || condition.selector !== undefined;
-    if (elementCheck === pageCheck || (elementCheck && !targeted) || (pageCheck && targeted))
-      throw Error(`conditions[${index}] needs a target with is/value/contains, or a page check (url_contains/title) without a target.`);
+    // aria without a target checks the whole window or page, like expect(page.locator("body")).toMatchAriaSnapshot.
+    if (elementCheck === pageCheck || (elementCheck && !targeted && condition.aria === undefined) || (pageCheck && targeted))
+      throw Error(`conditions[${index}] needs a target with is/value/contains/count, aria with or without a target, or a page check (url_contains/title) without a target.`);
     return condition;
   });
   const timeout = verify ? 0 : integer(command.timeout_ms, 0, 60_000, 5_000, "timeout_ms");
@@ -92,7 +105,15 @@ export function combine(results: readonly ConditionResult[]): Verdict {
 export function evaluateNative(ui: UiResource, conditions: readonly UiCondition[], texts?: ReadonlyMap<string, string>): ConditionResult[] {
   const complete = ui.complete === true && !ui.truncated;
   return conditions.map((condition, index) => {
+    if (condition.aria !== undefined && !condition.selector) return ariaVerdict(index, ui, condition.aria, complete);
     const found = queryNative(ui, condition.selector!);
+    // Like toHaveCount: more matches than wanted are proven; fewer or equal only in a complete walk.
+    if (condition.count !== undefined) {
+      const observed = `${found.length} match(es)`;
+      if (found.length > condition.count) return { index, verdict: "unsatisfied", observed };
+      return complete ? { index, verdict: found.length === condition.count ? "satisfied" : "unsatisfied", observed }
+        : { index, verdict: "unknown", observed, reason: "The UI walk was incomplete; more elements may match beyond it." };
+    }
     // Like Playwright's toBeHidden: no matching element, or one that is not visible.
     if (condition.is === "hidden") {
       if (found.length > 1) return { index, verdict: "unknown", reason: `${found.length} elements match; narrow the target.` };
@@ -107,6 +128,7 @@ export function evaluateNative(ui: UiResource, conditions: readonly UiCondition[
       : { index, verdict: "unknown", reason: "No match in an incomplete UI walk; the element may exist beyond it." };
     if (found.length > 1) return { index, verdict: "unknown", reason: `${found.length} elements match; narrow the target.` };
     const element = found[0];
+    if (condition.aria !== undefined) return ariaVerdict(index, ui, condition.aria, complete, element);
     // A walk cuts texts at 1024 characters; the same capture keeps longer ones in `texts`.
     const full = texts?.get(element.hint);
     const observed = full ?? element.value ?? element.name;
@@ -131,4 +153,16 @@ export function evaluateNative(ui: UiResource, conditions: readonly UiCondition[
     }
     return { index, verdict: "satisfied", observed: observed && observed.length > 500 ? observed.slice(0, 500) + "…" : observed };
   });
+}
+
+/**
+ * Like toMatchAriaSnapshot: the template must match inside the element's subtree, or the whole window without a
+ * target. A match is proven by any walk; a mismatch only by a complete one. A mismatch shows the received snapshot.
+ */
+function ariaVerdict(index: number, ui: UiResource, template: string, complete: boolean, root?: UiResource["elements"][number]): ConditionResult {
+  if (matchesAriaTemplate(nativeAriaTree(ui, root), template)) return { index, verdict: "satisfied", observed: "matches" };
+  const received = nativeAriaSnapshot(ui, root);
+  const observed = received.length > 4000 ? received.slice(0, 4000) + "\n…" : received;
+  return complete ? { index, verdict: "unsatisfied", observed }
+    : { index, verdict: "unknown", observed, reason: "No match in an incomplete UI walk; the rest of the tree may hold it." };
 }

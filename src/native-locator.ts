@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import type { UiElement, UiResource } from "./ui-resources.ts";
+import type { AriaTreeNode } from "./aria-match.ts";
 
 /** Playwright's own selector and locator parsers; loaded on first use because playwright-core takes about a second to load. */
 interface PlaywrightIso {
@@ -7,6 +8,12 @@ interface PlaywrightIso {
   parseSelector(selector: string): ParsedSelector;
   parseAttributeSelector(selector: string, allowUnquotedStrings: boolean): { name: string; attributes: Attribute[] };
   asLocator(language: "javascript", selector: string): string;
+  renderAriaSnapshotAsYaml(nodes: AriaNode[]): string;
+}
+/** The node shape Playwright's aria snapshot renderer takes. */
+interface AriaNode {
+  role: string; name?: string; text?: string; ref?: string; children?: AriaNode[];
+  checked?: boolean | "mixed"; pressed?: boolean | "mixed"; disabled?: boolean; expanded?: boolean; selected?: boolean;
 }
 let loaded: PlaywrightIso | undefined;
 const iso = (): PlaywrightIso => loaded ??= (createRequire(import.meta.url)("playwright-core/lib/coreBundle") as { iso: PlaywrightIso }).iso;
@@ -17,7 +24,8 @@ const iso = (): PlaywrightIso => loaded ??= (createRequire(import.meta.url)("pla
  * Playwright parses the locator (`getByRole("button", { name: "Save" }).nth(1)`) into its internal selector
  * (`internal:role=button[name="Save"i] >> nth=1`); this module evaluates that selector against the UIA tree
  * with Playwright's semantics: chained parts search inside the previous matches, names and texts match a
- * case-insensitive substring unless exact, the role engine skips hidden elements unless `includeHidden`.
+ * case-insensitive substring unless exact. UIA reports scrolled-out elements as offscreen; like Playwright, which
+ * still finds and scrolls to them, locators match them, and only visible/hidden checks treat them as not visible.
  */
 
 /** A parsed Playwright selector, as `iso.parseSelector` returns it. */
@@ -60,7 +68,7 @@ export function checkedState(element: UiElement): boolean | "mixed" | null {
   if (element.checked === "mixed") return "mixed";
   return element.checked === undefined && ["checkbox", "radio"].includes(ariaRole(element)) ? element.selected : null;
 }
-/** Hidden means UIA IsOffscreen; unknown visibility counts as visible, as an element without layout info would in a page. */
+/** Not visible means UIA IsOffscreen (scrolled out, collapsed or minimized); unknown visibility counts as visible. */
 export const isVisible = (element: UiElement): boolean => element.offscreen !== true;
 
 const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
@@ -117,13 +125,12 @@ function engine(part: ParsedSelector["parts"][number]): (element: UiElement) => 
     case "internal:role": case "role": {
       const { name: role, attributes } = parseAttributes(part.body);
       const wanted = role.toLowerCase();
-      let includeHidden = false;
       const checks: ((element: UiElement) => boolean)[] = [element => ariaRoles(element).includes(wanted) || (element.role ?? "").toLowerCase() === wanted];
       for (const attribute of attributes) {
         const value = attribute.value;
         switch (attribute.name) {
           case "name": { const match = attributeMatcher(attribute); checks.push(element => match(accessibleName(element))); break; }
-          case "include-hidden": includeHidden = value === true || value === "true"; break;
+          case "include-hidden": break;
           case "checked": checks.push(element => CHECKABLE.has(ariaRole(element)) && String(checkedState(element)) === String(value)); break;
           case "pressed": checks.push(element => ariaRole(element) === "button" && element.checked !== undefined && String(checkedState({ ...element, role: "CheckBox" })) === String(value)); break;
           case "disabled": checks.push(element => element.enabled !== null && String(element.enabled === false) === String(value)); break;
@@ -132,7 +139,7 @@ function engine(part: ParsedSelector["parts"][number]): (element: UiElement) => 
           default: throw Error(`getByRole option ${attribute.name} is not available for native windows.`);
         }
       }
-      return element => (includeHidden || isVisible(element)) && checks.every(check => check(element));
+      return element => checks.every(check => check(element));
     }
     case "internal:text": { const match = textMatcher(part.body); return element => match(accessibleName(element)) || (ariaRole(element) === "text" && match(element.value ?? "")); }
     case "internal:label": { const match = textMatcher(part.body); return element => LABELLED.has(ariaRole(element)) && match(accessibleName(element)); }
@@ -243,6 +250,45 @@ export function nativeSelector(value: unknown, what = "target"): ParsedSelector 
 /** Elements of one snapshot that a parsed selector matches, in tree order. */
 export function queryNative(ui: Pick<UiResource, "elements">, selector: ParsedSelector): UiElement[] {
   return evaluate(new Tree(ui.elements), selector, null);
+}
+
+/**
+ * The UIA tree as a Playwright aria snapshot, rendered by Playwright itself: `- button "Save" [ref=g:a]`,
+ * `- textbox "Name": Ada`, `- checkbox "Agree" [checked]`, nested children, `- text: idle`. Refs are observation hints.
+ */
+export function nativeAriaSnapshot(ui: Pick<UiResource, "elements">, root?: UiElement): string {
+  const { roots, nodes } = ariaNodes(ui);
+  return iso().renderAriaSnapshotAsYaml(root ? [nodes.get(root.hint)!] : roots);
+}
+
+/** The tree toMatchAriaSnapshot checks: a fragment of the whole window, or of one element and its subtree. */
+export function nativeAriaTree(ui: Pick<UiResource, "elements">, root?: UiElement): AriaTreeNode {
+  const { roots, nodes } = ariaNodes(ui);
+  const convert = (node: AriaNode): AriaTreeNode | string => node.role === "text" ? normalize(node.text ?? "") : {
+    ...node, children: [...(node.text !== undefined ? [normalize(node.text)] : []), ...(node.children ?? []).map(convert)],
+  };
+  return { role: "fragment", children: (root ? [nodes.get(root.hint)!] : roots).map(convert) };
+}
+
+function ariaNodes(ui: Pick<UiResource, "elements">): { roots: AriaNode[]; nodes: Map<string, AriaNode> } {
+  const nodes = new Map<string, AriaNode>(), roots: AriaNode[] = [];
+  for (const element of ui.elements) {
+    const role = ariaRole(element), name = accessibleName(element);
+    if (role === "text") { nodes.set(element.hint, { role, text: name || element.value || "" }); continue; }
+    const node: AriaNode = { role, ref: element.hint, ...(name ? { name } : {}) };
+    if (role === "textbox" || role === "combobox" || role === "spinbutton" || role === "slider") { if (element.value) node.text = element.value; }
+    const state = checkedState(element);
+    if (state !== null) { if (role === "button") node.pressed = state; else node.checked = state; }
+    if (element.enabled === false) node.disabled = true;
+    if (element.expanded === true) node.expanded = true;
+    if (element.selected === true && state === null) node.selected = true;
+    nodes.set(element.hint, node);
+  }
+  for (const element of ui.elements) {
+    const node = nodes.get(element.hint)!, parent = element.parent_hint ? nodes.get(element.parent_hint) : undefined;
+    if (parent && parent.role !== "text") (parent.children ??= []).push(node); else roots.push(node);
+  }
+  return { roots, nodes };
 }
 
 /** A Playwright locator that names this element, for strict-mode errors and listings. */

@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "vitest";
-import { ariaRole, parseLocator, queryNative, suggestLocator, targetSelector } from "../src/native-locator.ts";
-import type { UiElement } from "../src/ui-resources.ts";
+import { ariaRole, nativeAriaSnapshot, parseLocator, queryNative, suggestLocator, targetSelector } from "../src/native-locator.ts";
+import type { UiElement, UiResource } from "../src/ui-resources.ts";
+import { evaluateNative, validateWait } from "../src/ui-conditions.ts";
 
 /** The WinForms fixture of the live checks, as a runtime with the full UIA tree reports it. */
 function element(hint: string, role: string, name: string, extra: Partial<UiElement> = {}): UiElement {
@@ -34,15 +35,16 @@ test("getByRole matches ARIA or UIA roles and names the Playwright way: substrin
   expect(hints(`getByRole("button", { name: "Save", exact: true })`)).toEqual(["save"]);
   expect(hints(`getByRole("button", { name: /^save$/i })`)).toEqual(["save"]);
   expect(hints(`getByRole("textbox")`)).toEqual(["name"]);
-  expect(hints(`getByRole("option")`)).toEqual(["alpha", "beta"]);
+  expect(hints(`getByRole("option")`)).toEqual(["alpha", "beta", "hidden"]);
 });
 
-test("role states filter like Playwright's options; hidden elements need includeHidden", () => {
+test("role states filter like Playwright's options; scrolled-out elements still match, and visible filters them", () => {
   expect(hints(`getByRole("checkbox", { checked: true })`)).toEqual(["agree"]);
   expect(hints(`getByRole("checkbox", { checked: false })`)).toEqual([]);
   expect(hints(`getByRole("button", { disabled: true })`)).toEqual(["off"]);
   expect(hints(`getByRole("listitem", { selected: true })`)).toEqual(["beta"]);
   expect(hints(`getByRole("listitem", { includeHidden: true })`)).toEqual(["alpha", "beta", "hidden"]);
+  expect(hints(`getByRole("listitem").filter({ visible: true })`)).toEqual(["alpha", "beta"]);
   expect(() => hints(`getByRole("heading", { level: 2 })`)).toThrow(/level is not available for native windows/);
 });
 
@@ -59,7 +61,7 @@ test("text, label, test id and title locators read the matching UIA properties",
 test("chaining searches inside the previous matches; filter, nth, and, or compose", () => {
   expect(hints(`getByRole("group", { name: "Options" }).getByRole("button")`)).toEqual(["ok"]);
   expect(hints(`getByRole("list").getByRole("listitem").filter({ hasText: "beta" })`)).toEqual(["beta"]);
-  expect(hints(`getByRole("listitem").filter({ hasNotText: "beta" })`)).toEqual(["alpha"]);
+  expect(hints(`getByRole("listitem").filter({ hasNotText: "beta" })`)).toEqual(["alpha", "hidden"]);
   expect(hints(`getByRole("group").filter({ has: getByRole("button", { name: "OK" }) })`)).toEqual(["opts"]);
   expect(hints(`getByRole("list").filter({ hasText: "beta" })`)).toEqual(["pick"]);
   expect(hints(`getByRole("button").first()`)).toEqual(["count"]);
@@ -86,6 +88,25 @@ test("the JSON target shared with browser pages becomes the same Playwright sele
   expect(() => targetSelector({})).toThrow(/needs role/);
 });
 
+test("a native window renders as Playwright's own aria snapshot, with hints as refs", () => {
+  expect(nativeAriaSnapshot(tree)).toBe([
+    `- window "Fixture" [ref=w]:`,
+    `  - button "Count 0" [ref=count]`,
+    `  - button "Disabled" [disabled] [ref=off]`,
+    `  - textbox "Name" [ref=name]: Ada Lovelace`,
+    `  - checkbox "Agree" [checked] [ref=agree]`,
+    `  - group "Options" [ref=opts]:`,
+    `    - button "OK" [ref=ok]`,
+    `  - list "Pick" [ref=pick]:`,
+    `    - listitem "alpha" [ref=alpha]`,
+    `    - listitem "beta" [selected] [ref=beta]`,
+    `    - listitem "gamma" [ref=hidden]`,
+    `  - text: clicked 3`,
+    `  - button "Save" [ref=save]`,
+    `  - button "Save as…" [ref=saveAs]`,
+  ].join("\n"));
+});
+
 test("suggested locators name an element with Playwright syntax", () => {
   const byHint = (hint: string) => tree.elements.find(found => found.hint === hint)!;
   expect(suggestLocator(byHint("count"))).toBe(`getByTestId("countButton")`);
@@ -94,4 +115,26 @@ test("suggested locators name an element with Playwright syntax", () => {
   // Older runtimes fold the checkbox toggle into `selected`.
   const old = { elements: [element("c", "CheckBox", "Agree", { uia_name: undefined, selected: true })] };
   expect(queryNative(old, parseLocator(`getByRole("checkbox", { name: "Agree", checked: true })`)).length).toBe(1);
+});
+
+test("count and aria conditions follow toHaveCount and toMatchAriaSnapshot, proving mismatches only in complete walks", () => {
+  const ui = (complete: boolean) => ({ ...tree, collected: tree.elements.length, complete, truncated: false }) as unknown as UiResource;
+  const verdicts = (conditions: Record<string, unknown>[], complete = true) =>
+    evaluateNative(ui(complete), validateWait({ action: "verify", conditions }, false).conditions).map(result => result.verdict);
+  expect(verdicts([
+    { target: `getByRole("listitem")`, count: 3 },
+    { target: `getByRole("listitem")`, count: 2 },
+    { aria: `- list "Pick":\n  - listitem "beta" [selected]` },
+    { aria: `- textbox "Name": Ada Lovelace` },
+    { aria: `- button /Count \\d+/` },
+    { target: `getByRole("group", { name: "Options" })`, aria: `- group:\n  - button "OK"` },
+    { target: `getByRole("group", { name: "Options" })`, aria: `- button "Save"` },
+    { aria: `- checkbox "Agree" [checked=false]` },
+  ])).toEqual(["satisfied", "unsatisfied", "satisfied", "satisfied", "satisfied", "satisfied", "unsatisfied", "unsatisfied"]);
+  expect(verdicts([{ target: `getByRole("listitem")`, count: 3 }, { aria: `- button "Nope"` }, { target: `getByRole("listitem")`, count: 1 }], false))
+    .toEqual(["unknown", "unknown", "unsatisfied"]);
+  const [miss] = evaluateNative(ui(true), validateWait({ action: "verify", conditions: [{ aria: `- button "Nope"` }] }, false).conditions);
+  expect(miss.observed).toContain(`- button "Count 0" [ref=count]`);
+  expect(() => validateWait({ action: "verify", conditions: [{ aria: "- button [" }] }, false)).toThrow(/not a valid aria snapshot/);
+  expect(() => validateWait({ action: "verify", conditions: [{ count: 1 }] }, false)).toThrow(/needs a target/);
 });

@@ -45,7 +45,7 @@ test("wait commands are bounded and reject states the backend cannot report", ()
   expect(() => validateWait({ action: "wait_for", conditions: [{ target: { name: "Save" }, is: "visible" }] }, false)).toThrow(/name requires/);
   expect(() => validateWait({ action: "wait_for", conditions: [{ url_contains: "/x" }] }, false)).toThrow(/does not accept: url_contains/);
   expect(() => validateWait({ action: "wait_for", conditions: [{ target: { role: "status" } }] }, true)).toThrow(/needs a target with/);
-  expect(() => validateWait({ action: "wait_for", conditions: [{ target: { role: "status" }, value: "a", contains: "b" }] }, true)).toThrow(/one of is, value or contains/);
+  expect(() => validateWait({ action: "wait_for", conditions: [{ target: { role: "status" }, value: "a", contains: "b" }] }, true)).toThrow(/one of is, value, contains, count or aria/);
   expect(() => validateWait({ action: "wait_for", conditions: [{ url_contains: "/x" }], timeout_ms: 120_000 }, true)).toThrow(/timeout_ms/);
   expect(() => validateWait({ action: "verify", conditions: [{ url_contains: "/x" }], stable: 3 }, true)).toThrow(/does not accept: stable/);
 });

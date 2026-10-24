@@ -21,9 +21,10 @@ export async function machineConfig(cwd: string, name: string): Promise<NonNulla
   return machine;
 }
 
-/** What the remote browser worker runs, relative to its package copy; its other imports are type-only. */
+/** The worker files whose version decides the remote browser's behavior, relative to its package copy. */
 const WORKER_FILES: [string, string][] = [
   ["src/web-worker.ts", fileURLToPath(new URL("./web-worker.ts", import.meta.url))],
+  ["src/aria-match.ts", fileURLToPath(new URL("./aria-match.ts", import.meta.url))],
   ["node_modules/playwright-core/package.json", createRequire(import.meta.url).resolve("playwright-core/package.json")],
 ];
 
