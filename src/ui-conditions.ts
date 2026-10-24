@@ -1,17 +1,20 @@
-import type { UiElement, UiResource } from "./ui-resources.ts";
+import type { UiResource } from "./ui-resources.ts";
 import { validateWebTarget, type WebTarget } from "./web-browser.ts";
+import { checkedState, isVisible, nativeSelector, queryNative, type ParsedSelector } from "./native-locator.ts";
 
 /** Three-valued verdict. `unknown` means the evidence cannot decide, never a hidden `false`. */
 export type Verdict = "satisfied" | "unsatisfied" | "unknown";
-/** Element state checked by a condition. Native UI reports only role, name, value, enabled and selected. */
+/** Element state checked by a condition. A state the native runtime does not report is unknown, never false. */
 export type ElementState = "exists" | "absent" | "visible" | "hidden" | "enabled" | "disabled" | "selected" | "checked" | "unchecked" | "focused";
 
 /**
- * One condition. Native windows match `target` by `role`, exact `name` or `text` contained in name or value;
- * browser pages use any Playwright target. `value` and `contains` compare the element's value (or text).
+ * One condition. `target` is a Playwright locator string or the JSON target; native windows evaluate it over
+ * the UIA tree with Playwright's semantics. `value` and `contains` compare the element's value (or text).
  */
 export interface UiCondition {
-  target?: { role?: string; name?: string; text?: string } | WebTarget;
+  target?: WebTarget;
+  /** The native target as Playwright's parsed selector. */
+  selector?: ParsedSelector;
   is?: ElementState;
   value?: string;
   contains?: string;
@@ -27,12 +30,8 @@ export interface WaitResult {
 }
 
 const STATES: readonly ElementState[] = ["exists", "absent", "visible", "hidden", "enabled", "disabled", "selected", "checked", "unchecked", "focused"];
-const NATIVE_STATES: readonly ElementState[] = ["exists", "absent", "enabled", "disabled", "selected"];
+const NATIVE_STATES: readonly ElementState[] = ["exists", "absent", "visible", "hidden", "enabled", "disabled", "selected", "checked", "unchecked", "focused"];
 
-const text = (value: unknown, what: string): string => {
-  if (typeof value !== "string" || !value || value.length > 512) throw Error(`${what} must be a non-empty string of at most 512 characters.`);
-  return value;
-};
 const integer = (value: unknown, min: number, max: number, fallback: number, what: string): number => {
   if (value === undefined) return fallback;
   if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) throw Error(`${what} must be an integer ${min}..${max}.`);
@@ -65,18 +64,14 @@ export function validateWait(command: Record<string, unknown>, browser: boolean)
       }
     if (value.target !== undefined) {
       if (browser) condition.target = validateWebTarget(value.target);
-      else {
-        const target = value.target as Record<string, unknown>;
-        if (!target || typeof target !== "object" || Array.isArray(target) || Object.keys(target).some(key => !["role", "name", "text"].includes(key)) || !Object.keys(target).length)
-          throw Error(`conditions[${index}].target needs role, name and/or text for a native window.`);
-        condition.target = Object.fromEntries(Object.entries(target).map(([key, item]) => [key, text(item, `conditions[${index}].target.${key}`)]));
-      }
+      else condition.selector = nativeSelector(value.target, `conditions[${index}].target`);
     }
     const checks = [condition.is, condition.value, condition.contains].filter(item => item !== undefined).length;
     if (checks > 1) throw Error(`conditions[${index}] takes one of is, value or contains; use separate conditions for several checks.`);
     const elementCheck = checks === 1;
     const pageCheck = condition.url_contains !== undefined || condition.title !== undefined;
-    if (elementCheck === pageCheck || (elementCheck && !condition.target) || (pageCheck && condition.target))
+    const targeted = condition.target !== undefined || condition.selector !== undefined;
+    if (elementCheck === pageCheck || (elementCheck && !targeted) || (pageCheck && targeted))
       throw Error(`conditions[${index}] needs a target with is/value/contains, or a page check (url_contains/title) without a target.`);
     return condition;
   });
@@ -90,13 +85,6 @@ export function combine(results: readonly ConditionResult[]): Verdict {
   return results.some(r => r.verdict === "unsatisfied") ? "unsatisfied" : results.some(r => r.verdict === "unknown") ? "unknown" : "satisfied";
 }
 
-function matches(element: UiElement, target: { role?: string; name?: string; text?: string }): boolean {
-  if (target.role !== undefined && element.role?.toLowerCase() !== target.role.toLowerCase()) return false;
-  if (target.name !== undefined && element.name !== target.name) return false;
-  if (target.text !== undefined && !`${element.name ?? ""}\n${element.value ?? ""}`.includes(target.text)) return false;
-  return true;
-}
-
 /**
  * Evaluate native conditions against one bounded UI walk. Absence is decided only when the walk is
  * complete and untruncated; otherwise a missing element is `unknown`. Several matches are ambiguous.
@@ -104,8 +92,13 @@ function matches(element: UiElement, target: { role?: string; name?: string; tex
 export function evaluateNative(ui: UiResource, conditions: readonly UiCondition[], texts?: ReadonlyMap<string, string>): ConditionResult[] {
   const complete = ui.complete === true && !ui.truncated;
   return conditions.map((condition, index) => {
-    const target = condition.target as { role?: string; name?: string; text?: string };
-    const found = ui.elements.filter(element => matches(element, target));
+    const found = queryNative(ui, condition.selector!);
+    // Like Playwright's toBeHidden: no matching element, or one that is not visible.
+    if (condition.is === "hidden") {
+      if (found.length > 1) return { index, verdict: "unknown", reason: `${found.length} elements match; narrow the target.` };
+      if (found.length === 1) return { index, verdict: isVisible(found[0]) ? "unsatisfied" : "satisfied", observed: isVisible(found[0]) ? "visible" : "offscreen" };
+      return complete ? { index, verdict: "satisfied", observed: "no match" } : { index, verdict: "unknown", reason: "No match in an incomplete UI walk; the element may exist beyond it." };
+    }
     if (condition.is === "absent")
       return found.length ? { index, verdict: "unsatisfied", observed: `${found.length} match(es)` }
         : complete ? { index, verdict: "satisfied", observed: "no match" }
@@ -123,6 +116,13 @@ export function evaluateNative(ui: UiResource, conditions: readonly UiCondition[
     if (condition.is === "enabled") return known(element.enabled, true);
     if (condition.is === "disabled") return known(element.enabled, false);
     if (condition.is === "selected") return known(element.selected, true);
+    if (condition.is === "visible") return { index, verdict: isVisible(element) ? "satisfied" : "unsatisfied", observed: isVisible(element) ? "visible" : "offscreen" };
+    if (condition.is === "checked" || condition.is === "unchecked") {
+      const state = checkedState(element);
+      return state === null ? { index, verdict: "unknown", reason: "The native UI reports no checked state for this element." }
+        : { index, verdict: (state === true) === (condition.is === "checked") && state !== "mixed" ? "satisfied" : "unsatisfied", observed: String(state) };
+    }
+    if (condition.is === "focused") return known(element.focused ?? null, true);
     if (condition.value !== undefined || condition.contains !== undefined) {
       if (observed === null) return { index, verdict: "unknown", reason: "The element reports no value or name." };
       if (element.text_truncated && full === undefined) return { index, verdict: "unknown", observed, reason: "The element text was truncated at 1024 characters." };

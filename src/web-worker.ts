@@ -137,6 +137,7 @@ function untilDialog<T>(tab: Tab, operation: Promise<T>): Promise<T | "dialog"> 
 
 function locate(page: Page, target: WebTarget): Locator {
   if (target.ref) return page.getByRef(target.ref);
+  if (target.locator) return page.locator(target.locator);
   let root: Page | FrameLocator = page;
   for (const frame of target.frames ?? []) root = root.frameLocator(frame);
   const exact = target.exact;

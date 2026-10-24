@@ -4,12 +4,15 @@ import { promisify } from "node:util";
 import type { CommandRunner } from "./runner.ts";
 import { ATTACH_APPROVAL_MS } from "./browser-command-line.ts";
 import { findWindowsNode } from "./windows-node.ts";
+import { locatorSelector } from "./native-locator.ts";
 
 const run = promisify(execFile);
 
 /** An element chosen by Playwright: an aria ref from the latest DOM snapshot, or locator predicates that must all match. */
 export interface WebTarget {
   ref?: string; role?: string; name?: string; label?: string; text?: string; placeholder?: string; test_id?: string; css?: string;
+  /** Playwright's internal selector, parsed from a locator string such as getByRole("button", { name: "Save" }). */
+  locator?: string;
   exact?: boolean;
   /** CSS selectors of nested iframes, outermost first. Refs already carry their frame. */
   frames?: string[];
@@ -134,6 +137,8 @@ function httpUrl(value: unknown): string {
 const PREDICATES = ["role", "name", "label", "text", "placeholder", "test_id", "css"] as const;
 /** Check target shape only; Playwright resolves, waits for and disambiguates the element. */
 export function validateWebTarget(value: unknown): WebTarget {
+  // A Playwright locator string, such as getByRole("button", { name: "Save" }).nth(1), in Playwright's own syntax.
+  if (typeof value === "string") return { locator: locatorSelector(value) };
   const target = record(value, "target");
   only(target, ["ref", ...PREDICATES, "exact", "frames"], "target");
   if (target.ref !== undefined) {

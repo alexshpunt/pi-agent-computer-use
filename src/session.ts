@@ -1145,6 +1145,11 @@ export class ComputerSession {
     });
   }
 
+  /** Whether this window is a browser this session opened or attached, whose pages Playwright drives. */
+  isBrowserWindow(ref: string): boolean {
+    return this.entries.get(ref)?.web !== undefined;
+  }
+
   /** Validate a wait_for/verify command for this window: owned browsers take Playwright targets and page checks. */
   waitSpec(ref: string, command: Record<string, unknown>): WaitSpec {
     return validateWait(command, this.entries.get(ref)?.web !== undefined);
