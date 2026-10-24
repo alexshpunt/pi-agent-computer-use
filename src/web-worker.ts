@@ -11,6 +11,7 @@ import { chromium, firefox, type Browser, type BrowserContext, type Dialog, type
 import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-line.ts";
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
+import { ariaTreeFromYaml, matchesAriaTemplate } from "./aria-match.ts";
 
 interface Tab { id: string; page: Page; title: string; load: WebTab["load"]; opener?: string; dialog?: Dialog; onDialog: Set<() => void> }
 interface DownloadRecord { info: WebDownload; download: Download; done: Promise<void> }
@@ -137,6 +138,7 @@ function untilDialog<T>(tab: Tab, operation: Promise<T>): Promise<T | "dialog"> 
 
 function locate(page: Page, target: WebTarget): Locator {
   if (target.ref) return page.getByRef(target.ref);
+  if (target.locator) return page.locator(target.locator);
   let root: Page | FrameLocator = page;
   for (const frame of target.frames ?? []) root = root.frameLocator(frame);
   const exact = target.exact;
@@ -465,6 +467,12 @@ async function check({ conditions }: { conditions: UiCondition[] }): Promise<Con
   const page = tab.page;
   return Promise.all(conditions.map(async (condition, index): Promise<ConditionResult> => {
     try {
+      // Like toMatchAriaSnapshot, on the target or on the whole page; matched by the same port as native windows.
+      if (condition.aria !== undefined) {
+        const received = await (condition.target ? locate(page, condition.target as WebTarget) : page.locator("body")).ariaSnapshot({ timeout: 1000 });
+        return matchesAriaTemplate(ariaTreeFromYaml(received), condition.aria) ? { index, verdict: "satisfied", observed: "matches" }
+          : { index, verdict: "unsatisfied", observed: short(received, 4000) };
+      }
       if (!condition.target) {
         const observed = condition.title !== undefined ? await page.title() : page.url();
         const ok = condition.title !== undefined ? observed === condition.title : observed.includes(condition.url_contains!);
@@ -472,6 +480,7 @@ async function check({ conditions }: { conditions: UiCondition[] }): Promise<Con
       }
       const locator = locate(page, condition.target as WebTarget);
       const count = await locator.count();
+      if (condition.count !== undefined) return { index, verdict: count === condition.count ? "satisfied" : "unsatisfied", observed: `${count} match(es)` };
       if (condition.is === "absent") return { index, verdict: count === 0 ? "satisfied" : "unsatisfied", observed: `${count} match(es)` };
       if (condition.is === "hidden" && count === 0) return { index, verdict: "satisfied", observed: "no match" };
       if (count === 0) return { index, verdict: "unsatisfied", observed: "no match" };

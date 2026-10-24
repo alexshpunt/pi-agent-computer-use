@@ -12,9 +12,10 @@ import { parseWindowManagement, type WindowManagementCommand } from "./window-ma
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
 import { diffDom, diffUi } from "./successor.ts";
-import type { UiResource } from "./ui-resources.ts";
+import type { UiElement, UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
+import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, type ParsedSelector } from "./native-locator.ts";
 import { SETUP_PARTS, SetupError, runSetup, type SetupPart } from "./setup.ts";
 
 /** The machine this extension runs on, by its address name. */
@@ -34,6 +35,10 @@ function commandObject(value: string): Record<string, unknown> {
 const BATCH_STEPS = 200;
 /** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
 const NATIVE_BATCH_ACTIONS = ["click", "double_click", "right_click", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value"];
+/** Native actions that take a Playwright locator or JSON target. */
+const NATIVE_LOCATOR_ACTIONS = ["click", "double_click", "right_click", "hover", "type_text", "scroll", "invoke", "select", "set_value", "check", "uncheck"];
+/** Playwright verbs with a different native name. */
+const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "double_click" };
 /** An action's optional postcondition and successor request. */
 interface FollowUp { expect?: WaitSpec; successor: boolean; preexisting?: boolean }
 type ObservationTarget = { window_ref: string; display?: never } | { display: string; window_ref?: never };
@@ -440,6 +445,10 @@ export class ComputerResources {
       try { return { ...result, details: { ...result.details, visual_regions: await session.visualRegions(windowRef!, result.details.observation_id!, signal) } }; }
       catch (error) { throw new ComputerRequestError(`Visual region detection failed: ${error instanceof Error ? error.message : error}`); }
     }
+    if (view.aria && result.details.status === "observed" && result.details.ui) {
+      try { return { ...result, details: { ...result.details, aria: nativeAriaSnapshot(result.details.ui) } }; }
+      catch (error) { throw new ComputerRequestError(`The aria snapshot could not be rendered: ${error instanceof Error ? error.message : error}`); }
+    }
     if (view.changes && result.details.status === "observed" && result.details.ui) {
       const changes = baseline ? { since: baseline.observation_id, diff: diffUi(baseline.ui, result.details.ui) }
         : { reason: "No earlier UI observation of this window in this session, so this is the full UI." };
@@ -702,8 +711,12 @@ export class ComputerResources {
         only(command, ["action"]);
         return session.attachBrowser(address.ref, signal);
       }
+      if (command.target !== undefined && command.action !== "wait_for" && command.action !== "verify") {
+        if (session.isBrowserWindow(address.ref)) throw new ComputerRequestError("For a browser window, Read it with dom and Insert the action into that DOM observation; Playwright resolves the target there.");
+        return this.locatorAction(address.ref, session, command, signal);
+      }
       if (command.action !== "wait_for" && command.action !== "verify")
-        throw new ComputerRequestError("A window address accepts only wait_for, verify, attach_browser or kill. Input needs the observation address returned by a fresh window Read.");
+        throw new ComputerRequestError("A window address accepts an action with a target (a Playwright locator such as getByRole(\"button\", { name: \"Save\" })), wait_for, verify, attach_browser or kill. Other input needs the observation address returned by a fresh window Read.");
       let spec;
       try { spec = session.waitSpec(address.ref, command); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
@@ -732,6 +745,12 @@ export class ComputerResources {
       }
       if (command.action === "batch") {
         const result = await this.batch(address, snapshot, command, cwd, signal);
+        return follow ? this.followUp(window, snapshot, result, follow, cwd, signal) : result;
+      }
+      if (command.target !== undefined && !snapshot.result.details.dom) {
+        if (address.hint !== undefined) throw new ComputerRequestError("Choose the address hint or a JSON target, not both.");
+        this.snapshots.delete(address.ref);
+        const result = await this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), command, signal);
         return follow ? this.followUp(window, snapshot, result, follow, cwd, signal) : result;
       }
     }
@@ -835,9 +854,85 @@ export class ComputerResources {
   }
 
   /**
+   * Resolve a Playwright locator the way Playwright's actions do: take fresh UI walks until exactly one element
+   * matches and is ready (enabled for input; for pointer input at the same place in two walks; on screen for hover), or
+   * until the timeout. Several matches refuse at once with each match's locator, like Playwright's strict mode.
+   */
+  private async resolveNative(window: string, session: ComputerSession, selector: ParsedSelector, options: { timeout_ms: number; enabled: boolean; stable: boolean; visible?: boolean; describe: string }, signal?: AbortSignal):
+    Promise<{ element: UiElement; observation: ComputerResult } | { refused: string; observation?: ComputerResult }> {
+    const deadline = performance.now() + options.timeout_ms;
+    let previous: UiElement | undefined, reason = "";
+    for (let attempt = 0; ; attempt++) {
+      if (signal?.aborted) return { refused: "Cancelled while waiting for the target; nothing was sent." };
+      this.retireWindow(window);
+      const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
+      if (fresh.details.status !== "observed" || !fresh.details.ui) return { refused: `No current UI sample of the window: ${computerResultText(fresh).split("\n")[0]}`, observation: fresh };
+      const ui = fresh.details.ui;
+      let found: UiElement[];
+      try { found = queryNative(ui, selector); }
+      catch (error) { return { refused: error instanceof Error ? error.message : String(error), observation: fresh }; }
+      if (found.length > 1) {
+        const listed = found.slice(0, 8).map(item => `  ${item.hint} ${ariaRole(item)} ${JSON.stringify(accessibleName(item))} → ${suggestLocator(item)}`).join("\n");
+        return { refused: `Strict mode: ${options.describe} matches ${found.length} elements; nothing was sent. Narrow it, for example with exact, filter or nth:\n${listed}${found.length > 8 ? `\n  …and ${found.length - 8} more` : ""}`, observation: fresh };
+      }
+      const element = found[0];
+      if (!element) reason = ui.complete === true && !ui.truncated ? "no element matches it" : "no element matches it in the walked part of the window (the UI walk was incomplete)";
+      else if (options.visible && !isVisible(element)) reason = "the element is not visible (offscreen)";
+      else if (options.enabled && element.enabled === false) reason = "the element is disabled";
+      else if (options.stable && previous && JSON.stringify(previous.bounds.native_screen) !== JSON.stringify(element.bounds.native_screen)) reason = "the element is still moving";
+      else if (!options.stable || previous || !element.bounds.native_screen) return { element, observation: fresh };
+      else reason = "the element is still moving";
+      previous = element && accessibleName(element) === accessibleName(previous ?? element) ? element : undefined;
+      const left = deadline - performance.now();
+      if (left <= 0) return { refused: `Timed out after ${options.timeout_ms} ms waiting for ${options.describe}: ${reason}. Nothing was sent.`, observation: fresh };
+      await new Promise(resolve => setTimeout(resolve, Math.min(left, [0, 20, 50, 100, 100, 250][attempt] ?? 500)));
+    }
+  }
+
+  /**
+   * One native action addressed by a Playwright locator or JSON target, without a prior Read: resolve it in a fresh
+   * walk with auto-waiting, then act on that element. `check`/`uncheck` act only when the state differs and confirm it.
+   */
+  private async locatorAction(window: string, session: ComputerSession, command: Record<string, unknown>, signal?: AbortSignal): Promise<ComputerResult> {
+    const { target, timeout_ms: timeout, ...rest } = command;
+    let selector: ParsedSelector;
+    try { selector = nativeSelector(target); }
+    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    if (timeout !== undefined && (!Number.isSafeInteger(timeout) || (timeout as number) < 0 || (timeout as number) > 60_000)) throw new ComputerRequestError("timeout_ms must be an integer 0..60000.");
+    if (["hint", "element_token", "x", "y", "window_ref", "observation_id"].some(key => key in rest)) throw new ComputerRequestError("Choose target or a hint, token or pixels, not both.");
+    const verb = String(rest.action);
+    const action = LOCATOR_VERBS[verb] ?? verb;
+    if (!NATIVE_LOCATOR_ACTIONS.includes(action)) throw new ComputerRequestError(`A target takes one of ${[...NATIVE_LOCATOR_ACTIONS, ...Object.keys(LOCATOR_VERBS)].join(", ")}.`);
+    const describe = typeof target === "string" ? target : JSON.stringify(target);
+    const pointer = ["click", "double_click", "right_click", "hover", "check", "uncheck"].includes(action);
+    const resolved = await this.resolveNative(window, session, selector, { timeout_ms: (timeout as number | undefined) ?? 5_000, enabled: action !== "hover", stable: pointer, visible: action === "hover", describe }, signal);
+    const mode = this.getMode();
+    if ("refused" in resolved) return { content: [{ type: "text", text: resolved.refused }], details: { status: "refused", mode, window_ref: window }, isError: true };
+    const { element, observation } = resolved;
+    const named = `${ariaRole(element)} ${JSON.stringify(accessibleName(element))} (${suggestLocator(element)})`;
+    const done = (status: "delivered" | "unknown", text: string): ComputerResult => ({ content: [{ type: "text", text }], details: { status, mode, window_ref: window }, ...(status === "delivered" ? {} : { isError: true }) });
+    if (action === "check" || action === "uncheck") {
+      const want = action === "check", state = checkedState(element);
+      if (state === null) return { content: [{ type: "text", text: `${named} reports no checked state; ${action} needs a checkbox, radio or toggle. Nothing was sent.` }], details: { status: "refused", mode, window_ref: window }, isError: true };
+      if (state === want) return done("delivered", `${named} is already ${want ? "checked" : "unchecked"}; nothing was sent.`);
+    }
+    const nativeCommand = { ...rest, action: action === "check" || action === "uncheck" ? "click" : action, element_token: element.element_token,
+      window_ref: window, observation_id: observation.details.observation_id };
+    this.snapshots.delete(observation.details.observation_id!);
+    const result = await session.act(nativeCommand as Action, signal);
+    const prefix = { type: "text" as const, text: `Target ${describe} resolved to ${named}.` };
+    if ((action !== "check" && action !== "uncheck") || result.details.status !== "delivered") return { ...result, content: [prefix, ...result.content] };
+    // Like Playwright's check(): confirm the new state, and say so when the app did not change it.
+    const after = await this.resolveNative(window, session, selector, { timeout_ms: 2_000, enabled: false, stable: false, describe }, signal);
+    const state = "element" in after ? checkedState(after.element) : null;
+    return state === (action === "check") ? { ...result, content: [prefix, ...result.content, { type: "text", text: `It is now ${action}ed.` }] }
+      : done("unknown", `${prefix.text} The click was delivered, but the element is ${state === null ? "no longer readable" : state === "mixed" ? "mixed" : state ? "checked" : "unchecked"} afterwards. Read the window before deciding; do not replay blindly.`);
+  }
+
+  /**
    * Run up to 16 known steps in one call and stop at the first step that is not delivered or satisfied.
-   * Browser steps are Playwright actions and conditions. Native steps re-resolve `target` {role,name,text}
-   * against a fresh UI walk before each step; only the first step may use a hint or pixels of the current observation.
+   * Browser steps are Playwright actions and conditions. Native steps resolve `target` (a Playwright locator or
+   * JSON target) in fresh UI walks with auto-waiting; only the first step may use a hint or pixels of the current observation.
    */
   private async batch(address: Extract<ComputerAddress, { kind: "observation" }>, snapshot: Snapshot, command: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
     only(command, ["action", "steps"]);
@@ -846,27 +941,27 @@ export class ComputerResources {
     if (!Array.isArray(command.steps) || command.steps.length < 1 || command.steps.length > BATCH_STEPS) throw new ComputerRequestError(`batch needs steps: 1..${BATCH_STEPS} step objects.`);
     const session = await this.sessionFor(cwd, { window_ref: window });
     const browser = snapshot.result.details.dom !== undefined;
-    type Step = { kind: "wait"; spec: WaitSpec; action: string } | { kind: "dom"; action: WebAction } | { kind: "native"; command: Record<string, unknown>; target?: Record<string, string> };
+    type Step = { kind: "wait"; spec: WaitSpec; action: string } | { kind: "dom"; action: WebAction } | { kind: "native"; command: Record<string, unknown>; target?: ParsedSelector; describe?: string; timeout?: number };
     const steps: Step[] = command.steps.map((raw, index): Step => {
       const step = object(raw);
       const label = `steps[${index}]`;
       try {
         if (step.action === "wait_for" || step.action === "verify") return { kind: "wait", spec: session.waitSpec(window, step), action: String(step.action) };
         if (browser) return { kind: "dom", action: validateWebAction(step) };
+        if (typeof step.action === "string" && LOCATOR_VERBS[step.action]) step.action = LOCATOR_VERBS[step.action];
         if (!NATIVE_BATCH_ACTIONS.includes(String(step.action))) throw Error(`action must be one of ${NATIVE_BATCH_ACTIONS.join(", ")}, wait_for or verify.`);
         if (["window_ref", "observation_id", "sequence"].some(key => key in step)) throw Error("identity fields and nested sequences are not allowed.");
         const pinned = ["hint", "element_token", "x", "y"].some(key => key in step);
-        if (pinned && index > 0) throw Error("only the first step may use a hint, token or pixels; later steps use target {role,name,text}.");
-        let target: Record<string, string> | undefined;
+        if (pinned && index > 0) throw Error("only the first step may use a hint, token or pixels; later steps use a target (a Playwright locator or JSON target).");
+        let target: ParsedSelector | undefined;
         if (step.target !== undefined) {
           if (pinned) throw Error("choose target or a hint/pixel target, not both.");
-          const value = object(step.target);
-          if (!Object.keys(value).length || Object.entries(value).some(([key, item]) => !["role", "name", "text"].includes(key) || typeof item !== "string" || !item))
-            throw Error("target needs non-empty role, name and/or text.");
-          target = value as Record<string, string>;
+          target = nativeSelector(step.target);
         }
-        const { target: _target, ...nativeStep } = step;
-        return { kind: "native", command: nativeStep, ...(target ? { target } : {}) };
+        const timeout = step.timeout_ms;
+        if (timeout !== undefined && (!Number.isSafeInteger(timeout) || (timeout as number) < 0 || (timeout as number) > 60_000)) throw Error("timeout_ms must be an integer 0..60000.");
+        const { target: raw, timeout_ms: _timeout, ...nativeStep } = step;
+        return { kind: "native", command: nativeStep, ...(target ? { target, describe: typeof raw === "string" ? raw : JSON.stringify(raw), timeout: (timeout as number | undefined) ?? 5_000 } : {}) };
       } catch (error) { throw new ComputerRequestError(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
     });
     this.snapshots.delete(address.ref);
@@ -893,19 +988,22 @@ export class ComputerResources {
       } else {
         let element: string | undefined;
         if (index > 0 || step.target) {
-          // Never reuse a stale observation: take a fresh UI walk and resolve the target in it.
-          this.retireWindow(window);
-          const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
-          if (fresh.details.status !== "observed" || !fresh.details.ui) { last = fresh; rows.push({ index, action: String(step.command.action), outcome: "refused", reason: "No current UI sample." }); stop = `No current UI before step ${index}.`; break; }
-          issued = fresh; observation = fresh.details.observation_id!;
+          // Never reuse a stale observation: a target resolves in fresh UI walks; other steps take one fresh walk.
           if (step.target) {
-            const found = fresh.details.ui.elements.filter(item => (!step.target!.role || item.role?.toLowerCase() === step.target!.role.toLowerCase())
-              && (!step.target!.name || item.name === step.target!.name) && (!step.target!.text || `${item.name ?? ""}\n${item.value ?? ""}`.includes(step.target!.text)));
-            if (found.length !== 1) {
-              rows.push({ index, action: String(step.command.action), outcome: "refused", reason: found.length ? `${found.length} elements match the target.` : "No element matches the target in the current UI walk." });
+            const action = String(step.command.action), pointer = ["click", "double_click", "right_click"].includes(action);
+            const resolved = await this.resolveNative(window, session, step.target, { timeout_ms: step.timeout!, enabled: true, stable: pointer, describe: step.describe! }, signal);
+            if ("refused" in resolved) {
+              if (resolved.observation) last = resolved.observation;
+              rows.push({ index, action, outcome: "refused", reason: resolved.refused.slice(0, 600) });
               stop = `Target not resolved at step ${index}; nothing was sent for it.`; break;
             }
-            element = found[0].element_token;
+            issued = resolved.observation; observation = resolved.observation.details.observation_id!;
+            element = resolved.element.element_token;
+          } else {
+            this.retireWindow(window);
+            const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
+            if (fresh.details.status !== "observed" || !fresh.details.ui) { last = fresh; rows.push({ index, action: String(step.command.action), outcome: "refused", reason: "No current UI sample." }); stop = `No current UI before step ${index}.`; break; }
+            issued = fresh; observation = fresh.details.observation_id!;
           }
         }
         this.snapshots.delete(observation);

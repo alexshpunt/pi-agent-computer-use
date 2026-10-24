@@ -11,6 +11,11 @@ export interface UiElement {
   role: string | null; name: string | null; value: string | null; text_truncated: boolean;
   enabled: boolean | null; selected: boolean | null; actions: string[]; depth: number | null;
   bounds: { native_screen?: ScreenRect; window_image?: ScreenRect };
+  /** Structural fields from runtimes that report the full UIA tree; absent when the runtime does not report them. */
+  uia_name?: string; automation_id?: string; class_name?: string; help_text?: string;
+  checked?: "on" | "off" | "mixed"; expanded?: boolean; offscreen?: boolean; focused?: boolean;
+  password?: boolean; read_only?: boolean; required?: boolean; actionable?: boolean;
+  range?: { value: number; min: number; max: number };
   hint_display: "pending" | "shown" | "disabled" | "no_bounds" | "outside_image" | "collision" | "off";
 }
 /** Bounded native UIA projection. Completeness is not inferred from an empty search. */
@@ -60,6 +65,19 @@ export function validateUiCapture(options: UiCaptureOptions): void {
     throw Error("UI-only observation has no image hints or guides.");
 }
 
+/** Optional structural fields, copied only when the runtime reports them with the expected type. */
+function structural(e: Record<string, unknown>): Partial<UiElement> {
+  const out: Partial<UiElement> = {};
+  for (const [from, to] of [["name", "uia_name"], ["automation_id", "automation_id"], ["class_name", "class_name"], ["help_text", "help_text"]] as const)
+    if (typeof e[from] === "string" && e[from]) out[to] = (e[from] as string).slice(0, 1024);
+  if (e.checked === "on" || e.checked === "off" || e.checked === "mixed") out.checked = e.checked;
+  for (const key of ["expanded", "offscreen", "focused", "password", "read_only", "required", "actionable"] as const)
+    if (typeof e[key] === "boolean") out[key] = e[key] as boolean;
+  const range = e.range as { value?: unknown; min?: unknown; max?: unknown } | undefined;
+  if (range && [range.value, range.min, range.max].every(Number.isFinite)) out.range = { value: range.value as number, min: range.min as number, max: range.max as number };
+  return out;
+}
+
 /** Adapt reported properties only. Native bounds are never treated as local image coordinates. */
 export function createUiResource(state: Record<string, unknown>, window: string, observation: string, serial: number): UiResource {
   const native = (Array.isArray(state.elements) ? state.elements : []) as Record<string, unknown>[];
@@ -74,6 +92,7 @@ export function createUiResource(state: Record<string, unknown>, window: string,
     actions: (Array.isArray(e.actions) ? e.actions : []).filter((a): a is string => typeof a === "string").slice(0, 32),
     bounds: { ...(rect(e.frame) ? { native_screen: rect(e.frame) } : {}), ...(rect(e.screenshot_frame) ? { window_image: rect(e.screenshot_frame) } : {}) },
     hint_display: e.enabled === false ? "disabled" : rect(e.screenshot_frame) ? "pending" : "no_bounds",
+    ...structural(e),
   }));
   return { window_ref: window, observation_id: observation, snapshot_id: state.snapshot_id ?? null,
     captured_at: new Date().toISOString(), complete: state.truncated === true ? false : bool(state.elements_complete),

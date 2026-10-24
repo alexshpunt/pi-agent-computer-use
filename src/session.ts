@@ -116,6 +116,8 @@ export interface ComputerResult {
     successor?: { observation_id?: string; diff?: StateDiff; reason?: string };
     /** A `changes` Read: this UI compared with the window's previous observation, or why there is no comparison. */
     changes?: { since?: string; diff?: StateDiff; reason?: string };
+    /** The UI walk as a Playwright aria snapshot (YAML), for an aria Read. */
+    aria?: string;
     /** Icons and text areas found by Cua perception, boxes in the observation's overview pixels. */
     visual_regions?: VisualRegion[];
     /** Text recognised by Windows OCR in this result's image, boxes in the observation's overview pixels. */
@@ -1143,6 +1145,11 @@ export class ComputerSession {
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
       } catch (error) { return this.webFailure(entry, error, true); }
     });
+  }
+
+  /** Whether this window is a browser this session opened or attached, whose pages Playwright drives. */
+  isBrowserWindow(ref: string): boolean {
+    return this.entries.get(ref)?.web !== undefined;
   }
 
   /** Validate a wait_for/verify command for this window: owned browsers take Playwright targets and page checks. */
