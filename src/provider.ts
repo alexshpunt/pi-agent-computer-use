@@ -69,7 +69,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     if (d.dom) lines.push(`Page: ${label(d.dom.title)} | ${label(d.dom.url)} | tab ${d.dom.active ?? "none"}`);
     v.conditions.forEach((condition, i) => {
       const spec = v.spec.conditions[i];
-      const check = spec.is ? `is ${spec.is}` : spec.value !== undefined ? `value = ${JSON.stringify(spec.value)}` : spec.contains !== undefined ? `contains ${JSON.stringify(spec.contains)}`
+      const check = spec.is ? (spec.is === "exists" || spec.is === "absent" ? spec.is : `is ${spec.is}`) : spec.value !== undefined ? `value = ${JSON.stringify(spec.value)}` : spec.contains !== undefined ? `contains ${JSON.stringify(spec.contains)}`
         : spec.count !== undefined ? `count = ${spec.count}` : spec.aria !== undefined ? "matches the aria snapshot"
         : spec.title !== undefined ? `title = ${JSON.stringify(spec.title)}` : `url contains ${JSON.stringify(spec.url_contains)}`;
       const target = spec.target === undefined ? "" : typeof spec.target === "string" ? spec.target + " " : JSON.stringify(spec.target) + " ";

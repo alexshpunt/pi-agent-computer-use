@@ -5,9 +5,12 @@ import { presentComputerResult } from "../../src/provider.ts";
 // LPT-911: native windows take Playwright locators. Every step is one call on the window address, without a prior Read.
 const live = await connectLive();
 const fixture = await serveFixture(live.runner);
-afterAll(async () => { await live.close(); fixture.close(); });
-
 const title = `Locators ${Date.now()}`;
+// Closing the session leaves app windows open; end the form this check started, found by its unique title.
+afterAll(async () => {
+  await live.powershell(`Get-Process powershell | Where-Object { $_.MainWindowTitle -eq '${title}' } | Stop-Process -Force`).catch(() => "");
+  await live.close(); fixture.close();
+});
 const form = `Add-Type -AssemblyName System.Windows.Forms
 $f = New-Object Windows.Forms.Form; $f.Text = '${title}'; $f.Width = 520; $f.Height = 420
 $b = New-Object Windows.Forms.Button; $b.Text = 'Count 0'; $b.Left = 10; $b.Top = 10; $b.Width = 120; $script:n = 0
