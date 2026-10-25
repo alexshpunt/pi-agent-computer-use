@@ -360,7 +360,13 @@ Targets are the same Playwright locators as actions; see [Native locators](#nati
 
 ## Follow an action
 
-Add `"expect":{"conditions":[...],"timeout_ms":3000}` to an Insert action to wait for its postcondition, and/or `"successor":true` to get the state after it. The result names the successor observation (now current) and a compact change list from the action's input observation instead of a full snapshot: `~` changed, `+` added and `-` removed elements, plus URL, title or tab changes. An empty list means nothing visible changed yet. Read the successor observation for the full state. A native list from a partial walk may show walk limits rather than real removals.
+Every action aimed at an element (a hint, a token, a locator target, a semantic action, a menu, a batch, a page action) reports what it changed, the way Playwright MCP's incremental snapshots do. The result names the successor observation (now current) and a compact change list from the state before the action instead of a full snapshot: `~` changed, `+` added and `-` removed elements, plus URL, title or tab changes. A renamed control that kept its place is one change, such as `~ 3:a Button "Count 0" → "Count 1"`. Read the successor observation for the full state. A native list from a partial walk may show walk limits rather than real removals.
+
+When the first native walk after an action shows no change, it looks again for up to 300 ms, then says `Nothing changed in the UI within N ms`. Check the target before acting again rather than repeating the action. A page action compares Playwright's snapshot after it with the one before.
+
+A locator action compares with the walk that resolved its target. Each step of a batch says how many elements its action changed, as seen by the next step's walk or page snapshot, and the batch's change list covers the whole batch. Add `"successor":false` to an action to skip the change list for that call. Input by pixels or keys alone targets surfaces the UI tree does not describe, such as canvases and games, and keeps its observation for more pixel input, so it is not followed by a UI walk unless you add `"successor":true`. A refused action sent nothing and gets no change list.
+
+Add `"expect":{"conditions":[...],"timeout_ms":3000}` to an Insert action to wait for its postcondition; its successor is then the sample that satisfied the conditions, still compared with the state before the action.
 
 The postcondition is `verified` when the conditions came true after the action, `preexisting` when they already held before it, `failed` when they did not hold in time, and `unknown` otherwise. An action whose own outcome is unknown never reports `verified`.
 

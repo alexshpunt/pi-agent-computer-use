@@ -31,7 +31,7 @@ const address = (value, kind, label) => {
   return match[1];
 };
 const observation = value => address(value, "observation", "Observation");
-const hints = value => [...body(value).matchAll(/^(\d+:[a-z]+) \| /gm)].map(match => match[1]);
+const hints = value => [...body(value).matchAll(/^([0-9a-z]+:[a-z]+) \| /gm)].map(match => match[1]);
 const insert = (path, command) => tools.computer_insert({ path, text: JSON.stringify(command) });
 const windows = async query => tools.computer_search({ path: "computer:machine/local/windows", query: query ?? "" });
 const openApp = app => insert("computer:machine/local", { action: "open", app });

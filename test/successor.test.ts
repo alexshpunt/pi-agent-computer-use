@@ -29,13 +29,24 @@ test("an unchanged page has an empty diff, so no change is distinguishable from 
   expect(diffDom(dom(snapshot), dom(snapshot)).counts).toEqual({ changed: 0, added: 0, removed: 0 });
 });
 
-test("a native diff matches by role and name and flags walks that cannot prove removal", () => {
-  const before = ui([element({ hint: "1:a", role: "Document", name: "Text", value: "a" }), element({ hint: "1:b", role: "Button", name: "Save" })]);
-  const after = ui([element({ hint: "2:a", role: "Document", name: "Text", value: "ab" }), element({ hint: "2:b", role: "Button", name: "Close" })], false);
+test("a native diff matches by role and name, pairs a renamed control by its place and flags walks that cannot prove removal", () => {
+  const before = ui([element({ hint: "1:a", role: "Document", name: "Text", value: "a b" }), element({ hint: "1:b", role: "Button", name: "Count 0" }),
+    element({ hint: "1:c", role: "CheckBox", name: "Agree", checked: "off" }), element({ hint: "1:d", role: "Text", name: "Saving…" })]);
+  const after = ui([element({ hint: "2:a", role: "Document", name: "Text", value: "ab" }), element({ hint: "2:b", role: "Button", name: "Count 1" }),
+    element({ hint: "2:c", role: "CheckBox", name: "Agree", checked: "on" }), element({ hint: "2:d", role: "Text", name: "Saved" }), element({ hint: "2:e", role: "Button", name: "Undo" })], false);
   const diff = diffUi(before, after);
-  expect(diff.counts).toEqual({ changed: 1, added: 1, removed: 1 });
-  expect(diff.changed[0]).toContain('value="a"');
+  // The text kept its place too, so it reads as a change; the new Undo button has no counterpart.
+  expect(diff.counts).toEqual({ changed: 4, added: 1, removed: 0 });
+  expect(diff.changed).toEqual([
+    '2:a Document "Text": value="a b" → "ab"',
+    '2:c CheckBox "Agree": checked=off → on',
+    '2:b Button "Count 0" → "Count 1"',
+    '2:d Text "Saving…" → "Saved"',
+  ]);
+  expect(diff.added).toEqual(['2:e Button "Undo" value=null enabled=true selected=null']);
   expect(diff.note).toMatch(/partial/);
+  // A control that disappeared with nothing in its place is a removal.
+  expect(diffUi(after, ui([after.elements[0]])).removed).toHaveLength(4);
 });
 
 test("native text checks use the full text kept by the capture instead of the walk's 1024-character cut", () => {

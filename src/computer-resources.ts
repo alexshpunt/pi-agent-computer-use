@@ -11,7 +11,7 @@ import type { ComputerSession, ComputerResult, ComputerMode, Action } from "./se
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
-import { diffDom, diffUi } from "./successor.ts";
+import { diffDom, diffIsEmpty, diffUi, type StateDiff } from "./successor.ts";
 import type { UiElement, UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
@@ -31,6 +31,15 @@ function commandObject(value: string): Record<string, unknown> {
   try { return object(JSON.parse(value)); }
   catch { throw new ComputerRequestError("Use one valid JSON command object."); }
 }
+/** Whether an action is aimed at a UI element (a hint, a token, a semantic action or a menu), not only at pixels or keys. */
+function elementAddressed(address: Extract<ComputerAddress, { kind: "observation" }>, tool: "write" | "insert", input: string): boolean {
+  if (address.hint !== undefined) return true;
+  if (tool === "write") return false;
+  let command: Record<string, unknown>;
+  try { command = commandObject(input); } catch { return false; }
+  const steps = Array.isArray(command.sequence) ? command.sequence as Record<string, unknown>[] : [command];
+  return steps.some(step => step && typeof step === "object" && ("hint" in step || "element_token" in step || step.action === "menu" || isSemanticAction(String(step.action))));
+}
 /** Steps of one mixed batch; each native step after the first walks the UI again, so batches stay shorter than sequences. */
 const BATCH_STEPS = 200;
 /** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
@@ -39,8 +48,14 @@ const NATIVE_BATCH_ACTIONS = ["click", "double_click", "right_click", "type_text
 const NATIVE_LOCATOR_ACTIONS = ["click", "double_click", "right_click", "hover", "type_text", "scroll", "invoke", "select", "set_value", "check", "uncheck"];
 /** Playwright verbs with a different native name. */
 const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "double_click" };
-/** An action's optional postcondition and successor request. */
-interface FollowUp { expect?: WaitSpec; successor: boolean; preexisting?: boolean }
+/**
+ * What follows an action: its optional postcondition, and the successor with its change list. The successor is on
+ * by default; `explicit` means the agent asked for it (`successor: true` or `expect`), which also overrides the
+ * defaults that skip it, such as delivered pixel-only input that keeps its observation.
+ */
+interface FollowUp { expect?: WaitSpec; successor: boolean; explicit: boolean; preexisting?: boolean }
+/** How long a native successor keeps looking for a UI change before reporting that nothing changed. */
+const SETTLE_MS = 300;
 type ObservationTarget = { window_ref: string; display?: never } | { display: string; window_ref?: never };
 interface Snapshot { target: ObservationTarget; result: ComputerResult }
 /** A running sandbox with its own guest session. */
@@ -713,7 +728,9 @@ export class ComputerResources {
       }
       if (command.target !== undefined && command.action !== "wait_for" && command.action !== "verify") {
         if (session.isBrowserWindow(address.ref)) throw new ComputerRequestError("For a browser window, Read it with dom and Insert the action into that DOM observation; Playwright resolves the target there.");
-        return this.locatorAction(address.ref, session, command, signal);
+        const follow = await this.followUpSpec(address.ref, command, cwd);
+        delete command.expect; delete command.successor;
+        return this.locatorAction(address.ref, session, command, cwd, signal, follow);
       }
       if (command.action !== "wait_for" && command.action !== "verify")
         throw new ComputerRequestError("A window address accepts an action with a target (a Playwright locator such as getByRole(\"button\", { name: \"Save\" })), wait_for, verify, attach_browser or kill. Other input needs the observation address returned by a fresh window Read.");
@@ -731,31 +748,38 @@ export class ComputerResources {
     let follow: FollowUp | undefined;
     if (tool === "insert" && window) {
       const command = commandObject(value);
-      if (command.expect !== undefined || command.successor !== undefined) {
-        follow = await this.followUpSpec(window, command, cwd);
-        // Was the postcondition already true before anything is sent? Browsers sample now; native uses the input walk.
-        if (follow.expect) {
-          const session = await this.sessionFor(cwd, { window_ref: window });
-          const earlier = snapshot.result.details.dom ? await session.webCheck(window, follow.expect.conditions, signal)
-            : snapshot.result.details.ui ? evaluateNative(snapshot.result.details.ui, follow.expect.conditions) : undefined;
-          follow.preexisting = earlier !== undefined && combine(earlier) === "satisfied";
-        }
+      follow = await this.followUpSpec(window, command, cwd);
+      // Was the postcondition already true before anything is sent? Browsers sample now; native uses the input walk.
+      if (follow.expect) {
+        const session = await this.sessionFor(cwd, { window_ref: window });
+        const earlier = snapshot.result.details.dom ? await session.webCheck(window, follow.expect.conditions, signal)
+          : snapshot.result.details.ui ? evaluateNative(snapshot.result.details.ui, follow.expect.conditions) : undefined;
+        follow.preexisting = earlier !== undefined && combine(earlier) === "satisfied";
+      }
+      if ("expect" in command || "successor" in command) {
         delete command.expect; delete command.successor;
         input = JSON.stringify(command);
       }
       if (command.action === "batch") {
         const result = await this.batch(address, snapshot, command, cwd, signal);
-        return follow ? this.followUp(window, snapshot, result, follow, cwd, signal) : result;
+        return this.followUp(window, snapshot, result, follow, cwd, signal);
       }
       if (command.target !== undefined && !snapshot.result.details.dom) {
         if (address.hint !== undefined) throw new ComputerRequestError("Choose the address hint or a JSON target, not both.");
         this.snapshots.delete(address.ref);
-        const result = await this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), command, signal);
-        return follow ? this.followUp(window, snapshot, result, follow, cwd, signal) : result;
+        return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), command, cwd, signal, follow);
       }
-    }
+    } else if (tool === "write" && window) follow = { successor: true, explicit: false };
     const result = await this.act(address, snapshot, input, tool, cwd, signal);
-    return follow && window ? this.followUp(window, snapshot, result, follow, cwd, signal) : result;
+    if (!follow || !window) return result;
+    // The default UI change list follows input aimed at a UI element. Input by pixels or keys alone is meant for
+    // surfaces the UI tree does not describe (canvases, games); a walk would cost time and, for delivered
+    // pixel-only input, replace the observation it keeps for more pixel input.
+    if (!follow.explicit && !snapshot.result.details.dom && !elementAddressed(address, tool, input)) {
+      if (result.details.status !== "delivered") return result;
+      return { ...result, content: [...result.content, { type: "text", text: "Input by pixels or keys alone is not followed by a UI walk. Read the window, or add \"successor\":true, to see what changed." }] };
+    }
+    return this.followUp(window, snapshot, result, follow, cwd, signal);
   }
 
   /** Dispatch one action against its observation: Playwright for DOM observations, CUA otherwise. */
@@ -813,7 +837,7 @@ export class ComputerResources {
       try { expect = (await this.sessionFor(cwd, { window_ref: window })).waitSpec(window, { ...raw as Record<string, unknown>, action: "wait_for" }); }
       catch (error) { throw new ComputerRequestError(`expect: ${error instanceof Error ? error.message : String(error)}`); }
     }
-    return { ...(expect ? { expect } : {}), successor: command.successor === true || expect !== undefined };
+    return { ...(expect ? { expect } : {}), successor: command.successor !== false || expect !== undefined, explicit: command.successor === true || expect !== undefined };
   }
 
   /**
@@ -821,10 +845,14 @@ export class ComputerResources {
    * diff from the action's input observation. A refused or unknown action never yields a verified postcondition.
    */
   private async followUp(window: string, before: Snapshot, result: ComputerResult, follow: FollowUp, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
-    const session = await this.sessionFor(cwd, { window_ref: window });
     const status = result.details.status;
+    if (!follow.successor) return result;
+    // A default successor stays quiet when there is nothing to compare: a refusal sent nothing, and a browser
+    // action that returned no page snapshot would otherwise be compared with a native walk of the browser window.
+    if (!follow.explicit && (status === "refused" || (before.result.details.dom && !result.details.dom))) return result;
+    const session = await this.sessionFor(cwd, { window_ref: window });
     const preexisting = follow.preexisting === true;
-    let successor: ComputerResult | undefined;
+    let successor: ComputerResult | undefined, settled: StateDiff | undefined;
     let postcondition: ComputerResult["details"]["postcondition"];
     if (follow.expect && status !== "refused") {
       // Unknown delivery is sampled once for information, but never reported as verified.
@@ -840,11 +868,23 @@ export class ComputerResources {
       postcondition = { status: preexisting ? "preexisting" : "failed", reason: "The action was refused; nothing was sent." };
     } else if (status !== "refused") {
       if (result.details.dom) successor = result;
-      else { this.retireWindow(window); successor = this.remember({ window_ref: window }, await session.observeQuiet(window, signal)); }
+      else {
+        // An app may repaint a little after input is delivered: when the first walk shows no change, look again
+        // for a short while before saying that nothing changed.
+        const started = performance.now();
+        for (let attempt = 0; ; attempt++) {
+          this.retireWindow(window);
+          successor = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
+          const waited = Math.round(performance.now() - started);
+          settled = before.result.details.ui && successor.details.ui ? { ...diffUi(before.result.details.ui, successor.details.ui), waited_ms: waited } : undefined;
+          if (!settled || !diffIsEmpty(settled) || successor.details.status !== "observed" || signal?.aborted || waited >= SETTLE_MS) break;
+          await new Promise(resolve => setTimeout(resolve, Math.min([30, 60, 100][attempt] ?? 150, SETTLE_MS - waited)));
+        }
+      }
     }
     const after = successor?.details;
     const diff = before.result.details.dom && after?.dom ? diffDom(before.result.details.dom, after.dom)
-      : before.result.details.ui && after?.ui ? diffUi(before.result.details.ui, after.ui) : undefined;
+      : settled ?? (before.result.details.ui && after?.ui ? diffUi(before.result.details.ui, after.ui) : undefined);
     // The successor replaces the action's own observation as the current one; a wait retired the earlier snapshot.
     const details = { ...result.details, ...(after?.observation_id ? { observation_id: after.observation_id, ...(after.dom ? { dom: after.dom } : {}) } : {}),
       ...(postcondition ? { postcondition } : {}),
@@ -893,7 +933,7 @@ export class ComputerResources {
    * One native action addressed by a Playwright locator or JSON target, without a prior Read: resolve it in a fresh
    * walk with auto-waiting, then act on that element. `check`/`uncheck` act only when the state differs and confirm it.
    */
-  private async locatorAction(window: string, session: ComputerSession, command: Record<string, unknown>, signal?: AbortSignal): Promise<ComputerResult> {
+  private async locatorAction(window: string, session: ComputerSession, command: Record<string, unknown>, cwd: string, signal?: AbortSignal, follow?: FollowUp): Promise<ComputerResult> {
     const { target, timeout_ms: timeout, ...rest } = command;
     let selector: ParsedSelector;
     try { selector = nativeSelector(target); }
@@ -918,15 +958,19 @@ export class ComputerResources {
     }
     const nativeCommand = { ...rest, action: action === "check" || action === "uncheck" ? "click" : action, element_token: element.element_token,
       window_ref: window, observation_id: observation.details.observation_id };
+    // The walk that resolved the target is the state before the action: the change list compares with it.
+    const before: Snapshot = { target: { window_ref: window }, result: observation };
+    if (follow?.expect && observation.details.ui) follow.preexisting = combine(evaluateNative(observation.details.ui, follow.expect.conditions)) === "satisfied";
+    const finish = (result: ComputerResult) => follow ? this.followUp(window, before, result, follow, cwd, signal) : Promise.resolve(result);
     this.snapshots.delete(observation.details.observation_id!);
     const result = await session.act(nativeCommand as Action, signal);
     const prefix = { type: "text" as const, text: `Target ${describe} resolved to ${named}.` };
-    if ((action !== "check" && action !== "uncheck") || result.details.status !== "delivered") return { ...result, content: [prefix, ...result.content] };
+    if ((action !== "check" && action !== "uncheck") || result.details.status !== "delivered") return finish({ ...result, content: [prefix, ...result.content] });
     // Like Playwright's check(): confirm the new state, and say so when the app did not change it.
     const after = await this.resolveNative(window, session, selector, { timeout_ms: 2_000, enabled: false, stable: false, describe }, signal);
     const state = "element" in after ? checkedState(after.element) : null;
-    return state === (action === "check") ? { ...result, content: [prefix, ...result.content, { type: "text", text: `It is now ${action}ed.` }] }
-      : done("unknown", `${prefix.text} The click was delivered, but the element is ${state === null ? "no longer readable" : state === "mixed" ? "mixed" : state ? "checked" : "unchecked"} afterwards. Read the window before deciding; do not replay blindly.`);
+    return finish(state === (action === "check") ? { ...result, content: [prefix, ...result.content, { type: "text", text: `It is now ${action}ed.` }] }
+      : done("unknown", `${prefix.text} The click was delivered, but the element is ${state === null ? "no longer readable" : state === "mixed" ? "mixed" : state ? "checked" : "unchecked"} afterwards. Read the window before deciding; do not replay blindly.`));
   }
 
   /**
@@ -969,11 +1013,19 @@ export class ComputerResources {
     const rows: NonNullable<ComputerResult["details"]["batch"]>["steps"] = [];
     // `issued` holds the latest result whose observation is still current; a native action consumes it.
     let issued: ComputerResult | undefined, observation = address.ref, last: ComputerResult = snapshot.result, stop = "";
+    // The state the latest action started from, so the next walk or page snapshot can say what that action changed.
+    let previousUi = snapshot.result.details.ui, previousDom = snapshot.result.details.dom, pendingRow: (typeof rows)[number] | undefined;
+    const count = (diff: StateDiff) => diff.counts;
+    const seen = (ui: UiResource | undefined) => {
+      if (pendingRow && previousUi && ui) pendingRow.changes = count(diffUi(previousUi, ui));
+      pendingRow = undefined;
+    };
     for (const [index, step] of steps.entries()) {
       if (signal?.aborted) { stop = "Cancelled before the next step."; break; }
       if (step.kind === "wait") {
         this.retireWindow(window);
         last = this.remember({ window_ref: window }, await session.waitFor(window, step.spec, signal));
+        seen(last.details.ui);
         issued = last.details.observation_id ? last : undefined;
         const verdict = last.details.verification?.verdict ?? "unknown";
         rows.push({ index, action: step.action, outcome: last.details.status, verdict });
@@ -999,11 +1051,13 @@ export class ComputerResources {
             }
             issued = resolved.observation; observation = resolved.observation.details.observation_id!;
             element = resolved.element.element_token;
+            seen(resolved.observation.details.ui); previousUi = resolved.observation.details.ui;
           } else {
             this.retireWindow(window);
             const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
             if (fresh.details.status !== "observed" || !fresh.details.ui) { last = fresh; rows.push({ index, action: String(step.command.action), outcome: "refused", reason: "No current UI sample." }); stop = `No current UI before step ${index}.`; break; }
             issued = fresh; observation = fresh.details.observation_id!;
+            seen(fresh.details.ui); previousUi = fresh.details.ui;
           }
         }
         this.snapshots.delete(observation);
@@ -1011,8 +1065,12 @@ export class ComputerResources {
         last = await session.act({ ...step.command, ...(element ? { element_token: element } : {}), window_ref: window, observation_id: observation } as Action, signal);
       }
       const outcome = last.details.status;
-      rows.push({ index, action: step.kind === "dom" ? step.action.action : String(step.command.action), outcome,
-        ...(outcome !== "delivered" ? { reason: computerResultText(last).split("\n{", 1)[0].slice(0, 300) } : {}) });
+      const row: (typeof rows)[number] = { index, action: step.kind === "dom" ? step.action.action : String(step.command.action), outcome,
+        ...(outcome !== "delivered" ? { reason: computerResultText(last).split("\n{", 1)[0].slice(0, 300) } : {}) };
+      // A page action returns its next snapshot; a native action's effect shows in the next walk.
+      if (step.kind === "dom") { if (previousDom && last.details.dom) row.changes = count(diffDom(previousDom, last.details.dom)); previousDom = last.details.dom ?? previousDom; }
+      else if (outcome === "delivered") pendingRow = row;
+      rows.push(row);
       if (outcome !== "delivered") { stop = `Step ${index} ${outcome}; later steps were not sent.`; break; }
     }
     const completed = rows.filter(row => row.outcome === "delivered" || row.verdict === "satisfied").length;

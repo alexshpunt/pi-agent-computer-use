@@ -40,7 +40,7 @@ test("a changes Read compares the window's UI with its previous observation", as
   expect(diff.counts).toEqual({ changed: 1, added: 0, removed: 0 });
   const editor = typed!.details.ui!.elements.find(e => e.name === "Text editor")!;
   // The listed hint is the new observation's and resolves to its element.
-  expect(diff.changed[0]).toMatch(new RegExp(`^${editor.hint} Edit "Text editor": value="" .* → value="hello"`));
+  expect(diff.changed[0]).toBe(`${editor.hint} Edit "Text editor": value="" → "hello"`);
   expect(resources.grantsAuthority(requireComputerAddress(computerSource("observation", typed!.details.observation_id!)))).toBe(true);
 
   for (const views of [["changes", "image"], ["changes", "full"], ["changes", "ocr"]])

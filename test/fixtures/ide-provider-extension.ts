@@ -108,14 +108,15 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const hint = hintOf(view), literal = '  {"looks":"like JSON"}\n"quoted text"\n  ';
         const nativeBeforeWrite = (await captures()).length;
         await ok("write", { path: `${observation}?hint=${encodeURIComponent(hint)}&delivery=foreground&delay_ms=0`, content: literal });
-        assert((await captures()).length === nativeBeforeWrite, "Write resolution refreshed native capture");
+        // Only the successor's UI-only walks follow the input; no pixel capture refreshes input authority.
+        assert((await captures()).slice(nativeBeforeWrite).every(row => row.arguments?.include_screenshot === false), "Write resolution refreshed native capture");
         const written = (await inputs()).at(-1);
         assert(written?.name === "type_text" && written.arguments.text === literal && written.arguments.delay_ms === 0, "Literal Write normalized text, added a command or lost delay");
         await denied("write", { path: observation, content: "replay" });
         view = await ok("read", { path: first }); observation = reference(view, "observation");
         const nativeBeforeInsert = (await captures()).length;
         await ok("insert", { path: observation, text: JSON.stringify({ action: "click", hint: hintOf(view) }) });
-        assert((await captures()).length === nativeBeforeInsert, "Insert resolution refreshed native capture");
+        assert((await captures()).slice(nativeBeforeInsert).every(row => row.arguments?.include_screenshot === false), "Insert resolution refreshed native capture");
         const uiOnly = await ok("read", { path: first, views: ["ui"] });
         assert(!uiOnly.content.some(block => block.type === "image"), "UI text view included an image");
         assert(textOf(uiOnly).includes("Fixture text field") && textOf(uiOnly).includes("Fixture button"), "UI text view lost observed structure");

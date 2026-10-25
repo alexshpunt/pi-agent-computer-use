@@ -82,7 +82,7 @@ Input starts in the background where Windows allows it, so your own pointer and 
 
 ### Results and checks
 
-Every action returns a receipt. `delivered` means it went through, `refused` means nothing was sent, and `unknown` means it may have reached the app, so the agent reads again before doing anything else instead of repeating it. Add `"expect"` to an action to check a condition afterwards, or `"successor":true` to get a short list of what changed. `wait_for` and `verify` check UI conditions, and `batch` runs a short chain that stops at the first failure. In Codemode the receipts are plain objects, so a script branches on `outcome` without parsing text.
+Every action returns a receipt. `delivered` means it went through, `refused` means nothing was sent, and `unknown` means it may have reached the app, so the agent reads again before doing anything else instead of repeating it. Each action also says what it changed in the window, or that nothing changed, so the agent sees the effect without reading the window again. Add `"expect"` to an action to check a condition afterwards. `wait_for` and `verify` check UI conditions, and `batch` runs a short chain that stops at the first failure. In Codemode the receipts are plain objects, so a script branches on `outcome` without parsing text.
 
 ### Browsers and apps built on them
 
