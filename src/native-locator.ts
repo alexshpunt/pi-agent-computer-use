@@ -48,6 +48,12 @@ const ROLES: Record<string, string[]> = {
 };
 /** Roles Playwright's getByLabel looks at: labelled form controls. */
 const LABELLED = new Set(["textbox", "combobox", "checkbox", "radio", "slider", "spinbutton", "listbox", "switch"]);
+/**
+ * Roles whose UIA name is their own visible text, as an element's text content is on a page. Containers such as
+ * windows, lists and menu bars are left out: their name is a label, and some apps borrow it from a nearby control.
+ */
+const CONTENT = new Set(["text", "button", "link", "menuitem", "listitem", "option", "tab", "treeitem", "checkbox", "radio",
+  "cell", "gridcell", "columnheader", "rowheader", "heading", "tooltip", "group"]);
 /** Roles whose `checked` state is a checkbox state; for buttons the same UIA toggle is `pressed`. */
 const CHECKABLE = new Set(["checkbox", "radio", "menuitem", "switch", "treeitem", "listitem"]);
 
@@ -99,8 +105,25 @@ const parseAttributes = (body: unknown): { name: string; attributes: Attribute[]
 class Tree {
   readonly order = new Map<string, number>();
   readonly byHint = new Map<string, UiElement>();
+  private readonly children = new Map<string, UiElement[]>();
+  private readonly texts = new Map<string, string>();
   constructor(readonly elements: readonly UiElement[]) {
     elements.forEach((element, index) => { this.order.set(element.hint, index); this.byHint.set(element.hint, element); });
+    for (const element of elements) if (element.parent_hint && this.byHint.has(element.parent_hint))
+      (this.children.get(element.parent_hint) ?? this.children.set(element.parent_hint, []).get(element.parent_hint)!).push(element);
+  }
+  /** Direct children in tree order. */
+  childrenOf(element: UiElement): UiElement[] { return this.children.get(element.hint) ?? []; }
+  /** Text content, as Playwright reads it: the visible text of this element and its descendants, without container labels. */
+  textContent(element: UiElement): string {
+    let text = this.texts.get(element.hint);
+    if (text === undefined) {
+      const role = ariaRole(element);
+      const own = CONTENT.has(role) ? [accessibleName(element), role === "text" ? element.value ?? "" : ""] : [];
+      text = normalize([...own, ...this.childrenOf(element).map(child => this.textContent(child))].filter(Boolean).join(" "));
+      this.texts.set(element.hint, text);
+    }
+    return text;
   }
   /** Whether `element` lies strictly inside `root`. */
   inside(element: UiElement, root: UiElement): boolean {
@@ -109,10 +132,6 @@ class Tree {
   }
   descendants(roots: readonly UiElement[] | null): UiElement[] {
     return roots === null ? [...this.elements] : this.elements.filter(element => roots.some(root => this.inside(element, root)));
-  }
-  /** Own text plus the text of every descendant, as Playwright's has-text sees an element's text content. */
-  subtreeText(element: UiElement): string {
-    return [element, ...this.descendants([element])].flatMap(item => [accessibleName(item), item.value ?? ""]).filter(Boolean).join(" ");
   }
   sort(elements: Iterable<UiElement>): UiElement[] {
     return [...new Set(elements)].sort((a, b) => this.order.get(a.hint)! - this.order.get(b.hint)!);
@@ -141,7 +160,6 @@ function engine(part: ParsedSelector["parts"][number]): (element: UiElement) => 
       }
       return element => checks.every(check => check(element));
     }
-    case "internal:text": { const match = textMatcher(part.body); return element => match(accessibleName(element)) || (ariaRole(element) === "text" && match(element.value ?? "")); }
     case "internal:label": { const match = textMatcher(part.body); return element => LABELLED.has(ariaRole(element)) && match(accessibleName(element)); }
     case "internal:testid": {
       const [attribute] = parseAttributes(part.body).attributes;
@@ -181,7 +199,7 @@ function evaluate(tree: Tree, selector: ParsedSelector, roots: readonly UiElemen
       case "visible": current = all().filter(element => isVisible(element) === (String(part.body) === "true")); break;
       case "internal:has-text": case "internal:has-not-text": {
         const match = textMatcher(part.body), keep = part.name === "internal:has-text";
-        current = all().filter(element => match(tree.subtreeText(element)) === keep);
+        current = all().filter(element => match(tree.textContent(element)) === keep);
         break;
       }
       case "internal:has": case "internal:has-not": {
@@ -192,6 +210,13 @@ function evaluate(tree: Tree, selector: ParsedSelector, roots: readonly UiElemen
       case "internal:and": { const other = new Set(evaluate(tree, nested(part.body), scope)); current = all().filter(element => other.has(element)); break; }
       case "internal:or": current = tree.sort([...all(), ...evaluate(tree, nested(part.body), scope)]); break;
       case "internal:describe": break;
+      // Like Playwright's text engine: the smallest elements whose text content matches, not their ancestors.
+      case "internal:text": {
+        const match = textMatcher(part.body);
+        scope = current ?? roots;
+        current = tree.descendants(scope).filter(element => match(tree.textContent(element)) && !tree.childrenOf(element).some(child => match(tree.textContent(child))));
+        break;
+      }
       default: {
         const match = engine(part);
         scope = current ?? roots;

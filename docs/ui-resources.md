@@ -6,7 +6,7 @@ Browsers and other Windows apps use the same window Reads. A window overview ret
 
 ## Observe once, refine locally
 
-Each element has a short `hint`, the exact native `element_token`, reported role/name/value, enabled/selected state, actions, depth and `parent_hint`. `name` comes from the native label, which may fall back to value or help text. Missing properties stay null or absent. An empty `actions` array is not proof that pixel input is impossible.
+Each element has a short `hint`, the exact native `element_token`, reported role/name/value, enabled/selected state, actions, depth and `parent_hint`. The walk lists static text, disabled controls and named containers too; `actionable` marks the elements with action patterns, and `checked`, `expanded`, `offscreen`, `focused`, `automation_id` and `class_name` appear when UIA reports them. `name` comes from the native label, which may fall back to value or help text. Missing properties stay null or absent. An empty `actions` array is not proof that pixel input is impossible.
 
 `bounds.native_screen` and `bounds.window_image` are different coordinate spaces. Only reported screenshot-local bounds address pixels in the returned image. No adapter conversion invents missing bounds. Tree and pixels are not atomic, and neither proves paint freshness.
 

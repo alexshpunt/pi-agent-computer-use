@@ -16,7 +16,8 @@ export interface UiElement {
   checked?: "on" | "off" | "mixed"; expanded?: boolean; offscreen?: boolean; focused?: boolean;
   password?: boolean; read_only?: boolean; required?: boolean; actionable?: boolean;
   range?: { value: number; min: number; max: number };
-  hint_display: "pending" | "shown" | "disabled" | "no_bounds" | "outside_image" | "collision" | "off";
+  /** Whether the hint label is drawn on the overview; `read_only` marks static text and containers, which get no label. */
+  hint_display: "pending" | "shown" | "disabled" | "read_only" | "no_bounds" | "outside_image" | "collision" | "off";
 }
 /** Bounded native UIA projection. Completeness is not inferred from an empty search. */
 export interface UiResource {
@@ -166,7 +167,10 @@ export async function annotateUi(image: Content, resource: UiResource, width: nu
     return { image, annotation };
   }
   const canvas = { x: 0, y: 0, width, height };
+  // Labels keep off controls and static text, not off containers (groups, menu bars, title bars) they sit inside.
+  const containers = new Set(resource.elements.flatMap(e => e.parent_hint ? [e.parent_hint] : []));
   const protectedRegions = obstacles.flatMap(e => {
+    if (e.actionable === false && containers.has(e.hint)) return [];
     const r = e.bounds.window_image;
     return r && r.width * r.height < width * height / 4 ? [r] : [];
   });
@@ -174,6 +178,8 @@ export async function annotateUi(image: Content, resource: UiResource, width: nu
   for (const e of resource.elements) {
     if (!enabled) { e.hint_display = e.enabled === false ? "disabled" : e.bounds.window_image ? "off" : "no_bounds"; continue; }
     if (e.enabled === false) { e.hint_display = "disabled"; continue; }
+    // Labels on every text and container would cover the controls; those stay addressable through UI and Search.
+    if (e.actionable === false) { e.hint_display = "read_only"; continue; }
     const target = clipRect(e.bounds.window_image, canvas);
     if (!target) { e.hint_display = e.bounds.window_image ? "outside_image" : "no_bounds"; continue; }
     if (selected === e.hint) svg.push(`<rect x="${target.x}" y="${target.y}" width="${target.width}" height="${target.height}" fill="none" stroke="#e52678" stroke-width="2"/>`);

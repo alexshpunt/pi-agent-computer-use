@@ -855,7 +855,7 @@ export class ComputerResources {
 
   /**
    * Resolve a Playwright locator the way Playwright's actions do: take fresh UI walks until exactly one element
-   * matches and is ready (enabled for input; for pointer input at the same place in two walks; on screen for hover), or
+   * matches and is ready (enabled for input; for pointer input also on screen and at the same place in two walks), or
    * until the timeout. Several matches refuse at once with each match's locator, like Playwright's strict mode.
    */
   private async resolveNative(window: string, session: ComputerSession, selector: ParsedSelector, options: { timeout_ms: number; enabled: boolean; stable: boolean; visible?: boolean; describe: string }, signal?: AbortSignal):
@@ -877,7 +877,7 @@ export class ComputerResources {
       }
       const element = found[0];
       if (!element) reason = ui.complete === true && !ui.truncated ? "no element matches it" : "no element matches it in the walked part of the window (the UI walk was incomplete)";
-      else if (options.visible && !isVisible(element)) reason = "the element is not visible (offscreen)";
+      else if (options.visible && !isVisible(element)) reason = "the element is not visible (offscreen); invoke, select and other semantic actions do not need it on screen";
       else if (options.enabled && element.enabled === false) reason = "the element is disabled";
       else if (options.stable && previous && JSON.stringify(previous.bounds.native_screen) !== JSON.stringify(element.bounds.native_screen)) reason = "the element is still moving";
       else if (!options.stable || previous || !element.bounds.native_screen) return { element, observation: fresh };
@@ -905,7 +905,7 @@ export class ComputerResources {
     if (!NATIVE_LOCATOR_ACTIONS.includes(action)) throw new ComputerRequestError(`A target takes one of ${[...NATIVE_LOCATOR_ACTIONS, ...Object.keys(LOCATOR_VERBS)].join(", ")}.`);
     const describe = typeof target === "string" ? target : JSON.stringify(target);
     const pointer = ["click", "double_click", "right_click", "hover", "check", "uncheck"].includes(action);
-    const resolved = await this.resolveNative(window, session, selector, { timeout_ms: (timeout as number | undefined) ?? 5_000, enabled: action !== "hover", stable: pointer, visible: action === "hover", describe }, signal);
+    const resolved = await this.resolveNative(window, session, selector, { timeout_ms: (timeout as number | undefined) ?? 5_000, enabled: action !== "hover", stable: pointer, visible: pointer, describe }, signal);
     const mode = this.getMode();
     if ("refused" in resolved) return { content: [{ type: "text", text: resolved.refused }], details: { status: "refused", mode, window_ref: window }, isError: true };
     const { element, observation } = resolved;
@@ -991,7 +991,7 @@ export class ComputerResources {
           // Never reuse a stale observation: a target resolves in fresh UI walks; other steps take one fresh walk.
           if (step.target) {
             const action = String(step.command.action), pointer = ["click", "double_click", "right_click"].includes(action);
-            const resolved = await this.resolveNative(window, session, step.target, { timeout_ms: step.timeout!, enabled: true, stable: pointer, describe: step.describe! }, signal);
+            const resolved = await this.resolveNative(window, session, step.target, { timeout_ms: step.timeout!, enabled: true, stable: pointer, visible: pointer, describe: step.describe! }, signal);
             if ("refused" in resolved) {
               if (resolved.observation) last = resolved.observation;
               rows.push({ index, action, outcome: "refused", reason: resolved.refused.slice(0, 600) });

@@ -111,6 +111,28 @@ test("render status describes this image, not a previous annotation", async () =
   expect(resource.elements[2].hint_display).toBe("disabled"); expect(resource.elements[3].hint_display).toBe("no_bounds");
 });
 
+test("static text and containers from a full UIA tree get no hint label on the overview", async () => {
+  const { annotateUi } = await import("../src/ui-resources.ts");
+  const f = await fixture(); const view = await f.session.observe(f.ref); const resource = structuredClone(ui(view));
+  resource.elements[1].actionable = false;
+  const result = await annotateUi({ type: "image", data: f.raw.toString("base64"), mimeType: "image/png" }, resource, 500, 320, true);
+  expect(resource.elements[1].hint_display).toBe("read_only");
+  expect(result.annotation.labels.map(label => label.hint)).not.toContain(resource.elements[1].hint);
+});
+
+test("a read-only container does not push the labels of the controls inside it off the overview", async () => {
+  const { annotateUi } = await import("../src/ui-resources.ts");
+  const f = await fixture(); const view = await f.session.observe(f.ref); const resource = structuredClone(ui(view));
+  const control = resource.elements[1];
+  const box = control.bounds.window_image!;
+  // A group whose frame surrounds the control with no room for a label outside it.
+  const group = { ...structuredClone(control), hint: "g:1", actionable: false, parent_hint: null,
+    bounds: { window_image: { x: Math.max(0, box.x - 40), y: Math.max(0, box.y - 40), width: box.width + 80, height: box.height + 80 } } };
+  resource.elements = [group, { ...control, parent_hint: "g:1", actionable: true }];
+  const result = await annotateUi({ type: "image", data: f.raw.toString("base64"), mimeType: "image/png" }, resource, 500, 320, true);
+  expect(result.annotation.labels.map(label => label.hint)).toEqual([control.hint]);
+});
+
 test("scoped label placement respects controls excluded from the projection", async () => {
   const { annotateUi, projectUi } = await import("../src/ui-resources.ts");
   const f = await fixture(); const view = await f.session.observe(f.ref); const resource = structuredClone(ui(view));

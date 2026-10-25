@@ -23,6 +23,9 @@ const tree = { elements: [
   element("status", "Text", "clicked 3"),
   element("save", "Button", "Save", { help_text: "Save the file" }),
   element("saveAs", "Button", "Save as…"),
+  // WinForms names a MenuStrip after the label before it; that name is a label, not text content.
+  element("bar", "MenuBar", "clicked 3"),
+  element("file", "MenuItem", "File", { parent_hint: "bar", depth: 2 }),
 ] };
 // playwright-core loads on first use; under a parallel test run that can take several seconds.
 beforeAll(() => { parseLocator("getByRole('button')"); }, 60_000);
@@ -50,6 +53,12 @@ test("role states filter like Playwright's options; scrolled-out elements still 
 
 test("text, label, test id and title locators read the matching UIA properties", () => {
   expect(hints(`getByText("clicked")`)).toEqual(["status"]);
+  // Like Playwright: the smallest element whose text content matches, so a group matches by its caption and items by their own text.
+  expect(hints(`getByText("Options")`)).toEqual(["opts"]);
+  expect(hints(`getByText("OK")`)).toEqual(["ok"]);
+  expect(hints(`getByText("File")`)).toEqual(["file"]);
+  expect(hints(`getByRole("menubar").filter({ hasText: "File" })`)).toEqual(["bar"]);
+  expect(hints(`getByRole("menubar").filter({ hasText: "clicked" })`)).toEqual([]);
   expect(hints(`getByText("Clicked 3", { exact: true })`)).toEqual([]);
   expect(hints(`getByText("clicked 3", { exact: true })`)).toEqual(["status"]);
   expect(hints(`getByLabel("Name")`)).toEqual(["name"]);
@@ -104,6 +113,8 @@ test("a native window renders as Playwright's own aria snapshot, with hints as r
     `  - text: clicked 3`,
     `  - button "Save" [ref=save]`,
     `  - button "Save as…" [ref=saveAs]`,
+    `  - menubar "clicked 3" [ref=bar]:`,
+    `    - menuitem "File" [ref=file]`,
   ].join("\n"));
 });
 
