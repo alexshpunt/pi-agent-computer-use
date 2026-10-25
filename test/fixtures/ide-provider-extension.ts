@@ -81,6 +81,12 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       const journal = async () => (await readFile(log!, "utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
       const inputs = async () => (await journal()).filter(row => ["type_text", "click", "press_key", "hotkey"].includes(row.name));
       const captures = async () => (await journal()).filter(row => row.name === "get_window_state");
+      // Whether a call captured the window before its first native input. The action's successor captures it after the
+      // input (LPT-914, LPT-915); a capture before it would silently refresh the input's authority.
+      const capturedBeforeInput = async (from: number) => {
+        const rows = (await journal()).slice(from), input = rows.findIndex(row => ["type_text", "click", "press_key", "hotkey"].includes(row.name));
+        return rows.slice(0, input < 0 ? rows.length : input).some(row => row.name === "get_window_state");
+      };
       const control = async (operation: string) => {
         if (operation === "safe") mode = "safe";
         else await driver!.call("fixture_control", { operation }, signal);
@@ -106,17 +112,16 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert((await inputs()).length === beforeDenied, "Consumed detail observation dispatched input");
         view = await ok("read", { path: first }); observation = reference(view, "observation");
         const hint = hintOf(view), literal = '  {"looks":"like JSON"}\n"quoted text"\n  ';
-        const nativeBeforeWrite = (await captures()).length;
+        const nativeBeforeWrite = (await journal()).length;
         await ok("write", { path: `${observation}?hint=${encodeURIComponent(hint)}&delivery=foreground&delay_ms=0`, content: literal });
-        // Only the successor's UI-only walks follow the input; no pixel capture refreshes input authority.
-        assert((await captures()).slice(nativeBeforeWrite).every(row => row.arguments?.include_screenshot === false), "Write resolution refreshed native capture");
+        assert(!await capturedBeforeInput(nativeBeforeWrite), "Write resolution refreshed native capture");
         const written = (await inputs()).at(-1);
         assert(written?.name === "type_text" && written.arguments.text === literal && written.arguments.delay_ms === 0, "Literal Write normalized text, added a command or lost delay");
         await denied("write", { path: observation, content: "replay" });
         view = await ok("read", { path: first }); observation = reference(view, "observation");
-        const nativeBeforeInsert = (await captures()).length;
+        const nativeBeforeInsert = (await journal()).length;
         await ok("insert", { path: observation, text: JSON.stringify({ action: "click", hint: hintOf(view) }) });
-        assert((await captures()).slice(nativeBeforeInsert).every(row => row.arguments?.include_screenshot === false), "Insert resolution refreshed native capture");
+        assert(!await capturedBeforeInput(nativeBeforeInsert), "Insert resolution refreshed native capture");
         const uiOnly = await ok("read", { path: first, views: ["ui"] });
         assert(!uiOnly.content.some(block => block.type === "image"), "UI text view included an image");
         assert(textOf(uiOnly).includes("Fixture text field") && textOf(uiOnly).includes("Fixture button"), "UI text view lost observed structure");
@@ -158,12 +163,12 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert((await inputs()).length === 0, "Invalid/Safe/display requests sent native input");
         view = await ok("read", { path: first }); observation = reference(view, "observation");
         await control("partial");
-        const beforePartial = (await captures()).length;
+        const beforePartial = (await journal()).length;
         const partial = await denied("insert", { path: observation, text: JSON.stringify({ action: "sequence", sequence: [
           { action: "type_text", x: 100, y: 80, text: "interrupted prefix" }, { action: "type_text", text: "must not run" },
         ] }) });
         assert(/unknown|partial|uncertain|interrupted/i.test(textOf(partial)), "Interrupted result lost its uncertainty");
-        assert((await captures()).length === beforePartial, "Interrupted action resolution refreshed native capture");
+        assert(!await capturedBeforeInput(beforePartial), "Interrupted action resolution refreshed native capture");
         await denied("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80 }) });
         assert((await inputs()).length === 1 && (await inputs())[0].name === "type_text" && (await inputs())[0].arguments.text === "interrupted prefix", "Interrupted prefix was replayed or later sequence input was sent");
         view = await ok("read", { path: first }); observation = reference(view, "observation");

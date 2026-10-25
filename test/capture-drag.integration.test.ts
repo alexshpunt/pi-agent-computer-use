@@ -13,7 +13,8 @@ test("real Pi keeps drag capture binding and stops on resize refusal until reobs
     args: [path.resolve("test/fixtures/complete-input-driver.mjs"), log, "capture-drag"] }));
   const code = `${SCRIPT_HELPERS}
 const opened = await openApp("Notepad");
-const act = (view, sequence) => insert(view, {action:"sequence",sequence});
+// These checks keep one observation for pixel input, so they turn the default successor off.
+const act = (view, sequence) => insert(view, {action:"sequence",sequence,successor:false});
 const drag={action:"drag",from_x:30,from_y:40,to_x:100,to_y:80,duration_ms:100,steps:4};
 const stopped=await act(opened.observation,[{action:"key",key:"r"},drag,{action:"key",key:"b"}]);
 if(stopped.outcome!=="refused" || stopped.code!=="capture_frame_mismatch" || stopped.effect!=="unknown") throw Error("Resize refusal or completed prefix lost");
