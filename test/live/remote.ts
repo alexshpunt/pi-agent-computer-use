@@ -56,8 +56,13 @@ export async function connectLive(cwd = process.cwd()) {
  * PowerShell arguments for a disposable native Win32 target: a WinForms window with a counter button, a list box
  * and a text box behind the standard UIA proxies. Use it where Notepad is missing or would restore the human's tabs.
  */
-export function nativeForm(title: string): string[] {
-  const script = `Add-Type -AssemblyName System.Windows.Forms
+export function nativeForm(title: string, { dpiAware = false } = {}): string[] {
+  // Windows PowerShell is DPI-unaware: above 100% Windows paints its windows at 96 DPI and stretches them.
+  // dpiAware switches the process to Per-Monitor V2 first, so the same form paints in physical pixels.
+  const aware = dpiAware ? `Add-Type -Name D -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr v);'
+if (-not [W.D]::SetProcessDpiAwarenessContext([IntPtr]-4)) { throw 'DPI awareness was not set' }
+` : "";
+  const script = `${aware}Add-Type -AssemblyName System.Windows.Forms
 $f = New-Object Windows.Forms.Form; $f.Text = '${title}'; $f.Width = 420; $f.Height = 300
 $b = New-Object Windows.Forms.Button; $b.Text = 'Count 0'; $b.Left = 10; $b.Top = 10; $b.Width = 120; $script:n = 0
 $b.Add_Click({ $script:n++; $b.Text = "Count $script:n" })
