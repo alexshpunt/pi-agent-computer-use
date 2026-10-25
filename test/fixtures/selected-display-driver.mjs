@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import sharp from "sharp";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { agentCursor } from "./agent-cursor.mjs";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Synthetic native contract peer, never Windows evidence.
@@ -16,6 +17,7 @@ const pixels = await Promise.all(["blue", "green"].map(async background => {
 const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
+  const cursor = agentCursor(name, args); if (cursor) return cursor;
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
   let state; let bytes;
   if (name === "list_displays") state = { platform: "windows", topology_id: "topology-fixture", displays };

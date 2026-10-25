@@ -2,7 +2,6 @@ import { registerVisionDebug } from "./vision-debug.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "./config.ts";
-import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "./reactive-animation.ts";
 import { McpDriver } from "./driver.ts";
 import { registerComputerMode } from "./mode.ts";
 import { registerSetupCommand } from "./setup-command.ts";
@@ -31,7 +30,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   async function getSession(cwd: string): Promise<ComputerSession> {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(async config => {
-      const driver = new ReactiveAnimationDriver(new McpDriver(config), await loadReactiveAnimationConfig(cwd));
+      const driver = new McpDriver(config);
       overviewKernel = driver.overviewKernel ?? "lanczos3";
       session = new ComputerSession(driver, getMode, () => images.settings(), driver.platform === "windows" ? highlights.flash : undefined, image => debug.trace.retainOriginal(image),
         driver.platform === "windows" ? (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal) : undefined,

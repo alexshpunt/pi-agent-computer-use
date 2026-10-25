@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import sharp from "sharp";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { agentCursor } from "./agent-cursor.mjs";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Deterministic MCP receipts; this is not native UI evidence.
@@ -12,6 +13,7 @@ const windows = [91, 92].map(window_id => ({ pid: 42, window_id, title: `Fixture
 const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
+  const cursor = agentCursor(name, args); if (cursor) return cursor;
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
   let state; let pixels;
   if (name === "fixture_identity") state = { identity: `owned:${args.window_id}` };

@@ -70,7 +70,7 @@ test.each([
   { action: "move", x: 10, y: 10, animation: "reactive" },
   { action: "sequence", sequence: [{ action: "key", key: "a" }, { action: "move", x: 10, y: 10 }] },
 ])("unsupported pointer command cannot send any batch input: %j", async command => {
-  const f = await fixture(); Object.assign(f.driver, { reactiveAnimation: true });
+  const f = await fixture();
   expect((await f.send(command)).details.status).toBe("refused"); expect(f.inputs()).toHaveLength(0);
 });
 

@@ -3,7 +3,6 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
-import { ReactiveAnimationDriver } from "../../src/reactive-animation.ts";
 import { registerComputerProvider } from "../../src/provider.ts";
 import { ComputerSession, type ComputerMode, type ComputerResult, type WindowTarget } from "../../src/session.ts";
 
@@ -45,7 +44,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       log = config.args![1];
       driver = new FixtureDriver(config);
     }
-    return session ??= new ComputerSession(new ReactiveAnimationDriver(driver, { glide_duration_ms: 1 }), () => mode);
+    return session ??= new ComputerSession(driver, () => mode);
   };
   const close = async (): Promise<ComputerResult> => session ? session.close() : {
     content: [{ type: "text", text: "No synthetic runtime is running." }], details: { status: "closed", mode },

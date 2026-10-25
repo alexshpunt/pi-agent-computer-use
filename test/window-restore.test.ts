@@ -2,7 +2,6 @@ import { expect, test, vi } from "vitest";
 import { ComputerSession, type ComputerMode, type Driver, type DriverResult } from "../src/session.ts";
 import { ComputerResources, requireComputerAddress } from "../src/computer-resources.ts";
 import { computerSource } from "../src/computer-address.ts";
-import { ReactiveAnimationDriver } from "../src/reactive-animation.ts";
 
 async function fixture() {
   let mode: ComputerMode = "yolo", life: string | undefined = "life", serial = 0;
@@ -55,21 +54,6 @@ async function fixture() {
     outcome(value: Record<string, unknown>, isError = false) { receipt = value; error = isError; } };
 }
 
-test("production animation wrapper preserves restore capability and dispatches no animation controls", async () => {
-  const f = await fixture();
-  vi.mocked(f.driver.call).mockClear();
-  const wrapper = new ReactiveAnimationDriver(f.driver, { glide_duration_ms: 1 });
-  const session = new ComputerSession(wrapper, () => "yolo");
-  const window = (await session.windows()).details.state!.windows as { window_ref: string }[];
-  const view = await session.observeWindowState(window[0].window_ref);
-  expect(view.details.status).toBe("observed");
-  const result = await session.restoreWindow(window[0].window_ref, view.details.window_state_id!);
-  expect(result.details.status).toBe("delivered");
-  expect(f.calls().map(([name]) => name)).toEqual(["list_windows", "get_window_status", "restore_window"]);
-  f.setCapability(false);
-  expect(wrapper.windowRestore).toBe(false);
-  await session.close();
-});
 test("fresh metadata-only Read authorizes one exact restore without acquiring pixels or UI", async () => {
   const f = await fixture(), view = await f.read();
   const before = f.calls().length;

@@ -50,8 +50,6 @@ export interface Driver {
   selectedDisplays?: boolean;
   /** True only for a qualified native runtime that admits both straight-drag endpoints against one capture. */
   captureBoundDrag?: boolean;
-  /** True when existing native cursor controls can be scoped and restored for one action. */
-  reactiveAnimation?: boolean;
   /** True only for an exact qualified Windows runtime with UIA-only semantic dispatch. */
   semanticActions?: boolean;
   /** True only for the explicitly selected, byte-checked Windows native pointer runtime. */
@@ -64,7 +62,7 @@ export interface Driver {
   windowManagement?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
   overviewKernel?: CuaVisionSettings["kernel"];
-  call(name: string, args: Record<string, unknown>, signal?: AbortSignal, options?: { animation?: "reactive" }): Promise<DriverResult>;
+  call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   close(): Promise<void>;
 }
@@ -73,8 +71,6 @@ export type Action = {
   window_ref: string;
   observation_id: string;
   delivery_mode?: "background" | "foreground";
-  /** Explicit opt-in to the trusted local reactive cursor-animation timing. */
-  animation?: "reactive";
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
 /** A stored Playwright snapshot of the active tab, with the tab list, any held dialog and events since the previous snapshot. */
 export interface WebDom extends WebPage { truncated: boolean; matches?: number }
@@ -1539,13 +1535,11 @@ export class ComputerSession {
         const change = await this.observationChange(entry, observed, signal).catch((error: unknown) => `the window state could not be read (${error instanceof Error ? error.message : error})`);
         if (change) { entry.observation = undefined; return this.result("refused", `Observation expired: ${change}. Read the window again; no input was dispatched.`); }
       }
-      const { window_ref: _ref, observation_id: _id, delivery_mode, animation, ...command } = action;
+      const { window_ref: _ref, observation_id: _id, delivery_mode, ...command } = action;
       const batch = command.action === "sequence";
       let commands: InputStep[];
       try {
         if (delivery_mode !== undefined && !["background", "foreground"].includes(delivery_mode)) throw new Error("Unsupported delivery mode.");
-        if (animation !== undefined && (animation !== "reactive" || !this.driver.reactiveAnimation))
-          throw Error("Reactive animation requires the scoped native cursor adapter; no input was dispatched.");
         if (batch) {
           if (Object.keys(command).some(key => !["action", "sequence"].includes(key)) || !Array.isArray(command.sequence) || command.sequence.length < 1 || command.sequence.length > SEQUENCE_STEPS)
             throw new Error(`A sequence needs 1..${SEQUENCE_STEPS} steps and no conflicting top-level action fields.`);
@@ -1570,18 +1564,16 @@ export class ComputerSession {
           validateInput(nativeStep, observed, batch);
           if (isCoordinateScroll(nativeStep)) {
             if (!this.driver.coordinateScroll) throw Error("Coordinate scroll requires the explicitly selected native scroll runtime. No input was dispatched.");
-            if (animation !== undefined) throw Error("Native coordinate scroll has no overlay animation.");
             if (!observed.captureId) throw Error("Coordinate scroll needs this overview's native capture. Observe again.");
           }
           if (isPointerMove(nativeStep.action)) {
             if (!this.driver.nativePointer) throw Error("Pointer movement requires the explicitly selected native pointer runtime. No input was dispatched.");
-            if (animation !== undefined) throw Error("Native pointer movement has no overlay animation.");
             if (nativeStep.element_token ? !observed.frames.has(nativeStep.element_token) : !observed.captureId)
               throw Error("Pointer movement needs a current token with proven geometry or this overview's native capture. Observe again.");
           }
           if (isSemanticAction(nativeStep.action)) {
             if (!this.driver.semanticActions) throw Error("Semantic actions require the explicitly selected qualified Windows semantic runtime. No input was dispatched.");
-            if (delivery_mode === "foreground" || animation !== undefined) throw Error("Semantic actions use accessibility only: no foreground or cursor animation.");
+            if (delivery_mode === "foreground") throw Error("Semantic actions use accessibility only: no foreground delivery.");
           }
           return nativeStep;
         });
@@ -1642,9 +1634,7 @@ export class ComputerSession {
           // A sequence stops between steps: its current step finishes and releases its own keys and buttons,
           // and the driver connection survives the cancellation. A single action stays cancellable in flight.
           const nativeSignal = batch ? undefined : signal;
-          const native = animation
-            ? await this.driver.call(name, args, nativeSignal, { animation })
-            : await this.driver.call(name, args, nativeSignal);
+          const native = await this.driver.call(name, args, nativeSignal);
           row.completion_ms = performance.now() - started;
           if (!this.allowed(entry) || (!batch && signal?.aborted)) return finish(this.result("unknown",
             "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),

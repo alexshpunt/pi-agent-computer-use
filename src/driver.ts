@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -15,6 +16,8 @@ import type { NativePlatform } from "./observation-source.ts";
 
 /** Foreground input waits until the human has not used the keyboard or mouse for this long (owner choice, LPT-835). */
 const HUMAN_IDLE_MS = 10_000;
+/** The agent cursor jumps to each action point instead of gliding there. */
+const CURSOR_GLIDE_MS = 1;
 /** Exact Windows CI artifact qualified for held paths; selection is trusted config, never a tool argument. */
 export const HELD_PATH_RUNTIME = {
   source: "bba07a9c8ccba117c1057a3a0003e95d3693b2b3", version: "0.34.0",
@@ -217,11 +220,30 @@ export class McpDriver implements Driver {
             if (!tools.some(tool => tool.name === name && tool.inputSchema.type === "object"))
               throw new Error(`native_runtime_schema_missing: ${name}`);
       }
+      await this.jumpCursor(client, signal);
       return client;
     } catch (error) {
       await this.close();
       throw new Error(`Driver startup failed: ${error instanceof Error ? error.message : error}\n${this.stderr}`);
     }
+  }
+
+  /**
+   * Before each pointer action at a new point the driver waits for its agent cursor to glide there: about 600 ms
+   * per 300 px at its default speed. A 1 ms glide makes the cursor jump; 0 would select that speed-based glide.
+   * The setter only queues a render command, so its state is read back, yielding 5 ms between reads.
+   */
+  private async jumpCursor(client: Client, signal?: AbortSignal): Promise<void> {
+    const call = async (name: string, args: Record<string, unknown>) =>
+      CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout: 15_000 }));
+    if ((await call("set_agent_cursor_motion", { glide_duration_ms: CURSOR_GLIDE_MS })).isError)
+      throw new Error("The driver refused the agent cursor glide setting.");
+    for (let read = 0; read < 6; read++) {
+      const state = await call("get_agent_cursor_state", {});
+      if ((state.structuredContent?.motion as { glide_duration_ms?: unknown } | undefined)?.glide_duration_ms === CURSOR_GLIDE_MS) return;
+      await delay(5, undefined, { signal });
+    }
+    throw new Error("The driver did not apply the agent cursor glide setting.");
   }
 
   /**

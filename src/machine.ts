@@ -6,7 +6,6 @@ import { loadComputerConfig, type ComputerConfig } from "./config.ts";
 import { ComputerRequestError, machineGuide, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
-import { ReactiveAnimationDriver, loadReactiveAnimationConfig } from "./reactive-animation.ts";
 import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
@@ -60,9 +59,8 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; ret
     const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, parsed, signal)
       : await IsolatedSession.open(runnerHost(runner), machine?.command ?? config.command, signal);
     // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
-    // Reactive actions skip the visible cursor glide here too, as on this machine's own desktop.
-    const driver = new ReactiveAnimationDriver(new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
-      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) }), await loadReactiveAnimationConfig(cwd));
+    const driver = new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
+      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) });
     try { await waitForGuestDriver(driver, signal); }
     catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
     const guest = new ComputerSession(driver, () => "yolo", options.settings, undefined, options.retainRaw);
@@ -80,8 +78,7 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
     const machine = await machineConfig(cwd, name);
     const refresh = `setup part machine (user: /computer-setup machine ${machine.ssh} ${name}; agent, after asking: Insert {"action":"setup","part":"machine","ssh":"${machine.ssh}","name":"${name}"} into computer:machine/local)`;
     const runner = sshRunner(machine.ssh);
-    const driver = new ReactiveAnimationDriver(new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh }),
-      await loadReactiveAnimationConfig(cwd));
+    const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh });
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
     const launchWeb = machine.node && machine.package

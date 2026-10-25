@@ -4,7 +4,7 @@ See [the resource guide](computer-resources.md) for the current addresses, views
 
 Send input as one Insert action into a current window overview. CUA remains the only input backend. A display capture or detail cannot ground input.
 
-For an explicit per-action short cursor glide, use `animation:"reactive"`. Ordinary animation is restored afterward; native click pauses do not change. See [reactive animation and local configuration](reactive-animation.md).
+CUA draws an agent cursor over the desktop and, by default, waits for it to glide to each new point before a pointer action: about 600 ms per 300 px. When the driver starts, the adapter sets that glide to 1 ms, so the agent cursor jumps to each point and still shows the click. A background click on a WinForms button then takes about 22 ms instead of 640 ms. The driver's own pauses between press and release stay: they are what makes double and right clicks take about 200 and 90 ms. If the driver refuses the setting or does not apply it, startup fails before any input.
 
 ## Single actions
 

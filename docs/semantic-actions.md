@@ -8,7 +8,7 @@ An Insert action accepts explicit `invoke`, `select` and `set_value` intents wit
 - `select` calls UIA SelectionItem.Select, not Ctrl+A or a pointer click.
 - `set_value` takes `text` (up to 2000 characters) and calls Value.SetValue, or RangeValue.SetValue when Value is unavailable before the call. An empty string is allowed for a text value.
 
-These actions accept no pixels, modifiers, foreground delivery or cursor animation. They are single actions, not sequence steps. UI-only observations are enough; pixel visibility is not a semantic prerequisite. A disabled control still refuses. Safe access, current observation, exact window lifetime and cancellation checks remain in force.
+These actions accept no pixels, modifiers or foreground delivery. They are single actions, not sequence steps. UI-only observations are enough; pixel visibility is not a semantic prerequisite. A disabled control still refuses. Safe access, current observation, exact window lifetime and cancellation checks remain in force.
 
 The native tool admits one exact snapshot target and one UIA pattern. It has no mouse/key dispatch or foreground retry. Missing patterns, disabled/read-only controls and invalid range values refuse before the application call. Provider failure after a call starts is unknown; never repeat it blindly. Dispatch consumes the overview even on failure.
 

@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { agentCursor } from "./agent-cursor.mjs";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Deterministic MCP peer for wrapper contracts, never native Windows qualification.
@@ -12,6 +13,7 @@ const windows = [];
 const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const cursor = agentCursor(request.params.name, request.params.arguments); if (cursor) return cursor;
   appendFileSync(log, JSON.stringify(request.params) + "\n");
   const { name, arguments: args } = request.params;
   let state;

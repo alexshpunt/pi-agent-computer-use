@@ -1,7 +1,6 @@
 import sharp from "sharp";
 import { expect, test, vi } from "vitest";
 import { ComputerSession, type Action, type Driver } from "../src/session.ts";
-import { ReactiveAnimationDriver } from "../src/reactive-animation.ts";
 import { McpDriver } from "../src/driver.ts";
 
 test("older runtimes refuse coordinate wheel input before starting a native peer", async () => {
@@ -40,7 +39,7 @@ async function fixture() {
     }),
   };
   Object.assign(base, { coordinateScroll: true });
-  const driver = new ReactiveAnimationDriver(base, { glide_duration_ms: 1 });
+  const driver = base;
   const session = new ComputerSession(driver, () => mode);
   const windows = (await session.windows()).details.state!.windows as { window_ref: string }[];
   const observe = (ui = false) => session.observe(windows[0].window_ref, undefined, undefined, undefined, undefined, ui ? { granularity: "ui" } : undefined);

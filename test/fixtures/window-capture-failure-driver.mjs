@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import sharp from "sharp";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { agentCursor } from "./agent-cursor.mjs";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // A real native-shaped partial success: UI was read, but the minimized window has no screenshot.
@@ -10,6 +11,7 @@ const png = await sharp({ create: { width: 100, height: 80, channels: 3, backgro
 const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
+  const cursor = agentCursor(name, args); if (cursor) return cursor;
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
   let state; let image;
   if (name === "fixture_identity") state = { identity: "owned window lifetime" };

@@ -1,7 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { ComputerSession, type Driver } from "../src/session.ts";
 import { observationSource } from "../src/observation-source.ts";
-import { ReactiveAnimationDriver } from "../src/reactive-animation.ts";
 
 function backend(platform: "linux" | "macos") {
   const call = vi.fn(async (name: string) => ({ content: [], structuredContent: name === "list_apps"
@@ -9,8 +8,7 @@ function backend(platform: "linux" | "macos") {
     : { windows: [{ pid: 42, window_id: 99, title: "Owned test marker" }] } }));
   const identity = vi.fn(async () => undefined);
   const base: Driver = { platform, windowLifetime: false, call, identity, close: vi.fn(async () => {}) };
-  const driver = new ReactiveAnimationDriver(base, { glide_duration_ms: 1 });
-  return { driver, call, identity };
+  return { driver: base, call, identity };
 }
 
 test.each(["linux", "macos"] as const)("%s exposes metadata but never substitutes reusable IDs for native lifetime", async platform => {
