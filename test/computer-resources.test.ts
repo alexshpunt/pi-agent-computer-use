@@ -65,23 +65,32 @@ test("literal Write preserves all text and descriptor/UI reads do not refresh na
   expect(f.native()).toHaveLength(before);
   const literal = '  {"looks":"like JSON"}\n"quoted text"\n  ';
   const target = address(`${view.source}?hint=${encodeURIComponent(view.hint!)}&delivery=foreground&delay_ms=0`);
-  expect((await f.resources.perform(target, cwd, literal, "write")).details.status).toBe("delivered");
-  expect(f.captures()).toHaveLength(1);
+  const written = await f.resources.perform(target, cwd, literal, "write");
+  expect(written.details.status).toBe("delivered");
+  // The only captures after input are the successor's UI walks; the unchanged fixture UI reads as no change.
+  expect(written.details.successor?.diff?.counts).toEqual({ changed: 0, added: 0, removed: 0 });
+  expect(written.details.successor?.diff?.waited_ms).toBeGreaterThanOrEqual(300);
+  const captured = f.captures().length;
   expect(f.inputs()).toEqual([["type_text", {
     target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "foreground",
     element_token: "snapshot-1:0", text: literal, delay_ms: 0,
   }, undefined]]);
   await expect(f.resources.perform(target, cwd, "replay", "write")).rejects.toThrow(/expired/i);
-  expect(f.inputs()).toHaveLength(1);
+  expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
 test.each(["refused", "unknown"] as const)("a native %s receipt consumes the provider handle without refreshing or replaying input", async status => {
   const f = await fixture(), view = await f.read(["ui"]);
   f.setOutcome({ isError: true, content: [{ type: "text", text: "Native outcome" }], structuredContent: { status } });
   const command = JSON.stringify({ action: "click", hint: view.hint });
-  expect((await f.resources.perform(view.observation, cwd, command, "insert")).details.status).toBe(status);
+  const result = await f.resources.perform(view.observation, cwd, command, "insert");
+  expect(result.details.status).toBe(status);
+  // A refusal sent nothing, so nothing is re-read; an unknown outcome gets a successor to show what may have happened.
+  if (status === "refused") expect(f.captures()).toHaveLength(1);
+  else expect(result.details.successor?.observation_id).toBeDefined();
+  const captured = f.captures().length;
   await expect(f.resources.perform(view.observation, cwd, command, "insert")).rejects.toThrow(/expired/i);
-  expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(1);
+  expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
 test("cached observations reject acquisition options instead of pretending to apply them", async () => {
@@ -127,7 +136,8 @@ test("a new overview retires the prior resource instead of rebinding its hint", 
   expect(f.inputs()).toHaveLength(0);
   expect((await f.resources.perform(address(`${latest.source}?hint=${encodeURIComponent(latest.hint!)}`), cwd, "current", "write")).details.status).toBe("delivered");
   expect(f.inputs()[0][1]).toMatchObject({ element_token: "snapshot-2:0", text: "current" });
-  expect(f.captures()).toHaveLength(2);
+  // Two overviews, then only the successor's UI walks after the input.
+  expect(f.captures().slice(2).every(([, args]) => (args as { include_screenshot?: boolean }).include_screenshot === false)).toBe(true);
 });
 
 test.each(["safe", "closed", "reused"] as const)("%s targets refuse cached reads and input without another capture", async change => {
@@ -211,8 +221,9 @@ test.each(["native-partial", "in-flight-cancel"] as const)("%s preserves the att
   expect(result.details.status).toBe(interruption === "native-partial" ? "unknown" : "refused");
   expect(result.details.state).toMatchObject({ sequence: { total: 2, attempted: 1, completed: interruption === "native-partial" ? 0 : 1, steps: [{ action: "type_text" }] } });
   expect(f.inputs()).toHaveLength(1); expect(f.inputs()[0][1]).toMatchObject({ text: "first prefix" });
+  const captured = f.captures().length;
   await expect(f.resources.perform(view.observation, cwd, command, "insert")).rejects.toThrow(/expired/i);
-  expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(1);
+  expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
 test("an address delivery preference does not block semantic actions", async () => {

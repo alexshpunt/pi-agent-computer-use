@@ -11,6 +11,8 @@ export interface StateDiff {
   page?: { url?: [string, string]; title?: [string, string]; tab?: [string | null, string | null] };
   /** Why the diff may be incomplete, such as a partial native walk. */
   note?: string;
+  /** How long after the action the native walks kept looking for a change before reporting none. */
+  waited_ms?: number;
 }
 const DIFF_LIMIT = 30;
 const bounded = (items: string[]) => items.slice(0, DIFF_LIMIT);
@@ -53,25 +55,73 @@ export function diffDom(before: WebDom, after: WebDom): StateDiff {
 }
 
 const describe = (element: UiElement) => `${element.role ?? "?"} ${JSON.stringify(element.name ?? "")}`;
-const state = (element: UiElement) => `value=${JSON.stringify(element.value && element.value.length > 120 ? element.value.slice(0, 120) + "…" : element.value)} enabled=${element.enabled} selected=${element.selected}`;
+/** The compared properties of an element, in a fixed order; values are display strings. */
+const properties = (element: UiElement): [string, string][] => [
+  ["value", JSON.stringify(element.value && element.value.length > 120 ? element.value.slice(0, 120) + "…" : element.value)],
+  ["enabled", String(element.enabled)], ["selected", String(element.selected)],
+  ...(element.checked !== undefined ? [["checked", element.checked] as [string, string]] : []),
+  ...(element.expanded !== undefined ? [["expanded", String(element.expanded)] as [string, string]] : []),
+];
+const state = (element: UiElement) => properties(element).map(([key, value]) => `${key}=${value}`).join(" ");
+/** Only the properties that differ, so a changed row reads `value="" → "Ada"`, not two full property lists. */
+function stateChange(before: UiElement, after: UiElement): string {
+  const old = new Map(properties(before)), next = new Map(properties(after));
+  return [...new Set([...old.keys(), ...next.keys()])].filter(key => old.get(key) !== next.get(key))
+    .map(key => `${key}=${old.get(key) ?? "?"} → ${next.get(key) ?? "?"}`).join(" ");
+}
+
+/**
+ * Where an element sits, independent of its name: its AutomationId when it has a stable one, otherwise its role,
+ * its parent's role and name and its position among same-role siblings. A button renamed from "Count 0" to
+ * "Count 1" keeps its place, so it is one changed element, not a removal plus an addition.
+ */
+function places(elements: readonly UiElement[]): Map<UiElement, string> {
+  const byHint = new Map(elements.map(element => [element.hint, element]));
+  const ordinals = new Map<string, number>(), out = new Map<UiElement, string>();
+  for (const element of elements) {
+    const parent = element.parent_hint ? byHint.get(element.parent_hint) : undefined;
+    const sibling = `${element.role ?? ""}\u0000${parent ? `${parent.role ?? ""}\u0000${parent.name ?? ""}` : ""}`;
+    const ordinal = ordinals.get(sibling) ?? 0;
+    ordinals.set(sibling, ordinal + 1);
+    out.set(element, element.automation_id && !/^\d+$/.test(element.automation_id) ? `id\u0000${element.role}\u0000${element.automation_id}` : `${sibling}\u0000${ordinal}`);
+  }
+  return out;
+}
 
 /**
  * Diff two native UI walks. Elements match by role and name in order; a duplicate label pairs with the
- * next unmatched element of the same key. A removal from a partial walk may be truncation, not removal.
+ * next unmatched element of the same key. Unmatched elements that kept their place are renames. A removal
+ * from a partial walk may be truncation, not removal.
  */
 export function diffUi(before: UiResource, after: UiResource): StateDiff {
   const key = (element: UiElement) => `${element.role ?? ""}\u0000${element.name ?? ""}`;
   const pool = new Map<string, UiElement[]>();
   for (const element of before.elements) pool.set(key(element), [...(pool.get(key(element)) ?? []), element]);
-  const changed: string[] = [], added: string[] = [];
+  const changed: string[] = [], fresh: UiElement[] = [];
   for (const element of after.elements) {
     const previous = pool.get(key(element))?.shift();
-    if (!previous) { added.push(`${element.hint} ${describe(element)} ${state(element)}`); continue; }
-    if (state(previous) !== state(element)) changed.push(`${element.hint} ${describe(element)}: ${state(previous)} → ${state(element)}`);
+    if (!previous) { fresh.push(element); continue; }
+    if (state(previous) !== state(element)) changed.push(`${element.hint} ${describe(element)}: ${stateChange(previous, element)}`);
   }
-  const removed = [...pool.values()].flat().map(element => `${describe(element)} ${state(element)}`);
+  // Pair what is left by place: the same control under a new name.
+  const oldPlaces = places(before.elements), newPlaces = places(after.elements);
+  const gone = new Map<string, UiElement>();
+  for (const element of [...pool.values()].flat()) gone.set(oldPlaces.get(element)!, element);
+  const added: string[] = [];
+  for (const element of fresh) {
+    const previous = gone.get(newPlaces.get(element)!);
+    if (!previous) { added.push(`${element.hint} ${describe(element)} ${state(element)}`); continue; }
+    gone.delete(newPlaces.get(element)!);
+    const rest = stateChange(previous, element);
+    changed.push(`${element.hint} ${element.role ?? "?"} ${JSON.stringify(previous.name ?? "")} → ${JSON.stringify(element.name ?? "")}${rest ? ` ${rest}` : ""}`);
+  }
+  const removed = [...gone.values()].map(element => `${describe(element)} ${state(element)}`);
   const partial = before.complete !== true || after.complete !== true || before.truncated || after.truncated;
   return { kind: "ui", changed: bounded(changed), added: bounded(added), removed: bounded(removed),
     counts: { changed: changed.length, added: added.length, removed: removed.length },
     ...(partial ? { note: "A native UI walk was partial; listed additions and removals may reflect walk limits, not the app." } : {}) };
 }
+
+/** Whether a diff found any difference at all. */
+export const diffIsEmpty = (diff: StateDiff): boolean =>
+  diff.counts.changed + diff.counts.added + diff.counts.removed === 0 && !Object.keys(diff.page ?? {}).length;

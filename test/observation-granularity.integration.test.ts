@@ -60,8 +60,11 @@ text("Three mode contracts passed; exactly two native clicks.");
     }
     for (const call of reads.filter(call => call.computer.granularity === "ui")) expect(call.computer.agent_image).toBeUndefined();
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
-    const native = calls.filter(c => c.name === "get_window_state");
+    // The click on a hint is followed by the successor's UI-only walks (LPT-914); the six reads come first.
+    const all = calls.filter(c => c.name === "get_window_state"), lastClick = calls.findLastIndex(c => c.name === "click");
+    const native = all.filter(c => calls.indexOf(c) < lastClick);
     expect(native).toHaveLength(6);
+    expect(all.slice(6).every(c => c.arguments.include_screenshot === false)).toBe(true);
     for (const index of [1, 2, 3]) expect(native[index].arguments.include_accessibility_tree).toBe(false);
     for (const index of [4, 5]) expect(native[index].arguments.include_screenshot).toBe(false);
     expect(calls.filter(c => c.name === "click").map(c => c.arguments.element_token ?? [c.arguments.x,c.arguments.y]))

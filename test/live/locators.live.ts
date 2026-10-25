@@ -45,8 +45,11 @@ test("a WinForms window is driven by Playwright locators, one call per step", as
   };
 
   // Auto-wait: Later is disabled for 1.5 s; the click waits for it instead of failing.
-  await expectStatus({ action: "click", target: `getByRole("button", { name: "Later" })`, timeout_ms: 5000 }, "delivered");
-  await expectStatus({ action: "click", target: `getByRole("button", { name: "Count 0" })` }, "delivered");
+  // Later has no click handler, so its change list says nothing changed (LPT-914).
+  await expectStatus({ action: "click", target: `getByRole("button", { name: "Later" })`, timeout_ms: 5000 }, "delivered", /Nothing changed in the UI within \d+ ms after the action/);
+  // Every action reports what it changed: the renamed button and the status text, without a Read.
+  await expectStatus({ action: "click", target: `getByRole("button", { name: "Count 0" })` }, "delivered",
+    /~ \S+ Button "Count 0" → "Count 1"[\s\S]*~ \S+ Text "idle" → "clicked 1"|~ \S+ Text "idle" → "clicked 1"[\s\S]*~ \S+ Button "Count 0" → "Count 1"/);
   await expectStatus({ action: "verify", conditions: [{ target: `getByRole("button", { name: "Count 1", exact: true })`, is: "exists" }] }, "observed");
   await expectStatus({ action: "fill", target: `getByLabel("Name")`, text: "Ada Lovelace" }, "delivered");
   await expectStatus({ action: "check", target: `getByRole("checkbox", { name: "Agree" })` }, "delivered");

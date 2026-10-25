@@ -128,7 +128,9 @@ export interface ComputerResult {
     element_text?: { hint: string; role: string | null; name: string | null; text: string; cut: boolean };
     /** Per-step outcome of a mixed batch; the batch stops at the first step that is not delivered or satisfied. */
     batch?: { total: number; completed: number; stop_reason: string; elapsed_ms: number;
-      steps: { index: number; action: string; outcome: string; reason?: string; verdict?: string }[] };
+      steps: { index: number; action: string; outcome: string; reason?: string; verdict?: string;
+        /** What this step's action changed, when the next walk or page snapshot saw it; the batch's successor covers the last native step. */
+        changes?: { changed: number; added: number; removed: number } }[] };
   };
   isError?: boolean;
 }

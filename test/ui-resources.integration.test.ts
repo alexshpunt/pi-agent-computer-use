@@ -66,7 +66,10 @@ text("UI resource guards passed: 200 collected, 199 search matches, one native c
     const delivered = nested.filter(call => call.name === "computer_insert" && call.computer.status === "delivered");
     expect(delivered.map(call => call.computer.state.path)).toEqual(["ax"]);
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
-    expect(calls.filter(c => c.name === "get_window_state")).toHaveLength(5);
+    // Five reads before the click, then the successor's UI-only walk after it (LPT-914).
+    const walks = calls.filter(c => c.name === "get_window_state"), click = calls.findIndex(c => c.name === "click");
+    expect(walks.filter(c => calls.indexOf(c) < click)).toHaveLength(5);
+    expect(walks.filter(c => calls.indexOf(c) > click).every(c => c.arguments.include_screenshot === false)).toBe(true);
     expect(calls.filter(c => c.name === "click").map(c => c.arguments.element_token)).toEqual(["s5:1"]);
     expect(calls.some(c => ["bring_to_front", "scroll", "zoom"].includes(c.name))).toBe(false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
