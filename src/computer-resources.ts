@@ -56,7 +56,9 @@ const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "do
  * by default; `explicit` means the agent asked for it (`successor: true` or `expect`), which also overrides the
  * defaults that skip it. `frame` holds the window's pixels before the action, when the input observation had them.
  */
-interface FollowUp { expect?: WaitSpec; successor: boolean; explicit: boolean; preexisting?: boolean; frame?: WindowFrame }
+interface FollowUp { expect?: WaitSpec; successor: boolean; explicit: boolean; preexisting?: boolean; frame?: WindowFrame;
+  /** The window's session, resolved before the action: a failed action can make the session forget the window. */
+  session?: ComputerSession }
 /** How long a native successor keeps looking for a change before reporting that nothing changed. */
 const SETTLE_MS = 300;
 /**
@@ -844,8 +846,9 @@ export class ComputerResources {
   /** Keep the input observation's own pixels as the baseline of the pixel comparison; they must be taken before the action. */
   private async withFrame(follow: FollowUp, window: string, observation: string | undefined, cwd: string): Promise<FollowUp> {
     if (!follow.successor) return follow;
-    const frame = (await this.sessionFor(cwd, { window_ref: window })).windowFrame(window);
-    return frame && frame.observation_id === observation ? { ...follow, frame } : follow;
+    const session = await this.sessionFor(cwd, { window_ref: window });
+    const frame = session.windowFrame(window);
+    return { ...follow, session, ...(frame && frame.observation_id === observation ? { frame } : {}) };
   }
 
   /** Validate an action's optional `expect` postcondition and `successor` request before anything is dispatched. */
@@ -871,7 +874,9 @@ export class ComputerResources {
     // A default successor stays quiet when there is nothing to compare: a refusal sent nothing, and a browser
     // action that returned no page snapshot would otherwise be compared with a native walk of the browser window.
     if (!follow.explicit && (status === "refused" || (before.result.details.dom && !result.details.dom))) return result;
-    const session = await this.sessionFor(cwd, { window_ref: window });
+    // A cancelled call returns its receipt without capturing again.
+    if (signal?.aborted) return result;
+    const session = follow.session ?? await this.sessionFor(cwd, { window_ref: window });
     const preexisting = follow.preexisting === true;
     let successor: ComputerResult | undefined, settled: StateDiff | undefined, crops: ComputerResult["content"] = [];
     let postcondition: ComputerResult["details"]["postcondition"];
