@@ -12,11 +12,14 @@ test("a changes Read compares the window's UI with its previous observation", as
     frame: { x: 100 + index * 50, y: 100, w: 40, h: 20 }, screenshot_frame: { x: 20 + index * 50, y: 10, w: 40, h: 20 } });
   const driver: Driver = {
     identity: vi.fn(async () => "life"), close: vi.fn(async () => {}),
-    call: vi.fn<Driver["call"]>(async name => {
+    call: vi.fn<Driver["call"]>(async (name, args) => {
       if (name === "list_windows") return { content: [], structuredContent: { windows: [{ pid: 42, window_id: 91 }] } };
       if (name === "get_window_state") {
         serial++;
+        // This window cannot be captured, like a minimized one: a capture with pixels reports why.
+        const pixels = (args as { include_screenshot?: boolean }).include_screenshot !== false;
         return { content: [], structuredContent: { pid: 42, window_id: 91, snapshot_id: `s${serial}`, window_bounds: { x: 80, y: 90, width: 500, height: 320 },
+          ...(pixels ? { screenshot_error: "The window has no visible surface." } : {}),
           elements_complete: true, elements: [element(0, "Button", "Save"), element(1, "Edit", "Text editor", text), element(2, "Button", "Close")] } };
       }
       throw Error(`Unexpected native call ${name}`);
@@ -28,7 +31,8 @@ test("a changes Read compares the window's UI with its previous observation", as
   const window = requireComputerAddress(computerSource("window", ref));
 
   const first = await resources.read(window, cwd, ["changes"]);
-  expect(first!.details.changes).toEqual({ reason: expect.stringMatching(/full UI/) });
+  expect(first!.details.changes).toEqual({ reason: expect.stringMatching(/full observation/) });
+  // This window gives no screenshot, so changes falls back to its UI alone.
   expect(first!.details.captured).toEqual({ image: false, ui: true });
 
   const same = await resources.read(window, cwd, ["changes"]);
@@ -43,8 +47,9 @@ test("a changes Read compares the window's UI with its previous observation", as
   expect(diff.changed[0]).toBe(`${editor.hint} Edit "Text editor": value="" → "hello"`);
   expect(resources.grantsAuthority(requireComputerAddress(computerSource("observation", typed!.details.observation_id!)))).toBe(true);
 
-  for (const views of [["changes", "image"], ["changes", "full"], ["changes", "ocr"]])
-    await expect(resources.read(window, cwd, views)).rejects.toThrow();
+  await expect(resources.read(window, cwd, ["changes", "ocr"])).rejects.toThrow();
+  // Pixels asked for explicitly are not replaced by a UI-only walk.
+  expect((await resources.read(window, cwd, ["changes", "full"]))!.details.status).toBe("refused");
   await expect(resources.read(requireComputerAddress(computerSource("observation", typed!.details.observation_id!)), cwd, ["changes"]))
     .rejects.toThrow(/window address/);
 });

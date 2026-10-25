@@ -17,7 +17,8 @@ test("real Pi Codemode validates a whole sequence, forwards complete steps and s
 const opened = await openApp("Notepad");
 if (opened.outcome !== "observed" || !opened.window || !opened.observation) throw Error("Open returned no window and observation");
 if (!(await windows()).includes(opened.window)) throw Error("Discovery lost the opened window");
-const act = async (view, sequence) => insert(view, {action:"sequence",sequence});
+// These checks keep one observation for pixel input, so they turn the default successor off.
+const act = async (view, sequence) => insert(view, {action:"sequence",sequence,successor:false});
 const invalid = await act(opened.observation, [{action:"key",key:"a"},{action:"key",key:"a",duration_ms:100}]);
 if (invalid.outcome !== "refused" || invalid.effect !== "not-applied") throw Error("Invalid tail admitted");
 const current = observation(await tools.computer_read({path:opened.window}));

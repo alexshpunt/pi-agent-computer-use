@@ -74,6 +74,12 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       };
       const journal = async () => (await readFile(log!, "utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
       const captures = async () => (await journal()).filter(row => row.name === "get_window_state");
+      // Whether a call captured the window before its first native input. The action's successor captures it after the
+      // input (LPT-914, LPT-915); a capture before it would silently refresh the input's authority.
+      const capturedBeforeInput = async (from: number) => {
+        const rows = (await journal()).slice(from), input = rows.findIndex(row => row.name === "scroll_at");
+        return rows.slice(0, input < 0 ? rows.length : input).some(row => row.name === "get_window_state");
+      };
       const control = async (operation: string) => {
         if (operation === "safe") mode = "safe";
         else if (operation === "capability_off") capability = false;
@@ -85,9 +91,9 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         views: [granularity, ...(granularity === "ui" ? [] : ['capture:{"hints":false}'])] });
       const command = (extra: Record<string, unknown> = {}) => ({ action: "scroll", x: 100, y: 80, delta_y: 2, unit: "wheel_detents", ...extra });
       const act = async (observation: string, command: Record<string, unknown>) => {
-        const before = (await captures()).length;
+        const before = (await journal()).length;
         const result = await call("insert", { path: observation, text: JSON.stringify(command) });
-        assert((await captures()).length === before, "Insert resolution silently refreshed native capture authority");
+        assert(!await capturedBeforeInput(before), "Insert resolution silently refreshed native capture authority");
         return result;
       };
       const rejected = async (observation: string, command: Record<string, unknown>) => {

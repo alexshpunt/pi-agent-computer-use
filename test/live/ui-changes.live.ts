@@ -46,5 +46,5 @@ test("a changes re-read lists only the changed rows and their hints ground input
   // A changes Read after an action compares with that action's successor, so a repeated click shows no change.
   const after = await live.read(window, ["changes"]);
   expect(after.details.changes!.since).toBe(again.details.successor!.observation_id);
-  expect(presentComputerResult(after)).toMatch(/Nothing changed in the UI since that observation\./);
+  expect(presentComputerResult(after)).toMatch(/Nothing changed in the UI or the window's pixels since that observation\./);
 });

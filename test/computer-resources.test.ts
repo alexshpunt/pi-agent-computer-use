@@ -136,8 +136,10 @@ test("a new overview retires the prior resource instead of rebinding its hint", 
   expect(f.inputs()).toHaveLength(0);
   expect((await f.resources.perform(address(`${latest.source}?hint=${encodeURIComponent(latest.hint!)}`), cwd, "current", "write")).details.status).toBe("delivered");
   expect(f.inputs()[0][1]).toMatchObject({ element_token: "snapshot-2:0", text: "current" });
-  // Two overviews, then only the successor's UI walks after the input.
-  expect(f.captures().slice(2).every(([, args]) => (args as { include_screenshot?: boolean }).include_screenshot === false)).toBe(true);
+  // Two overviews, then the input, then the successor's captures.
+  const order = f.native().map(([name]) => name).filter(name => name !== "list_windows" && name !== "get_window_control_state");
+  expect(order.slice(0, 3)).toEqual(["get_window_state", "get_window_state", f.inputs()[0][0]]);
+  expect(order.slice(3).every(name => name === "get_window_state")).toBe(true);
 });
 
 test.each(["safe", "closed", "reused"] as const)("%s targets refuse cached reads and input without another capture", async change => {
@@ -246,11 +248,12 @@ test("a display overview accepts a size for that Read only", async () => {
   await expect(f.resources.read(display, cwd, ['capture:{"max_elements":5}'])).rejects.toThrow(/accepts only capture/);
 });
 
-test("pixel-only input keeps the observation until the window size changes; UI hints and other input spend it", async () => {
+test("pixel-only input without a successor keeps the observation until the window size changes; UI hints and other input spend it", async () => {
   const f = await fixture();
   (f.driver as Driver & { windowManagement: boolean }).windowManagement = true;
   const view = await f.read();
-  const click = (x: number) => f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x, y: 40 }), "insert");
+  // A default successor would replace the observation; without one, pixel-only input keeps it for more pixel input.
+  const click = (x: number) => f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x, y: 40, successor: false }), "insert");
   for (const x of [10, 20, 30]) expect((await click(x)).details.status).toBe("delivered");
   expect(f.captures()).toHaveLength(1);
   // The native capture is single-use; kept observations send window-local pixels without it.
@@ -261,9 +264,9 @@ test("pixel-only input keeps the observation until the window size changes; UI h
   expect(hinted.content[0]).toMatchObject({ text: expect.stringContaining("UI hints of this observation expired") });
   const again = await f.read();
   f.setBounds({ x: 300, y: 90, width: 500, height: 320 });
-  expect((await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5 }), "insert")).details.status).toBe("delivered");
+  expect((await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5, successor: false }), "insert")).details.status).toBe("delivered");
   f.setBounds({ x: 300, y: 90, width: 640, height: 320 });
-  const resized = await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5 }), "insert");
+  const resized = await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5, successor: false }), "insert");
   expect(resized.details.status).toBe("refused");
   expect(resized.content[0]).toMatchObject({ text: expect.stringContaining("resized from 500x320 to 640x320") });
   await expect(f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5 }), "insert")).rejects.toThrow(/expired/i);

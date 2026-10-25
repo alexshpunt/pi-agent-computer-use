@@ -17,7 +17,8 @@ test("real Pi Codemode refines full resources locally and dispatches only a curr
 const listed = await windows();
 const [win, otherWin] = [...listed.matchAll(/computer:window\\/[\\w-]+/g)].map(match => match[0]);
 const read = views => tools.computer_read({path:win,...(views?{views}:{})});
-const click = async (view,hint) => (await insert(observation(view),{action:"click",hint})).outcome;
+// Only local refinement is under test here: clicks skip the default successor, so every native capture is a read.
+const click = async (view,hint) => (await insert(observation(view),{action:"click",hint,successor:false})).outcome;
 const first = await read(['capture:{"max_elements":200,"max_depth":15,"guides":{"grid":true,"action":true}}']);
 if (!/UI: collected=200, complete=false/.test(body(first))) throw Error("Lost full resource");
 const candidates = await tools.computer_search({path:observation(first),query:"Save",limit:2});
@@ -35,9 +36,9 @@ let latest = await read(['capture:{"max_elements":3,"hints":false}']);
 if ((await click(latest, uiHint)) !== "refused") throw Error("Old alias rebound");
 latest = await read(['capture:{"max_elements":3,"hints":false}']);
 const target = observation(latest);
-const delivered = await insert(target,{action:"click",hint:hints(latest)[1]});
+const delivered = await insert(target,{action:"click",hint:hints(latest)[1],successor:false});
 if (delivered.outcome !== "delivered") throw Error("Current hint not dispatched");
-if ((await insert(target,{action:"click",hint:hints(latest)[1]})).outcome !== "refused") throw Error("Consumed hint replayed");
+if ((await insert(target,{action:"click",hint:hints(latest)[1],successor:false})).outcome !== "refused") throw Error("Consumed hint replayed");
 text("UI resource guards passed: 200 collected, 199 search matches, one native click");`;
   try {
     const result = await new PiIntegrationTest({
@@ -66,10 +67,7 @@ text("UI resource guards passed: 200 collected, 199 search matches, one native c
     const delivered = nested.filter(call => call.name === "computer_insert" && call.computer.status === "delivered");
     expect(delivered.map(call => call.computer.state.path)).toEqual(["ax"]);
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
-    // Five reads before the click, then the successor's UI-only walk after it (LPT-914).
-    const walks = calls.filter(c => c.name === "get_window_state"), click = calls.findIndex(c => c.name === "click");
-    expect(walks.filter(c => calls.indexOf(c) < click)).toHaveLength(5);
-    expect(walks.filter(c => calls.indexOf(c) > click).every(c => c.arguments.include_screenshot === false)).toBe(true);
+    expect(calls.filter(c => c.name === "get_window_state")).toHaveLength(5);
     expect(calls.filter(c => c.name === "click").map(c => c.arguments.element_token)).toEqual(["s5:1"]);
     expect(calls.some(c => ["bring_to_front", "scroll", "zoom"].includes(c.name))).toBe(false);
   } finally { await rm(cwd, { recursive: true, force: true }); }

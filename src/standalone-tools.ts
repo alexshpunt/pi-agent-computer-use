@@ -97,7 +97,7 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
         const action = await performComputer(resources, tool, String(input.path), input, ctx.cwd, signal);
         // The receipt is plain data with a few untyped native fields; a JSON copy gives scripts exactly that.
         const receipt: JsonValue = JSON.parse(JSON.stringify(action.script));
-        return { content: [{ type: "text", text: action.summary }], details: { results: [], metadata: { semanticAction: action.data } },
+        return { content: [{ type: "text", text: action.summary }, ...("images" in action ? action.images ?? [] : [])], details: { results: [], metadata: { semanticAction: action.data } },
           structuredContent: receipt, ...(action.data.ok ? {} : { isError: true }) };
       },
     });

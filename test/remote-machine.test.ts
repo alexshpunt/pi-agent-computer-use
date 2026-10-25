@@ -39,12 +39,14 @@ test("machines come only from validated configuration", async () => {
 function backend(pid: number) {
   const driver: Driver = {
     identity: vi.fn(async () => `life-${pid}`), close: vi.fn(async () => {}), selectedDisplays: true,
-    call: vi.fn<Driver["call"]>(async (name) => {
+    call: vi.fn<Driver["call"]>(async (name, args) => {
       if (name === "list_windows") return { content: [], structuredContent: { windows: [{ pid, window_id: 7, title: `window ${pid}` }] } };
       if (name === "list_displays") return { content: [], structuredContent: { platform: "windows", topology_id: `t${pid}`, displays: [{ display_id: `D${pid}`, primary: true,
         monitor_handle: `0x${pid}`, monitor_device_paths: [`\\\\?\\DISPLAY#${pid}`], bounds: { x: 0, y: 0, width: 1920, height: 1080 },
         work_area: { x: 0, y: 0, width: 1920, height: 1040 }, scale_factor: 1, dpi: 96 }] } };
+      // No pixels here: a capture that asks for them reports why, and the successor falls back to the UI.
       if (name === "get_window_state") return { content: [], structuredContent: { pid, window_id: 7, snapshot_id: "s", elements_complete: true, elements: [],
+        ...((args as { include_screenshot?: boolean }).include_screenshot !== false ? { screenshot_error: "No surface." } : {}),
         window_bounds: { x: 0, y: 0, width: 100, height: 80 } } };
       if (name === "type_text") return { content: [], structuredContent: { effect: "confirmed" } };
       if (name === "list_apps") return { content: [], structuredContent: { apps: [{ name: `App ${pid}`, launch_path: `C:\\app${pid}.exe` }] } };
@@ -84,7 +86,8 @@ test("a machine starts on first use; its windows, apps and displays come only fr
   const apps = await f.resources.search(address(`${f.machineSource}/apps`), cwd, "App");
   const app = (apps.details.state!.apps as { app_ref: string }[])[0].app_ref;
   await f.resources.perform(address(computerSource("app", app)), cwd, JSON.stringify({ action: "open" }), "insert");
-  expect(f.names(f.remoteDriver)).toEqual(["list_windows", "get_window_state", "type_text", "list_displays", "list_apps", "list_apps", "list_windows", "launch_app"]);
+  // The Write's successor walks the window again; repeated walks are collapsed here.
+  expect(f.names(f.remoteDriver).filter((name, i, all) => name !== "get_window_state" || all[i - 1] !== "get_window_state")).toEqual(["list_windows", "get_window_state", "type_text", "get_window_state", "list_displays", "list_apps", "list_apps", "list_windows", "launch_app"]);
   expect(f.names(f.hostDriver)).toEqual([]);
   // Every use after the first reuses the started machine.
   expect(f.start).toHaveBeenCalledOnce();

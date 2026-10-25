@@ -28,19 +28,20 @@ test("a 300-stroke program runs as one call", async () => {
   expect(done.details.state).toMatchObject({ sequence: { total: 300, completed: 300 } });
 });
 
-test("one observation serves 20 calls while the window keeps its size, then expires on resize", async () => {
+test("without a successor, one observation serves 20 calls while the window keeps its size, then expires on resize", async () => {
   const view = await live.read(window, ["image"]);
   const observation = `computer:observation/${view.details.observation_id}?delivery=foreground`;
   const started = Date.now();
   for (let i = 0; i < 20; i++) {
-    const done = await live.insert(observation, { action: "drag", from_x: 300 + i * 20, from_y: 600, via: [{ x: 305 + i * 20, y: 620 }], to_x: 310 + i * 20, to_y: 640, duration_ms: 40 });
+    // A default successor would replace the observation after each call; without one, pixel input keeps it.
+    const done = await live.insert(observation, { action: "drag", from_x: 300 + i * 20, from_y: 600, via: [{ x: 305 + i * 20, y: 620 }], to_x: 310 + i * 20, to_y: 640, duration_ms: 40, successor: false });
     expect(done.details.status, text(done)).toBe("delivered");
   }
   console.log(`20 calls on one observation: ${Date.now() - started} ms`);
   const overview = await live.read(window, ["image"]);
-  expect((await live.insert(`computer:observation/${overview.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 })).details.status).toBe("delivered");
+  expect((await live.insert(`computer:observation/${overview.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700, successor: false })).details.status).toBe("delivered");
   await live.powershell(`Add-Type 'using System;using System.Runtime.InteropServices;public static class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);}'; $h=(Get-Process -Id ${pid}).MainWindowHandle; [W]::MoveWindow($h,100,100,1300,900,$true) | Out-Null`);
-  const expired = await live.insert(`computer:observation/${overview.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 });
+  const expired = await live.insert(`computer:observation/${overview.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700, successor: false });
   expect(expired.details.status).toBe("refused");
   expect(text(expired)).toMatch(/resized from/);
 });
