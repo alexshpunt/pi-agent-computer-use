@@ -21,7 +21,12 @@ $c = New-Object Windows.Forms.CheckBox; $c.Text = 'Agree'; $c.Left = 10; $c.Top 
 $l = New-Object Windows.Forms.ListBox; $l.Left = 10; $l.Top = 120; $l.Height = 70; [void]$l.Items.AddRange(@('alpha','beta','gamma')); $l.AccessibleName = 'Pick'
 $tm = New-Object Windows.Forms.Timer; $tm.Interval = 1500; $tm.Add_Tick({ $d.Enabled = $true; $tm.Stop() })
 $f.Add_Shown({ $tm.Start() })
-$f.Controls.AddRange(@($b, $d, $t, $c, $l)); [void]$f.ShowDialog()`;
+$s = New-Object Windows.Forms.Label; $s.Left = 10; $s.Top = 200; $s.Width = 300; $s.Text = 'idle'
+$b.Add_Click({ $s.Text = "clicked $script:n" })
+$m = New-Object Windows.Forms.MenuStrip; $file = New-Object Windows.Forms.ToolStripMenuItem('File'); $reset = New-Object Windows.Forms.ToolStripMenuItem('Reset')
+$reset.Add_Click({ $script:n = 0; $b.Text = 'Count 0'; $s.Text = 'reset' }); [void]$file.DropDownItems.Add($reset); [void]$m.Items.Add($file); $f.MainMenuStrip = $m
+foreach ($x in @($b, $d, $t, $c, $l, $s)) { $x.Top += 30 }
+$f.Controls.AddRange(@($b, $d, $t, $c, $l, $s, $m)); [void]$f.ShowDialog()`;
 
 test("a WinForms window is driven by Playwright locators, one call per step", async () => {
   const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH,
@@ -50,13 +55,21 @@ test("a WinForms window is driven by Playwright locators, one call per step", as
   await expectStatus({ action: "verify", conditions: [
     { target: `getByRole("textbox", { name: "Name" })`, value: "Ada Lovelace" },
     { target: `getByRole("checkbox", { name: "Agree" })`, is: "checked" },
-    { aria: `- textbox "Name": Ada Lovelace\n- checkbox "Agree" [checked]\n- listitem "beta" [selected]` },
+    { aria: `- textbox "Name": Ada Lovelace\n- checkbox "Agree" [checked]\n- list:\n  - listitem "beta" [selected]` },
   ] }, "observed", /Verification satisfied/);
-  // A count is proven only by a complete walk; a runtime that walks just actionable elements leaves it unknown.
-  const counted = await step({ action: "verify", conditions: [{ target: `getByRole("listitem")`, count: 3 }] });
-  const [count] = counted.details.verification!.conditions;
-  expect(count.observed, presentComputerResult(counted)).toBe("3 match(es)");
-  expect(counted.details.ui!.complete ? ["satisfied"] : ["unknown"]).toContain(count.verdict);
+  // The bundled runtime walks the whole structural tree: static text is there, and a complete walk proves counts and absence.
+  await expectStatus({ action: "verify", conditions: [
+    { target: `getByText("clicked 1")`, is: "visible" },
+    { target: `getByRole("listitem")`, count: 3 },
+    { target: `getByRole("button", { name: "Nope" })`, is: "absent" },
+    { aria: `- list "Pick":\n  - listitem "alpha"\n  - listitem "beta" [selected]\n  - listitem "gamma"\n- text: clicked 1` },
+  ] }, "observed", /Verification satisfied/);
+  // A mismatch in a complete walk is proven, and the receipt shows the received tree.
+  await expectStatus({ action: "verify", conditions: [{ aria: `- button "Nope"` }] }, "observed", /Verification unsatisfied[\s\S]*Received aria snapshot:[\s\S]*- text: clicked 1/);
+  // A menu: open File, then pick Reset from its drop-down, both by locator.
+  await expectStatus({ action: "click", target: `getByRole("menuitem", { name: "File" })` }, "delivered");
+  await expectStatus({ action: "click", target: `getByRole("menuitem", { name: "Reset" })` }, "delivered");
+  await expectStatus({ action: "wait_for", conditions: [{ target: `getByText("reset", { exact: true })`, is: "visible" }, { target: `getByRole("button", { name: "Count 0" })`, is: "exists" }], timeout_ms: 3000 }, "observed", /Verification satisfied/);
   // Strict mode refuses an ambiguous target and lists each match's locator; nothing is sent.
   await expectStatus({ action: "click", target: `getByRole("button")` }, "refused", /Strict mode: getByRole\("button"\) matches \d+ elements/);
   await expectStatus({ action: "click", target: `getByRole("button", { name: "Nope" })`, timeout_ms: 800 }, "refused", /Timed out after 800 ms/);
@@ -65,7 +78,9 @@ test("a WinForms window is driven by Playwright locators, one call per step", as
   const aria = await live.read(window, ["aria"]);
   const shown = presentComputerResult(aria);
   console.log(shown, "\n", timings.join("\n"));
-  expect(shown).toMatch(/- button "Count 1" \[ref=[^\]]+\]/);
+  expect(shown).toMatch(/- button "Count 0" \[ref=[^\]]+\]/);
+  expect(shown).toMatch(/- menuitem "File" \[ref=[^\]]+\]/);
+  expect(shown).toMatch(/- text: reset/);
   expect(shown).toMatch(/- checkbox "Agree" \[checked\] \[ref=/);
   expect(shown).toMatch(/- textbox "Name" \[ref=[^\]]+\]: Ada Lovelace/);
 });

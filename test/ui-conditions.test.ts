@@ -4,7 +4,8 @@ import { combine, evaluateNative, validateWait } from "../src/ui-conditions.ts";
 import type { UiElement, UiResource } from "../src/ui-resources.ts";
 
 beforeAll(() => { parseLocator("getByRole('button')"); }, 60_000);
-const element = (fields: Partial<UiElement>): UiElement => ({ hint: "1:a", element_token: "t", index: 0, parent_hint: null, role: null, name: null, value: null,
+let serial = 0;
+const element = (fields: Partial<UiElement>): UiElement => ({ hint: `1:${serial++}`, element_token: "t", index: 0, parent_hint: null, role: null, name: null, value: null,
   text_truncated: false, enabled: true, selected: null, actions: [], depth: 0, bounds: {}, hint_display: "off", ...fields });
 const ui = (elements: UiElement[], complete: boolean | null): UiResource => ({ window_ref: "w", observation_id: "o", snapshot_id: null, captured_at: "",
   complete, truncated: false, truncation_reason: null, native_total: elements.length, collected: elements.length, matches: elements.length, projection_truncated: false, elements });
@@ -18,7 +19,7 @@ test("native absence is decided only by a complete walk; a missing element in a 
 
 test("native checks compare reported properties and keep ambiguity and missing properties unknown", () => {
   const tree = ui([element({ role: "Button", name: "Save", enabled: false }), element({ role: "Text", name: "Status", value: "saved Ada" }),
-    element({ role: "Button", name: "A" }), element({ role: "Button", name: "B" }), element({ role: "Edit", name: "Long", value: "x", text_truncated: true })], true);
+    element({ role: "Button", name: "A" }), element({ role: "Button", name: "B" }), element({ role: "Text", name: "Long", value: "x", text_truncated: true })], true);
   const check = (condition: object) => evaluateNative(tree, validateWait({ action: "verify", conditions: [condition] }, false).conditions)[0];
   expect(check({ target: { role: "Button", name: "Save" }, is: "disabled" }).verdict).toBe("satisfied");
   expect(check({ target: { role: "Button", name: "Save" }, is: "enabled" }).verdict).toBe("unsatisfied");

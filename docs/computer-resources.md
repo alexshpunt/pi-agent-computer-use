@@ -231,7 +231,7 @@ The `regions` view needs Cua's signed perception extension on the machine whose 
   "lab": {
     "ssh": "lab-wsl",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-desktop-13dbacca/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-0f170a4b/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
@@ -290,15 +290,15 @@ Insert an action with a `target` into a native **window** address to act without
 | Locator | Native meaning |
 | --- | --- |
 | `getByRole(role, { name, exact, checked, disabled, selected, expanded, pressed })` | ARIA role mapped from the UIA control type (`Button` → `button`, `Edit` → `textbox`, `ListItem` → `listitem` and `option`, `Text` → `text`, …); the UIA role name also matches. Names match a case-insensitive substring unless `exact` or a regex |
-| `getByText`, `getByLabel`, `getByTitle` | Name or value text; the name of labelled controls (fields, lists, checkboxes); the UIA help text |
+| `getByText`, `getByLabel`, `getByTitle` | Text content: the smallest element whose visible text matches (static text, buttons, items, group captions), not the label of a container or field; the name of labelled controls (fields, lists, checkboxes); the UIA help text |
 | `getByTestId(id)` | UIA AutomationId |
 | `.filter({ hasText, hasNotText, has, hasNot, visible })`, `.nth(i)`, `.first()`, `.last()`, `.and()`, `.or()`, chaining | As in Playwright; chaining searches inside the previous matches |
 
 CSS and XPath selectors refuse on native windows. Native actions with a target are `click`, `double_click` (`dblclick`), `right_click`, `hover`, `type_text`, `scroll`, `invoke`, `select`, `set_value` (`fill`), `check` and `uncheck`; add `timeout_ms` (0..60000, default 5000).
 
-Each action takes fresh UI walks until exactly one element matches and is ready: enabled for input, for pointer input at the same place in two walks, and on screen for hover. Several matches refuse at once (strict mode) and list each match with a locator that names it; nothing is sent. A target that never becomes ready refuses at the timeout with the reason. `check` and `uncheck` send nothing when the element is already in that state, and read the state again afterwards. Elements that UIA reports as off screen still match, as in Playwright; `visible`/`hidden` checks treat them as not visible.
+Each action takes fresh UI walks until exactly one element matches and is ready: enabled for input, and for pointer input also on screen and at the same place in two walks. Semantic actions such as `invoke` and `select` also reach elements that are scrolled out or in a closed drop-down. Several matches refuse at once (strict mode) and list each match with a locator that names it; nothing is sent. A target that never becomes ready refuses at the timeout with the reason. `check` and `uncheck` send nothing when the element is already in that state, and read the state again afterwards. Elements that UIA reports as off screen still match, as in Playwright; `visible`/`hidden` checks treat them as not visible.
 
-A walk shows what UIA exposes: a runtime that walks only actionable elements leaves static text and some containers out, and its walks are never complete, so counts and absence stay `unknown` there.
+The bundled runtime lists every element of the UIA control view, including static text, disabled controls and named containers. A walk that visited all of it is complete, and then counts, absence and aria mismatches are proven. A walk cut by `max_elements`, `max_depth` or time, or an app reached only through MSAA, is incomplete, and they stay `unknown`.
 
 For coordinate scroll, Insert `{"action":"scroll","x":<observed-x>,"y":<observed-y>,"delta_x":1,"delta_y":-2,"unit":"wheel_detents"}` into the current observation. Replace the point placeholders with local overview pixels inside the intended scroll surface. Deltas are signed integer wheel detents in -50..50; omit a zero axis, but provide at least one nonzero axis. Positive X means right and positive Y means down. One detent is 120 native wheel units, not a promised distance in content pixels. The `windows-coordinate-scroll` and inherited `windows-window-restore` / `windows-window-management` profiles are explicitly selected and byte-checked; other runtimes refuse this form. Background refuses without motion. After that refusal, Read a fresh window overview before adding `"delivery_mode":"foreground"`. Foreground moves the real pointer and leaves the window active. The native receipt preserves pointer and Y-then-X axis prefixes; inspect an interrupted prefix without replay. Do not combine coordinate scroll with hints, accessibility scroll fields, modifiers, animation or sequences. Existing hint-based accessibility scroll is unchanged.
 
