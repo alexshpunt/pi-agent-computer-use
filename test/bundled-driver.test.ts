@@ -55,8 +55,8 @@ test("bundled startup checks envelopes/schema, forwards interop and display envi
       structuredContent: { code: "unsupported_native_capability", platform: "windows", attempted: false, fallback: false } });
     await backend.close();
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
-    expect(calls.filter(call => call.tool).map(call => call.tool)).toEqual(["list_apps"]);
-    expect(calls.filter(call => call.method).map(call => call.method)).toEqual(["initialize", "notifications/initialized", "tools/list", "tools/call"]);
+    expect(calls.filter(call => call.tool).map(call => call.tool)).toEqual(["set_agent_cursor_motion", "get_agent_cursor_state", "list_apps"]);
+    expect(calls.filter(call => call.method).map(call => call.method)).toEqual(["initialize", "notifications/initialized", "tools/list", "tools/call", "tools/call", "tools/call"]);
     expect(calls[0].args).toEqual(["mcp", "--direct", "--embedded"]);
     expect(calls.at(-1)).toEqual({ eof: true });
   } finally {

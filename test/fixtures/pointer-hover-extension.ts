@@ -2,7 +2,6 @@ import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-c
 import { Type } from "@earendil-works/pi-ai";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
-import { ReactiveAnimationDriver } from "../../src/reactive-animation.ts";
 import { registerFixtureComputerTools } from "./standalone-computer.ts";
 import { ComputerSession, type ComputerMode, type WindowTarget } from "../../src/session.ts";
 
@@ -21,7 +20,7 @@ export default function fixture(pi: ExtensionAPI): void {
   let mode: ComputerMode = "yolo", session: ComputerSession | undefined, driver: FixtureDriver | undefined;
   const getSession = async (cwd: string) => {
     driver ??= new FixtureDriver(await loadComputerConfig(cwd));
-    return session ??= new ComputerSession(new ReactiveAnimationDriver(driver, { glide_duration_ms: 1 }), () => mode);
+    return session ??= new ComputerSession(driver, () => mode);
   };
   registerFixtureComputerTools(pi, getSession, async () => session!.close());
   pi.registerTool({

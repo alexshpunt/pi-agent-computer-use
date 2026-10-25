@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import sharp from "sharp";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { agentCursor } from "./agent-cursor.mjs";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Real MCP boundary with synthetic pixels; this is not native Windows evidence.
@@ -13,6 +14,7 @@ const windows = [];
 const server = new Server({ name: "cua-driver", version: process.argv[3] ?? "0.33.2" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
+  const cursor = agentCursor(name, args); if (cursor) return cursor;
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
   let state; let bytes; let mimeType = "image/png";
   if (name === "fixture_identity") state = { identity: "owned-lifetime" };

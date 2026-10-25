@@ -3,18 +3,15 @@ import path from "node:path";
 import { expect, test } from "vitest";
 import { McpDriver } from "../src/driver.ts";
 import type { BundledRuntime } from "../src/native-runtime.ts";
-import { ReactiveAnimationDriver } from "../src/reactive-animation.ts";
 
 test("the desktop profile inherits every earlier window capability and checks its bytes before starting", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-desktop" });
-  const wrapped = new ReactiveAnimationDriver(backend, { glide_duration_ms: 1 });
   try {
     expect([backend.windowManagement, backend.windowRestore, backend.coordinateScroll, backend.nativePointer,
-      backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions,
-      wrapped.windowManagement]).toEqual(Array(10).fill(true));
+      backend.heldPaths, backend.heldKeys, backend.selectedDisplays, backend.captureBoundDrag, backend.semanticActions]).toEqual(Array(9).fill(true));
     expect(backend.overviewKernel).toBe("bilinear");
     await expect(backend.call("list_windows", {})).rejects.toThrow("artifact hash mismatch");
-  } finally { await wrapped.close(); }
+  } finally { await backend.close(); }
 });
 test("management preserves inherited routes but rejects changed bytes before state acquisition", async () => {
   const backend = new McpDriver({ command: process.execPath, runtime: "windows-window-management" });

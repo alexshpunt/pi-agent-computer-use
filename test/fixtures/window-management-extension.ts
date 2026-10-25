@@ -28,8 +28,8 @@ function semantic(result: Result): Record<string, unknown> {
 export default async function fixture(pi: ExtensionAPI): Promise<void> {
   const source = process.env.PI_WINDOW_MANAGEMENT_PROVIDER_SOURCE ?? path.resolve(import.meta.dirname, "../..");
   const load = (name: string) => import(pathToFileURL(path.join(source, "src", name)).href);
-  const [{ registerComputerProvider }, { loadComputerConfig }, { McpDriver }, { ComputerSession }, { ReactiveAnimationDriver }] =
-    await Promise.all([load("provider.ts"), load("config.ts"), load("driver.ts"), load("session.ts"), load("reactive-animation.ts")]);
+  const [{ registerComputerProvider }, { loadComputerConfig }, { McpDriver }, { ComputerSession }] =
+    await Promise.all([load("provider.ts"), load("config.ts"), load("driver.ts"), load("session.ts")]);
   const Base = McpDriver as typeof import("../../src/driver.ts").McpDriver;
   let management = true, restoration = true, mode: ComputerMode = "yolo";
   let session: ComputerSession | undefined, driver: FixtureDriver | undefined, log: string | undefined;
@@ -52,7 +52,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
   const getSession = async (cwd: string): Promise<ComputerSession> => {
     if (!driver) { const config = await loadComputerConfig(cwd); log = config.args[1]; driver = new FixtureDriver(config); }
     // Match production wrapping; management/restore capabilities and native calls must survive it unchanged.
-    session ??= new ComputerSession(new ReactiveAnimationDriver(driver, { glide_duration_ms: 1 }), () => mode); return session!;
+    session ??= new ComputerSession(driver, () => mode); return session!;
   };
   const close = async (): Promise<ComputerResult> => session ? session.close() : {
     content: [{ type: "text", text: "No synthetic runtime is running." }], details: { status: "closed", mode },

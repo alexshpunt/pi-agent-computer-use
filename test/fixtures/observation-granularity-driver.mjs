@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import sharp from "sharp";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { agentCursor } from "./agent-cursor.mjs";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // This peer deliberately retains omitted native parts. The adapter must not inherit their authority.
@@ -11,6 +12,7 @@ const bounds = { x: 80, y: 90, width: 1000, height: 640 };
 const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
+  const cursor = agentCursor(name, args); if (cursor) return cursor;
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
   let state; let image;
   if (name === "fixture_identity") state = { identity: `owned:${args.window_id}` };
