@@ -1,6 +1,6 @@
 # Overview coordinates and optional guides
 
-Use points in the returned window PNG. CUA applies the native transform once; do not add the desktop origin or divide by DPI yourself. Display pixels, browser CSS pixels and native screen pixels are different spaces. Detail JPEGs are read-only: CUA does not publish their padded crop origin, so no inverse input mapping is claimed.
+Use points in the returned window PNG. CUA applies the native transform once; do not add the desktop origin or divide by DPI yourself. Display pixels, browser CSS pixels and native screen pixels are different spaces. A DPI-unaware app on a scaled display paints at 96 DPI and Windows stretches it on screen; its overview is stretched the same way, so its UI bounds, OCR boxes and points match the image like any other window's. Detail JPEGs are read-only: CUA does not publish their padded crop origin, so no inverse input mapping is claimed.
 
 ## Request guides
 
