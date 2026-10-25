@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { ComputerResources, requireComputerAddress, computerResultText, ComputerRequestError, type SandboxFactory, type MachineFactory } from "./computer-resources.ts";
 import { computerSource } from "./computer-address.ts";
 import type { WebLogEntry } from "./web-browser.ts";
-import type { StateDiff } from "./successor.ts";
+import { diffIsEmpty, type PixelReport, type StateDiff } from "./successor.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
 import type { ComputerSession, ComputerResult, ComputerMode, Content } from "./session.ts";
@@ -189,19 +189,35 @@ export function presentComputerResult(result: ComputerResult, full = false): str
 const changeCount = (c: { changed: number; added: number; removed: number }) =>
   c.changed + c.added + c.removed ? `${c.changed} changed, ${c.added} added, ${c.removed} removed` : "nothing changed";
 
-/** Lines of a compact UI or DOM change list; changed and added rows carry the new observation's hints. */
+/** Lines of a compact UI, DOM or pixel change list; changed and added rows carry the new observation's hints. */
 function diffLines(diff: StateDiff, afterAction = false): string[] {
   const page = diff.page ?? {};
   const total = diff.counts.changed + diff.counts.added + diff.counts.removed;
   const omitted = total - diff.changed.length - diff.added.length - diff.removed.length;
+  const pixels = diff.pixels;
+  const subject = diff.kind === "dom" ? "on the page" : diff.kind === "pixels" ? "in the window's pixels" : pixels ? "in the UI or the window's pixels" : "in the UI";
+  const nothing = !afterAction ? `Nothing changed ${subject} since that observation.`
+    : `Nothing changed ${subject}${diff.waited_ms !== undefined ? ` within ${diff.waited_ms} ms` : ""} after the action. Check that the target was right before acting again; do not replay blindly.`;
+  const uiChanged = total > 0 || Object.keys(page).length > 0;
   return [...Object.entries(page).map(([key, change]) => `Changed ${key}: ${JSON.stringify(change![0])} → ${JSON.stringify(change![1])}`),
-    total === 0 && !Object.keys(page).length
-      ? (!afterAction ? `Nothing changed in the ${diff.kind === "ui" ? "UI" : "page"} since that observation.`
-        : diff.kind === "ui" ? `Nothing changed in the UI${diff.waited_ms !== undefined ? ` within ${diff.waited_ms} ms` : ""} after the action. Check that the target was right before acting again; do not replay blindly.` : "Nothing changed on the page after the action. Check that the target was right before acting again; do not replay blindly.")
-      : `Changes: ${diff.counts.changed} changed, ${diff.counts.added} added, ${diff.counts.removed} removed`,
+    ...(diffIsEmpty(diff) ? [nothing] : diff.kind === "pixels" ? [] : [`Changes: ${diff.counts.changed} changed, ${diff.counts.added} added, ${diff.counts.removed} removed`]),
     ...diff.changed.map(line => `~ ${label(line)}`), ...diff.added.map(line => `+ ${label(line)}`), ...diff.removed.map(line => `- ${label(line)}`),
     ...(omitted > 0 ? [`${omitted} more changes are not listed; Search or Read the new observation for them.`] : []),
+    ...(pixels && !diffIsEmpty(diff) ? pixelLines(pixels, uiChanged) : []),
+    ...(afterAction && !pixels && diff.kind === "ui" ? ["Pixels were not compared: the input observation had no pixels."] : []),
+    ...(diff.unsettled ? [`The window was still changing ${diff.waited_ms} ms after the action; the successor shows it at that moment.`] : []),
     ...(diff.note ? [diff.note] : [])];
+}
+
+/** How the window's pixels changed, in overview pixels, and what the attached crops show. */
+function pixelLines(pixels: PixelReport, uiChanged: boolean): string[] {
+  const since = pixels.since ? ` since ${computerSource("observation", pixels.since)}` : "";
+  if (pixels.size_changed) return [`The window's overview size changed${since} from ${pixels.size_changed.width}x${pixels.size_changed.height} to ${pixels.width}x${pixels.height}; pixels were not compared.`];
+  if (!pixels.box) return uiChanged ? [`No visible pixel change${since}.`] : [];
+  const box = pixels.box, share = pixels.share * 100;
+  const crop = pixels.crop;
+  return [`Pixels changed${since} in x=${box.x} y=${box.y} w=${box.width} h=${box.height} (overview pixels; ${share < 0.1 ? share.toFixed(2) : share.toFixed(1)}% of the window, ${pixels.regions} ${pixels.regions === 1 ? "spot" : "spots"}).`,
+    ...(crop ? [`The two images crop x=${crop.x} y=${crop.y} w=${crop.width} h=${crop.height}: before, then after.`] : [])];
 }
 
 /** Whole lines from the start that fit a byte budget, never splitting Unicode. */
@@ -344,7 +360,9 @@ export async function performComputer(resources: ComputerResources, tool: "write
     // Completion of the native request is separate from application-effect certainty.
     const ok = !result.isError && ["delivered", "observed", "closed"].includes(result.details.status);
     const summary = presentComputerResult(result);
-    return { source, summary, data: { kind: "computer-action", ok,
+    // Images of an action result, such as before/after crops of its pixel change, follow the summary for the model.
+    const images = result.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
+    return { source, summary, ...(images.length ? { images } : {}), data: { kind: "computer-action", ok,
       effect, ...result.details,
       receipt: computerResultText(result),
       ...(!ok ? { error: { code: typeof result.details.state?.code === "string" ? result.details.state.code : `COMPUTER_${effect.toUpperCase().replace("-", "_")}`,

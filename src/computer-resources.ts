@@ -11,8 +11,10 @@ import type { ComputerSession, ComputerResult, ComputerMode, Action } from "./se
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
-import { diffDom, diffIsEmpty, diffUi, type StateDiff } from "./successor.ts";
-import type { UiElement, UiResource } from "./ui-resources.ts";
+import { compareCaptures, diffDom, diffIsEmpty, diffUi, type Capture, type StateDiff } from "./successor.ts";
+import { changeCrops, decodeFrame } from "./pixel-diff.ts";
+import type { WindowFrame } from "./session.ts";
+import type { UiCaptureOptions, UiElement, UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
 import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, type ParsedSelector } from "./native-locator.ts";
@@ -27,19 +29,20 @@ export function machineGuide(source: string): string[] {
 }
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
+/** Before and after PNG crops of a diff's changed pixels, in that order; records the cropped region on the diff. */
+async function cropImages(before: WindowFrame, after: WindowFrame, diff: StateDiff): Promise<ComputerResult["content"]> {
+  if (!diff.pixels?.box) return [];
+  const cropped = await changeCrops(before.png, after.png, diff.pixels).catch(() => undefined);
+  if (!cropped) return [];
+  diff.pixels.crop = cropped.region;
+  return [{ type: "image", data: cropped.before.toString("base64"), mimeType: "image/png" },
+    { type: "image", data: cropped.after.toString("base64"), mimeType: "image/png" }];
+}
 function commandObject(value: string): Record<string, unknown> {
   try { return object(JSON.parse(value)); }
   catch { throw new ComputerRequestError("Use one valid JSON command object."); }
 }
-/** Whether an action is aimed at a UI element (a hint, a token, a semantic action or a menu), not only at pixels or keys. */
-function elementAddressed(address: Extract<ComputerAddress, { kind: "observation" }>, tool: "write" | "insert", input: string): boolean {
-  if (address.hint !== undefined) return true;
-  if (tool === "write") return false;
-  let command: Record<string, unknown>;
-  try { command = commandObject(input); } catch { return false; }
-  const steps = Array.isArray(command.sequence) ? command.sequence as Record<string, unknown>[] : [command];
-  return steps.some(step => step && typeof step === "object" && ("hint" in step || "element_token" in step || step.action === "menu" || isSemanticAction(String(step.action))));
-}
+
 /** Steps of one mixed batch; each native step after the first walks the UI again, so batches stay shorter than sequences. */
 const BATCH_STEPS = 200;
 /** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
@@ -51,11 +54,15 @@ const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "do
 /**
  * What follows an action: its optional postcondition, and the successor with its change list. The successor is on
  * by default; `explicit` means the agent asked for it (`successor: true` or `expect`), which also overrides the
- * defaults that skip it, such as delivered pixel-only input that keeps its observation.
+ * defaults that skip it. `frame` holds the window's pixels before the action, when the input observation had them.
  */
-interface FollowUp { expect?: WaitSpec; successor: boolean; explicit: boolean; preexisting?: boolean }
-/** How long a native successor keeps looking for a UI change before reporting that nothing changed. */
+interface FollowUp { expect?: WaitSpec; successor: boolean; explicit: boolean; preexisting?: boolean; frame?: WindowFrame }
+/** How long a native successor keeps looking for a change before reporting that nothing changed. */
 const SETTLE_MS = 300;
+/** How long a native successor waits for a changing window to show two identical captures in a row. */
+const STEADY_MS = 1_000;
+/** Pause between the captures that check whether a changed window has settled. */
+const STEADY_GAP_MS = 30;
 type ObservationTarget = { window_ref: string; display?: never } | { display: string; window_ref?: never };
 interface Snapshot { target: ObservationTarget; result: ComputerResult }
 /** A running sandbox with its own guest session. */
@@ -445,16 +452,22 @@ export class ComputerResources {
     const snapshot = address.kind === "observation" ? this.snapshots.get(address.ref) : undefined;
     const windowRef = address.kind === "window" ? address.ref : snapshot?.target.window_ref;
     if (view.ocr && windowRef === undefined) throw new ComputerRequestError("ocr reads window observations; display observations have no kept overview pixels.");
-    if (view.changes && address.kind !== "window") throw new ComputerRequestError("changes reads a window address: it takes a fresh UI walk and compares it with the window's previous observation.");
+    if (view.changes && address.kind !== "window") throw new ComputerRequestError("changes reads a window address: it takes a fresh capture and compares it with the window's previous observation.");
     const baseline = view.changes && windowRef !== undefined ? this.lastUi.get(windowRef) : undefined;
+    // The pixel baseline is the window's latest capture with pixels; the fresh capture keeps its overview size.
+    const frame = view.changes && windowRef !== undefined && view.kind === "overview" && view.capture.granularity !== "ui" ? session.windowFrame(windowRef) : undefined;
+    if (frame && view.kind === "overview" && view.capture.maxLongEdge === undefined && view.capture.scale === undefined) Object.assign(view.capture, frame.size);
     const target = windowRef === undefined ? undefined : session.windowTarget(windowRef);
     if (view.regions && windowRef === undefined) throw new ComputerRequestError("regions reads a window or one of its observations.");
     // A region of a stored observation is read from its own pixels: exact boxes, no native call, input authority kept.
-    const result = view.ocr && view.kind === "region" && snapshot && windowRef !== undefined
+    let result = view.ocr && view.kind === "region" && snapshot && windowRef !== undefined
       ? await this.recognize(session, snapshot.result, windowRef, view.region, signal)
       // An observation keeps its own capture: regions parses it without another native read.
       : view.regions && snapshot ? snapshot.result
       : await this.readNative(address, cwd, views, view, signal);
+    // A window whose pixels cannot be captured still lists its UI changes, unless pixels were asked for explicitly.
+    if (view.changes && view.kind === "overview" && result && result.details.status !== "observed" && !views?.some(item => item === "full" || item === "image"))
+      result = await this.readNative(address, cwd, views, { ...view, capture: { ...view.capture, granularity: "ui" } }, signal);
     if (!result) return result;
     if (view.regions && result.details.status === "observed") {
       try { return { ...result, details: { ...result.details, visual_regions: await session.visualRegions(windowRef!, result.details.observation_id!, signal) } }; }
@@ -464,10 +477,17 @@ export class ComputerResources {
       try { return { ...result, details: { ...result.details, aria: nativeAriaSnapshot(result.details.ui) } }; }
       catch (error) { throw new ComputerRequestError(`The aria snapshot could not be rendered: ${error instanceof Error ? error.message : error}`); }
     }
-    if (view.changes && result.details.status === "observed" && result.details.ui) {
-      const changes = baseline ? { since: baseline.observation_id, diff: diffUi(baseline.ui, result.details.ui) }
-        : { reason: "No earlier UI observation of this window in this session, so this is the full UI." };
-      return { ...result, details: { ...result.details, changes } };
+    if (view.changes && result.details.status === "observed") {
+      const captured = session.windowFrame(windowRef!);
+      const latest = frame && captured?.observation_id === result.details.observation_id ? captured : undefined;
+      const diff = compareCaptures({ ui: baseline?.ui, frame: latest ? await decodeFrame(frame!.png) : undefined },
+        { ui: result.details.ui, frame: latest ? await decodeFrame(latest.png) : undefined });
+      if (!diff) return { ...result, details: { ...result.details, changes: { reason: "No earlier observation of this window in this session to compare with, so this is the full observation." } } };
+      const since = baseline?.observation_id ?? frame!.observation_id;
+      if (diff.pixels && frame!.observation_id !== since) diff.pixels.since = frame!.observation_id;
+      // The change list replaces the full overview: only crops of the changed area are shown.
+      const crops = latest ? await cropImages(frame!, latest, diff) : [];
+      return { ...result, content: [...result.content.filter(block => block.type !== "image"), ...crops], details: { ...result.details, changes: { since, diff } } };
     }
     if (view.kind === "state" && result.details.status === "observed") {
       const health = await session.processHealth(target);
@@ -748,7 +768,7 @@ export class ComputerResources {
     let follow: FollowUp | undefined;
     if (tool === "insert" && window) {
       const command = commandObject(value);
-      follow = await this.followUpSpec(window, command, cwd);
+      follow = await this.withFrame(await this.followUpSpec(window, command, cwd), window, address.ref, cwd);
       // Was the postcondition already true before anything is sent? Browsers sample now; native uses the input walk.
       if (follow.expect) {
         const session = await this.sessionFor(cwd, { window_ref: window });
@@ -769,16 +789,9 @@ export class ComputerResources {
         this.snapshots.delete(address.ref);
         return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), command, cwd, signal, follow);
       }
-    } else if (tool === "write" && window) follow = { successor: true, explicit: false };
+    } else if (tool === "write" && window) follow = await this.withFrame({ successor: true, explicit: false }, window, address.ref, cwd);
     const result = await this.act(address, snapshot, input, tool, cwd, signal);
     if (!follow || !window) return result;
-    // The default UI change list follows input aimed at a UI element. Input by pixels or keys alone is meant for
-    // surfaces the UI tree does not describe (canvases, games); a walk would cost time and, for delivered
-    // pixel-only input, replace the observation it keeps for more pixel input.
-    if (!follow.explicit && !snapshot.result.details.dom && !elementAddressed(address, tool, input)) {
-      if (result.details.status !== "delivered") return result;
-      return { ...result, content: [...result.content, { type: "text", text: "Input by pixels or keys alone is not followed by a UI walk. Read the window, or add \"successor\":true, to see what changed." }] };
-    }
     return this.followUp(window, snapshot, result, follow, cwd, signal);
   }
 
@@ -827,6 +840,13 @@ export class ComputerResources {
     return result;
   }
 
+  /** Keep the input observation's own pixels as the baseline of the pixel comparison; they must be taken before the action. */
+  private async withFrame(follow: FollowUp, window: string, observation: string | undefined, cwd: string): Promise<FollowUp> {
+    if (!follow.successor) return follow;
+    const frame = (await this.sessionFor(cwd, { window_ref: window })).windowFrame(window);
+    return frame && frame.observation_id === observation ? { ...follow, frame } : follow;
+  }
+
   /** Validate an action's optional `expect` postcondition and `successor` request before anything is dispatched. */
   private async followUpSpec(window: string, command: Record<string, unknown>, cwd: string): Promise<FollowUp> {
     if (command.successor !== undefined && typeof command.successor !== "boolean") throw new ComputerRequestError("successor must be boolean.");
@@ -852,7 +872,7 @@ export class ComputerResources {
     if (!follow.explicit && (status === "refused" || (before.result.details.dom && !result.details.dom))) return result;
     const session = await this.sessionFor(cwd, { window_ref: window });
     const preexisting = follow.preexisting === true;
-    let successor: ComputerResult | undefined, settled: StateDiff | undefined;
+    let successor: ComputerResult | undefined, settled: StateDiff | undefined, crops: ComputerResult["content"] = [];
     let postcondition: ComputerResult["details"]["postcondition"];
     if (follow.expect && status !== "refused") {
       // Unknown delivery is sampled once for information, but never reported as verified.
@@ -868,19 +888,7 @@ export class ComputerResources {
       postcondition = { status: preexisting ? "preexisting" : "failed", reason: "The action was refused; nothing was sent." };
     } else if (status !== "refused") {
       if (result.details.dom) successor = result;
-      else {
-        // An app may repaint a little after input is delivered: when the first walk shows no change, look again
-        // for a short while before saying that nothing changed.
-        const started = performance.now();
-        for (let attempt = 0; ; attempt++) {
-          this.retireWindow(window);
-          successor = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
-          const waited = Math.round(performance.now() - started);
-          settled = before.result.details.ui && successor.details.ui ? { ...diffUi(before.result.details.ui, successor.details.ui), waited_ms: waited } : undefined;
-          if (!settled || !diffIsEmpty(settled) || successor.details.status !== "observed" || signal?.aborted || waited >= SETTLE_MS) break;
-          await new Promise(resolve => setTimeout(resolve, Math.min([30, 60, 100][attempt] ?? 150, SETTLE_MS - waited)));
-        }
-      }
+      else ({ successor, diff: settled, crops } = await this.settle(window, session, before, follow.frame, signal));
     }
     const after = successor?.details;
     const diff = before.result.details.dom && after?.dom ? diffDom(before.result.details.dom, after.dom)
@@ -890,7 +898,49 @@ export class ComputerResources {
       ...(postcondition ? { postcondition } : {}),
       successor: after?.observation_id ? { observation_id: after.observation_id, ...(diff ? { diff } : { reason: "The input observation had no comparable UI or DOM." }) }
         : { reason: status === "refused" ? "The action was refused; the input observation is unchanged but consumed." : "No successor observation could be taken." } };
-    return { ...result, details };
+    return { ...result, content: [...result.content, ...crops], details };
+  }
+
+  /**
+   * Capture the window after native input until its state is known: when nothing changed yet, look again for up to
+   * SETTLE_MS before saying so; once something changed, capture until two captures in a row are identical, for up
+   * to STEADY_MS, so the change list shows the settled window rather than a frame in the middle of a repaint.
+   * Captures keep the input observation's overview size so their pixels compare with it.
+   */
+  private async settle(window: string, session: ComputerSession, before: Snapshot, frame: WindowFrame | undefined, signal?: AbortSignal):
+    Promise<{ successor: ComputerResult; diff?: StateDiff; crops: ComputerResult["content"] }> {
+    const started = performance.now();
+    let options: UiCaptureOptions = { granularity: "full", ...(frame ? frame.size : {}) };
+    const baseline: Capture = { ui: before.result.details.ui, frame: frame ? await decodeFrame(frame.png) : undefined };
+    let successor: ComputerResult, diff: StateDiff | undefined, previous: Capture | undefined, latest: WindowFrame | undefined;
+    for (let attempt = 0; ; attempt++) {
+      this.retireWindow(window);
+      successor = this.remember({ window_ref: window }, await session.observeQuiet(window, signal, options));
+      const waited = Math.round(performance.now() - started);
+      // A window whose pixels cannot be captured (minimized, or a failed screenshot) still gets its UI compared.
+      if (successor.details.status !== "observed" && options.granularity === "full" && !signal?.aborted) {
+        options = { granularity: "ui" }; baseline.frame = undefined; attempt--; continue;
+      }
+      if (successor.details.status !== "observed" || signal?.aborted) break;
+      const captured = session.windowFrame(window);
+      latest = captured?.observation_id === successor.details.observation_id ? captured : undefined;
+      const current: Capture = { ui: successor.details.ui, frame: latest ? await decodeFrame(latest.png) : undefined };
+      diff = compareCaptures(baseline, current);
+      if (!diff) break;
+      diff.waited_ms = waited;
+      if (diffIsEmpty(diff)) {
+        if (waited >= SETTLE_MS) break;
+        previous = undefined;
+        await new Promise(resolve => setTimeout(resolve, Math.min([30, 60, 100][attempt] ?? 150, SETTLE_MS - waited)));
+        continue;
+      }
+      const steady = previous && compareCaptures(previous, current);
+      if (steady && diffIsEmpty(steady)) break;
+      if (waited >= STEADY_MS) { diff.unsettled = true; break; }
+      previous = current;
+      await new Promise(resolve => setTimeout(resolve, STEADY_GAP_MS));
+    }
+    return { successor, diff, crops: diff && frame && latest ? await cropImages(frame, latest, diff) : [] };
   }
 
   /**
@@ -898,14 +948,14 @@ export class ComputerResources {
    * matches and is ready (enabled for input; for pointer input also on screen and at the same place in two walks), or
    * until the timeout. Several matches refuse at once with each match's locator, like Playwright's strict mode.
    */
-  private async resolveNative(window: string, session: ComputerSession, selector: ParsedSelector, options: { timeout_ms: number; enabled: boolean; stable: boolean; visible?: boolean; describe: string }, signal?: AbortSignal):
+  private async resolveNative(window: string, session: ComputerSession, selector: ParsedSelector, options: { timeout_ms: number; enabled: boolean; stable: boolean; visible?: boolean; describe: string; pixels?: boolean }, signal?: AbortSignal):
     Promise<{ element: UiElement; observation: ComputerResult } | { refused: string; observation?: ComputerResult }> {
     const deadline = performance.now() + options.timeout_ms;
     let previous: UiElement | undefined, reason = "";
     for (let attempt = 0; ; attempt++) {
       if (signal?.aborted) return { refused: "Cancelled while waiting for the target; nothing was sent." };
       this.retireWindow(window);
-      const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
+      const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal, options.pixels ? { granularity: "full" } : undefined));
       if (fresh.details.status !== "observed" || !fresh.details.ui) return { refused: `No current UI sample of the window: ${computerResultText(fresh).split("\n")[0]}`, observation: fresh };
       const ui = fresh.details.ui;
       let found: UiElement[];
@@ -945,7 +995,8 @@ export class ComputerResources {
     if (!NATIVE_LOCATOR_ACTIONS.includes(action)) throw new ComputerRequestError(`A target takes one of ${[...NATIVE_LOCATOR_ACTIONS, ...Object.keys(LOCATOR_VERBS)].join(", ")}.`);
     const describe = typeof target === "string" ? target : JSON.stringify(target);
     const pointer = ["click", "double_click", "right_click", "hover", "check", "uncheck"].includes(action);
-    const resolved = await this.resolveNative(window, session, selector, { timeout_ms: (timeout as number | undefined) ?? 5_000, enabled: action !== "hover", stable: pointer, visible: pointer, describe }, signal);
+    // With a successor, the resolving walks also capture pixels: the last one is the pixel baseline of the action.
+    const resolved = await this.resolveNative(window, session, selector, { timeout_ms: (timeout as number | undefined) ?? 5_000, enabled: action !== "hover", stable: pointer, visible: pointer, describe, pixels: follow?.successor }, signal);
     const mode = this.getMode();
     if ("refused" in resolved) return { content: [{ type: "text", text: resolved.refused }], details: { status: "refused", mode, window_ref: window }, isError: true };
     const { element, observation } = resolved;
@@ -961,6 +1012,7 @@ export class ComputerResources {
     // The walk that resolved the target is the state before the action: the change list compares with it.
     const before: Snapshot = { target: { window_ref: window }, result: observation };
     if (follow?.expect && observation.details.ui) follow.preexisting = combine(evaluateNative(observation.details.ui, follow.expect.conditions)) === "satisfied";
+    if (follow) follow = await this.withFrame(follow, window, observation.details.observation_id, cwd);
     const finish = (result: ComputerResult) => follow ? this.followUp(window, before, result, follow, cwd, signal) : Promise.resolve(result);
     this.snapshots.delete(observation.details.observation_id!);
     const result = await session.act(nativeCommand as Action, signal);

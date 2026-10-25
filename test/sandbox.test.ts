@@ -99,9 +99,11 @@ function backend(pid: number, domain?: "windows-sandbox") {
   const driver: Driver = {
     ...(domain ? { sourceDomain: domain } : {}),
     identity: vi.fn(async () => `life-${pid}`), close: vi.fn(async () => {}),
-    call: vi.fn<Driver["call"]>(async (name) => {
+    call: vi.fn<Driver["call"]>(async (name, args) => {
       if (name === "list_windows") return { content: [], structuredContent: { windows: [{ pid, window_id: 7, title: `window ${pid}` }] } };
+      // No pixels here: a capture that asks for them reports why, and the successor falls back to the UI.
       if (name === "get_window_state") return { content: [], structuredContent: { pid, window_id: 7, snapshot_id: "s", elements_complete: true, elements: [],
+        ...((args as { include_screenshot?: boolean }).include_screenshot !== false ? { screenshot_error: "No surface." } : {}),
         window_bounds: { x: 0, y: 0, width: 100, height: 80 } } };
       if (name === "type_text") return { content: [], structuredContent: { effect: "confirmed" } };
       throw new Error(`Unexpected native call ${name}`);
@@ -130,7 +132,8 @@ test("guest windows are found, read and operated only through the sandbox's own 
   expect(view?.details.status).toBe("observed");
   await f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, "hello", "write");
   const names = (driver: Driver) => vi.mocked(driver.call).mock.calls.map(([name]) => name);
-  expect(names(f.guestDriver)).toEqual(["list_windows", "get_window_state", "type_text"]);
+  // The Write's successor walks the window again; repeated walks are collapsed here.
+  expect(names(f.guestDriver).filter((name, i, all) => name !== "get_window_state" || all[i - 1] !== "get_window_state")).toEqual(["list_windows", "get_window_state", "type_text", "get_window_state"]);
   expect(names(f.hostDriver)).toEqual([]);
   expect(f.resources.descriptor(address(f.sandboxSource))).toContain(f.sandboxSource);
 });

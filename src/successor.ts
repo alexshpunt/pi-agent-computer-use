@@ -1,9 +1,14 @@
 import type { UiElement, UiResource } from "./ui-resources.ts";
 import type { WebDom } from "./session.ts";
+import { diffFrames, pixelsChanged, type PixelBox, type PixelDiff, type PixelFrame } from "./pixel-diff.ts";
+
+/** How a window's overview pixels changed; `crop` is the region the before/after crops show. */
+export type PixelReport = PixelDiff & { crop?: PixelBox; since?: string };
 
 /** Compact change list between an action's input observation and its successor. Bounded; full successors stay readable. */
 export interface StateDiff {
-  kind: "dom" | "ui";
+  /** What was compared: page lines, UI elements, or only pixels when the earlier observation had no UI. */
+  kind: "dom" | "ui" | "pixels";
   /** Lines or elements that changed, appeared or disappeared, at most DIFF_LIMIT each. */
   changed: string[]; added: string[]; removed: string[];
   /** Totals before bounding. */
@@ -11,8 +16,12 @@ export interface StateDiff {
   page?: { url?: [string, string]; title?: [string, string]; tab?: [string | null, string | null] };
   /** Why the diff may be incomplete, such as a partial native walk. */
   note?: string;
-  /** How long after the action the native walks kept looking for a change before reporting none. */
+  /** How long after the action the native captures kept looking for a change, or waited for the window to settle. */
   waited_ms?: number;
+  /** The window's overview pixels compared with the earlier capture; absent when either side had no pixels. */
+  pixels?: PixelReport;
+  /** Set when the window was still changing when the wait ended; the successor shows it at that moment. */
+  unsettled?: true;
 }
 const DIFF_LIMIT = 30;
 const bounded = (items: string[]) => items.slice(0, DIFF_LIMIT);
@@ -124,4 +133,14 @@ export function diffUi(before: UiResource, after: UiResource): StateDiff {
 
 /** Whether a diff found any difference at all. */
 export const diffIsEmpty = (diff: StateDiff): boolean =>
-  diff.counts.changed + diff.counts.added + diff.counts.removed === 0 && !Object.keys(diff.page ?? {}).length;
+  diff.counts.changed + diff.counts.added + diff.counts.removed === 0 && !Object.keys(diff.page ?? {}).length && !(diff.pixels && pixelsChanged(diff.pixels));
+
+/** One native capture of a window: its UI walk and its decoded overview pixels, either of which may be missing. */
+export interface Capture { ui?: UiResource; frame?: PixelFrame }
+/** Compare two native captures of a window: UI elements when both have UI, pixels when both have pixels. */
+export function compareCaptures(before: Capture, after: Capture): StateDiff | undefined {
+  const pixels = before.frame && after.frame ? diffFrames(before.frame, after.frame) : undefined;
+  const ui = before.ui && after.ui ? diffUi(before.ui, after.ui) : undefined;
+  if (ui) return pixels ? { ...ui, pixels } : ui;
+  return pixels ? { kind: "pixels", changed: [], added: [], removed: [], counts: { changed: 0, added: 0, removed: 0 }, pixels } : undefined;
+}

@@ -141,7 +141,9 @@ interface Observation { texts?: Map<string, string>; id: string; tokens: Set<str
   /** Kept after pixel-only input: coordinates stay valid until a freshness check finds a changed size or state; UI tokens and the native capture are spent. */
   pixelsOnly?: boolean }
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark }
+/** The unannotated pixels of a window's latest capture with pixels, kept as the baseline of its next pixel comparison. */
+export interface WindowFrame { observation_id: string; png: Buffer; size: { maxLongEdge: number; scale: number } }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark; frame?: WindowFrame }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 /** A discovery query: `regex:<pattern>` is a case-insensitive regular expression, anything else a case-insensitive substring. */
 export function textMatcher(query?: string): (text: string) => boolean {
@@ -1029,6 +1031,7 @@ export class ComputerSession {
     const raw = images[0];
     if (raw?.type === "image" && Buffer.byteLength(raw.data, "base64") <= 12 * 1024 * 1024) {
       observed.rawImage = raw;
+      entry.frame = { observation_id: id, png: Buffer.from(raw.data, "base64"), size: { maxLongEdge: settings.maxLongEdge, scale: settings.scale } };
       const active = new Set([...this.entries.values()].map(e => e.observation));
       this.uiImages = [...this.uiImages.filter(old => active.has(old)), observed];
       for (const old of this.uiImages.splice(0, Math.max(0, this.uiImages.length - 3))) old.rawImage = undefined;
@@ -1244,15 +1247,21 @@ export class ComputerSession {
     });
   }
 
-  /** A fresh UI-only observation without the human frame, for successors and batch steps. */
-  observeQuiet(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+  /** The window's latest unannotated capture with pixels, the baseline for comparing its pixels; undefined when none is kept. */
+  windowFrame(ref: string): WindowFrame | undefined { return this.entries.get(ref)?.frame; }
+
+  /**
+   * A fresh observation without the human frame, for successors and batch steps: UI-only by default, or with
+   * pixels at a given overview size so they compare with an earlier capture.
+   */
+  observeQuiet(ref: string, signal?: AbortSignal, options: UiCaptureOptions = { granularity: "ui" }): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
       try {
         const entry = await this.current(ref, signal);
         if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window_ref. Discover again.");
         if (!this.allowed(entry)) return this.denied(entry.ref);
-        return await this.capture(entry, signal, undefined, { granularity: "ui" }, true);
+        return await this.capture(entry, signal, undefined, options, true);
       } catch (error) { return this.failed(error, false); }
     });
   }
