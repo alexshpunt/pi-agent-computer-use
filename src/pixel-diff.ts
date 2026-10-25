@@ -3,6 +3,8 @@ import sharp from "sharp";
 /** Decoded RGBA pixels of one window overview capture. */
 export interface PixelFrame { width: number; height: number; data: Buffer }
 export interface PixelBox { x: number; y: number; width: number; height: number }
+/** One changed area of the window: nearby changed spots merged, with the number of its changed pixels. */
+export interface PixelArea extends PixelBox { pixels: number }
 /** How a window's overview pixels changed between two captures, in overview pixels. */
 export interface PixelDiff {
   /** Overview size of both captures; when they differ, `size_changed` holds the earlier size and nothing else is compared. */
@@ -10,10 +12,12 @@ export interface PixelDiff {
   size_changed?: { width: number; height: number };
   /** Box around every counted change; absent when nothing counted changed. */
   box?: PixelBox;
+  /** The largest changed areas by box size, at most AREA_LIMIT of them. */
+  areas: PixelArea[];
+  /** All changed areas, including any beyond `areas`. */
+  regions: number;
   /** Changed pixels that count, and their share of the whole overview. */
   changed_pixels: number; share: number;
-  /** Separate changed spots that count. */
-  regions: number;
   /** Spots too small to count, such as a blinking caret. */
   ignored: number;
 }
@@ -26,6 +30,9 @@ const CELL = 8;
 const MIN_SPOT_PIXELS = 12;
 /** A spot at most this wide and this tall is caret-shaped (a text cursor blinking) and does not count. */
 const CARET_WIDTH = 3, CARET_HEIGHT = 64;
+/** Spots closer than this merge into one area, so a stroke drawn in pieces or a repainted label stays one area. */
+const AREA_GAP = 24;
+const AREA_LIMIT = 8;
 
 export async function decodeFrame(png: Buffer): Promise<PixelFrame> {
   const { data, info } = await sharp(png, { limitInputPixels: 32 * 1024 * 1024 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -36,7 +43,9 @@ export async function decodeFrame(png: Buffer): Promise<PixelFrame> {
 export function diffFrames(before: PixelFrame, after: PixelFrame): PixelDiff {
   const { width, height } = after;
   if (before.width !== width || before.height !== height)
-    return { width, height, size_changed: { width: before.width, height: before.height }, changed_pixels: 0, share: 0, regions: 0, ignored: 0 };
+    return { width, height, size_changed: { width: before.width, height: before.height }, areas: [], regions: 0, changed_pixels: 0, share: 0, ignored: 0 };
+  // Settle checks mostly compare identical frames: skip the per-pixel pass for them.
+  if (before.data.equals(after.data)) return { width, height, areas: [], regions: 0, changed_pixels: 0, share: 0, ignored: 0 };
   const columns = Math.ceil(width / CELL), rows = Math.ceil(height / CELL);
   // Per cell: changed pixel count and the exact box of its changed pixels.
   const count = new Uint32Array(columns * rows);
@@ -58,7 +67,8 @@ export function diffFrames(before: PixelFrame, after: PixelFrame): PixelDiff {
   }
   // Spots are groups of changed cells that touch, including diagonally.
   const seen = new Uint8Array(columns * rows);
-  let box: PixelBox | undefined, changed = 0, regions = 0, ignored = 0;
+  const spots: PixelArea[] = [];
+  let ignored = 0;
   for (let start = 0; start < count.length; start++) {
     if (!count[start] || seen[start]) continue;
     const stack = [start]; seen[start] = 1;
@@ -74,34 +84,56 @@ export function diffFrames(before: PixelFrame, after: PixelFrame): PixelDiff {
         seen[next] = 1; stack.push(next);
       }
     }
-    const spot = { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 };
+    const spot = { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1, pixels };
     if (pixels < MIN_SPOT_PIXELS || (spot.width <= CARET_WIDTH && spot.height <= CARET_HEIGHT)) { ignored++; continue; }
-    regions++; changed += pixels;
-    box = box ? union(box, spot) : spot;
+    spots.push(spot);
   }
-  return { width, height, ...(box ? { box } : {}), changed_pixels: changed, share: changed / (width * height), regions, ignored };
+  // Largest by extent: a thin stroke across the canvas outranks a denser but small repainted label.
+  const areas = mergeNearby(spots).sort((x, y) => y.width * y.height - x.width * x.height || y.pixels - x.pixels);
+  const changed = areas.reduce((sum, area) => sum + area.pixels, 0);
+  const box = areas.length ? areas.map(({ pixels: _, ...area }) => area).reduce(union) : undefined;
+  return { width, height, ...(box ? { box } : {}), areas: areas.slice(0, AREA_LIMIT), regions: areas.length, changed_pixels: changed, share: changed / (width * height), ignored };
 }
 
 export const pixelsChanged = (diff: PixelDiff) => diff.size_changed !== undefined || diff.box !== undefined;
+
+/** Merge spots whose boxes come within AREA_GAP of each other, until no two areas are that close. */
+function mergeNearby(spots: PixelArea[]): PixelArea[] {
+  const areas = [...spots];
+  const near = (p: PixelBox, q: PixelBox) => p.x - AREA_GAP < q.x + q.width && q.x - AREA_GAP < p.x + p.width && p.y - AREA_GAP < q.y + q.height && q.y - AREA_GAP < p.y + p.height;
+  for (let merged = true; merged;) {
+    merged = false;
+    for (let i = 0; i < areas.length && !merged; i++) for (let j = i + 1; j < areas.length; j++) {
+      if (!near(areas[i], areas[j])) continue;
+      areas[i] = { ...union(areas[i], areas[j]), pixels: areas[i].pixels + areas[j].pixels };
+      areas.splice(j, 1); merged = true; break;
+    }
+  }
+  return areas;
+}
 
 function union(a: PixelBox, b: PixelBox): PixelBox {
   const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
   return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y };
 }
 
-/** Each crop's long edge is at most this many pixels, so two crops cost little next to a full overview. */
+/** Each crop's long edge is at most this many pixels, so a few crops cost little next to a full overview. */
 const CROP_EDGE = 512;
-/** Context kept around the changed box on each side, in overview pixels. */
+/** Context kept around a changed area on each side, in overview pixels. */
 const CROP_MARGIN = 12;
+/** Only the largest areas get crops; the rest are listed by their boxes. */
+export const CROPPED_AREAS = 3;
 
-/** Before and after PNG crops of the changed box with a small margin, scaled down when large. */
-export async function changeCrops(before: Buffer, after: Buffer, diff: PixelDiff): Promise<{ region: PixelBox; before: Buffer; after: Buffer } | undefined> {
-  if (!diff.box || diff.size_changed) return undefined;
-  const x = Math.max(0, diff.box.x - CROP_MARGIN), y = Math.max(0, diff.box.y - CROP_MARGIN);
-  const region = { x, y, width: Math.min(diff.width, diff.box.x + diff.box.width + CROP_MARGIN) - x, height: Math.min(diff.height, diff.box.y + diff.box.height + CROP_MARGIN) - y };
-  const crop = (png: Buffer) => sharp(png, { limitInputPixels: 32 * 1024 * 1024 })
+/** Before and after PNG crops of the largest changed areas with a small margin, scaled down when large. */
+export async function changeCrops(before: Buffer, after: Buffer, diff: PixelDiff): Promise<{ region: PixelBox; before: Buffer; after: Buffer }[]> {
+  if (diff.size_changed) return [];
+  const crop = (png: Buffer, region: PixelBox) => sharp(png, { limitInputPixels: 32 * 1024 * 1024 })
     .extract({ left: region.x, top: region.y, width: region.width, height: region.height })
     .resize(CROP_EDGE, CROP_EDGE, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
-  const [a, b] = await Promise.all([crop(before), crop(after)]);
-  return { region, before: a, after: b };
+  return Promise.all(diff.areas.slice(0, CROPPED_AREAS).map(async area => {
+    const x = Math.max(0, area.x - CROP_MARGIN), y = Math.max(0, area.y - CROP_MARGIN);
+    const region = { x, y, width: Math.min(diff.width, area.x + area.width + CROP_MARGIN) - x, height: Math.min(diff.height, area.y + area.height + CROP_MARGIN) - y };
+    const [a, b] = await Promise.all([crop(before, region), crop(after, region)]);
+    return { region, before: a, after: b };
+  }));
 }

@@ -61,8 +61,8 @@ const images = (result: ComputerResult) => result.content.filter((block): block 
 test("an action on an observation with pixels reports the changed area with before and after crops", async () => {
   const f = await fixture(), { at } = await f.read(["full"]);
   const result = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }), "insert");
-  expect(result.details.successor?.diff?.pixels).toMatchObject({ box: { x: 20, y: 40, width: 10, height: 10 }, regions: 1, crop: { x: 8, y: 28, width: 34, height: 34 } });
-  expect(presentComputerResult(result)).toMatch(/~ \d+:a Button "Count 0" → "Count 1"\nPixels changed in x=20 y=40 w=10 h=10 \(overview pixels; 0\.06% of the window, 1 spot\)\.\nThe two images crop x=8 y=28 w=34 h=34: before, then after\./);
+  expect(result.details.successor?.diff?.pixels).toMatchObject({ box: { x: 20, y: 40, width: 10, height: 10 }, regions: 1, crops: [{ x: 8, y: 28, width: 34, height: 34 }] });
+  expect(presentComputerResult(result)).toMatch(/~ \d+:a Button "Count 0" → "Count 1"\nPixels changed in 1 area \(overview pixels; 0\.06% of the window\):\n  x=20 y=40 w=10 h=10; images 1 and 2 show x=8 y=28 w=34 h=34 before and after\n/);
   const [before, after] = images(result);
   expect((await sharp(Buffer.from(before.data, "base64")).stats()).channels[0].min).toBe(255);
   expect((await sharp(Buffer.from(after.data, "base64")).stats()).channels[0].min).toBe(0);
@@ -94,7 +94,7 @@ test("a changes Read compares the window's pixels with its previous observation"
   await f.resources.perform(observation, cwd, JSON.stringify({ action: "click", x: 300, y: 200, successor: false }), "insert");
   const changes = (await f.resources.read(address(f.window), cwd, ["changes"]))!;
   expect(changes.details.changes?.diff?.pixels?.box).toEqual({ x: 297, y: 197, width: 6, height: 6 });
-  expect(presentComputerResult(changes)).toMatch(/Pixels changed in x=297 y=197 w=6 h=6/);
+  expect(presentComputerResult(changes)).toMatch(/Pixels changed in 1 area .*\n  x=297 y=197 w=6 h=6;/);
   // Only the two crops, not the full overview.
   expect(images(changes)).toHaveLength(2);
 });

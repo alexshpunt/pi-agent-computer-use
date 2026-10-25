@@ -27,11 +27,17 @@ describe("diffFrames", () => {
     expect(diff.regions).toBe(1);
   });
 
-  test("separate spots count as regions inside one box", () => {
+  test("distant spots are separate areas, largest first, inside one overall box", () => {
     const after = paint(paint(blank(), 10, 10, 10, 10), 150, 70, 20, 20);
     const diff = diffFrames(blank(), after);
     expect(diff.regions).toBe(2);
+    expect(diff.areas).toEqual([{ x: 150, y: 70, width: 20, height: 20, pixels: 400 }, { x: 10, y: 10, width: 10, height: 10, pixels: 100 }]);
     expect(diff.box).toEqual({ x: 10, y: 10, width: 160, height: 80 });
+  });
+
+  test("nearby spots, such as a dashed stroke, merge into one area", () => {
+    const after = paint(paint(paint(blank(), 10, 50, 20, 4), 45, 50, 20, 4), 80, 50, 20, 4);
+    expect(diffFrames(blank(), after).areas).toEqual([{ x: 10, y: 50, width: 90, height: 4, pixels: 240 }]);
   });
 
   test("a blinking caret and a few stray pixels do not count", () => {
@@ -60,19 +66,26 @@ describe("diffFrames", () => {
 });
 
 describe("changeCrops", () => {
-  test("crops the changed box with a margin from both captures", async () => {
+  test("crops each changed area with a margin from both captures", async () => {
     const before = blank(), after = paint(blank(), 50, 30, 20, 10);
-    const crops = (await changeCrops(await png(before), await png(after), diffFrames(before, after)))!;
-    expect(crops.region).toEqual({ x: 38, y: 18, width: 44, height: 34 });
-    const a = await decodeFrame(crops.before), b = await decodeFrame(crops.after);
+    const [crop] = await changeCrops(await png(before), await png(after), diffFrames(before, after));
+    expect(crop.region).toEqual({ x: 38, y: 18, width: 44, height: 34 });
+    const a = await decodeFrame(crop.before), b = await decodeFrame(crop.after);
     expect([a.width, a.height, b.width, b.height]).toEqual([44, 34, 44, 34]);
     expect(diffFrames(a, b).box).toEqual({ x: 12, y: 12, width: 20, height: 10 });
   });
 
+  test("only the three largest areas get crops", async () => {
+    const before = blank(400, 100);
+    const after = [0, 1, 2, 3].reduce((frame, i) => paint(frame, 10 + i * 100, 40, 10 + i * 5, 10), before);
+    const crops = await changeCrops(await png(before), await png(after), diffFrames(before, after));
+    expect(crops.map(crop => crop.region.x)).toEqual([298, 198, 98]);
+  });
+
   test("large changed areas are scaled down to a bounded crop", async () => {
     const before = blank(1600, 900), after = paint(blank(1600, 900), 0, 0, 1600, 900, 0);
-    const crops = (await changeCrops(await png(before), await png(after), diffFrames(before, after)))!;
-    const meta = await sharp(crops.after).metadata();
+    const [crop] = await changeCrops(await png(before), await png(after), diffFrames(before, after));
+    const meta = await sharp(crop.after).metadata();
     expect(Math.max(meta.width!, meta.height!)).toBe(512);
   });
 });

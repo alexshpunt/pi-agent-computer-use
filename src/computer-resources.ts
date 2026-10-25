@@ -29,14 +29,14 @@ export function machineGuide(source: string): string[] {
 }
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
-/** Before and after PNG crops of a diff's changed pixels, in that order; records the cropped region on the diff. */
+/** A before and an after PNG crop of each of a diff's largest changed areas; records the cropped regions on the diff. */
 async function cropImages(before: WindowFrame, after: WindowFrame, diff: StateDiff): Promise<ComputerResult["content"]> {
   if (!diff.pixels?.box) return [];
-  const cropped = await changeCrops(before.png, after.png, diff.pixels).catch(() => undefined);
-  if (!cropped) return [];
-  diff.pixels.crop = cropped.region;
-  return [{ type: "image", data: cropped.before.toString("base64"), mimeType: "image/png" },
-    { type: "image", data: cropped.after.toString("base64"), mimeType: "image/png" }];
+  const cropped = await changeCrops(before.png, after.png, diff.pixels).catch(() => []);
+  if (!cropped.length) return [];
+  diff.pixels.crops = cropped.map(item => item.region);
+  return cropped.flatMap(item => [{ type: "image" as const, data: item.before.toString("base64"), mimeType: "image/png" },
+    { type: "image" as const, data: item.after.toString("base64"), mimeType: "image/png" }]);
 }
 function commandObject(value: string): Record<string, unknown> {
   try { return object(JSON.parse(value)); }
@@ -59,10 +59,11 @@ const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "do
 interface FollowUp { expect?: WaitSpec; successor: boolean; explicit: boolean; preexisting?: boolean; frame?: WindowFrame }
 /** How long a native successor keeps looking for a change before reporting that nothing changed. */
 const SETTLE_MS = 300;
-/** How long a native successor waits for a changing window to show two identical captures in a row. */
+/**
+ * How long a native successor waits for a changing window to show two identical captures in a row. The captures
+ * follow each other without a pause: each takes about 35 ms, so an animation still differs between them.
+ */
 const STEADY_MS = 1_000;
-/** Pause between the captures that check whether a changed window has settled. */
-const STEADY_GAP_MS = 30;
 type ObservationTarget = { window_ref: string; display?: never } | { display: string; window_ref?: never };
 interface Snapshot { target: ObservationTarget; result: ComputerResult }
 /** A running sandbox with its own guest session. */
@@ -829,7 +830,7 @@ export class ComputerResources {
     const action = { ...command, window_ref: snapshot.target.window_ref, observation_id: address.ref } as Action;
     const session = await this.sessionFor(cwd, snapshot.target);
     let result = await session.act(action, signal);
-    // Delivered pixel-only input keeps the observation usable; anything else, including a refusal, spends it.
+    // Delivered pixel-only input keeps the observation usable until a successor replaces it; anything else, including a refusal, spends it.
     if (result.details.status !== "delivered" || !session.holdsObservation(snapshot.target.window_ref!, address.ref)) this.snapshots.delete(address.ref);
     // Windows refused to activate the target: say who holds the foreground, so a blocked desktop is not mistaken for a bad target.
     if (/foreground_unavailable/.test(JSON.stringify(result.details.state ?? {})) && session.host) {
@@ -938,7 +939,6 @@ export class ComputerResources {
       if (steady && diffIsEmpty(steady)) break;
       if (waited >= STEADY_MS) { diff.unsettled = true; break; }
       previous = current;
-      await new Promise(resolve => setTimeout(resolve, STEADY_GAP_MS));
     }
     return { successor, diff, crops: diff && frame && latest ? await cropImages(frame, latest, diff) : [] };
   }

@@ -2,8 +2,8 @@ import type { UiElement, UiResource } from "./ui-resources.ts";
 import type { WebDom } from "./session.ts";
 import { diffFrames, pixelsChanged, type PixelBox, type PixelDiff, type PixelFrame } from "./pixel-diff.ts";
 
-/** How a window's overview pixels changed; `crop` is the region the before/after crops show. */
-export type PixelReport = PixelDiff & { crop?: PixelBox; since?: string };
+/** How a window's overview pixels changed; `crops` are the regions the attached before/after image pairs show, in order. */
+export type PixelReport = PixelDiff & { crops?: PixelBox[]; since?: string };
 
 /** Compact change list between an action's input observation and its successor. Bounded; full successors stay readable. */
 export interface StateDiff {
