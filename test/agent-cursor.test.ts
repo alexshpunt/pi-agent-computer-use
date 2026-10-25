@@ -7,7 +7,7 @@ import { McpDriver } from "../src/driver.ts";
 const dirs: string[] = [];
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
 
-async function start(mode: "applies" | "refuses" | "ignores") {
+async function start(mode: "applies" | "refuses" | "ignores" | "no-overlay") {
   const dir = await mkdtemp(path.join(tmpdir(), "agent-cursor-"));
   dirs.push(dir);
   const log = path.join(dir, "calls.jsonl");
@@ -32,6 +32,14 @@ test("a refused cursor setting stops the driver before any input", async () => {
   const { driver, calls } = await start("refuses");
   await expect(driver.call("list_windows", {})).rejects.toThrow("refused the agent cursor glide setting");
   expect((await calls()).map(call => call.name)).toEqual(["set_agent_cursor_motion"]);
+});
+
+test("a driver without an overlay draws no cursor, so an unapplied setting does not stop it", async () => {
+  const { driver, calls } = await start("no-overlay");
+  try {
+    expect((await driver.call("list_windows", {})).isError).toBeFalsy();
+    expect((await calls()).map(call => call.name)).toEqual(["set_agent_cursor_motion", ...Array(6).fill("get_agent_cursor_state"), "list_windows"]);
+  } finally { await driver.close(); }
 });
 
 test("a cursor setting that never applies stops the driver after six reads", async () => {

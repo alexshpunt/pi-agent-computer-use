@@ -232,18 +232,23 @@ export class McpDriver implements Driver {
    * Before each pointer action at a new point the driver waits for its agent cursor to glide there: about 600 ms
    * per 300 px at its default speed. A 1 ms glide makes the cursor jump; 0 would select that speed-based glide.
    * The setter only queues a render command, so its state is read back, yielding 5 ms between reads.
+   * Before each action the driver waits only for a cursor it draws.
    */
   private async jumpCursor(client: Client, signal?: AbortSignal): Promise<void> {
     const call = async (name: string, args: Record<string, unknown>) =>
       CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout: 15_000 }));
     if ((await call("set_agent_cursor_motion", { glide_duration_ms: CURSOR_GLIDE_MS })).isError)
       throw new Error("The driver refused the agent cursor glide setting.");
+    let state: Record<string, unknown> | undefined;
     for (let read = 0; read < 6; read++) {
-      const state = await call("get_agent_cursor_state", {});
-      if ((state.structuredContent?.motion as { glide_duration_ms?: unknown } | undefined)?.glide_duration_ms === CURSOR_GLIDE_MS) return;
+      state = (await call("get_agent_cursor_state", {})).structuredContent;
+      if ((state?.motion as { glide_duration_ms?: unknown } | undefined)?.glide_duration_ms === CURSOR_GLIDE_MS) return;
       await delay(5, undefined, { signal });
     }
-    throw new Error("The driver did not apply the agent cursor glide setting.");
+    // A driver without an overlay (an isolated session runs with --no-overlay) drops the setting and reports the
+    // cursor disabled; it draws no cursor and so never waits for one.
+    if (state?.enabled === false) return;
+    throw new Error(`The driver did not apply the agent cursor glide setting: ${JSON.stringify({ enabled: state?.enabled, motion: state?.motion })}`);
   }
 
   /**
