@@ -9,6 +9,21 @@ Both modes take the same addresses, views, JSON commands and Codemode values. In
 
 The current desktop scope is Windows, with Pi running on it directly or in its WSL, on this machine or on another one over SSH. A different interface does not qualify a new runtime or platform. The production `windows-desktop` profile selects the same checked bytes as `windows-window-management`, so it qualifies wherever this guide names that profile or one it inherits. Safe permits session-opened windows and forbids display reads. YOLO permits task-authorized existing windows; it is not OS isolation.
 
+## Typed tools
+
+Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above: one `tool_search` for computer loads them. Their receipts match Insert receipts.
+
+| Tool | Does | Replaces |
+| --- | --- | --- |
+| `computer_open` | Starts an app by name or path, a Playwright browser, a Windows Sandbox or an isolated session at a machine address; opens an app address; attaches Playwright to a browser window address | Insert `open`, `open_browser`, `open_sandbox`, `open_session`, `attach_browser` |
+| `computer_window` | Moves, resizes, maximizes, minimizes, focuses or restores a window by its address | Read `state`, then Insert into the window-state address |
+| `computer_display` | Changes a display's resolution | Insert `resize` into a display |
+| Delete (`computer_delete` without IDE) | Closes a window like its close button, or releases a sandbox, isolated session, machine or `computer:session` | Insert `close` and `kill` |
+
+Delete of a window asks it to close: a browser the session opened closes with its disposable profile, an attached browser is detached first, and any other window gets the standard close request. The receipt says whether the window closed; an app that asks about unsaved work keeps it open, so Read it next. Add `?force=true` to the window address to kill the hung app of a window this session opened. Safe mode closes only windows the session opened.
+
+The JSON commands below keep working while the remaining operations move to their own tools.
+
 ## Discover and read
 
 Every machine is addressed the same way: `computer:machine/local` is this one, and `computer:machine/<name>` is another Windows machine configured under `machines` (see [Work on another machine](#work-on-another-machine)). A machine starts on its first use; nothing needs connecting. Read `computer:session` for the machines, sandboxes and sessions started so far.
@@ -258,7 +273,7 @@ All paths are on the remote WSL. Without `node` and `package`, the machine works
 
 ## Change a display's resolution
 
-A high-resolution display at a large Windows scale gives small, dense overviews. In YOLO, Insert `{"action":"resize","width":2160,"height":1440}` into a display address returned by a machine's `displays` address. It works on every machine; Safe refuses.
+A high-resolution display at a large Windows scale gives small, dense overviews. In YOLO, call `computer_display` with the display address and the new size, or Insert `{"action":"resize","width":2160,"height":1440}` into a display address returned by a machine's `displays` address. It works on every machine; Safe refuses.
 
 Only modes the graphics driver lists are used, keeping the colour depth and preferring the current refresh rate. An unsupported size refuses and lists the supported ones; keep the display's aspect ratio to avoid stretching. The change also affects what the human sees on that display.
 
@@ -276,7 +291,7 @@ The receipt separates the restore request, observed restoration, activation atte
 
 Use the explicitly selected, byte-checked `windows-window-management` runtime. Read the authorized window with `views:["state"]` to obtain its bounds, bounds source, minimized/maximized state, foreground, separately measured keyboard focus and independent virtual-desktop query results. This metadata issues one-use control state, not application-input or pixel authority. Cached Read does not resample or renew it.
 
-Insert one command into the returned `computer:window-state/...` address:
+`computer_window` samples that state and sends one command in a single call, so it needs no window-state address. Otherwise, insert one command into the returned `computer:window-state/...` address:
 
 | Operation | JSON command |
 | --- | --- |
@@ -418,6 +433,6 @@ On a browser observation, steps are the DOM actions above plus `wait_for` and `v
 
 ## Cleanup and development
 
-Close only task-owned disposable windows through grounded input first. Insert `{"action":"close"}` into a machine address to release that machine, or into `computer:session` to release every machine, sandbox and isolated session this computer use started. This does not close unrelated application documents or save them. It does close the browsers the session opened and delete their profiles, detaches from attached browsers, destroys sandboxes and isolated sessions and stops remote drivers. The result lists each released part with its own outcome; a failed or uncertain cleanup is reported as `unknown` rather than called complete.
+Close only task-owned disposable windows, with Delete or through grounded input. Delete a machine address (or Insert `{"action":"close"}` into it) to release that machine, and `computer:session` to release every machine, sandbox and isolated session this computer use started. This does not close unrelated application documents or save them. It does close the browsers the session opened and delete their profiles, detaches from attached browsers, destroys sandboxes and isolated sessions and stops remote drivers. The result lists each released part with its own outcome; a failed or uncertain cleanup is reported as `unknown` rather than called complete.
 
 For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. This links the IDE SDK to that checkout without modifying IDE or its dependencies. To try a worktree, point the package entry in your Pi settings at it, and point it back afterwards. Installation/interface switching and new native runtime adoption are separate decisions.

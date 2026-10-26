@@ -7,7 +7,7 @@ const record = (value: unknown): Record<string, unknown> => value !== null && ty
 const plain = (value: string) => value.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "");
 
 /** Preserve computer receipts without replacing IDE's renderer for unrelated edits. */
-export function computerActionRenderer(tool: "write" | "insert"): Registration {
+export function computerActionRenderer(tool: string): Registration {
   return {
     tool,
     matches(value, phase) {

@@ -80,6 +80,24 @@ export class MachineHost {
   }
 
   /**
+   * Post WM_CLOSE to a window of one process and wait up to `timeoutMs` for it to go: `closed` when it is gone (or was
+   * already), `open` when the app kept it, `refused` when Windows would not deliver the message.
+   */
+  async closeWindow(pid: number, window: number, timeoutMs: number): Promise<"closed" | "open" | "refused"> {
+    if (![pid, window, timeoutMs].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error("Invalid window to close.");
+    const out = await this.powershell(`Add-Type -Name Close -Namespace PiComputerUse -MemberDefinition '[DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);'
+$h = [IntPtr]${window}
+function Present { $p = [uint32]0; [void][PiComputerUse.Close]::GetWindowThreadProcessId($h, [ref]$p); [PiComputerUse.Close]::IsWindow($h) -and $p -eq ${pid} }
+if (-not (Present)) { 'closed'; exit }
+if (-not [PiComputerUse.Close]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)) { 'refused'; exit }
+$deadline = (Get-Date).AddMilliseconds(${timeoutMs})
+while ((Get-Date) -lt $deadline) { if (-not (Present)) { 'closed'; exit }; Start-Sleep -Milliseconds 100 }
+'open'`, undefined, timeoutMs + 20_000);
+    const outcome = out.trim();
+    if (outcome !== "closed" && outcome !== "open" && outcome !== "refused") throw new Error(`Unexpected close result: ${outcome.slice(0, 200)}`);
+    return outcome;
+  }
+  /**
    * Whether a window's process still handles messages, and how much memory and CPU it has used.
    * With a window handle, Windows' own hung-window test decides; the process's main window may be another one.
    */

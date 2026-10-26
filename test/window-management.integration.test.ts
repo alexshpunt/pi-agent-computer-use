@@ -10,7 +10,7 @@ const driver = path.join(root, "test/fixtures/window-management-driver.mjs");
 
 // Pattern: executable real-Pi extension example and the ordinary-IDE restore suite.
 // Contract: native desktop geometry is one-use management authority, never pixel/input authority.
-for (const scenario of ["workflow", "admission", "receipts", "restore"] as const) test.each([false, true])(
+for (const scenario of ["workflow", "admission", "receipts", "restore", "typed"] as const) test.each([false, true])(
   `ordinary IDE window management protects ${scenario} (providerFirst=%s)`,
   async providerFirst => {
     const extension = IDE_EXTENSION;
@@ -33,7 +33,7 @@ for (const scenario of ["workflow", "admission", "receipts", "restore"] as const
       expect(getToolResultText(result, "management-proof")).toContain(`IDE window management ${scenario} contract passed`);
       const rows = (await readFile(path.join(cwd, "calls.jsonl"), "utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
       const mutations = rows.filter(row => row.name === "manage_window");
-      expect(mutations).toHaveLength({ workflow: 6, admission: 1, receipts: 16, restore: 3 }[scenario]);
+      expect(mutations).toHaveLength({ workflow: 6, admission: 1, receipts: 16, restore: 3, typed: 3 }[scenario]);
       for (const { arguments: args } of mutations) {
         const fields = args.operation === "move" ? ["x", "y", "unit"] : args.operation === "resize" ? ["width", "height", "unit"] : [];
         expect(Object.keys(args).sort()).toEqual(["pid", "window_id", "state_id", "operation", ...fields].sort());
@@ -46,7 +46,8 @@ for (const scenario of ["workflow", "admission", "receipts", "restore"] as const
         expect(mutations[1].arguments).toMatchObject({ width: 180, height: 120 });
       }
       const restores = rows.filter(row => row.name === "restore_window");
-      expect(restores).toHaveLength(scenario === "restore" ? 2 : 0);
+      if (scenario === "typed") expect(mutations.map(row => row.arguments.operation)).toEqual(["move", "resize", "maximize"]);
+      expect(restores).toHaveLength(scenario === "restore" ? 2 : scenario === "typed" ? 1 : 0);
       for (const row of restores) expect(Object.keys(row.arguments).sort()).toEqual(["pid", "state_id", "window_id"]);
       expect(rows.filter(row => ["click", "type_text", "hotkey", "press_key", "bring_to_front", "set_window_frame", "move_pointer", "scroll_at", "get_desktop_state", "zoom"].includes(row.name))).toEqual([]);
       expect(result.tuiRenderedOutput).not.toContain("already handles");
