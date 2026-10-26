@@ -152,6 +152,14 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
     return resolve(cwd, value);
   };
   const done = (text: string, state: Record<string, unknown>): ComputerResult => ({ content: [{ type: "text", text }], details: { status: "delivered", mode, state } });
+  // A session result's text is its summary, then its native JSON; added lines join the summary so every receipt shows them.
+  const said = (result: ComputerResult, ...lines: string[]): ComputerResult => {
+    const [first, ...rest] = result.content;
+    if (first?.type !== "text") return { ...result, content: [...lines.map(line => ({ type: "text" as const, text: line })), ...result.content] };
+    const cut = first.text.indexOf("\n{");
+    const summary = cut < 0 ? first.text : first.text.slice(0, cut);
+    return { ...result, content: [{ ...first, text: [summary, ...lines].join("\n") + (cut < 0 ? "" : first.text.slice(cut)) }, ...rest] };
+  };
   try {
     if (command.action === "clipboard_read") {
       only(command, ["action", "image"]);
@@ -181,7 +189,7 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
       const bytes = await host.get(String(stopped.details.state!.name));
       await mkdir(dirname(to), { recursive: true });
       await writeFile(to, bytes);
-      return { ...stopped, content: [...stopped.content, { type: "text", text: `Fetched it (${bytes.length} bytes) into ${to}.` }] };
+      return said(stopped, `Fetched it (${bytes.length} bytes) into ${to}.`);
     }
     if (command.action === "audio_record") {
       only(command, ["action", "seconds", "to", "transcribe"]);
@@ -196,11 +204,11 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
       const wav = to ?? resolve(cwd, ".tmp", `pi-${name}`);
       await mkdir(dirname(wav), { recursive: true });
       await writeFile(wav, bytes);
-      const lines = [...recorded.content, ...(to ? [{ type: "text" as const, text: `Fetched it (${bytes.length} bytes) into ${to}.` }] : [])];
-      if (!command.transcribe) return { ...recorded, content: lines };
+      const fetched = to ? [`Fetched it (${bytes.length} bytes) into ${to}.`] : [];
+      if (!command.transcribe) return said(recorded, ...fetched);
       const transcript = await transcribe(wav).finally(() => to ? undefined : rm(wav, { force: true }));
-      return { ...recorded, content: [...lines, { type: "text", text: `Transcript (faster-whisper on this machine; can be wrong): ${transcript.text || "(no speech)"}` }],
-        details: { ...recorded.details, state: { ...recorded.details.state, transcript } } };
+      const heard = said(recorded, ...fetched, `Transcript (faster-whisper on this machine; can be wrong): ${transcript.text || "(no speech)"}`);
+      return { ...heard, details: { ...heard.details, state: { ...heard.details.state, transcript } } };
     }
     if (command.action === "files") {
       only(command, ["action"]);

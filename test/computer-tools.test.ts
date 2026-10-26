@@ -3,7 +3,10 @@ import { requireComputerAddress, ComputerResources } from "../src/computer-resou
 import { clipboardCommand, filesCommand, openCommand, recordCommand, waitCommand, windowCommand } from "../src/computer-tools.ts";
 import type { WebBrowser, WebLauncher } from "../src/web-browser.ts";
 import type { MachineHost } from "../src/machine-host.ts";
-import { deleteComputer } from "../src/provider.ts";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { computerAction, deleteComputer } from "../src/provider.ts";
 import { ComputerSession, type ComputerMode, type Driver } from "../src/session.ts";
 
 const cwd = "/synthetic-computer-tools";
@@ -168,4 +171,33 @@ test("Delete reports a window that stays open and refuses what it cannot close",
   expect(safe.closeWindow).not.toHaveBeenCalled();
   const session = await kept.remove("computer:session");
   expect(session.data).toMatchObject({ ok: true });
+});
+
+test("computer_record video_stop says where it fetched the video in the summary the model sees", async () => {
+  const driver: Driver = {
+    identity: vi.fn(async () => undefined) as Driver["identity"], close: vi.fn(async () => {}),
+    call: vi.fn<Driver["call"]>(async name => {
+      if (name === "start_recording") return { content: [{ type: "text", text: "{}" }], structuredContent: { video_active: true } };
+      if (name === "stop_recording") return { content: [{ type: "text", text: "{}" }], structuredContent: { video_active: false } };
+      throw new Error(`Unexpected native call ${name}`);
+    }),
+  };
+  const video = Buffer.from("mp4 bytes");
+  const host = { files: async () => ({ windows: "C:\\pi", wsl: "/mnt/c/pi" }), rename: vi.fn(async () => {}), get: vi.fn(async () => video), removeFiles: async () => {} };
+  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, undefined, undefined, host as unknown as MachineHost);
+  const resources = new ComputerResources(async () => session, async () => session.close());
+  const workspace = await mkdtemp(join(tmpdir(), "pi-record-"));
+  const run = (command: Record<string, unknown>) => computerAction(resources, "computer:machine/local", String(command.action), () => at("computer:machine/local"),
+    address => resources.perform(address, workspace, JSON.stringify(command), "insert"));
+  try {
+    expect((await run({ action: "record_start", seconds: 30 })).summary).toContain("Stop it earlier with computer_record video_stop");
+    const stopped = await run({ action: "record_stop", to: "out/run.mp4" });
+    expect(stopped.summary).toContain("as recording-1.mp4 in the session folder.");
+    expect(stopped.summary).toContain(`Fetched it (${video.length} bytes) into ${join(workspace, "out/run.mp4")}.`);
+    expect(await readFile(join(workspace, "out/run.mp4"))).toEqual(video);
+    expect((await run({ action: "record_stop" })).summary).toContain("list the session folder with computer_files");
+  } finally {
+    await session.close();
+    await rm(workspace, { recursive: true, force: true });
+  }
 });
