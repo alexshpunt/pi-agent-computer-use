@@ -3,7 +3,7 @@
 Computer use works with or without Pi Agent IDE. Each Pi session picks the mode on its own:
 
 - With Pi Agent IDE loaded, in either order, use the ordinary IDE Read, Search, Write and Insert tools on `computer:` addresses.
-- Without IDE, or with an IDE whose plugin API version does not match, use the `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools. They are deferred: find them with `tool_search`, and computer use turns `tool_search` on. Codemode scripts can call them directly.
+- Without IDE, or with an IDE whose plugin API version does not match, use the `computer_read`, `computer_search`, `computer_write`, `computer_insert` and `computer_delete` tools. They are deferred: find them with `tool_search`, and computer use turns `tool_search` on. Codemode scripts can call them directly.
 
 Both modes take the same addresses, views, JSON commands and Codemode values. In this guide, Read, Search, Write and Insert mean either tool family. Without IDE, Read `docs:computer` with `computer_read` for this guide. The `/computer-mode`, `/computer-debug` and `/computer-setup` commands remain user controls. An agent installs an optional part with Insert `{"action":"setup","part":"browser|firefox|perception|mxc|vscode-bridge"}` into a machine address, or prepares another machine with `{"action":"setup","part":"machine","ssh":"<alias>","name":"<name>"}` into `computer:machine/local`, only after the user explicitly allows it. Setup does not start that machine's driver.
 

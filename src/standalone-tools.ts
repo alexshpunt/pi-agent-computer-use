@@ -15,8 +15,8 @@ const image = Type.Object({ type: Type.Literal("image"), data: Type.String(), mi
 const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
 /**
- * Offer computer use without Pi Agent IDE: the same computer: resources through four deferred tools that
- * tool_search finds. Tools stay off the model's tool list until a search loads them.
+ * Offer computer use without Pi Agent IDE: the same computer: resources through deferred computer_read, computer_search,
+ * computer_write, computer_insert and computer_delete tools that tool_search finds. Tools stay off the model's tool list until a search loads them.
  */
 export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerResources, guide: string): void {
   const namespace = computerNamespace(guide);
