@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "vitest";
 import { requireComputerAddress } from "../../src/computer-resources.ts";
-import { pressPlan, typePlan } from "../../src/computer-tools.ts";
-import { addresses, connectLive, text } from "./remote.ts";
+import { clickPlan, pressPlan, typePlan } from "../../src/computer-tools.ts";
+import { addresses, connectLive, nativeForm, openWindow, text, WINDOWS_POWERSHELL_PATH } from "./remote.ts";
 
 const live = await connectLive();
 afterAll(() => live.close());
@@ -35,5 +35,19 @@ test("computer_type replace with foreground reaches the slider through accessibi
     expect(done.details.state).toMatchObject({ route: "accessibility", native_message: "semantic_element_read_only" });
   } finally {
     await live.resources.input(requireComputerAddress(window), live.cwd, pressPlan({ window, key: "alt+F4", foreground: true }));
+  }
+});
+
+// LPT-941: a refused region Read spends the window's observation; a point click then captures the window again.
+test("a point click after a refused region Read captures the window again", async () => {
+  const title = `pi-spent-${Date.now()}`;
+  const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title), title);
+  try {
+    const view = await live.read(window, ["image"]);
+    await live.read(`computer:observation/${view.details.observation_id}`, ["region:5000,5000,10,10"]).catch(() => undefined);
+    const clicked = await live.resources.input(requireComputerAddress(window), live.cwd, clickPlan({ window, x: 60, y: 20 }));
+    expect(clicked.details.status, text(clicked)).toBe("delivered");
+  } finally {
+    await live.resources.delete(`${window}?force=true`, live.cwd);
   }
 });

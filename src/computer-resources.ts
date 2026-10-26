@@ -912,6 +912,9 @@ export class ComputerResources {
     if (foreground && !isSemanticAction(action)) command.delivery_mode = "foreground";
     let target = plan.target;
     let view = session.inputView(window);
+    // The registry decides whether an observation still grounds input: a detail Read, a sequence or the registry's
+    // size limit can spend it while the session still names it as the window's current one.
+    if (view.native && !this.snapshots.has(view.native.id)) view = { ...view, native: undefined };
     // Actions that only exist on locators take a ref of the latest Read as the locator that names its element.
     if (refKind(target) === "hint" && (LOCATOR_ONLY.includes(action) || command.option !== undefined)) target = suggestLocator(this.hinted(view, target as string));
     if (command.option !== undefined) {
