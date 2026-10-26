@@ -66,6 +66,34 @@ test("one action vocabulary drives a native window by locator, ref and point", a
   } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
 });
 
+test("points of a browser page take clicks, wheel, drags, held keys and a pressure pen through Playwright", async () => {
+  const opened = await live.insert(live.machine, { action: "open_browser", url: `${fixture.base}/input` });
+  expect(opened.details.status, JSON.stringify(opened.content)).toBe("observed");
+  const window = `computer:window/${opened.details.window_ref}`;
+  const since = (await fixture.journal()).length;
+  try {
+    const delivered = async (plan: InputPlan) => { const { result, body } = await act(window, plan); expect(result.details.status, body).toBe("delivered"); };
+    await delivered(clickPlan({ window, x: 200, y: 200, modifiers: ["shift"] }));
+    await delivered(clickPlan({ window, x: 220, y: 200, count: 2 }));
+    // The double click asked the pad for pointer lock; leave it so later moves are ordinary.
+    await delivered(pressPlan({ window, key: "Escape" }));
+    await delivered(scrollPlan({ window, x: 300, y: 300, delta_y: 2 }));
+    await delivered(dragPlan({ window, from: { x: 100, y: 150 }, to: { x: 400, y: 260 }, via: [{ x: 250, y: 150 }], duration_ms: 300 }));
+    await delivered(pressPlan({ window, key: "w", hold_ms: 400 }));
+    await delivered(timelinePlan({ window, events: [{ at_ms: 0, type: "pen_down", x: 150, y: 400, pressure: 0.8, tilt_x: 20 }, { at_ms: 40, type: "pen_move", x: 200, y: 410, pressure: 0.8 },
+      { at_ms: 80, type: "pen_move", x: 260, y: 420, pressure: 0.8 }, { at_ms: 120, type: "pen_up", x: 260, y: 420 }] }));
+    const journal = (await fixture.journal()).slice(since);
+    console.log(journal.map(entry => JSON.stringify(entry)).join("\n"));
+    expect(journal).toContainEqual(expect.objectContaining({ type: "pointerdown", pointerType: "mouse", shift: true }));
+    expect(journal.filter(entry => entry.type === "pointerdown" && entry.pointerType === "mouse").length).toBeGreaterThanOrEqual(4);
+    expect(journal).toContainEqual(expect.objectContaining({ type: "wheel", deltaY: 200 }));
+    expect(journal).toContainEqual(expect.objectContaining({ type: "pointermove", pointerType: "mouse", buttons: 1 }));
+    const held = journal.filter(entry => entry.key === "w");
+    expect(held.map(entry => entry.type)).toEqual(["keydown", "keyup"]);
+    expect(journal).toContainEqual(expect.objectContaining({ type: "pointerdown", pointerType: "pen", pressure: 0.8, tiltX: 20 }));
+  } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
+});
+
 test("the same vocabulary drives a browser page through Playwright by locator and page ref", async () => {
   const opened = await live.insert(live.machine, { action: "open_browser", url: `${fixture.base}/wait` });
   expect(opened.details.status, JSON.stringify(opened.content)).toBe("observed");
@@ -81,7 +109,7 @@ test("the same vocabulary drives a browser page through Playwright by locator an
     expect((await act(window, pressPlan({ window, key: "ctrl+a" }))).result.details.status).toBe("delivered");
     expect((await act(window, hoverPlan({ window, target: "getByRole('button', { name: 'Unlock later' })" }))).result.details.status).toBe("delivered");
     expect((await act(window, scrollPlan({ window, delta_y: 2 }))).result.details.status).toBe("delivered");
-    const refused = await live.resources.input(requireComputerAddress(window), live.cwd, timelinePlan({ window, events: [{ at_ms: 0, type: "key_down", key: "a" }, { at_ms: 10, type: "key_up", key: "a" }] })).catch((error: Error) => error.message);
-    expect(String(refused)).toContain("timeline on browser pages");
+    const refused = await live.resources.input(requireComputerAddress(window), live.cwd, timelinePlan({ window, events: [{ at_ms: 0, type: "move_relative", dx: 5, dy: 0 }] })).catch((error: Error) => error.message);
+    expect(String(refused)).toContain("move_relative needs native input");
   } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
 });

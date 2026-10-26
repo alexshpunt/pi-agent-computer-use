@@ -88,8 +88,9 @@ test("input tools build one plan for native windows and one for browser pages", 
   expect(refKind("f1e3")).toBe("page");
   expect(refKind("getByRole('button', { name: 'Save' })")).toBe("locator");
   expect(clickPlan({ window: w, target: "1:a" })).toEqual({ label: "click", target: "1:a", native: { action: "click" }, web: { action: "click" } });
-  expect(clickPlan({ window: w, x: 10, y: 20, count: 2, modifiers: ["ctrl"] })).toEqual({ label: "click", point: { x: 10, y: 20 },
-    native: { action: "double_click", modifiers: ["ctrl"] }, web: { action: "click", click_count: 2, modifiers: ["Control"] } });
+  expect(clickPlan({ window: w, x: 10, y: 20, count: 2, modifiers: ["ctrl"] })).toMatchObject({ label: "click", point: { x: 10, y: 20 },
+    native: { action: "double_click", modifiers: ["ctrl"] }, web: { action: "timeline" } });
+  expect(clickPlan({ window: w, target: "e1", count: 2, modifiers: ["ctrl"] }).web).toEqual({ action: "click", click_count: 2, modifiers: ["Control"] });
   expect(clickPlan({ window: w, target: "e1", button: "right" }).native).toEqual({ action: "right_click" });
   expect(clickPlan({ window: w, target: "e1", count: 3 }).native).toBe("A triple click works on browser pages only.");
   expect(() => clickPlan({ window: w })).toThrow("click needs a target or a point (x and y).");
@@ -112,7 +113,15 @@ test("input tools build one plan for native windows and one for browser pages", 
   expect(selectPlan({ window: w, target: "1:a", checked: false })).toMatchObject({ native: { action: "uncheck" }, web: { action: "uncheck" } });
   expect(selectPlan({ window: w, menu: ["File", "Save"] })).toMatchObject({ native: { action: "menu", path: ["File", "Save"] } });
   expect(() => selectPlan({ window: w, target: "1:a", checked: true, values: ["a"] })).toThrow("select takes one of values, checked or menu");
-  expect(timelinePlan({ window: w, events: [{ at_ms: 0, type: "key_down", key: "a" }, { at_ms: 5, type: "key_up", key: "a" }] }).native).toMatchObject({ action: "timeline" });
+  const keyed = timelinePlan({ window: w, events: [{ at_ms: 0, type: "key_down", key: "ctrl" }, { at_ms: 5, type: "wheel", dy: 2 }, { at_ms: 9, type: "key_up", key: "ctrl" }] });
+  expect(keyed.native).toMatchObject({ action: "timeline", events: [{ key: "ctrl" }, { dy: 2 }, { key: "ctrl" }] });
+  expect(keyed.web).toEqual({ action: "timeline", events: [{ at_ms: 0, type: "key_down", key: "Control" }, { at_ms: 5, type: "wheel", dy: 200 }, { at_ms: 9, type: "key_up", key: "Control" }] });
+  expect(pressPlan({ window: w, key: "shift+up", hold_ms: 300 }).web).toEqual({ action: "timeline", events: [
+    { at_ms: 0, type: "key_down", key: "Shift" }, { at_ms: 0, type: "key_down", key: "ArrowUp" }, { at_ms: 300, type: "key_up", key: "ArrowUp" }, { at_ms: 300, type: "key_up", key: "Shift" }] });
+  expect(dragPlan({ window: w, from: { target: "e2" }, to: { x: 50, y: 60 }, duration_ms: 200 }).web).toEqual({ action: "timeline", events: [
+    { at_ms: 0, type: "move", target: { ref: "e2" } }, { at_ms: 0, type: "button_down", button: "left" },
+    { at_ms: 200, type: "move", x: 50, y: 60, steps: 13 }, { at_ms: 200, type: "button_up", button: "left" }] });
+  expect(scrollPlan({ window: w, x: 4, y: 5, delta_y: 1 }).web).toEqual({ action: "timeline", events: [{ at_ms: 0, type: "move", x: 4, y: 5 }, { at_ms: 0, type: "wheel", dy: 100 }] });
 });
 
 test("typed input refuses mismatched targets before anything reaches the machine", async () => {
@@ -175,9 +184,17 @@ test("typed input on a browser window goes to Playwright with page refs and loca
   expect(f.page.mock.calls.slice(-2).map(call => call[1])).toEqual([
     { action: "type", text: "Ada", target: { locator: "internal:label=\"Name\"i" } },
     { action: "press", key: "Enter", target: { locator: "internal:label=\"Name\"i" } }]);
-  await expect(f.resources.input(window, cwd, clickPlan({ window: "x", x: 5, y: 5 }))).rejects.toThrow("click at a point of a browser page is not available yet");
+  // A point of a page is a timeline in CSS pixels, with the click numbered like Playwright's mouse.click.
+  await f.resources.input(window, cwd, clickPlan({ window: "x", x: 5, y: 6, count: 2, modifiers: ["ctrl"] }));
+  expect(f.page.mock.calls.at(-1)![1]).toEqual({ action: "timeline", events: [
+    { at_ms: 0, type: "key_down", key: "Control" }, { at_ms: 0, type: "move", x: 5, y: 6 },
+    { at_ms: 0, type: "button_down", button: "left", click_count: 1 }, { at_ms: 0, type: "button_up", button: "left", click_count: 1 },
+    { at_ms: 0, type: "button_down", button: "left", click_count: 2 }, { at_ms: 0, type: "button_up", button: "left", click_count: 2 },
+    { at_ms: 0, type: "key_up", key: "Control" }] });
+  await expect(f.resources.input(window, cwd, timelinePlan({ window: "x", events: [{ at_ms: 0, type: "move_relative", dx: 5, dy: 0 }] }))).rejects.toThrow("move_relative needs native input");
+  await expect(f.resources.input(window, cwd, timelinePlan({ window: "x", events: [{ at_ms: 0, type: "key_down", key: "a" }] }))).rejects.toThrow("The timeline leaves a down");
   await expect(f.resources.input(window, cwd, selectPlan({ window: "x", menu: ["File"] }))).rejects.toThrow("menu works on native windows");
-  expect(f.page).toHaveBeenCalledTimes(3);
+  expect(f.page).toHaveBeenCalledTimes(4);
 });
 
 /** One window (pid 10, id 7) a session can list and observe; the host decides how a close request ends. */

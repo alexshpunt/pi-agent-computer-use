@@ -1,7 +1,7 @@
 import { Type, type JsonValue, type Static } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { ComputerRequestError, type ComputerResources, type InputPlan } from "./computer-resources.ts";
+import { ComputerRequestError, refKind, type ComputerResources, type InputPlan, type InputPoint } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { parseComputerViews } from "./computer-views.ts";
@@ -265,6 +265,21 @@ const shared = (params: { space?: "page" | "window"; foreground?: boolean }) =>
   ({ ...(params.space ? { space: params.space } : {}), ...(params.foreground !== undefined ? { foreground: params.foreground } : {}) });
 const timeout = (params: { timeout_ms?: number }) => params.timeout_ms !== undefined ? { timeout_ms: params.timeout_ms } : {};
 const pageModifiers = (modifiers?: string[]) => modifiers?.length ? { modifiers: modifiers.map(key => PAGE_MODIFIERS[key]) } : {};
+/** A Playwright key name for a key the native tools also take, such as ctrl, return, up or f5. */
+function pageKey(key: string): string {
+  const lower = key.toLowerCase();
+  return PAGE_MODIFIERS[lower === "control" ? "ctrl" : lower] ?? PAGE_KEYS[lower] ?? (/^f\d{1,2}$/.test(lower) ? lower.toUpperCase() : key);
+}
+/** A target inside a page timeline: a page ref, or a Playwright locator string. */
+const pageTarget = (target: string) => refKind(target) === "page" ? { ref: target } : target;
+/** A move of a page timeline to a point or to the centre of a target. */
+const pageMove = (at_ms: number, to: { target?: string; point?: InputPoint }, steps?: number) =>
+  ({ at_ms, type: "move", ...(to.target !== undefined ? { target: pageTarget(to.target) } : to.point), ...(steps ? { steps } : {}) });
+/** Keys held around a page timeline's events. */
+function holding(modifiers: string[] | undefined, start: number, end: number, events: Record<string, unknown>[]) {
+  const keys = (modifiers ?? []).map(key => PAGE_MODIFIERS[key]);
+  return [...keys.map(key => ({ at_ms: start, type: "key_down", key })), ...events, ...keys.reverse().map(key => ({ at_ms: end, type: "key_up", key }))];
+}
 
 const clickParameters = Type.Object({
   window: inputWindow, target: inputTarget("The element to click"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
@@ -280,8 +295,12 @@ export function clickPlan(params: Static<typeof clickParameters>): InputPlan {
     : button === "right" ? count === 2 ? "A right double click works on browser pages only." : { action: "right_click", ...modifiers, ...timeout(params) }
     : count === 2 ? button === "middle" ? "A middle double click works on browser pages only." : { action: "double_click", ...modifiers, ...timeout(params) }
     : { action: "click", ...(button === "middle" ? { button } : {}), ...modifiers, ...timeout(params) };
-  return { label: "click", ...aim(params, "click", true), ...shared(params), native,
-    web: { action: "click", ...(button !== "left" ? { button } : {}), ...(count > 1 ? { click_count: count } : {}), ...pageModifiers(params.modifiers), ...timeout(params) } };
+  const aimed = aim(params, "click", true);
+  // A point of a page gets the presses Playwright's mouse.click sends, numbered so the page sees double and triple clicks.
+  const presses = Array.from({ length: count }, (_, index) => [{ at_ms: 0, type: "button_down", button, click_count: index + 1 }, { at_ms: 0, type: "button_up", button, click_count: index + 1 }]).flat();
+  return { label: "click", ...aimed, ...shared(params), native,
+    web: aimed.point ? { action: "timeline", events: holding(params.modifiers, 0, 0, [pageMove(0, aimed), ...presses]) }
+      : { action: "click", ...(button !== "left" ? { button } : {}), ...(count > 1 ? { click_count: count } : {}), ...pageModifiers(params.modifiers), ...timeout(params) } };
 }
 
 const hoverParameters = Type.Object({
@@ -292,8 +311,9 @@ const hoverParameters = Type.Object({
 
 /** What computer_hover sends; on a native window it moves the real pointer, so it runs in the foreground. */
 export function hoverPlan(params: Static<typeof hoverParameters>): InputPlan {
-  return { label: "hover", ...aim(params, "hover", true), ...shared(params),
-    native: { action: "hover", dwell_ms: params.dwell_ms ?? 300, ...timeout(params) }, web: { action: "hover", ...timeout(params) } };
+  const aimed = aim(params, "hover", true);
+  return { label: "hover", ...aimed, ...shared(params), native: { action: "hover", dwell_ms: params.dwell_ms ?? 300, ...timeout(params) },
+    web: aimed.point ? { action: "timeline", events: [pageMove(0, aimed)] } : { action: "hover", ...timeout(params) } };
 }
 
 const endpoint = (what: string) => Type.Object({
@@ -309,13 +329,18 @@ const dragParameters = Type.Object({
   modifiers: modifiersField, foreground: foregroundField,
 }, { additionalProperties: false });
 
-/** What computer_drag sends to a native window. */
+/** What computer_drag sends: a native drag, or a page timeline that presses, moves and releases. */
 export function dragPlan(params: Static<typeof dragParameters>): InputPlan {
-  const end = aim(params.to, "to", true);
-  return { label: "drag", ...aim(params.from, "from", true), end, ...shared(params),
+  const start = aim(params.from, "from", true), end = aim(params.to, "to", true);
+  // On a page the drag is a timeline: press at the start, move through via to the end over duration_ms, release.
+  const duration = params.duration_ms ?? 500, button = params.button ?? "left";
+  const stops = [...(params.via ?? []).map(point => ({ point })), end];
+  const steps = Math.max(1, Math.round(duration / stops.length / 16));
+  const web = { action: "timeline", events: holding(params.modifiers, 0, duration, [pageMove(0, start), { at_ms: 0, type: "button_down", button },
+    ...stops.map((stop, index) => pageMove(Math.round(duration * (index + 1) / stops.length), stop, steps)), { at_ms: duration, type: "button_up", button }]) };
+  return { label: "drag", ...start, end, ...shared(params), web,
     native: { action: "drag", ...(params.duration_ms !== undefined ? { duration_ms: params.duration_ms } : {}), ...(params.button && params.button !== "left" ? { button: params.button } : {}),
-      ...(params.modifiers?.length ? { modifiers: params.modifiers } : {}), ...(params.via ? { via: params.via } : {}) },
-    web: "drag on browser pages is not available yet; use space: \"window\" for window pixels." };
+      ...(params.modifiers?.length ? { modifiers: params.modifiers } : {}), ...(params.via ? { via: params.via } : {}) } };
 }
 
 const scrollParameters = Type.Object({
@@ -334,7 +359,8 @@ export function scrollPlan(params: Static<typeof scrollParameters>): InputPlan {
     : dx && dy ? "Scroll a native element along one axis at a time, or give a point."
     : { action: "scroll", direction: dy > 0 ? "down" : dy < 0 ? "up" : dx > 0 ? "right" : "left", amount: Math.abs(dx || dy), ...timeout(params) };
   return { label: "scroll", ...aimed, ...shared(params), native,
-    web: { action: "scroll", ...(dx ? { delta_x: dx * 100 } : {}), ...(dy ? { delta_y: dy * 100 } : {}), ...timeout(params) } };
+    web: aimed.point ? { action: "timeline", events: [pageMove(0, aimed), { at_ms: 0, type: "wheel", ...(dx ? { dx: dx * 100 } : {}), ...(dy ? { dy: dy * 100 } : {}) }] }
+      : { action: "scroll", ...(dx ? { delta_x: dx * 100 } : {}), ...(dy ? { delta_y: dy * 100 } : {}), ...timeout(params) } };
 }
 
 const typeParameters = Type.Object({
@@ -374,9 +400,12 @@ export function pressPlan(params: Static<typeof pressParameters>): InputPlan {
   if (held.some(part => !PAGE_MODIFIERS[part])) throw new ComputerRequestError("Modifiers are ctrl, shift, alt and win.");
   const native = params.hold_ms !== undefined ? { action: "hold", keys: [...held, key.toLowerCase()], duration_ms: params.hold_ms }
     : { action: "key", key: key.toLowerCase(), ...(held.length ? { modifiers: held } : {}) };
-  const pageKey = PAGE_KEYS[key.toLowerCase()] ?? (/^f\d{1,2}$/i.test(key) ? key.toUpperCase() : key);
-  return { label: "press", ...aim(params, "press", false), ...shared(params), native,
-    web: params.hold_ms !== undefined ? "hold_ms on browser pages is not available yet." : { action: "press", key: [...held.map(part => PAGE_MODIFIERS[part]), pageKey].join("+") } };
+  const keys = [...held.map(part => PAGE_MODIFIERS[part]), pageKey(key)];
+  const aimed = aim(params, "press", false);
+  if (params.hold_ms !== undefined && aimed.target !== undefined) throw new ComputerRequestError("hold_ms goes to the focused element; focus it with computer_click first.");
+  return { label: "press", ...aimed, ...shared(params), native,
+    web: params.hold_ms !== undefined ? { action: "timeline", events: [...keys.map(name => ({ at_ms: 0, type: "key_down", key: name })), ...[...keys].reverse().map(name => ({ at_ms: params.hold_ms!, type: "key_up", key: name }))] }
+      : { action: "press", key: keys.join("+") } };
 }
 
 const selectParameters = Type.Object({
@@ -420,9 +449,14 @@ const timelineParameters = Type.Object({
   }, { additionalProperties: false }), { minItems: 1, maxItems: 5000, description: "Timed events. Every key and button pressed must be released; anything still held is released when the call ends." }),
 }, { additionalProperties: false });
 
-/** What computer_timeline sends to a native window, in the foreground. */
+/** What computer_timeline sends: native events in the foreground, or page events in CSS pixels through Playwright and CDP. */
 export function timelinePlan(params: Static<typeof timelineParameters>): InputPlan {
-  return { label: "timeline", ...shared(params), native: { action: "timeline", events: params.events }, web: "timeline on browser pages is not available yet; use space: \"window\" for window pixels." };
+  const native = params.events.find(event => event.type === "move_relative" || event.eraser || event.barrel || event.button === "x1" || event.button === "x2");
+  const web = native ? `${native.type === "move_relative" ? "move_relative" : native.eraser ? "The pen eraser" : native.barrel ? "The pen barrel button" : `Button ${native.button}`} needs native input: give space: "window" and points in pixels of the window's latest image.`
+    : { action: "timeline", events: params.events.map(({ eraser: _eraser, barrel: _barrel, ...event }) => ({ ...event,
+      ...(event.key !== undefined ? { key: pageKey(event.key) } : {}),
+      ...(event.type === "wheel" ? { ...(event.dx ? { dx: event.dx * 100 } : {}), ...(event.dy ? { dy: event.dy * 100 } : {}) } : {}) })) };
+  return { label: "timeline", ...shared(params), native: { action: "timeline", events: params.events }, web };
 }
 /**
  * Register the typed computer_* tools that replace Insert commands one cluster at a time. They are deferred: a

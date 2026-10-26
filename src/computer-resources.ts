@@ -939,8 +939,8 @@ export class ComputerResources {
   /** Typed input on the active page of a browser window through Playwright; a current DOM observation gives the change list. */
   private async pageInput(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
     if (typeof plan.web === "string") throw new ComputerRequestError(plan.web);
-    if (plan.point || plan.end) throw new ComputerRequestError(`${plan.label} at a point of a browser page is not available yet; give a target, or space: "window" for window pixels.`);
-    const target = typeof plan.target === "string" ? refKind(plan.target) === "page" ? { ref: plan.target } : plan.target : undefined;
+    // A page timeline carries its own points and targets; other page actions take the element target.
+    const target = plan.web.action !== "timeline" && typeof plan.target === "string" ? refKind(plan.target) === "page" ? { ref: plan.target } : plan.target : undefined;
     const command = { ...plan.web, ...(target !== undefined ? { target } : {}) };
     let action: WebAction;
     try { action = validateWebAction(command); }
