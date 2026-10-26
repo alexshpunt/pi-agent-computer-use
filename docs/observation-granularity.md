@@ -20,7 +20,7 @@ Start with full when learning a layout or identifying controls. Use image-only f
 
 Do not carry a full read's hints into an image-only read. Determine selection or completion from current pixels if the loop has no current UI resource. Stop on layout changes, uncertain state or an expired decision.
 
-Use UI-only when current reported labels, values and supported native control actions are enough. Local `search` and `inspect` work without another native read. `scope`, `highlight`, `crop` and region detail need image data and refuse after UI-only reads. Current UI nodes have native-screen bounds where reported, not window-image bounds. Do not convert those bounds into pixel input.
+Use UI-only when current reported labels, values and supported native control actions are enough. Local `search` and `inspect` work without another native read. `scope`, `highlight` and `crop` need image data and refuse after UI-only reads. Current UI nodes have native-screen bounds where reported, not window-image bounds. Do not convert those bounds into pixel input.
 
 Image-only accepts image guides but rejects UI query, walk limits and enabled hint labels. UI-only accepts UI query/walk limits but rejects hints and guides. Full keeps the existing controls. Invalid combinations fail explicitly rather than silently changing mode.
 

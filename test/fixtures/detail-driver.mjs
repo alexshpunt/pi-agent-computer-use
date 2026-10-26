@@ -23,7 +23,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
   else if (name === "list_windows") state = { windows };
   else if (name === "get_window_state") {
     state = { ...args, window_bounds: windows[0].bounds, screenshot_width: 500, screenshot_height: 400,
-      elements: [{ element_token: "close", role: "button", label: "Close", actions: ["click"] }] }; bytes = overview;
+      elements: [{ element_token: "close", role: "button", label: "Close", actions: ["click"], frame: { x: 210, y: 180, w: 200, h: 160 }, screenshot_frame: { x: 100, y: 80, w: 100, h: 80 } }] }; bytes = overview;
   } else if (name === "zoom") { state = { width: 200, height: 160, x_offset: 200, y_offset: 160 }; bytes = jpeg; mimeType = "image/jpeg"; }
   else if (name === "get_desktop_state") {
     const native = args.max_image_dimension === 0;

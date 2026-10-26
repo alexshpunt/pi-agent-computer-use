@@ -180,9 +180,20 @@ test("display resources and their observations never take input", async () => {
   expect(f.captures()).toHaveLength(1);
 });
 
-test("a successful rectangle Read is readonly detail and consumes its overview without a new capture", async () => {
+// LPT-931: a rectangle of a window is a viewport; the region view of a window observation refuses and keeps it current.
+test("a region Read of a window observation refuses before anything is sent and points to computer_view", async () => {
   const f = await fixture(), view = await f.read();
-  const detail = await f.resources.read(view.observation, cwd, ["region:80,60,40,20"]);
+  await expect(f.resources.read(view.observation, cwd, ["region:80,60,40,20"])).rejects.toThrow(/computer_view/);
+  await expect(f.resources.read(f.window, cwd, ["region:80,60,40,20"])).rejects.toThrow(/computer_view/);
+  expect(f.native().filter(([name]) => name === "zoom")).toHaveLength(0);
+  expect(f.captures()).toHaveLength(1);
+  // The observation is still current for input.
+  expect((await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x: 100, y: 70 }))).details.status).toBe("delivered");
+});
+
+test("an element crop is readonly detail and consumes its overview without a new capture", async () => {
+  const f = await fixture(), view = await f.read();
+  const detail = await f.resources.read(view.observation, cwd, [`element:crop,${view.hint}`]);
   expect(detail?.details.status).toBe("observed");
   expect(detail?.content.some(block => block.type === "image" && block.mimeType === "image/jpeg")).toBe(true);
   expect(detail?.details).not.toHaveProperty("observation_id");
@@ -192,18 +203,17 @@ test("a successful rectangle Read is readonly detail and consumes its overview w
   expect(f.inputs()).toHaveLength(0);
 });
 
-// LPT-941: a detail Read spends the window's current observation, also when the region refuses; point input then
-// captures the window again.
-test.each(["region:80,60,40,20", "region:480,300,100,100"])("a point click after a detail Read captures the window again, while a ref of the spent Read still refuses (%s)", async region => {
-  const f = await fixture(), view = await f.read(["image"]);
-  await f.resources.read(view.observation, cwd, [region]).catch(() => undefined);
+// LPT-941: an element crop spends the window's current observation; point input then captures the window again.
+test("a point click after an element crop captures the window again, while a ref of the spent Read still refuses", async () => {
+  const f = await fixture(), view = await f.read();
+  await f.resources.read(view.observation, cwd, [`element:crop,${view.hint}`]);
   const calls = f.native().length;
   const clicked = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70 }));
   expect(clicked.details.status, JSON.stringify(clicked.content)).toBe("delivered");
   // The click captured the window first; it did not act on the spent observation.
   expect(f.native().slice(calls).map(([name]) => name).filter(name => name !== "list_windows").slice(0, 2)).toEqual(["get_window_state", "click"]);
   const full = await f.read();
-  await f.resources.read(full.observation, cwd, [region]).catch(() => undefined);
+  await f.resources.read(full.observation, cwd, [`element:crop,${full.hint}`]);
   const inputs = f.inputs().length;
   await expect(f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: full.hint! }))).rejects.toThrow(/is not a ref of this window's latest Read/);
   expect(f.inputs()).toHaveLength(inputs);

@@ -64,7 +64,8 @@ From there the agent can:
 - see what each action changed: the UI rows, and a small picture of the window or page with the changed areas outlined and numbered, the one at the input first, plus enlarged before/after crops of them;
 - read only what changed since the last read with `changes`;
 - run `ocr` on canvases and games, or `regions` for icons and text areas found by Cua perception;
-- zoom into part of the latest overview, or crop one element at full resolution;
+- name a viewport, a rectangle of a window such as a game canvas, with `computer_view`: it shows that part at the window's own resolution, follows the window, takes clicks at points of its image and reports what changed only there;
+- crop one element at full resolution;
 - record a short sequence of frames with `computer_record` to watch an animation or a progress bar, then pick the frames it needs;
 - read a window's `state` to see whether the app is hung and how much memory it uses.
 

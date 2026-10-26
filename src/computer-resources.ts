@@ -51,6 +51,8 @@ async function cropImages(before: Buffer, after: Buffer, diff: StateDiff): Promi
   pixels.crops = cropped.map(item => ({ ...item.region, scale: item.scale }));
   return [...(overview ? [image(overview)] : []), ...cropped.flatMap(item => [image(item.before), image(item.after)])];
 }
+/** Detail of a rectangle of a window comes from a viewport; a display observation keeps its region view. */
+const WINDOW_REGION = "A window has no region view: make a viewport of that rectangle with computer_view, which shows it at the window's own resolution. Read the viewport, add ocr for its text, and act at points of its image.";
 /** Web content up to this far above its topmost element still counts as page, for the page's own margin. */
 const PAGE_MARGIN = 12;
 /**
@@ -641,11 +643,12 @@ export class ComputerResources {
     if (address.kind === "viewport") return this.readViewport(address, cwd, views, signal);
     const view = parseComputerViews(views);
     if (address.kind !== "window" && address.kind !== "observation") {
-      if (view.ocr) throw new ComputerRequestError("ocr reads a window, one of its observations or a region of one.");
+      if (view.ocr) throw new ComputerRequestError("ocr reads a window, one of its observations or a viewport.");
       return this.readNative(address, cwd, views, view, signal);
     }
     const snapshot = address.kind === "observation" ? this.snapshots.get(address.ref) : undefined;
     const windowRef = address.kind === "window" ? address.ref : snapshot?.target.window_ref;
+    if (view.kind === "region" && windowRef !== undefined) throw new ComputerRequestError(WINDOW_REGION);
     if (view.ocr && windowRef === undefined) throw new ComputerRequestError("ocr reads window observations; display observations have no kept overview pixels.");
     if (view.changes && address.kind !== "window") throw new ComputerRequestError("changes reads a window address: it takes a fresh capture and compares it with the window's previous observation.");
     const session = (await this.routeAddress(cwd, address, signal)).session;
@@ -655,11 +658,8 @@ export class ComputerResources {
     if (frame && view.kind === "overview" && view.capture.maxLongEdge === undefined && view.capture.scale === undefined) Object.assign(view.capture, frame.size);
     const target = windowRef === undefined ? undefined : session.windowTarget(windowRef);
     if (view.regions && windowRef === undefined) throw new ComputerRequestError("regions reads a window or one of its observations.");
-    // A region of a stored observation is read from its own pixels: exact boxes, no native call, input authority kept.
-    let result = view.ocr && view.kind === "region" && snapshot && windowRef !== undefined
-      ? await this.recognize(session, snapshot.result, windowRef, view.region, signal)
-      // An observation keeps its own capture: regions parses it without another native read.
-      : view.regions && snapshot ? snapshot.result
+    // An observation keeps its own capture: regions parses it without another native read.
+    let result = view.regions && snapshot ? snapshot.result
       : await this.readNative(address, cwd, views, view, signal);
     // A window whose pixels cannot be captured still lists its UI changes, unless pixels were asked for explicitly.
     if (view.changes && view.kind === "overview" && result && result.details.status !== "observed" && !views?.some(item => item === "full" || item === "image"))
@@ -694,20 +694,20 @@ export class ComputerResources {
       const health = await session.processHealth(target);
       return health && !health.responding ? { ...result, content: [...result.content, { type: "text", text: unresponsive(health) }], details: { ...result.details, process: health } } : result;
     }
-    return view.ocr && view.kind !== "region" && windowRef !== undefined ? this.recognize(session, result, windowRef, undefined, signal) : result;
+    return view.ocr && windowRef !== undefined ? this.recognize(session, result, windowRef, signal) : result;
   }
 
-  /** Add Windows OCR lines of an observation's unannotated overview pixels, or of one region of them. */
-  private async recognize(session: ComputerSession, result: ComputerResult, windowRef: string, region: { x: number; y: number; width: number; height: number } | undefined, signal?: AbortSignal): Promise<ComputerResult> {
+  /** Add Windows OCR lines of an observation's unannotated overview pixels. */
+  private async recognize(session: ComputerSession, result: ComputerResult, windowRef: string, signal?: AbortSignal): Promise<ComputerResult> {
     const id = result.details.observation_id;
     const image = id === undefined ? undefined : session.observationImage(windowRef, id);
     if (!image) throw new ComputerRequestError("This observation's unannotated pixels are no longer kept. Read the window with ocr again.");
     let lines;
-    try { lines = await session.recognizeText(image, region, signal); }
+    try { lines = await session.recognizeText(image, undefined, signal); }
     catch (error) { throw new ComputerRequestError(`Text recognition failed: ${error instanceof Error ? error.message : error}`); }
     const listing = lines.length ? lines.map(line => `- "${line.text}" at ${line.x},${line.y} ${line.width}x${line.height}`).join("\n") : "(no text found)";
-    const header = `Windows OCR${region ? ` of region ${region.x},${region.y} ${region.width}x${region.height}` : ""}: ${lines.length} lines; boxes are in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`;
-    return { ...result, content: [...(region ? [] : result.content), { type: "text", text: `${header}\n${listing}` }], details: { ...result.details, text_lines: lines } };
+    const header = `Windows OCR: ${lines.length} lines; boxes are in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`;
+    return { ...result, content: [...result.content, { type: "text", text: `${header}\n${listing}` }], details: { ...result.details, text_lines: lines } };
   }
 
   private async readNative(address: ComputerAddress, cwd: string, views: readonly string[] | undefined, view: ComputerViews, signal?: AbortSignal): Promise<ComputerResult | undefined> {
@@ -742,7 +742,7 @@ export class ComputerResources {
       if (view.kind === "state") return session.observeWindowState(address.ref, signal);
       this.retireWindow(address.ref, view.kind === "dom" ? "dom" : "native");
       if (view.kind === "dom") return this.remember({ window_ref: address.ref }, await session.observeDom(address.ref, view.options, signal));
-      if (view.kind !== "overview") throw new ComputerRequestError("Read an overview, then apply region to its returned observation address.");
+      if (view.kind !== "overview") throw new ComputerRequestError("Read an overview of the window, then element views on its returned observation address.");
       return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture));
     }
     if (address.kind === "display") {
@@ -782,13 +782,12 @@ export class ComputerResources {
         { operation: view.operation, observation_id: address.ref, hint: view.hint });
     }
     if (view.kind === "region") {
+      if (snapshot.target.window_ref !== undefined) throw new ComputerRequestError(WINDOW_REGION);
       // Retire the provider handle even when detail refuses; never turn detail into an input target.
       this.snapshots.delete(address.ref);
       const imageId = snapshot.result.details.agent_image?.image_id;
       if (typeof imageId !== "string") throw new ComputerRequestError("This observation has no image for detail.");
-      const zoom = { image_id: imageId, ...view.region };
-      return snapshot.target.window_ref !== undefined ? session.observe(snapshot.target.window_ref, signal, undefined, zoom)
-        : session.observeDisplay(snapshot.target.display!, signal, zoom);
+      return session.observeDisplay(snapshot.target.display!, signal, { image_id: imageId, ...view.region });
     }
     const checked = await session.checkObservation(snapshot.target, address.ref, signal);
     if (checked.details.status !== "observed") { this.snapshots.delete(address.ref); return checked; }

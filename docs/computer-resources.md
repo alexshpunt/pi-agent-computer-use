@@ -19,9 +19,10 @@ The desktop scope is Windows, with Pi running on it directly or in its WSL, on t
 | --- | --- |
 | Read (`computer_read`) | Looks at a window, display, observation, sequence or machine: pixels, UI tree, page snapshot, OCR, window state |
 | Search (`computer_search`) | Finds a machine's windows or installed apps, or filters the lines of an observation |
-| Delete (`computer_delete`) | Closes a window like its close button, or releases a sandbox, isolated session, machine or `computer:session` |
+| Delete (`computer_delete`) | Closes a window like its close button, removes a viewport, or releases a sandbox, isolated session, machine or `computer:session` |
 | `computer_open` | Starts an app, a Playwright browser, a Windows Sandbox or an isolated session; attaches Playwright to a running browser window; sets WebView2 debugging for an app |
 | `computer_window` | Moves, resizes, maximizes, minimizes, focuses or restores a window, or gives it a short name |
+| `computer_view` | Makes, moves or resizes a [viewport](#viewports), a named rectangle of a window, and shows it at the window's own resolution |
 | `computer_display` | Changes a display's resolution |
 | `computer_click`, `computer_hover`, `computer_drag`, `computer_scroll` | Pointer input on an element or a point |
 | `computer_type`, `computer_press`, `computer_select`, `computer_timeline` | Text, keys and chords, list options, checkboxes and menus, timed raw events |
@@ -42,13 +43,14 @@ Several steps in a row go into a Codemode script that calls these tools; each ca
 | `computer:machine/<name>/windows`, `/apps` | Its windows and installed apps, for Search |
 | `computer:machine/<name>/displays`, `/display/primary` | Its displays, for Read; listed displays are `/display/<ref>` |
 | `computer:window/...` | A window, returned by Search or `computer_open` |
+| `computer:window/.../<name>` | A [viewport](#viewports) of that window, made by `computer_view` |
 | `computer:observation/...` | One Read of a window or display, or a page snapshot |
 | `computer:sequence/...` | Frames captured by `computer_record` `sequence` |
 | `computer:app/...` | An installed app from Search; `computer_open` opens it |
 | `computer:sandbox/...` | A Windows Sandbox or an isolated session |
 | `computer:session` | Everything this computer use started |
 
-A machine starts on its first use; nothing needs connecting. No address falls back to this machine: window, observation and sequence addresses belong to the machine or sandbox that issued them, and every call on them runs there. An address that no machine of this session issued, or that was released, refuses with the reason before anything is sent. Every receipt names its machine in its first line, for example `Computer observed (yolo) on lab`. Read `computer:session` for the machines, sandboxes, sessions, window names and windows so far.
+A machine starts on its first use; nothing needs connecting. No address falls back to this machine: window, observation and sequence addresses belong to the machine or sandbox that issued them, and every call on them runs there. An address that no machine of this session issued, or that was released, refuses with the reason before anything is sent. Every receipt names its machine in its first line, for example `Computer observed (yolo) on lab`. Read `computer:session` for the machines, sandboxes, sessions, window names, viewports and windows so far.
 
 Results show addresses in a short form, `computer:<machine>/<letter><number><tag>`: `computer:lab/w3qk` for a window, `o` for an observation, `s` for a sequence, `a` for an app, `b` for a sandbox and `d` for a listed display. The two-letter tag is drawn once per Pi run, so an address kept from an earlier run refuses instead of reaching whatever window got the same number. The long forms keep working and stay in structured details.
 
@@ -67,10 +69,10 @@ Read a window for its UI tree and a small overview image. Overviews have a 1280 
 | `dom`, `dom:{"target":...,"depth":4,"boxes":true,"log":true}` | A fresh aria snapshot of the active page of a browser opened or attached with `computer_open`, with refs such as `e12` or `f1e3` in frames; `log` adds the retained console and network log. Use alone |
 | `state` | The window's minimized, maximized, visible and foreground state and bounds, and whether its process is hung with its memory and CPU time; no pixels or UI. Use alone. `computer_window` changes the state |
 | `changes` | A fresh Read that lists only rows changed (`~`), added (`+`) or removed (`-`) since the window's previous observation, and changed pixel areas with before/after crops. Use it when re-reading after a wait |
-| `ocr` | Windows OCR of the overview pixels, lines with boxes in overview pixels. Alone or with capture options on a window, alone on an observation, or with `region:x,y,w,h` on one. Small text needs `capture:{"granularity":"image","maxLongEdge":3840}`. Recognised text can be wrong |
+| `ocr` | Windows OCR of the image, lines with boxes in its pixels. Alone or with capture options on a window, alone on an observation or a [viewport](#viewports). Small text needs a viewport or `capture:{"granularity":"image","maxLongEdge":3840}`. Recognised text can be wrong |
 | `regions` | Icons and text areas found by [Cua perception](https://github.com/trycua/cua/releases/tag/cua-perception-v0.2.1) in the overview pixels, for controls without UI names such as canvas toolbars. Needs `/computer-setup perception` on that machine |
 | `capture:{"max_elements":500,"max_depth":20,"hints":true,"maxLongEdge":...,"scale":...}` | Limits of one fresh Read; optional `guides` |
-| `region:x,y,w,h` | Readonly detail of a rectangle in the observation's overview pixels |
+| `region:x,y,w,h` | Readonly detail of a rectangle in a display observation's pixels. For part of a window, make a [viewport](#viewports) |
 | `element:inspect,1:a` | One element of an observation; also `scope`, `highlight`, `crop` and `text` (its full text). On a page snapshot, `element:crop,<ref>` and `element:highlight,<ref>` |
 | `frames:endpoints` | Frames of a sequence: `first`, `last`, `all`, `changed`, `{"indexes":[0,2]}` or `{"from":0,"to":2}`; add `"as":"sheet"` for one tiled image, or `"max"`/`"min"` for a per-pixel composite ([temporal capture](temporal-capture.md#one-image-of-many-frames)) |
 
@@ -78,11 +80,11 @@ Read an observation with `offset` and `limit` to page through its text; pages co
 
 ## Act on windows
 
-The input tools take a window address, never an observation. The window decides how input goes: a browser opened or attached by computer use runs it through Playwright on its active page, any other window through the native driver and UI Automation. A target is one of:
+The input tools take a window or viewport address, never an observation. The window decides how input goes: a browser opened or attached by computer use runs it through Playwright on its active page, any other window through the native driver and UI Automation. A target is one of:
 
 - **A ref** from the window's latest Read: a native ref such as `1:a` (from `full`, `ui` or `aria`), or a page ref such as `e12` from a `dom` Read. Input spends native refs; its change list brings the new ones.
 - **A Playwright locator** such as `getByRole('button', { name: 'Save' })`, resolved with auto-waiting (`timeout_ms`, default 5000).
-- **A point** (`x`, `y`). On a native window it is in pixels of the latest image of that window, from a Read with an image or from an action's change list; without one the tool captures the window first, about 300 ms once. On a browser page a point is in CSS pixels; `space: "window"` uses pixels of a window Read, for example for the browser's own toolbar.
+- **A point** (`x`, `y`). On a native window it is in pixels of the latest image of that window, from a Read with an image or from an action's change list; without one the tool captures the window first, about 300 ms once. On a [viewport](#viewports) it is in pixels of the viewport's image. On a browser page a point is in CSS pixels; `space: "window"` uses pixels of a window Read, for example for the browser's own toolbar.
 
 On native windows the target decides how input goes. What the agent sees structurally is pressed structurally, and what it sees only as pixels gets the real pointer:
 
@@ -97,6 +99,14 @@ While the human uses the keyboard or mouse, real input pauses: it refuses with t
 Keys on a browser page go to the page, so browser shortcuts such as `alt+ArrowLeft` do not run there; use `computer_browser` to go back, or `space: "window"` to press them natively. Pen eraser and barrel, the `x1`/`x2` buttons and `move_relative` exist only natively. Pen pressure and tilt reach apps as real pen input; on a page they arrive as a `pen` pointer in Chrome and Edge. Paint 11 ignores pen pressure; GIMP uses it.
 
 A refused action sent nothing. An `unknown` outcome may have reached the target: Read again and never replay it blindly. Delivery is not proof of the application's response.
+
+### Viewports
+
+A viewport is a named rectangle of a window, for work that stays in one part of it, such as a game canvas, a map or a grid. `computer_view` makes one from `x`, `y`, `width` and `height` in pixels of the window's latest image, the same pixels as points of the input tools, and shows it. Its address is the window's name or address with the viewport's name after it: `computer:game/pano`, or `computer:lab/w3qk/pano` for a window without a name. A window can have several viewports. The rectangle is kept relative to the window's top-left corner, so it follows the window when the window moves. `computer_view` on an existing viewport moves or resizes it, and fields left out keep their values. Delete removes a viewport; it also goes away with its window.
+
+The viewport's image has the window's own resolution, up to 1568 px on its long edge; a larger viewport is scaled down to fit. A window larger than its overview shows more detail in a viewport than in the overview. Read the viewport address to look again, and add `ocr` for the text in it. A viewport Read only looks: the window's latest Read and its refs stay current.
+
+Give the viewport address to an input tool as `window`, and points are pixels of the viewport's image; a point outside it refuses. Refs and locators act as on the window. The change list after the action compares only the viewport's pixels, in pixels of its image, and the receipt names the viewport and its window. Input at a point of a viewport first captures the window at full resolution when its current capture is smaller.
 
 ### Native locators
 
@@ -115,7 +125,7 @@ CSS and XPath refuse on native windows. Each action takes fresh UI walks until e
 
 Every action reports what it changed, the way Playwright MCP's incremental snapshots do: `~` changed, `+` added and `-` removed elements, plus URL, title or tab changes, such as `~ 3:a Button "Count 0" → "Count 1"`. Changed and added rows carry the new refs. A locator action compares with the walk that resolved its target; a page action compares Playwright's snapshots before and after.
 
-Every action also compares pixels: on a native window the window's overview pixels, on a browser page Playwright screenshots of the page in CSS pixels. Image 1 is a small copy of the window or page with each changed area outlined and numbered as listed. Before and after crops of the first three areas follow it, with small areas enlarged up to 4x:
+Every action also compares pixels: on a native window the window's overview pixels, in a viewport only the viewport's pixels, on a browser page Playwright screenshots of the page in CSS pixels. Image 1 is a small copy of the window or page with each changed area outlined and numbered as listed. Before and after crops of the first three areas follow it, with small areas enlarged up to 4x:
 
 ```text
 Pixels changed in 2 areas (overview pixels; 0.07% of the window); image 1 outlines and numbers them on the window:
@@ -232,7 +242,7 @@ else if (r.outcome === "refused") { /* nothing was sent */ }
 | `outcome` | `delivered`, `refused`, `unknown`, `observed` or `closed`. `refused` sent nothing; `unknown` may have reached the target |
 | `effect` | `applied`, `not-applied` or `unknown`; a refusal after an already delivered step stays `unknown` |
 | `stage` | `validation` when the request was rejected before reaching the target, otherwise `target` |
-| `window`, `observation`, `sandbox` | The window, the new current observation and a sandbox `computer_open` started |
+| `window`, `viewport`, `observation`, `sandbox` | The window, the viewport a Read showed or an input went to, the new current observation and a sandbox `computer_open` started |
 | `application_effect` | Always `unverified`: delivery is not proof of the application's response |
 | `reason`, `code` | Why a refused or unknown action ended |
 | `page`, `evaluation`, `verification`, `changes`, `steps` | Present when the action produced them |

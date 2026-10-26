@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 import { DEFAULT_MAX_LONG_EDGE } from "../src/cua-image-settings.ts";
 import { SCRIPT_HELPERS } from "./fixtures/standalone-computer.ts";
 
-test("real Pi forwards only final display crop and window JPEG, and disarms overview input", async () => {
+test("real Pi forwards only final display crop and window element JPEG, and disarms overview input", async () => {
   await mkdir(".tmp/native-zoom", { recursive: true });
   const cwd = await mkdtemp(path.resolve(".tmp/native-zoom/pi-contract-")); const log = path.join(cwd, "calls.jsonl");
   await mkdir(path.join(cwd, ".pi"));
@@ -17,10 +17,10 @@ test("real Pi forwards only final display crop and window JPEG, and disarms over
 const opened = await openApp("Notepad");
 if (opened.outcome !== "observed" || !opened.observation) throw Error("Open returned no first observation");
 const region = "region:100,80,100,80";
-const detail = await tools.computer_read({path:opened.observation,views:[region]});
-text(body(detail)); image(detail);
 const ref = hints(opened)[0];
 if (!ref) throw Error("Open listed no refs: " + body(opened));
+const detail = await tools.computer_read({path:opened.observation,views:["element:crop," + ref]});
+text(body(detail)); image(detail);
 const stale = await tools.computer_click({window:opened.window,target:ref});
 if (stale.outcome !== "refused" || stale.effect !== "not-applied") throw Error("Old overview still armed");
 const overview = await tools.computer_read({path:"computer:machine/local/display/primary"});

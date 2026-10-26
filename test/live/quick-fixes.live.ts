@@ -38,13 +38,14 @@ test("computer_type replace reaches the slider through accessibility", async () 
   }
 });
 
-// LPT-941: a refused region Read spends the window's observation; a point click then captures the window again.
-test("a point click after a refused region Read captures the window again", async () => {
+// LPT-941: an element crop spends the window's observation; a point click then captures the window again.
+test("a point click after an element crop captures the window again", async () => {
   const title = `pi-spent-${Date.now()}`;
   const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title), title);
   try {
-    const view = await live.read(window, ["image"]);
-    await live.read(`computer:observation/${view.details.observation_id}`, ["region:5000,5000,10,10"]).catch(() => undefined);
+    const view = await live.read(window, ["full"]);
+    const hint = view.details.ui!.elements.find(element => /^Count/.test(element.name ?? ""))!.hint;
+    await live.read(`computer:observation/${view.details.observation_id}`, [`element:crop,${hint}`]);
     const clicked = await live.resources.input(requireComputerAddress(window), live.cwd, clickPlan({ window, x: 200, y: 250 }));
     // The click is real input; right after an app starts, Windows can still hand the foreground back to another window,
     // and the driver then answers unknown. What this checks is that the spent observation no longer refuses the click.

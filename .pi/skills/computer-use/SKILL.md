@@ -19,7 +19,7 @@ When several agents must work at once, or the work needs foreground input withou
 
 On another configured machine, use its own addresses exactly as for this one, and Delete the machine address when the work there is done.
 
-For native detail, choose rectangles from the overview already seen and Read `region:x,y,width,height` on its observation, or crop one element. Detail is readonly.
+For work in one part of a window, such as a canvas, a map or a game board, make a viewport with `computer_view` from a rectangle of the overview already seen, then pass its address (`computer:game/pano`) to the input tools: points are pixels of the viewport's image, which has the window's own resolution, and the change list covers only the viewport. Read the viewport to look again, with `ocr` for small text; it follows the window. To see one element closer, crop it with `element:crop`; a crop is readonly.
 
 Read displays only within authorized YOLO scope. If a high-resolution display makes overviews too dense, `computer_display` changes its resolution; the session restores it on close, and earlier display and window observations stop working. Display, detail and frame pixels never become input points.
 
