@@ -19,7 +19,7 @@ const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g,
  * computer_write, computer_insert and computer_delete tools that tool_search finds. Tools stay off the model's tool list until a search loads them.
  */
 export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerResources, guide: string): void {
-  const namespace = computerNamespace(guide);
+  const namespace = computerNamespace();
   pi.registerTool({
     name: "computer_read", label: "Computer read", exposure: "deferred", namespace,
     description: `Use computer_read to discover machines, see app windows, displays and browser pages, and get the observations that ground input. Read ${GUIDE} first for addresses, views and commands.`,
@@ -93,5 +93,5 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
       },
     });
   }
-  registerComputerDelete(pi, resources, guide);
+  registerComputerDelete(pi, resources);
 }

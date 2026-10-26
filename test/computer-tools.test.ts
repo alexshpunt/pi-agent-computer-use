@@ -105,7 +105,8 @@ test("input tools build one plan for native windows and one for browser pages", 
   expect(typed).toMatchObject({ native: { action: "set_value", text: "Ada" }, web: { action: "fill", text: "Ada" },
     then: { target: "1:a", native: { action: "key", key: "return" }, web: { action: "press", key: "Enter" } } });
   expect(() => typePlan({ window: w, text: "x", replace: true })).toThrow("replace needs the field as target.");
-  expect(pressPlan({ window: w, key: "ctrl+shift+Tab" })).toMatchObject({ native: { action: "key", key: "tab", modifiers: ["ctrl", "shift"] }, web: { action: "press", key: "Control+Shift+Tab" } });
+  expect(pressPlan({ window: w, key: "ctrl+shift+Tab" })).toMatchObject({ native: { action: "hotkey", keys: ["ctrl", "shift", "tab"] }, web: { action: "press", key: "Control+Shift+Tab" } });
+  expect(pressPlan({ window: w, key: "Enter" }).native).toEqual({ action: "key", key: "enter" });
   expect(pressPlan({ window: w, key: "w", hold_ms: 500 }).native).toEqual({ action: "hold", keys: ["w"], duration_ms: 500 });
   expect(pressPlan({ window: w, key: "f5" }).web).toEqual({ action: "press", key: "F5" });
   expect(() => pressPlan({ window: w, key: "hyper+a" })).toThrow("Modifiers are ctrl, shift, alt and win.");

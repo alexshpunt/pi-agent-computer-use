@@ -59,7 +59,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   pi.on("session_start", () => {
     if (registered) return;
     registered = true;
-    registerComputerTools(pi, provider.resources, provider.guide);
+    registerComputerTools(pi, provider.resources);
     if (!provider.attached()) registerStandaloneTools(pi, provider.resources, provider.guide);
     // Deferred tools are reachable only through tool_search, which Pi registers inactive.
     const active = pi.getActiveTools();

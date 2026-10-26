@@ -10,9 +10,14 @@ import { COMPUTER_DELETE_HELP, computerAction, deleteComputer } from "./provider
 const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 type Action = Awaited<ReturnType<typeof computerAction>>;
 
-/** The namespace every computer_* tool shares; tool_search finds them by it, and its instructions are the guide. */
-export function computerNamespace(guide: string) {
-  return { name: "computer", description: "Read and operate Windows app windows, displays and browser pages through computer: addresses", instructions: guide };
+/**
+ * The namespace every computer_* tool shares. tool_search indexes its instructions into every tool's search text,
+ * so they point to the guide instead of holding it: the guide names every operation and would make all tools match
+ * every query equally.
+ */
+export function computerNamespace() {
+  return { name: "computer", description: "Read and operate Windows app windows, displays and browser pages through computer: addresses",
+    instructions: "Read docs:computer for the guide: with Read in Pi Agent IDE, with computer_read without it." };
 }
 /** Codemode scripts receive the receipt object for every outcome, so they branch on outcome without try/catch. */
 export const receiptSchema = Type.Object({ outcome: Type.String(), effect: Type.String() }, { additionalProperties: true });
@@ -399,7 +404,8 @@ export function pressPlan(params: Static<typeof pressParameters>): InputPlan {
   const key = parts.at(-1)!, held = parts.slice(0, -1).map(part => part.toLowerCase().replace(/^(control)$/, "ctrl").replace(/^(meta|windows|cmd)$/, "win"));
   if (held.some(part => !PAGE_MODIFIERS[part])) throw new ComputerRequestError("Modifiers are ctrl, shift, alt and win.");
   const native = params.hold_ms !== undefined ? { action: "hold", keys: [...held, key.toLowerCase()], duration_ms: params.hold_ms }
-    : { action: "key", key: key.toLowerCase(), ...(held.length ? { modifiers: held } : {}) };
+    // A chord goes as a hotkey: posted key messages do not carry modifier state, so the app would see the bare key.
+    : held.length ? { action: "hotkey", keys: [...held, key.toLowerCase()] } : { action: "key", key: key.toLowerCase() };
   const keys = [...held.map(part => PAGE_MODIFIERS[part]), pageKey(key)];
   const aimed = aim(params, "press", false);
   if (params.hold_ms !== undefined && aimed.target !== undefined) throw new ComputerRequestError("hold_ms goes to the focused element; focus it with computer_click first.");
@@ -462,8 +468,8 @@ export function timelinePlan(params: Static<typeof timelineParameters>): InputPl
  * Register the typed computer_* tools that replace Insert commands one cluster at a time. They are deferred: a
  * tool_search for computer loads them, so sessions that never use the computer pay nothing for them.
  */
-export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResources, guide: string): void {
-  const namespace = computerNamespace(guide);
+export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResources): void {
+  const namespace = computerNamespace();
   const common = { exposure: "deferred" as const, namespace, outputSchema: receiptSchema };
   const rendered = (name: string, call: (args: Record<string, unknown>) => string) => ({
     renderCall: (args: unknown) => new Text(`${name} ${plain(call(args as Record<string, unknown>))}`, 0, 0),
@@ -653,9 +659,9 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
 }
 
 /** Delete for computer resources when Pi Agent IDE is absent: the IDE's Delete handles them otherwise. */
-export function registerComputerDelete(pi: ExtensionAPI, resources: ComputerResources, guide: string): void {
+export function registerComputerDelete(pi: ExtensionAPI, resources: ComputerResources): void {
   pi.registerTool({
-    name: "computer_delete", label: "Computer delete", exposure: "deferred", namespace: computerNamespace(guide), outputSchema: receiptSchema,
+    name: "computer_delete", label: "Computer delete", exposure: "deferred", namespace: computerNamespace(), outputSchema: receiptSchema,
     description: "Use computer_delete to close an app window, or to release a sandbox, isolated session, machine or all of computer use.",
     parameters: Type.Object({ path: Type.String({ description: COMPUTER_DELETE_HELP }) }, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },

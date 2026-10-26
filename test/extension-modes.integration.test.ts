@@ -28,6 +28,9 @@ async function run(name: string, extensions: string[], tools: string[], calls: {
 test("without Pi Agent IDE, tool_search finds the deferred computer tools and they work", async () => {
   const result = await run("standalone", ["builtin:tool-search", computerUse], ["read"], [
     { id: "find", name: "tool_search", arguments: { query: "computer read windows displays" } },
+    // The input queries run while most typed tools are still unloaded, so they must win against all of them.
+    { id: "input", name: "tool_search", arguments: { query: "computer click hover drag scroll" } },
+    { id: "keys", name: "tool_search", arguments: { query: "computer type press select timeline" } },
     { id: "guide", name: "computer_read", arguments: { path: "docs:computer" } },
     { id: "session", name: "computer_read", arguments: { path: "computer:session" } },
     { id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } },
@@ -37,17 +40,18 @@ test("without Pi Agent IDE, tool_search finds the deferred computer tools and th
     { id: "files", name: "tool_search", arguments: { query: "computer files clipboard record" } },
     { id: "list", name: "computer_files", arguments: { machine: "computer:session", action: "list" } },
     { id: "sequence", name: "computer_record", arguments: { at: "computer:machine/local/display/primary", action: "sequence" } },
-    { id: "input", name: "tool_search", arguments: { query: "computer click type press drag" } },
     { id: "click", name: "computer_click", arguments: { window: "computer:machine/local", target: "1:a" } },
     { id: "delete", name: "computer_delete", arguments: { path: "computer:session" } },
   ]);
-  expect(getToolCallNames(result)).toEqual(["tool_search", "computer_read", "computer_read", "computer_insert", "tool_search", "tool_search", "computer_display", "tool_search", "computer_files", "computer_record", "tool_search", "computer_click", "computer_delete"]);
+  expect(getToolCallNames(result)).toEqual(["tool_search", "tool_search", "tool_search", "computer_read", "computer_read", "computer_insert", "tool_search", "tool_search", "computer_display", "tool_search", "computer_files", "computer_record", "computer_click", "computer_delete"]);
+  for (const tool of ["computer_click", "computer_hover", "computer_drag", "computer_scroll", "computer_type", "computer_press", "computer_select", "computer_timeline"])
+    expect(["find", "input", "keys"].map(id => getToolResultText(result, id)).join("\n")).toContain(`- ${tool}:`);
   for (const id of ["find", "guide", "session", "close", "delete"])
     expect(getToolExecution(result, id).isError, getToolResultText(result, id)).toBe(false);
   expect(getToolResultText(result, "find")).toContain("computer_read");
   // tool_search loads the best matches of each query, at most 8 by default, so the guide names one query per cluster.
   // A query lists only tools it newly loads; together the guide's cluster queries load every computer tool.
-  const loaded = ["find", "open", "more", "files", "input"].map(id => getToolResultText(result, id)).join("\n");
+  const loaded = ["find", "open", "more", "files", "input", "keys"].map(id => getToolResultText(result, id)).join("\n");
   for (const tool of ["computer_search", "computer_insert", "computer_write", "computer_delete", "computer_open", "computer_window", "computer_display",
     "computer_wait", "computer_browser", "computer_files", "computer_clipboard", "computer_record", "computer_click", "computer_hover", "computer_drag",
     "computer_scroll", "computer_type", "computer_press", "computer_select", "computer_timeline"]) expect(loaded).toContain(`- ${tool}:`);
@@ -85,7 +89,8 @@ test("with Pi Agent IDE, computer use extends Read, Search, Insert and Delete an
       { id: "open", name: "tool_search", arguments: { query: "computer open window" } },
       { id: "more", name: "tool_search", arguments: { query: "computer wait browser" } },
       { id: "files", name: "tool_search", arguments: { query: "computer files clipboard record" } },
-      { id: "input", name: "tool_search", arguments: { query: "computer click type press drag" } },
+      { id: "input", name: "tool_search", arguments: { query: "computer click hover drag scroll" } },
+      { id: "keys", name: "tool_search", arguments: { query: "computer type press select timeline" } },
       { id: "session", name: "read", arguments: { path: "computer:session" } },
       { id: "close", name: "insert", arguments: { path: "computer:session", text: '{"action":"close"}' } },
       { id: "force", name: "delete", arguments: { path: "computer:machine/local?force=true" } },
@@ -94,7 +99,7 @@ test("with Pi Agent IDE, computer use extends Read, Search, Insert and Delete an
     // The force option reaches computer use through the IDE's resolver, which then refuses it for a machine.
     expect(getToolResultText(result, "force")).toContain("?force=true applies to window addresses only.");
     // The IDE's own tools read and delete computer resources; the cluster queries load every typed tool.
-    const loaded = ["find", "open", "more", "files", "input"].map(id => getToolResultText(result, id)).join("\n");
+    const loaded = ["find", "open", "more", "files", "input", "keys"].map(id => getToolResultText(result, id)).join("\n");
     expect(loaded).not.toContain("computer_read");
     expect(loaded).not.toContain("computer_delete");
     for (const tool of ["computer_open", "computer_window", "computer_display", "computer_wait", "computer_browser", "computer_files", "computer_clipboard", "computer_record",

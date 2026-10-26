@@ -59,7 +59,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
     content: [{ type: "text", text: "No synthetic runtime is running." }], details: { status: "closed", mode },
   };
   const provider = await registerComputerProvider(pi, getSession, close);
-  registerComputerTools(pi, provider.resources, provider.guide);
+  registerComputerTools(pi, provider.resources);
   pi.registerTool({
     name: "verify_window_management", label: "Verify one-use window management",
     description: "Exercise real IDE state and management with synthetic MCP receipts only.",

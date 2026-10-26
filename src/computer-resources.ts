@@ -49,7 +49,7 @@ const BATCH_STEPS = 200;
 /** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
 const NATIVE_BATCH_ACTIONS = ["click", "double_click", "right_click", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value"];
 /** Native actions that take a Playwright locator or JSON target. */
-const NATIVE_LOCATOR_ACTIONS = ["click", "double_click", "right_click", "hover", "type_text", "key", "scroll", "invoke", "select", "set_value", "check", "uncheck"];
+const NATIVE_LOCATOR_ACTIONS = ["click", "double_click", "right_click", "hover", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value", "check", "uncheck"];
 /** A point in pixels of a window's latest image, or in CSS pixels of a browser page. */
 export interface InputPoint { x: number; y: number }
 /** One typed input on a window, built by a computer_* input tool; the window decides which backend runs it. */

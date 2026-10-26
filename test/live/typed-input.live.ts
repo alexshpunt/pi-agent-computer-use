@@ -53,11 +53,14 @@ test("one action vocabulary drives a native window by locator, ref and point", a
     expect((await act(window, pressPlan({ window, key: "ctrl+a" }))).result.details.status).toBe("delivered");
     expect((await act(window, pressPlan({ window, key: "Backspace" }))).result.details.status).toBe("delivered");
     // An empty field's value falls back to its name in conditions, so its aria line shows the emptiness: no ": value".
-    expect(presentComputerResult(await live.read(window, ["aria"]))).toMatch(/textbox "Field" \[ref=/);
+    // A chord must reach the app as a chord: a bare "a" would leave "worlda" behind instead of an empty field.
+    const field_line = /textbox "Field".*$/m.exec(presentComputerResult(await live.read(window, ["aria"])))![0];
+    expect(field_line).toMatch(/^textbox "Field" \[ref=[0-9a-z]+:[a-z]+\]$/);
     expect((await act(window, selectPlan({ window, target: "getByRole('list', { name: 'Pick' })", values: ["beta"] }))).result.details.status).toBe("delivered");
     expect(await holds(window, [{ target: "getByRole('option', { name: 'beta' })", is: "selected" }])).toBe("satisfied");
     expect((await act(window, scrollPlan({ window, target: "getByRole('list', { name: 'Pick' })", delta_y: 1 }))).result.details.status).not.toBe("unknown");
-    expect((await act(window, scrollPlan({ window, x: centre.x, y: centre.y + 60, delta_y: 1 }))).result.details.status).toBe("delivered");
+    const wheel = await act(window, scrollPlan({ window, x: centre.x, y: centre.y + 60, delta_y: 1 }));
+    expect(wheel.result.details.status, wheel.body).toBe("delivered");
     expect((await act(window, hoverPlan({ window, target: button }))).result.details.status).toBe("delivered");
     expect((await act(window, dragPlan({ window, from: { x: centre.x, y: centre.y }, to: { x: centre.x + 40, y: centre.y } }))).result.details.status).toBe("delivered");
     const timeline = await act(window, timelinePlan({ window, events: [{ at_ms: 0, type: "move", x: centre.x, y: centre.y }, { at_ms: 50, type: "button_down" }, { at_ms: 100, type: "button_up" }] }));

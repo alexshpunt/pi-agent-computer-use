@@ -11,7 +11,7 @@ The current desktop scope is Windows, with Pi running on it directly or in its W
 
 ## Typed tools
 
-Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above. `tool_search` loads at most 8 best matches per query, so search one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click type press drag`. Their receipts match Insert receipts.
+Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above. `tool_search` loads at most 8 best matches per query, so search one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`. Their receipts match Insert receipts.
 
 | Tool | Does | Replaces |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ The input tools take a window address, never an observation. The window decides 
 - A Playwright locator such as `getByRole('button', { name: 'Save' })`, resolved with auto-waiting like the [native locators](#native-locators) or by Playwright on a page; `timeout_ms` bounds the wait.
 - A point. On a native window it is in pixels of the latest image of that window: a Read with an image, or the successor of an action. Without one, the tool captures the window at the default overview size first, about 300 ms once. On a browser window a point is in CSS pixels of the page; add `space: "window"` for pixels of a window Read, for example the browser's own toolbar.
 
-Native input starts in the background. When the window refuses it before anything was sent, the same call sends it in the foreground and says so; later input to that window goes in the foreground at once. `foreground: true` goes there first, `foreground: false` never does. A foreground action activates the window and moves the real pointer. `computer_hover` and `computer_timeline` move the real pointer on native windows, so they always run in the foreground. Pen eraser and barrel, the `x1`/`x2` buttons and `move_relative` exist only natively; on a browser page give `space: "window"`. Pen pressure and tilt on a page reach it as a `pen` pointer through CDP in Chrome and Edge.
+Native input starts in the background. When the window refuses it before anything was sent, the same call sends it in the foreground and says so; later input to that window goes in the foreground at once. `foreground: true` goes there first, `foreground: false` never does. A foreground action activates the window and moves the real pointer. `computer_hover` and `computer_timeline` move the real pointer on native windows, so they always run in the foreground. Pen eraser and barrel, the `x1`/`x2` buttons and `move_relative` exist only natively; on a browser page give `space: "window"`. Pen pressure and tilt on a page reach it as a `pen` pointer through CDP in Chrome and Edge. Keys on a page go to the page, so browser shortcuts such as `alt+ArrowLeft` do not run there; use `computer_browser` to go back, or `space: "window"` to press them natively.
 
 A native Read and a DOM Read of the same browser window keep each other's observations; input retires both.
 
