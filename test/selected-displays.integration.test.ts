@@ -17,13 +17,13 @@ const rows=r.split("\\n").filter(line=>/^computer:local\\/d\\d+[a-z]{2} /.test(l
 if(rows.length!==2)throw Error("Native discovery failed");
 const row=rows.find(line=>JSON.parse(line.slice(line.lastIndexOf(" | ")+3)).bounds.x<0);
 store("monitor",row.split(" | ")[0]);text(row);`;
-    // Display observations are readonly: input into one refuses before dispatch and keeps it for detail.
+    // Display observations are readonly: input tools take only window addresses, so they refuse before dispatch and keep it for detail.
     const observe = `${SCRIPT_HELPERS}
 const r=await tools.computer_read({path:load("monitor")});
 if(typeof r==="string")throw Error("Invalid read grant");
 store("overview",observation(r));
-const input=await insert(load("overview"),{action:"click",x:1,y:1});
-if(input.outcome!=="refused"||input.effect!=="not-applied"||!/readonly/.test(input.reason))throw Error("Display pixels grounded input");
+const input=await tools.computer_click({window:load("overview"),x:1,y:1});
+if(input.outcome!=="refused"||input.effect!=="not-applied"||!/window address/.test(input.reason))throw Error("Display pixels grounded input");
 text("overview read; input refused");`;
     const crop = `const r=await tools.computer_read({path:load("overview"),views:["region:100,80,100,80"]});
 if(typeof r==="string")throw Error("Selected crop failed");
@@ -31,13 +31,13 @@ image(r);text("cropped");`;
     try {
       const result = await new PiIntegrationTest({ testName: `selected-displays-${mode}`, artifactsDir: testArtifactsDir(import.meta.filename), cwd,
         extensions: [path.resolve(`test/fixtures/selected-display-${mode === "safe" ? "safe-" : ""}extension.ts`)], isolateUserResources: true,
-        tools: ["codemode", "computer_read", "computer_insert"], conversation: [
+        tools: ["codemode", "computer_read", "computer_click", "computer_delete"], conversation: [
           assistantMessage([toolCall({ id: "discovery", name: mode === "safe" ? "computer_read" : "codemode", arguments: mode === "safe" ? { path: "computer:machine/local/displays" } : { code: discover } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "overview", name: mode === "safe" ? "computer_read" : "codemode", arguments: mode === "safe" ? { path: "computer:machine/local/display/d-unowned" } : { code: observe } })], { stopReason: "toolUse" }),
           ...(mode === "yolo" ? [assistantMessage([toolCall({ id: "crop", name: "codemode", arguments: { code: crop } })], { stopReason: "toolUse" })] : []),
-          assistantMessage([toolCall({ id: "input", name: mode === "safe" ? "computer_insert" : "codemode", arguments: mode === "safe"
-            ? { path: "computer:machine/local/display/d-unowned", text: '{"action":"click","x":1,"y":1}' }
-            : { code: 'const r=await tools.computer_insert({path:load("monitor"),text:JSON.stringify({action:"click",x:1,y:1})});text(r.outcome+": "+r.reason);' } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "input", name: mode === "safe" ? "computer_click" : "codemode", arguments: mode === "safe"
+            ? { window: "computer:machine/local/display/d-unowned", x: 1, y: 1 }
+            : { code: 'const r=await tools.computer_click({window:load("monitor"),x:1,y:1});text(r.outcome+": "+r.reason);' } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
           assistantMessage([text("Read-only monitor selection checked.")]),
         ],
@@ -49,7 +49,7 @@ image(r);text("cropped");`;
         expect(getToolExecution(result, "input").isError).toBe(true);
       } else {
         for (const id of ["discovery", "overview", "crop", "input"]) expect(getToolExecution(result, id).isError, getToolResultText(result, id)).toBe(false);
-        expect(getToolResultText(result, "input")).toContain("refused: A display address accepts only resize");
+        expect(getToolResultText(result, "input")).toContain("refused: Give the window address");
         expect(images("crop")).toHaveLength(1);
         const executions = getToolExecutions(result);
         const [listed] = nestedCalls(executions, "discovery"), [overview] = nestedCalls(executions, "overview"), [crop] = nestedCalls(executions, "crop");
