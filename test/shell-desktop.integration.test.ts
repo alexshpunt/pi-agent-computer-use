@@ -25,7 +25,7 @@ text("observed");`;
     try {
       const result = await new PiIntegrationTest({ testName: `shell-desktop-${mode}`, artifactsDir: testArtifactsDir(import.meta.filename), cwd,
         extensions: [path.resolve(mode === "safe" ? "test/fixtures/safe-extension.ts" : "test/fixtures/shell-desktop-extension.ts")],
-        isolateUserResources: true, tools: mode === "safe" ? ["computer_search", "computer_insert"] : ["codemode", "computer_insert"],
+        isolateUserResources: true, tools: mode === "safe" ? ["computer_search", "computer_delete"] : ["codemode", "computer_delete"],
         conversation: [
           assistantMessage([toolCall({ id: "discover", name: mode === "safe" ? "computer_search" : "codemode",
             arguments: mode === "safe" ? { path: "computer:machine/local/windows", query: "" } : { code: discover } })], { stopReason: "toolUse" }),

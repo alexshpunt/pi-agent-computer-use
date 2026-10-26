@@ -25,13 +25,13 @@ test("production Pi exposes only computer tools, with no direct or Codemode brow
         assistantMessage([toolCall({ id: "apps", name: "codemode",
           arguments: { code: 'text(await tools.computer_search({path:"computer:machine/local/apps",query:"Notepad"}));' } })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "close", name: "codemode",
-          arguments: { code: 'text((await tools.computer_insert({path:"computer:session",text:JSON.stringify({action:"close"})})).outcome);' } })], { stopReason: "toolUse" }),
+          arguments: { code: 'text((await tools.computer_delete({path:"computer:session"})).outcome);' } })], { stopReason: "toolUse" }),
         assistantMessage([text("Unified tool loadout checked.")]),
       ],
     }).run("Check the production loadout. Only discover apps; never open a window or send input.");
     // Without Pi Agent IDE, production computer use offers deferred tools that tool_search loads.
-    const standalone = ["computer_browser", "computer_click", "computer_clipboard", "computer_delete", "computer_display", "computer_drag", "computer_files", "computer_hover", "computer_insert", "computer_open",
-      "computer_press", "computer_read", "computer_record", "computer_scroll", "computer_search", "computer_select", "computer_timeline", "computer_type", "computer_wait", "computer_window", "computer_write"];
+    const standalone = ["computer_browser", "computer_click", "computer_clipboard", "computer_delete", "computer_display", "computer_drag", "computer_files", "computer_hover", "computer_open",
+      "computer_press", "computer_read", "computer_record", "computer_scroll", "computer_search", "computer_select", "computer_timeline", "computer_type", "computer_wait", "computer_window"];
     expect(getToolExecutionDetails(getToolExecution(result, "registry"))).toEqual({
       names: standalone,
       exposure: Object.fromEntries(standalone.map(name => [name, "deferred"])),
