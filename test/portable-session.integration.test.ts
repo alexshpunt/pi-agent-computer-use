@@ -23,9 +23,9 @@ text(JSON.stringify({platform:"linux",metadata:rows.length,lifetime:"deferred",l
   try {
     const result = await new PiIntegrationTest({ testName: "portable-lifetime-boundary", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/portable-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"], conversation: [
+      tools: ["codemode", "computer_delete"], conversation: [
         assistantMessage([toolCall({ id: "portable", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Portable admission checked without app launch or input.")]),
       ] }).run("Inspect only synthetic metadata and verify deferred lifetime refusal. Do not launch apps or send input.");
     expect(getToolExecution(result, "portable").isError, getToolResultText(result, "portable")).toBe(false);

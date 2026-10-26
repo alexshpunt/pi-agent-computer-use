@@ -41,10 +41,10 @@ text("Complete sequence guards passed");`;
     const result = await new PiIntegrationTest({
       testName: "complete-input", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"],
+      tools: ["codemode", "computer_delete"],
       conversation: [
         assistantMessage([toolCall({ id: "sequence", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Use complete known-target sequences. Never replay a completed prefix or uncertain input.");

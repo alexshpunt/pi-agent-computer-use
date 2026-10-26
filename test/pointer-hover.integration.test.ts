@@ -27,7 +27,7 @@ async function scenario(testName: string, code: string) {
       piCommand: process.env.PI_HOVER_PI_COMMAND,
       tools: ["codemode", "computer_insert", "fixture_pointer_control"],
       conversation: [assistantMessage([toolCall({ id: "pointer", name: "codemode", arguments: { code: prelude + "\n" + code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")])],
     }).run("Exercise native pointer admission against synthetic MCP windows only. Never operate a real desktop.");
     expect(getToolExecution(result, "pointer").isError, getToolResultText(result, "pointer")).toBe(false);

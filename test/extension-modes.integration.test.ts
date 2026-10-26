@@ -33,7 +33,7 @@ test("without Pi Agent IDE, tool_search finds the deferred computer tools and th
     { id: "keys", name: "tool_search", arguments: { query: "computer type press select timeline" } },
     { id: "guide", name: "computer_read", arguments: { path: "docs:computer" } },
     { id: "session", name: "computer_read", arguments: { path: "computer:session" } },
-    { id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } },
+    { id: "close", name: "computer_delete", arguments: { path: "computer:session" } },
     { id: "open", name: "tool_search", arguments: { query: "computer open window" } },
     { id: "more", name: "tool_search", arguments: { query: "computer wait browser" } },
     { id: "display", name: "computer_display", arguments: { display: "computer:display/primary", width: 1920, height: 1080 } },
@@ -92,7 +92,7 @@ test("with Pi Agent IDE, computer use extends Read, Search, Insert and Delete an
       { id: "input", name: "tool_search", arguments: { query: "computer click hover drag scroll" } },
       { id: "keys", name: "tool_search", arguments: { query: "computer type press select timeline" } },
       { id: "session", name: "read", arguments: { path: "computer:session" } },
-      { id: "close", name: "insert", arguments: { path: "computer:session", text: '{"action":"close"}' } },
+      { id: "close", name: "delete", arguments: { path: "computer:session" } },
       { id: "force", name: "delete", arguments: { path: "computer:machine/local?force=true" } },
       { id: "delete", name: "delete", arguments: { path: "computer:session" } },
     ]);

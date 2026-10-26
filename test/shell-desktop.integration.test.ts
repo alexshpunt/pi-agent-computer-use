@@ -30,7 +30,7 @@ text("observed");`;
           assistantMessage([toolCall({ id: "discover", name: mode === "safe" ? "computer_search" : "codemode",
             arguments: mode === "safe" ? { path: "computer:machine/local/windows", query: "" } : { code: discover } })], { stopReason: "toolUse" }),
           ...(mode === "yolo" ? [assistantMessage([toolCall({ id: "observe", name: "codemode", arguments: { code: observe } })], { stopReason: "toolUse" })] : []),
-          assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
           assistantMessage([text("Read-only membership contract checked.")]),
         ] }).run("Read only permitted window membership. Do not switch desktops, activate windows or send input.");
       expect(getToolExecution(result, "discover").isError, getToolResultText(result, "discover")).toBe(false);

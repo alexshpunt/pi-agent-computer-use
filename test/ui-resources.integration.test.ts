@@ -44,10 +44,10 @@ text("UI resource guards passed: 200 collected, 199 search matches, one native c
     const result = await new PiIntegrationTest({
       testName: "ui-resources", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"],
+      tools: ["codemode", "computer_delete"],
       conversation: [
         assistantMessage([toolCall({ id: "ui", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Refine observed UI resources locally and act only on the exact current enabled target.");

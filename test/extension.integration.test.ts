@@ -29,7 +29,7 @@ test("standalone Pi opens two windows with first observations, rejects invented 
         assistantMessage([toolCall({ id: "stale", name: "computer_write", arguments: {
           path: "computer:observation/not-an-observation", content: "Do not dispatch",
         } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("The standalone contract was exercised.")]),
       ],
     }).run("Open two new test windows with first observations, refuse an invented write reference, and release runtime.");

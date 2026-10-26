@@ -29,10 +29,10 @@ text("Minimized screenshot refused with native cause; old input refused; UI-only
     const result = await new PiIntegrationTest({
       testName: "window-capture-failure", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"],
+      tools: ["codemode", "computer_delete"],
       conversation: [
         assistantMessage([toolCall({ id: "capture", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Observe the capture failure without activating or restoring any window.");

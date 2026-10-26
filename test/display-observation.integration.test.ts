@@ -32,7 +32,7 @@ for (const mode of ["yolo", "safe"] as const) {
           assistantMessage([toolCall({ id: "mixed", name: "computer_read", arguments: { path: "computer:machine/local/display/primary", views: ["ui"] } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "promote", name: "computer_read", arguments: { path: "computer:machine/local/display/primary", mode: "yolo" } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "display-input", name: "computer_insert", arguments: { path: "computer:machine/local/display/primary", text: '{"action":"click","x":0,"y":0}' } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
           assistantMessage([text("Read-only display source checked.")]),
         ],
       }).run("Observe the primary display only when permitted. Never change mode or use display pixels as window input.");

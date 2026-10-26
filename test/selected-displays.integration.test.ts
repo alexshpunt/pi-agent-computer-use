@@ -38,7 +38,7 @@ image(r);text("cropped");`;
           assistantMessage([toolCall({ id: "input", name: mode === "safe" ? "computer_insert" : "codemode", arguments: mode === "safe"
             ? { path: "computer:machine/local/display/d-unowned", text: '{"action":"click","x":1,"y":1}' }
             : { code: 'const r=await tools.computer_insert({path:load("monitor"),text:JSON.stringify({action:"click",x:1,y:1})});text(r.outcome+": "+r.reason);' } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
           assistantMessage([text("Read-only monitor selection checked.")]),
         ],
       }).run("Discover and read a selected monitor only when permitted. Do not promote display pixels to input.");

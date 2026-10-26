@@ -2,8 +2,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ComputerResources } from "../../src/computer-resources.ts";
 import type { ComputerMode, ComputerResult, ComputerSession } from "../../src/session.ts";
 import { registerStandaloneTools } from "../../src/standalone-tools.ts";
+import { registerComputerTools } from "../../src/computer-tools.ts";
 
-export const STANDALONE_TOOLS = ["computer_read", "computer_search", "computer_write", "computer_insert"];
+export const STANDALONE_TOOLS = ["computer_read", "computer_search", "computer_delete", "computer_open", "computer_window", "computer_display", "computer_wait",
+  "computer_browser", "computer_files", "computer_clipboard", "computer_record", "computer_click", "computer_hover", "computer_drag", "computer_scroll",
+  "computer_type", "computer_press", "computer_select", "computer_timeline"];
 
 /**
  * Register the production standalone tools over a fixture session and declare them at once. tool_search
@@ -13,6 +16,7 @@ export function registerFixtureComputerTools(pi: ExtensionAPI, getSession: (cwd:
   closeSession: () => Promise<ComputerResult>, getMode?: () => ComputerMode): ComputerResources {
   const resources = new ComputerResources(getSession, closeSession, undefined, undefined, getMode);
   pi.on("session_start", () => {
+    registerComputerTools(pi, resources);
     registerStandaloneTools(pi, resources, "Fixture computer guide.");
     pi.setActiveTools([...new Set([...pi.getActiveTools(), ...STANDALONE_TOOLS])]);
   });
@@ -35,9 +39,9 @@ const address = (value, kind, label) => {
 };
 const observation = value => address(value, "observation", "Observation");
 const hints = value => [...body(value).matchAll(/^([0-9a-z]+:[a-z]+) \| /gm)].map(match => match[1]);
-const insert = (path, command) => tools.computer_insert({ path, text: JSON.stringify(command) });
 const windows = async query => tools.computer_search({ path: "computer:machine/local/windows", query: query ?? "" });
-const openApp = app => insert("computer:machine/local", { action: "open", app });
+const openApp = app => tools.computer_open({ at: "computer:machine/local", app });
+const closeAll = () => tools.computer_delete({ path: "computer:session" });
 `;
 
 /** The computer tool calls a Codemode script made, in order, with their real results. */

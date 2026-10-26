@@ -44,10 +44,10 @@ text("Three mode contracts passed; exactly two native clicks.");
     const result = await new PiIntegrationTest({
       testName: "observation-granularity", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"],
+      tools: ["codemode", "computer_delete"],
       conversation: [
         assistantMessage([toolCall({ id: "parts", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Use three observation granularities without inheriting omitted authority.");

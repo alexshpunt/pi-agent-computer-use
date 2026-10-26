@@ -25,7 +25,7 @@ test("real Pi restores Safe, filters foreign windows, rejects policy arguments, 
         assistantMessage([toolCall({ id: "foreign", name: "computer_search", arguments: { path: "computer:machine/local/windows", query: "" } })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "promote", name: "computer_insert", arguments: { ...open, mode: "yolo" } })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "owned", name: "computer_insert", arguments: open })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Safe remained selected.")]),
       ],
     }).run("Exercise Safe window policy without changing the saved user choice.");
