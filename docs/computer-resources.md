@@ -205,7 +205,7 @@ Each computer session owns a folder in the machine's Windows temp directory. `co
 
 `computer_clipboard` (YOLO) reads or replaces the clipboard, which is shared with the user's own apps and never read otherwise; paste with `computer_press` `ctrl+v`.
 
-`computer_record` (YOLO) records the whole main display to H.264 video for up to 600 s (needs ffmpeg on that machine) or what its default playback device plays, with an optional transcript from [faster-whisper](https://github.com/SYSTRAN/faster-whisper); recognised speech can be wrong. Files land in the session folder, and `to` also copies them into the workspace. `sequence` captures frames of a window or display for up to 60 s, 30 FPS and 300 frames, and returns a sequence address; Read it with a `frames:` view.
+`computer_record` (YOLO) records the whole main display to H.264 video for up to 600 s (needs ffmpeg on that machine) or what its default playback device plays, with an optional transcript from [faster-whisper](https://github.com/SYSTRAN/faster-whisper); recognised speech can be wrong. Files land in the session folder, and `to` also copies them into the workspace. `sequence` captures frames of a window or display for up to 60 s, 30 FPS and 300 frames, and returns a sequence address; Read it with a `frames:` view. A window sequence spends the refs of the window's earlier Read, because the window may have changed while it was recorded: Read the window again before input.
 
 ## Receipts in Codemode
 
