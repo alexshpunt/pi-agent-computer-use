@@ -11,7 +11,7 @@ The current desktop scope is Windows, with Pi running on it directly or in its W
 
 ## Typed tools
 
-Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above: `tool_search` loads the best matches of a query, such as `computer open window` or `computer wait browser`. Their receipts match Insert receipts.
+Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above. `tool_search` loads at most 8 best matches per query, so search one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`. Their receipts match Insert receipts.
 
 | Tool | Does | Replaces |
 | --- | --- | --- |
@@ -20,6 +20,9 @@ Some operations have their own tool with typed fields, in both modes. They are d
 | `computer_display` | Changes a display's resolution | Insert `resize` into a display |
 | `computer_wait` | Waits until a window's UI or a browser page meets [conditions](#verify-and-wait), or checks them once (`mode: "check"`) | Insert `wait_for` and `verify` into a window |
 | `computer_browser` | Navigates, manages tabs, answers dialogs, uploads, waits for or cancels downloads, and runs page JavaScript in a browser window by its address | Insert of those [page actions](#browser-pages) into a DOM observation |
+| `computer_files` | Copies a workspace file into the session's folder on a machine (`put`), copies one out (`get`), or lists the folder (`list`) | Insert `put`, `get`, `files` into a machine |
+| `computer_clipboard` | Reads (`include_image` adds the image) or replaces a machine's clipboard with text or an image, in YOLO | Insert `clipboard_read`, `clipboard_write` |
+| `computer_record` | Records the main display to video (`video_start`, `video_stop`) or playback audio (`audio`) on a machine in YOLO; captures frames of a window or display (`sequence`) and returns a sequence address for Read with a `frames:` view | Insert `record_start`, `record_stop`, `audio_record`; Read `sequence:` |
 | Delete (`computer_delete` without IDE) | Closes a window like its close button, or releases a sandbox, isolated session, machine or `computer:session` | Insert `close` and `kill` |
 
 Delete of a window asks it to close: a browser the session opened closes with its disposable profile, an attached browser is detached first, and any other window gets the standard close request. The receipt says whether the window closed; an app that asks about unsaved work keeps it open, so Read it next. Add `?force=true` to the window address to kill the hung app of a window this session opened. Safe mode closes only windows the session opened.

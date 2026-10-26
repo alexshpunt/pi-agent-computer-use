@@ -31,17 +31,27 @@ test("without Pi Agent IDE, tool_search finds the deferred computer tools and th
     { id: "guide", name: "computer_read", arguments: { path: "docs:computer" } },
     { id: "session", name: "computer_read", arguments: { path: "computer:session" } },
     { id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } },
+    { id: "open", name: "tool_search", arguments: { query: "computer open window" } },
     { id: "more", name: "tool_search", arguments: { query: "computer wait browser" } },
     { id: "display", name: "computer_display", arguments: { display: "computer:display/primary", width: 1920, height: 1080 } },
+    { id: "files", name: "tool_search", arguments: { query: "computer files clipboard record" } },
+    { id: "list", name: "computer_files", arguments: { machine: "computer:session", action: "list" } },
+    { id: "sequence", name: "computer_record", arguments: { at: "computer:machine/local/display/primary", action: "sequence" } },
     { id: "delete", name: "computer_delete", arguments: { path: "computer:session" } },
   ]);
-  expect(getToolCallNames(result)).toEqual(["tool_search", "computer_read", "computer_read", "computer_insert", "tool_search", "computer_display", "computer_delete"]);
+  expect(getToolCallNames(result)).toEqual(["tool_search", "computer_read", "computer_read", "computer_insert", "tool_search", "tool_search", "computer_display", "tool_search", "computer_files", "computer_record", "computer_delete"]);
   for (const id of ["find", "guide", "session", "close", "delete"])
     expect(getToolExecution(result, id).isError, getToolResultText(result, id)).toBe(false);
   expect(getToolResultText(result, "find")).toContain("computer_read");
-  // tool_search loads the best matches of each query, at most 8 by default.
-  for (const tool of ["computer_open", "computer_window", "computer_display", "computer_delete"]) expect(getToolResultText(result, "find")).toContain(tool);
-  for (const tool of ["computer_wait", "computer_browser"]) expect(getToolResultText(result, "more")).toContain(tool);
+  // tool_search loads the best matches of each query, at most 8 by default, so the guide names one query per cluster.
+  // A query lists only tools it newly loads; together the guide's cluster queries load every computer tool.
+  const loaded = ["find", "open", "more", "files"].map(id => getToolResultText(result, id)).join("\n");
+  for (const tool of ["computer_search", "computer_insert", "computer_write", "computer_delete", "computer_open", "computer_window", "computer_display",
+    "computer_wait", "computer_browser", "computer_files", "computer_clipboard", "computer_record"]) expect(loaded).toContain(`- ${tool}:`);
+  // Files, clipboard and recording run on a machine address, and a sequence needs its length; both refuse before native work.
+  expect(getToolResultText(result, "list")).toContain("Give a machine address");
+  expect(getToolResultText(result, "sequence")).toContain("sequence needs duration_ms.");
+  for (const id of ["list", "sequence"]) expect(getToolExecution(result, id).isError).toBe(true);
   // A typed tool refuses a bad address with a receipt before any native work.
   expect(getToolExecution(result, "display").isError).toBe(true);
   expect(getToolResultText(result, "display")).not.toContain("unknown");
