@@ -5,6 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
 import { registerComputerProvider } from "../../src/provider.ts";
+import { registerComputerTools } from "../../src/computer-tools.ts";
 import { ComputerSession, type ComputerMode, type ComputerResult, type WindowTarget } from "../../src/session.ts";
 
 interface Result { isError?: boolean; content: { type: string; text?: string; data?: string; mimeType?: string }[]; details?: unknown }
@@ -50,7 +51,8 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
   const close = async (): Promise<ComputerResult> => session ? session.close() : {
     content: [{ type: "text", text: "No synthetic runtime is running." }], details: { status: "closed", mode },
   };
-  await registerComputerProvider(pi, getSession, close);
+  const provider = await registerComputerProvider(pi, getSession, close);
+  registerComputerTools(pi, provider.resources);
   pi.registerTool({
     name: "verify_coordinate_scroll", label: "Verify coordinate scroll fixture",
     description: "Exercise ordinary IDE resource tools against synthetic MCP windows only; never operate a desktop.",
@@ -86,99 +88,82 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         else if (operation === "capability_on") capability = true;
         else await driver!.call("fixture_control", { operation }, signal);
       };
-      const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: JSON.stringify({ action: "open", app: "Notepad" }) }), "window");
+      const open = async () => reference(await ok("computer_open", { at: "computer:machine/local", app: "Notepad" }), "window");
       const observe = (window: string, granularity = "full") => ok("read", { path: window,
         views: [granularity, ...(granularity === "ui" ? [] : ['capture:{"hints":false}'])] });
-      const command = (extra: Record<string, unknown> = {}) => ({ action: "scroll", x: 100, y: 80, delta_y: 2, unit: "wheel_detents", ...extra });
-      const act = async (observation: string, command: Record<string, unknown>) => {
+      // A point scroll of computer_scroll: wheel notches at a point of the window's latest image.
+      const scroll = async (window: string, extra: Record<string, unknown> = {}) => {
         const before = (await journal()).length;
-        const result = await call("insert", { path: observation, text: JSON.stringify(command) });
-        assert(!await capturedBeforeInput(before), "Insert resolution silently refreshed native capture authority");
+        const result = await call("computer_scroll", { window, x: 100, y: 80, delta_y: 2, ...extra });
+        assert(!await capturedBeforeInput(before), "computer_scroll silently refreshed native capture authority");
         return result;
       };
-      const rejected = async (observation: string, command: Record<string, unknown>) => {
-        const result = await act(observation, command);
-        assert(result.isError, `Insert admitted a forbidden or consumed observation: ${textOf(result)}`);
+      const rejected = async (window: string, extra: Record<string, unknown> = {}) => {
+        const result = await scroll(window, extra);
+        assert(result.isError, `computer_scroll admitted a forbidden or uncertain request: ${textOf(result)}`);
         return result;
       };
-      assert(!pi.getAllTools().some(tool => /^computer_/.test(tool.name)), "Provider exposed duplicate ordinary computer_* tools");
+      assert(!pi.getAllTools().some(tool => /^computer_(read|search|delete)$/.test(tool.name)), "Provider exposed duplicate ordinary computer tools");
       const first = await open(), second = await open();
       const listed = await ok("search", { path: "computer:machine/local/windows", query: "Owned fixture" });
       assert(textOf(listed).includes(first) && textOf(listed).includes(second), "Search lost exact opened resources");
-      let view = await observe(first), observation = reference(view, "observation");
+      let view = await observe(first);
       const image = view.content.find(block => block.type === "image");
       assert(image?.mimeType === "image/png" && image.data, "Native overview image did not reach actual Pi");
       if (scenario === "receipts") {
-        const background = command();
-        const refused = await rejected(observation, background), refusal = semantic(refused), refusalState = record(refusal.state);
+        // foreground: false keeps a background refusal as it is.
+        const refused = await rejected(first, { foreground: false }), refusal = semantic(refused), refusalState = record(refusal.state);
         assert(refusal.status === "refused" && refusal.effect === "not-applied" && refusalState.code === "background_unavailable" && refusalState.pointer_attempted === false,
           "Structured background refusal lost its no-input evidence");
-        await rejected(observation, { ...background, delivery_mode: "foreground" });
-        view = await observe(first); observation = reference(view, "observation");
-        const full = command({ delta_x: -2, delta_y: 3, delivery_mode: "foreground" });
-        const delivered = await act(observation, full), receipt = semantic(delivered), state = record(receipt.state);
+        // A refusal spends the observation; by default the same refusal sends the scroll again in the foreground, and the
+        // window keeps foreground delivery.
+        await observe(first);
+        const delivered = await scroll(first, { delta_x: -2, delta_y: 3 }), receipt = semantic(delivered), state = record(receipt.state);
         assert(!delivered.isError && receipt.status === "delivered" && receipt.effect === "applied" && state.unit === "wheel_detents" &&
           JSON.stringify(state.delivered_axes) === '["y","x"]' && state.pointer_changed === null && record(receipt.action_capability).actual_delivery === "foreground",
-          "Truthful two-axis structured receipt lost");
-        await rejected(observation, full);
-        view = await observe(first, "image"); observation = reference(view, "observation");
-        const imageOnly = await act(observation, command({ x: 120, y: 90, delta_x: 1, delta_y: 0, delivery_mode: "foreground" }));
+          `Truthful two-axis structured receipt lost: ${textOf(delivered)}`);
+        assert(textOf(delivered).includes("refused background input"), "The foreground retry was not reported");
+        await observe(first, "image");
+        const imageOnly = await scroll(first, { x: 120, y: 90, delta_x: 1, delta_y: 0 });
         assert(!imageOnly.isError && semantic(imageOnly).status === "delivered", "Image-only scroll refused");
         for (const operation of ["partial", "last_check", "wrong_unit", "wrong_delta", "wrong_axes", "background_success"]) {
-          await control(operation); view = await observe(first); observation = reference(view, "observation");
-          const request = command({ x: 130, y: 100, delta_x: 1, delta_y: 1, delivery_mode: operation === "background_success" ? "background" : "foreground" });
-          const result = await rejected(observation, request), action = semantic(result), native = record(action.state);
+          await control(operation); view = await observe(first);
+          const result = await rejected(first, { x: 130, y: 100, delta_x: 1, delta_y: 1, ...(operation === "background_success" ? { foreground: false } : {}) });
+          const action = semantic(result), native = record(action.state);
           assert(action.status === "unknown" && action.effect === "unknown", `${operation} lost structured uncertainty`);
           if (operation === "partial") assert(native.pointer_delivered === true && JSON.stringify(native.attempted_axes) === '["y","x"]' &&
             JSON.stringify(native.delivered_axes) === '["y"]' && native.code === "cancelled", "Interrupted native prefix lost");
           if (operation === "last_check") assert(JSON.stringify(native.delivered_axes) === '["y","x"]' && native.code === "foreground_lost",
             "Complete native prefix lost after final check failed");
-          await rejected(observation, request);
         }
         await control("success");
-        for (const extra of [
-          { delta_y: 51 }, { delta_y: 1.5 }, { delta_x: -1.5 }, { delta_x: 0, delta_y: 0 }, { unit: "pixels" }, { unit: undefined }, { x: 500 }, { x: -1 }, { y: undefined },
-          { direction: "down" }, { by: "line" }, { amount: 1 }, { button: "left" }, { modifiers: ["ctrl"] }, { animation: "reactive" },
-        ]) {
-          view = await observe(first); observation = reference(view, "observation");
-          await rejected(observation, command({ delivery_mode: "foreground", ...extra }));
-        }
-        view = await observe(first); observation = reference(view, "observation");
-        await rejected(observation, { action: "sequence", sequence: [command({ delivery_mode: "foreground" })] });
+        const sent = (await journal()).filter(row => row.name === "scroll_at").length;
+        for (const extra of [{ delta_y: 51 }, { delta_x: 0, delta_y: 0 }, { x: -1 }, { y: undefined }, { unit: "pixels" }, { direction: "down" },
+          { amount: 1 }, { button: "left" }, { modifiers: ["ctrl"] }]) await rejected(first, extra);
+        assert((await journal()).filter(row => row.name === "scroll_at").length === sent, "An invalid scroll reached native input");
       } else {
-        await rejected(observation, command({ window_ref: second, delivery_mode: "foreground" }));
-        view = await observe(first, "ui"); observation = reference(view, "observation");
-        assert(!view.content.some(block => block.type === "image") && field(view.details, "ui"), "UI-only fixture observation lost its projection");
-        await rejected(observation, command({ delivery_mode: "foreground" }));
-        view = await observe(first); observation = reference(view, "observation");
-        const hint = field(view.details, "hint");
-        assert(typeof hint === "string", "Native fixture failed to supply a current hint");
-        await rejected(observation, command({ hint, delivery_mode: "foreground" }));
-        view = await observe(first); observation = reference(view, "observation");
-        const token = field(view.details, "element_token");
-        assert(typeof token === "string", "Native fixture failed to supply a current token");
-        await rejected(observation, command({ element_token: token, delivery_mode: "foreground" }));
-        view = await observe(first); observation = reference(view, "observation");
-        const cropped = await ok("read", { path: observation, views: ["region:50,50,100,100"] });
+        // A detail crop is readonly: it grants no input and issues no observation.
+        const cropped = await ok("read", { path: reference(view, "observation"), views: ["region:50,50,100,100"] });
         assert(cropped.content.some(block => block.type === "image" && block.mimeType === "image/jpeg") && field(cropped.details, "input") === "none" &&
           field(cropped.details, "observation_id") === undefined, "Detail granted input authority");
-        await rejected(observation, command({ delivery_mode: "foreground" }));
-        await control("capability_off"); view = await observe(first); observation = reference(view, "observation");
-        await rejected(observation, command({ delivery_mode: "foreground" }));
+        await control("capability_off"); await observe(first);
+        await rejected(first, { foreground: true });
         await control("capability_on");
         const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned fixture" }), "window");
-        view = await observe(external); observation = reference(view, "observation"); await control("safe");
-        await rejected(observation, command({ delivery_mode: "foreground" }));
-        view = await observe(first, "image"); observation = reference(view, "observation");
-        const owned = await act(observation, command({ delivery_mode: "foreground" }));
+        await observe(external); await control("safe");
+        await rejected(external, { foreground: true });
+        await observe(first, "image");
+        const owned = await scroll(first, { foreground: true });
         assert(!owned.isError && semantic(owned).status === "delivered", "Safe denied owned image scroll");
-        view = await observe(first); observation = reference(view, "observation"); await control("close_first");
-        await rejected(observation, command({ delivery_mode: "foreground" }));
-        view = await observe(second); observation = reference(view, "observation"); await control("recycle_second");
-        await rejected(observation, command({ delivery_mode: "foreground" }));
-        await denied("insert", { path: first, text: JSON.stringify(command({ delivery_mode: "foreground" })) });
+        await observe(first); await control("close_first");
+        await rejected(first, { foreground: true });
+        await observe(second); await control("recycle_second");
+        await rejected(second, { foreground: true });
+        // Insert never acts on a window; it names the tool that does.
+        const insert = await denied("insert", { path: first, text: JSON.stringify({ action: "scroll", x: 100, y: 80, delta_y: 2, unit: "wheel_detents" }) });
+        assert(textOf(insert).includes("computer_scroll"), "Insert refusal named no tool");
       }
-      await ok("insert", { path: "computer:session", text: JSON.stringify({ action: "close" }) });
+      await ok("delete", { path: "computer:session" });
       return { content: [{ type: "text" as const, text: `Scroll ${scenario} contract passed` },
         ...(image ? [{ type: "image" as const, data: image.data!, mimeType: image.mimeType! }] : [])], details: { scenario } };
     },
