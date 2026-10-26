@@ -749,7 +749,7 @@ export class ComputerSession {
       }
       const timer = setTimeout(() => { void this.recordStop(); }, seconds * 1000);
       this.recording = { timer, started: Date.now() };
-      return this.result("delivered", `Recording the main display for up to ${seconds} s. Insert record_stop to finish earlier and fetch the video.`, state);
+      return this.result("delivered", `Recording the main display for up to ${seconds} s. Stop it earlier with computer_record video_stop (or Insert record_stop) to fetch the video.`, state);
     });
   }
 
@@ -769,7 +769,7 @@ export class ComputerSession {
   recordStop(): Promise<ComputerResult> {
     return this.queue(async () => {
       const current = this.recording;
-      if (!current || !this.host) return this.result("refused", "No recording is running, or it already stopped at its limit; Insert files to see saved videos.");
+      if (!current || !this.host) return this.result("refused", "No recording is running, or it already stopped at its limit; list the session folder with computer_files (or Insert files) to see saved videos.");
       clearTimeout(current.timer);
       this.recording = undefined;
       const native = await this.driver.call("stop_recording", {});

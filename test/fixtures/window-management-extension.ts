@@ -197,6 +197,10 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("computer_wait", { window: "computer:machine/local", conditions: [{ target: button, is: "exists" }] });
         await denied("computer_wait", { window: first, mode: "check", timeout_ms: 10, conditions: [{ target: button, is: "exists" }] });
         await denied("computer_browser", { window: first, action: "reload" });
+        await denied("computer_files", { machine: first, action: "list" });
+        await denied("computer_clipboard", { machine: "computer:machine/local/windows", action: "read" });
+        await denied("computer_record", { at: first, action: "video_start", seconds: 5 });
+        await denied("computer_record", { at: "computer:machine/local", action: "sequence", duration_ms: 100 });
         const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned management fixture" }), "window");
         mode = "safe";
         const refused = await window({ action: "focus" }, external);

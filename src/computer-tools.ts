@@ -4,6 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { ComputerRequestError, type ComputerResources } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
+import { parseComputerViews } from "./computer-views.ts";
 import { COMPUTER_DELETE_HELP, computerAction, deleteComputer } from "./provider.ts";
 
 const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
@@ -144,6 +145,103 @@ const browserParameters = Type.Object({
   timeout_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 60000, description: "Time limit; default 5000 for switch_tab, close_tab, dialog and cancel_download, 30000 otherwise." })),
 }, { additionalProperties: false });
 
+const machineSchema = Type.String({ description: "computer:machine/<name>; computer:machine/local is this machine." });
+
+/** A machine address itself, the one place files, clipboard, video and audio commands run. */
+function machineAddress(resources: ComputerResources, source: string): ComputerAddress {
+  const address = resources.address(source);
+  if (address.kind !== "machine" || address.part) throw new ComputerRequestError("Give a machine address such as computer:machine/local or computer:machine/<name>.");
+  return address;
+}
+
+/** Fields an action takes; any other given field, or a missing required one, refuses the request. */
+function fieldsFor(action: string, fields: Record<string, unknown>, allowed: string[], required: string[] = []) {
+  const extra = Object.keys(fields).filter(key => fields[key] !== undefined && !allowed.includes(key));
+  if (extra.length) throw new ComputerRequestError(`${action} takes no ${extra.join(", ")}.`);
+  const missing = required.filter(key => fields[key] === undefined);
+  if (missing.length) throw new ComputerRequestError(`${action} needs ${missing.join(" and ")}.`);
+}
+
+const filesParameters = Type.Object({
+  machine: machineSchema,
+  action: Type.Union([Type.Literal("put"), Type.Literal("get"), Type.Literal("list")], { description: "put copies a workspace file into this session's folder on the machine; get copies a file from that folder into the workspace; list shows the folder's Windows path and files. Apps there open and save files in that folder; closing the session removes it." }),
+  from: Type.Optional(Type.String({ description: "put: workspace file path." })),
+  name: Type.Optional(Type.String({ description: "put: file name in the folder, default the name of from; get: the file to copy out." })),
+  to: Type.Optional(Type.String({ description: "get: workspace path to write." })),
+}, { additionalProperties: false });
+
+/** The machine command of computer_files. */
+export function filesCommand(params: Static<typeof filesParameters>): Record<string, unknown> {
+  const { machine: _machine, action, ...fields } = params;
+  if (action === "put") fieldsFor(action, fields, ["from", "name"], ["from"]);
+  else if (action === "get") fieldsFor(action, fields, ["name", "to"], ["name", "to"]);
+  else fieldsFor(action, fields, []);
+  return { action: action === "list" ? "files" : action, ...fields };
+}
+
+const clipboardParameters = Type.Object({
+  machine: machineSchema,
+  action: Type.Union([Type.Literal("read"), Type.Literal("write")], { description: "YOLO only; the clipboard is shared with the user's own apps. read returns its formats and text; write replaces it with text or an image." }),
+  include_image: Type.Optional(Type.Boolean({ description: "read: also return the clipboard's image as PNG." })),
+  text: Type.Optional(Type.String({ description: "write: the text to put on the clipboard." })),
+  image: Type.Optional(Type.String({ description: "write: workspace path of an image file to put on the clipboard instead of text." })),
+}, { additionalProperties: false });
+
+/** The machine command of computer_clipboard. */
+export function clipboardCommand(params: Static<typeof clipboardParameters>): Record<string, unknown> {
+  const { machine: _machine, action, ...fields } = params;
+  if (action === "read") {
+    fieldsFor(action, fields, ["include_image"]);
+    return { action: "clipboard_read", ...(fields.include_image ? { image: true } : {}) };
+  }
+  fieldsFor(action, fields, ["text", "image"]);
+  if ((fields.text === undefined) === (fields.image === undefined)) throw new ComputerRequestError("write needs exactly one of text or image.");
+  return { action: "clipboard_write", ...(fields.text !== undefined ? { text: fields.text } : { image: fields.image }) };
+}
+
+const recordParameters = Type.Object({
+  at: Type.String({ description: "video_start, video_stop and audio: computer:machine/<name>; sequence: a window or display address." }),
+  action: Type.Union([Type.Literal("video_start"), Type.Literal("video_stop"), Type.Literal("audio"), Type.Literal("sequence")], { description: "video_start records the machine's main display to video (YOLO) until video_stop or seconds pass; video_stop ends it and can fetch the file; audio records the machine's playback for seconds (YOLO); sequence captures frames of a window or display over duration_ms and returns a sequence address, whose frames Read shows with a frames: view." }),
+  seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 600, description: "video_start: recording limit, 1..600; audio: recording length, 1..300." })),
+  to: Type.Optional(Type.String({ description: "video_stop and audio: workspace path to fetch the recorded file into." })),
+  transcribe: Type.Optional(Type.Boolean({ description: "audio: add a speech transcript made by faster-whisper on this machine; it can be wrong." })),
+  duration_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 60000, description: "sequence: capture length." })),
+  fps: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, description: "sequence: frames per second to aim for, default 4; the result reports the rate reached." })),
+  max_frames: Type.Optional(Type.Integer({ minimum: 1, maximum: 300, description: "sequence: frame limit, default 40." })),
+  timeout_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 90000, description: "sequence: total time limit, at least duration_ms, default 15000." })),
+  maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096, description: "sequence: longest frame edge in pixels." })),
+  scale: Type.Optional(Type.Number({ minimum: 0.05, maximum: 1, description: "sequence: frame scale instead of maxLongEdge." })),
+  region: Type.Optional(Type.Object({ x: Type.Integer({ minimum: 0 }), y: Type.Integer({ minimum: 0 }), width: Type.Integer({ minimum: 1 }), height: Type.Integer({ minimum: 1 }) },
+    { additionalProperties: false, description: "sequence: part of the window or display to capture, in its local pixels." })),
+}, { additionalProperties: false });
+
+const SEQUENCE_FIELDS = ["duration_ms", "fps", "max_frames", "timeout_ms", "maxLongEdge", "scale", "region"];
+
+/**
+ * What computer_record runs: a machine command for video and audio, or the Read sequence view of a window or display.
+ */
+export function recordCommand(params: Static<typeof recordParameters>): { command: Record<string, unknown> } | { views: string[] } {
+  const { at: _at, action, ...fields } = params;
+  if (action === "sequence") {
+    fieldsFor(action, fields, SEQUENCE_FIELDS, ["duration_ms"]);
+    const views = [`sequence:${JSON.stringify(fields)}`];
+    try { parseComputerViews(views); }
+    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    return { views };
+  }
+  if (action === "video_start") {
+    fieldsFor(action, fields, ["seconds"], ["seconds"]);
+    return { command: { action: "record_start", seconds: fields.seconds } };
+  }
+  if (action === "video_stop") {
+    fieldsFor(action, fields, ["to"]);
+    return { command: { action: "record_stop", ...fields } };
+  }
+  fieldsFor(action, fields, ["seconds", "to", "transcribe"], ["seconds"]);
+  if (fields.seconds! > 300) throw new ComputerRequestError("audio records at most 300 seconds.");
+  return { command: { action: "audio_record", ...fields } };
+}
+
 /**
  * Register the typed computer_* tools that replace Insert commands one cluster at a time. They are deferred: a
  * tool_search for computer loads them, so sessions that never use the computer pay nothing for them.
@@ -210,6 +308,55 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
       const { window, ...command } = params;
       return actionResult(await computerAction(resources, window, params.action, () => resources.address(window),
         address => resources.browserAction(address, ctx.cwd, command, signal)));
+    },
+  });
+  pi.registerTool({
+    ...common, name: "computer_files", label: "Computer files",
+    description: "Use computer_files to copy files between the workspace and this session's own folder on a machine, or to list that folder, so apps there can open or save them.",
+    parameters: filesParameters,
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    ...rendered("computer_files", args => `${args.machine} ${args.action}${args.from ? ` ${args.from}` : args.name ? ` ${args.name}` : ""}`),
+    async execute(_id, params, signal, _update, ctx) {
+      let command: Record<string, unknown> = {};
+      return actionResult(await computerAction(resources, params.machine, params.action, () => {
+        command = filesCommand(params);
+        return machineAddress(resources, params.machine);
+      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), "insert", signal)));
+    },
+  });
+  pi.registerTool({
+    ...common, name: "computer_clipboard", label: "Computer clipboard",
+    description: "Use computer_clipboard to read or replace a machine's clipboard in YOLO mode, with text or an image.",
+    parameters: clipboardParameters,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    ...rendered("computer_clipboard", args => `${args.machine} ${args.action}${args.image ? ` ${args.image}` : ""}`),
+    async execute(_id, params, signal, _update, ctx) {
+      let command: Record<string, unknown> = {};
+      return actionResult(await computerAction(resources, params.machine, `clipboard_${params.action}`, () => {
+        command = clipboardCommand(params);
+        return machineAddress(resources, params.machine);
+      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), "insert", signal)));
+    },
+  });
+  pi.registerTool({
+    ...common, name: "computer_record", label: "Computer record",
+    description: "Use computer_record to record a machine's display to video or its playback audio, or to capture frames of a window or display over time for motion and animation.",
+    parameters: recordParameters,
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    ...rendered("computer_record", args => `${args.at} ${args.action}${args.seconds ? ` ${args.seconds} s` : args.duration_ms ? ` ${args.duration_ms} ms` : ""}`),
+    async execute(_id, params, signal, _update, ctx) {
+      let run: ReturnType<typeof recordCommand> = { command: {} };
+      return actionResult(await computerAction(resources, params.at, params.action, () => {
+        run = recordCommand(params);
+        if ("views" in run) {
+          const address = resources.address(params.at);
+          if (address.kind !== "window" && address.kind !== "display") throw new ComputerRequestError("sequence captures a window or display address.");
+          return address;
+        }
+        return machineAddress(resources, params.at);
+      }, async address => "views" in run
+        ? (await resources.read(address, ctx.cwd, run.views, signal))!
+        : resources.perform(address, ctx.cwd, JSON.stringify(run.command), "insert", signal)));
     },
   });
   pi.registerTool({

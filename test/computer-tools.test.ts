@@ -1,9 +1,12 @@
 import { expect, test, vi } from "vitest";
 import { requireComputerAddress, ComputerResources } from "../src/computer-resources.ts";
-import { openCommand, waitCommand, windowCommand } from "../src/computer-tools.ts";
+import { clipboardCommand, filesCommand, openCommand, recordCommand, waitCommand, windowCommand } from "../src/computer-tools.ts";
 import type { WebBrowser, WebLauncher } from "../src/web-browser.ts";
 import type { MachineHost } from "../src/machine-host.ts";
-import { deleteComputer } from "../src/provider.ts";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { computerAction, deleteComputer } from "../src/provider.ts";
 import { ComputerSession, type ComputerMode, type Driver } from "../src/session.ts";
 
 const cwd = "/synthetic-computer-tools";
@@ -42,6 +45,39 @@ test("computer_wait maps to wait_for or a single verify sample", () => {
   expect(waitCommand({ window: "w", conditions, timeout_ms: 2000, stable: 2 })).toEqual({ action: "wait_for", conditions, timeout_ms: 2000, stable: 2 });
   expect(waitCommand({ window: "w", conditions, mode: "check" })).toEqual({ action: "verify", conditions });
   expect(() => waitCommand({ window: "w", conditions, mode: "check", timeout_ms: 10 })).toThrow("check takes one sample, so timeout_ms do not apply.");
+});
+
+test("computer_files maps put, get and list and takes only their fields", () => {
+  expect(filesCommand({ machine: "m", action: "put", from: "a.txt" })).toEqual({ action: "put", from: "a.txt" });
+  expect(filesCommand({ machine: "m", action: "put", from: "a.txt", name: "b.txt" })).toEqual({ action: "put", from: "a.txt", name: "b.txt" });
+  expect(filesCommand({ machine: "m", action: "get", name: "b.txt", to: "out/b.txt" })).toEqual({ action: "get", name: "b.txt", to: "out/b.txt" });
+  expect(filesCommand({ machine: "m", action: "list" })).toEqual({ action: "files" });
+  expect(() => filesCommand({ machine: "m", action: "put" })).toThrow("put needs from.");
+  expect(() => filesCommand({ machine: "m", action: "get", name: "b.txt" })).toThrow("get needs to.");
+  expect(() => filesCommand({ machine: "m", action: "list", to: "x" })).toThrow("list takes no to.");
+});
+
+test("computer_clipboard reads with or without the image and writes exactly one of text or image", () => {
+  expect(clipboardCommand({ machine: "m", action: "read" })).toEqual({ action: "clipboard_read" });
+  expect(clipboardCommand({ machine: "m", action: "read", include_image: true })).toEqual({ action: "clipboard_read", image: true });
+  expect(clipboardCommand({ machine: "m", action: "write", text: "hi" })).toEqual({ action: "clipboard_write", text: "hi" });
+  expect(clipboardCommand({ machine: "m", action: "write", image: "a.png" })).toEqual({ action: "clipboard_write", image: "a.png" });
+  expect(() => clipboardCommand({ machine: "m", action: "write" })).toThrow("write needs exactly one of text or image.");
+  expect(() => clipboardCommand({ machine: "m", action: "write", text: "hi", image: "a.png" })).toThrow("write needs exactly one of text or image.");
+  expect(() => clipboardCommand({ machine: "m", action: "read", text: "hi" })).toThrow("read takes no text.");
+});
+
+test("computer_record maps video and audio to machine commands and sequence to the Read view", () => {
+  expect(recordCommand({ at: "m", action: "video_start", seconds: 30 })).toEqual({ command: { action: "record_start", seconds: 30 } });
+  expect(recordCommand({ at: "m", action: "video_stop", to: "v.mp4" })).toEqual({ command: { action: "record_stop", to: "v.mp4" } });
+  expect(recordCommand({ at: "m", action: "audio", seconds: 5, transcribe: true })).toEqual({ command: { action: "audio_record", seconds: 5, transcribe: true } });
+  expect(recordCommand({ at: "w", action: "sequence", duration_ms: 2000, fps: 10, region: { x: 0, y: 0, width: 100, height: 50 } }))
+    .toEqual({ views: ['sequence:{"duration_ms":2000,"fps":10,"region":{"x":0,"y":0,"width":100,"height":50}}'] });
+  expect(() => recordCommand({ at: "m", action: "video_start" })).toThrow("video_start needs seconds.");
+  expect(() => recordCommand({ at: "m", action: "audio", seconds: 400 })).toThrow("audio records at most 300 seconds.");
+  expect(() => recordCommand({ at: "w", action: "sequence" })).toThrow("sequence needs duration_ms.");
+  expect(() => recordCommand({ at: "w", action: "sequence", duration_ms: 5000, timeout_ms: 1000 })).toThrow("timeout_ms duration..");
+  expect(() => recordCommand({ at: "m", action: "video_stop", seconds: 3 })).toThrow("video_stop takes no seconds.");
 });
 
 /** A Chrome window (pid 4100) attached to a fake Playwright worker that records page actions. */
@@ -135,4 +171,33 @@ test("Delete reports a window that stays open and refuses what it cannot close",
   expect(safe.closeWindow).not.toHaveBeenCalled();
   const session = await kept.remove("computer:session");
   expect(session.data).toMatchObject({ ok: true });
+});
+
+test("computer_record video_stop says where it fetched the video in the summary the model sees", async () => {
+  const driver: Driver = {
+    identity: vi.fn(async () => undefined) as Driver["identity"], close: vi.fn(async () => {}),
+    call: vi.fn<Driver["call"]>(async name => {
+      if (name === "start_recording") return { content: [{ type: "text", text: "{}" }], structuredContent: { video_active: true } };
+      if (name === "stop_recording") return { content: [{ type: "text", text: "{}" }], structuredContent: { video_active: false } };
+      throw new Error(`Unexpected native call ${name}`);
+    }),
+  };
+  const video = Buffer.from("mp4 bytes");
+  const host = { files: async () => ({ windows: "C:\\pi", wsl: "/mnt/c/pi" }), rename: vi.fn(async () => {}), get: vi.fn(async () => video), removeFiles: async () => {} };
+  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, undefined, undefined, host as unknown as MachineHost);
+  const resources = new ComputerResources(async () => session, async () => session.close());
+  const workspace = await mkdtemp(join(tmpdir(), "pi-record-"));
+  const run = (command: Record<string, unknown>) => computerAction(resources, "computer:machine/local", String(command.action), () => at("computer:machine/local"),
+    address => resources.perform(address, workspace, JSON.stringify(command), "insert"));
+  try {
+    expect((await run({ action: "record_start", seconds: 30 })).summary).toContain("Stop it earlier with computer_record video_stop");
+    const stopped = await run({ action: "record_stop", to: "out/run.mp4" });
+    expect(stopped.summary).toContain("as recording-1.mp4 in the session folder.");
+    expect(stopped.summary).toContain(`Fetched it (${video.length} bytes) into ${join(workspace, "out/run.mp4")}.`);
+    expect(await readFile(join(workspace, "out/run.mp4"))).toEqual(video);
+    expect((await run({ action: "record_stop" })).summary).toContain("list the session folder with computer_files");
+  } finally {
+    await session.close();
+    await rm(workspace, { recursive: true, force: true });
+  }
 });
