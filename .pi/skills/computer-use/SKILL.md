@@ -5,7 +5,7 @@ description: Read and operate authorized Windows app windows, displays and brows
 
 # Computer use
 
-Use **Search → Read → inspect → plan → act → check**. Browsers are ordinary app windows. Read [the resource guide](../../../docs/computer-resources.md) before using computer addresses; the same guide is available as `docs:computer`. Read only looks, Search only discovers, Delete closes and releases, and each action is a `computer_*` tool. Load the tools with `tool_search`, one group per query: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`. Without Pi Agent IDE, use `computer_read`, `computer_search` and `computer_delete` wherever this skill says Read, Search or Delete.
+Use **Search → Read → inspect → plan → act → check**. Browsers are ordinary app windows. Read [the resource guide](../../../docs/computer-resources.md) before using computer addresses; the same guide is available as `docs:computer`. Read only looks, Search only discovers, Delete closes and releases, and each action is a `computer_*` tool. Load the tools with `tool_search`, one group per query: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`, `computer view viewport`. Without Pi Agent IDE, use `computer_read`, `computer_search` and `computer_delete` wherever this skill says Read, Search or Delete.
 
 ## Observe and inspect
 

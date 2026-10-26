@@ -7,7 +7,7 @@ Computer use reads and operates Windows app windows, displays and browser pages 
 
 Everything else is a `computer_*` tool with typed fields, the same in both modes. Read only looks, Search only discovers, and the `computer_*` tools act. Write and Insert do not act on computer resources: they refuse and name the tool to use.
 
-Every `computer_*` tool is deferred: a session that never uses the computer pays nothing for them. `tool_search` loads at most 8 best matches per query, so load one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`. Computer use turns `tool_search` on.
+Every `computer_*` tool is deferred: a session that never uses the computer pays nothing for them. `tool_search` loads at most 8 best matches per query, so load one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`, `computer view viewport`. Computer use turns `tool_search` on.
 
 The `/computer-mode`, `/computer-debug` and `/computer-setup` commands belong to the user. When a part is missing, the refusal names the `/computer-setup` command that installs it; ask the user to run it.
 
