@@ -136,6 +136,27 @@ function untilDialog<T>(tab: Tab, operation: Promise<T>): Promise<T | "dialog"> 
   }).finally(() => tab.onDialog.delete(wake));
 }
 
+/**
+ * Go back or forward and wait for the new document. A page restored from the back-forward cache (attached browsers
+ * keep it on) fires none of the load events Playwright waits for, though its URL changes: when the URL has changed
+ * and the traversal still has not settled 2 s later, the restore counts as done.
+ */
+async function traverse(page: Page, direction: "back" | "forward", timeout: number): Promise<{ response: Awaited<ReturnType<Page["goBack"]>>; restored: boolean }> {
+  const before = page.url();
+  const traversal = direction === "back" ? page.goBack({ waitUntil: "domcontentloaded", timeout }) : page.goForward({ waitUntil: "domcontentloaded", timeout });
+  let settled = false;
+  traversal.then(() => { settled = true; }, () => { settled = true; });
+  const end = Date.now() + timeout;
+  while (!settled && Date.now() < end) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    if (settled || page.url() === before) continue;
+    const grace = Date.now() + 2_000;
+    while (!settled && Date.now() < grace) await new Promise(resolve => setTimeout(resolve, 100));
+    if (!settled) { traversal.catch(() => undefined); return { response: null, restored: true }; }
+  }
+  return { response: await traversal, restored: false };
+}
+
 function locate(page: Page, target: WebTarget): Locator {
   if (target.ref) return page.getByRef(target.ref);
   if (target.locator) return page.locator(target.locator);
@@ -171,7 +192,8 @@ async function open({ browser, url, profile: kind, attach: target }: WebLaunchOp
     : await chromium.launchPersistentContext(directory, {
       channel: browser, headless: false, chromiumSandbox: true, viewport: null, ignoreDefaultArgs: true,
       args: ["--user-data-dir=" + directory, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
-        "--disable-sync", "--window-size=1100,800", "about:blank"],
+        // Playwright's default flags include this one: a page restored from the back-forward cache fires no load events.
+        "--disable-sync", "--disable-back-forward-cache", "--window-size=1100,800", "about:blank"],
     });
   trackTabs(context);
   active = tabs[0] ?? adopt(await context.newPage());
@@ -443,7 +465,8 @@ async function act(action: WebAction) {
       case "wait_load": return page.waitForLoadState(action.state as "load", { timeout });
       case "navigate": return page.goto(action.url!, { waitUntil: "domcontentloaded", timeout });
       case "back": case "forward": {
-        const response = await (action.action === "back" ? page.goBack({ waitUntil: "domcontentloaded", timeout }) : page.goForward({ waitUntil: "domcontentloaded", timeout }));
+        const { response, restored } = await traverse(page, action.action, timeout);
+        if (restored) { note(`${tab.id}: ${action.action} restored ${page.url()} from the back-forward cache`); return undefined; }
         if (response === null) note(`${tab.id}: ${action.action} made no new document request (no history entry or a same-document navigation)`);
         return response;
       }

@@ -90,7 +90,6 @@ const displayParameters = Type.Object({
   height: Type.Integer({ minimum: 480, maximum: 16384, description: "New height in physical pixels." }),
 }, { additionalProperties: false });
 
-const literals = <T extends string>(values: readonly T[], description: string) => Type.Union(values.map(value => Type.Literal(value)), { description });
 /** An element of a window or page: a Playwright locator string, or locator fields that must all match. */
 const targetSchema = (description: string) => Type.Union([
   Type.String({ description: "A Playwright locator such as getByRole('button', { name: 'Save' }) or getByLabel('Name').nth(1)." }),
@@ -108,7 +107,7 @@ const waitParameters = Type.Object({
   window: Type.String({ description: "Window address from Search, Read or a name; a browser window checks its active tab." }),
   conditions: Type.Array(Type.Object({
     target: Type.Optional(targetSchema("The element the check applies to; omit for aria on the whole window or page, and for url_contains and title.")),
-    is: Type.Optional(literals(["exists", "absent", "visible", "hidden", "enabled", "disabled", "selected", "checked", "unchecked", "focused"] as const, "State the target is in.")),
+    is: Type.Optional(Type.Union([Type.Literal("exists"), Type.Literal("absent"), Type.Literal("visible"), Type.Literal("hidden"), Type.Literal("enabled"), Type.Literal("disabled"), Type.Literal("selected"), Type.Literal("checked"), Type.Literal("unchecked"), Type.Literal("focused")], { description: "State the target is in." })),
     value: Type.Optional(Type.String({ description: "The target's value (its name if it has none, or a page element's text) equals this." })),
     contains: Type.Optional(Type.String({ description: "The target's value, name or text contains this." })),
     count: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: "Exactly this many elements match the target." })),
@@ -116,7 +115,7 @@ const waitParameters = Type.Object({
     url_contains: Type.Optional(Type.String({ description: "Browser windows: the active tab's URL contains this." })),
     title: Type.Optional(Type.String({ description: "Browser windows: the active tab's title equals this." })),
   }, { additionalProperties: false }), { minItems: 1, maxItems: 16, description: "Every condition must hold. Each takes one check: is, value, contains, count or aria with a target, aria alone, or url_contains or title alone." }),
-  mode: Type.Optional(literals(["wait", "check"] as const, "wait (default) samples until every condition holds or timeout_ms passes; check takes one sample.")),
+  mode: Type.Optional(Type.Union([Type.Literal("wait"), Type.Literal("check")], { description: "wait (default) samples until every condition holds or timeout_ms passes; check takes one sample." })),
   timeout_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "wait: longest wait, default 5000." })),
   interval_ms: Type.Optional(Type.Integer({ minimum: 50, maximum: 5000, description: "wait: time between samples, default 250." })),
   stable: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, description: "wait: consecutive satisfied samples required, default 1." })),
@@ -131,11 +130,10 @@ export function waitCommand(params: Static<typeof waitParameters>): Record<strin
 
 const browserParameters = Type.Object({
   window: Type.String({ description: "Window address of a browser opened with computer_open or attached to it." }),
-  action: literals(["navigate", "back", "forward", "reload", "wait_load", "new_tab", "switch_tab", "close_tab", "dialog", "upload", "wait_download", "cancel_download", "evaluate"] as const,
-    "What to do in the active tab: navigate to url; back, forward or reload; wait_load until the page reaches state; new_tab (optional url) becomes active; switch_tab or close_tab by tab; dialog answers the open JavaScript dialog; upload files into target; wait_download or cancel_download by download; evaluate runs expression."),
+  action: Type.Union([Type.Literal("navigate"), Type.Literal("back"), Type.Literal("forward"), Type.Literal("reload"), Type.Literal("wait_load"), Type.Literal("new_tab"), Type.Literal("switch_tab"), Type.Literal("close_tab"), Type.Literal("dialog"), Type.Literal("upload"), Type.Literal("wait_download"), Type.Literal("cancel_download"), Type.Literal("evaluate")], { description: "What to do in the active tab: navigate to url; back, forward or reload; wait_load until the page reaches state; new_tab (optional url) becomes active; switch_tab or close_tab by tab; dialog answers the open JavaScript dialog; upload files into target; wait_download or cancel_download by download; evaluate runs expression." }),
   url: Type.Optional(Type.String({ description: "navigate and new_tab: an http(s) URL." })),
   tab: Type.Optional(Type.String({ description: "switch_tab and close_tab: a tab id such as t2 from the snapshot's tab list; close_tab defaults to the active tab." })),
-  state: Type.Optional(literals(["load", "domcontentloaded", "networkidle"] as const, "wait_load: load state to reach, default load.")),
+  state: Type.Optional(Type.Union([Type.Literal("load"), Type.Literal("domcontentloaded"), Type.Literal("networkidle")], { description: "wait_load: load state to reach, default load." })),
   accept: Type.Optional(Type.Boolean({ description: "dialog: accept (true) or dismiss (false)." })),
   text: Type.Optional(Type.String({ description: "dialog: the answer to an accepted prompt." })),
   target: Type.Optional(targetSchema("upload: the file input, or with chooser the element that opens the file chooser; evaluate: the element passed to a function expression.")),

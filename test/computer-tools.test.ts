@@ -75,7 +75,7 @@ test("computer_browser runs a page action on the window and returns the page's n
   expect(f.page).toHaveBeenLastCalledWith("act", { action: "navigate", url: "https://example.com/next" }, undefined);
   // The snapshot is the window's current observation, so its refs ground the next action.
   const id = result.details.observation_id!;
-  expect((await f.resources.read(at(`computer:observation/${id}`), cwd)).details.status).toBe("observed");
+  expect((await f.resources.read(at(`computer:observation/${id}`), cwd))?.details.status).toBe("observed");
   await expect(f.resources.browserAction(window, cwd, { action: "click", target: { ref: "e1" } })).rejects.toThrow("computer_browser runs navigate, back");
   await expect(f.resources.browserAction(window, cwd, { action: "navigate", url: "file:///etc/passwd" })).rejects.toThrow("url must be HTTP(S)");
   await expect(f.resources.browserAction(at("computer:machine/local"), cwd, { action: "reload" })).rejects.toThrow("computer_browser needs the window address");
