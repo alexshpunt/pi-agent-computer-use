@@ -222,12 +222,20 @@ function pixelLines(pixels: PixelReport, uiChanged: boolean): string[] {
   const since = pixels.since ? ` since ${computerSource("observation", pixels.since)}` : "";
   if (pixels.size_changed) return [`The window's overview size changed${since} from ${pixels.size_changed.width}x${pixels.size_changed.height} to ${pixels.width}x${pixels.height}; pixels were not compared.`];
   if (!pixels.box) return uiChanged ? [`No visible pixel change${since}.`] : [];
-  const share = pixels.share * 100, crops = pixels.crops ?? [];
+  const share = pixels.share * 100, percent = share < 0.1 ? share.toFixed(2) : share.toFixed(1), crops = pixels.crops ?? [];
   const rect = (b: PixelBox) => `x=${b.x} y=${b.y} w=${b.width} h=${b.height}`;
-  const lines = [`Pixels changed${since} in ${pixels.regions} ${pixels.regions === 1 ? "area" : "areas"} (overview pixels; ${share < 0.1 ? share.toFixed(2) : share.toFixed(1)}% of the window):`,
-    ...pixels.areas.map((area, i) => `  ${rect(area)}${crops[i] ? `; images ${2 * i + 1} and ${2 * i + 2} show ${rect(crops[i])} before and after` : ""}`)];
-  if (pixels.regions > pixels.areas.length) lines.push(`  …and ${pixels.regions - pixels.areas.length} smaller areas.`);
-  return lines;
+  const chrome = pixels.chrome ? [`Browser chrome outside the page also changed (${rect(pixels.chrome.box)}, ${pixels.chrome.regions} ${pixels.chrome.regions === 1 ? "area" : "areas"}): tab strip, address bar or loading state; not listed.`] : [];
+  if (pixels.full) return [`Most of the window changed${since} (${percent}% of its overview pixels): image 1 shows the whole window after the action.`, ...chrome];
+  if (!pixels.areas.length) return chrome;
+  // The overview, when attached, is image 1 and numbers the areas as listed; each crop pair follows it.
+  const first = pixels.overview ? 2 : 1;
+  const lines = [`Pixels changed${since} in ${pixels.regions} ${pixels.regions === 1 ? "area" : "areas"} (overview pixels; ${percent}% of the window)${pixels.overview ? "; image 1 outlines and numbers them on the window" : ""}:`,
+    ...pixels.areas.map((area, i) => {
+      const crop = crops[i], zoom = crop && crop.scale > 1 ? `, enlarged ${crop.scale}x` : "";
+      return `  ${i + 1}. ${rect(area)}${area.at_input ? " (at the input point)" : ""}${crop ? `; images ${first + 2 * i} and ${first + 2 * i + 1} show ${rect(crop)} before and after${zoom}` : ""}`;
+    })];
+  if (pixels.regions > pixels.areas.length) lines.push(`  …and ${pixels.regions - pixels.areas.length} more areas, not listed; Read the window for all of it.`);
+  return [...lines, ...chrome];
 }
 
 /** Whole lines from the start that fit a byte budget, never splitting Unicode. */

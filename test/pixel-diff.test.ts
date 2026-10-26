@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, test } from "vitest";
-import { changeCrops, decodeFrame, diffFrames, pixelsChanged, type PixelFrame } from "../src/pixel-diff.ts";
+import { changeCrops, changeOverview, decodeFrame, diffFrames, pixelsChanged, type PixelFrame } from "../src/pixel-diff.ts";
 
 const blank = (width = 200, height = 100): PixelFrame => ({ width, height, data: Buffer.alloc(width * height * 4, 255) });
 function paint(frame: PixelFrame, x: number, y: number, width: number, height: number, value = 0): PixelFrame {
@@ -65,14 +65,55 @@ describe("diffFrames", () => {
   });
 });
 
+// LPT-928: the change at the input comes first, and browser chrome changes are summarised.
+describe("diffFrames with an action context", () => {
+  test("the area at the input point comes first even when another area is larger", () => {
+    const before = blank(400, 200);
+    const after = paint(paint(before, 10, 10, 200, 60), 300, 150, 12, 12);
+    expect(diffFrames(before, after).areas.map(area => area.x)).toEqual([10, 300]);
+    const focused = diffFrames(before, after, { focus: { x: 305, y: 155 } });
+    expect(focused.areas.map(area => [area.x, area.at_input])).toEqual([[300, true], [10, undefined]]);
+  });
+
+  test("without an area under the input point, the nearest one comes first", () => {
+    const before = blank(400, 200);
+    const after = paint(paint(before, 10, 10, 200, 60), 300, 150, 12, 12);
+    expect(diffFrames(before, after, { focus: { x: 330, y: 190 } }).areas.map(area => area.x)).toEqual([300, 10]);
+  });
+
+  test("changes outside the web page of a browser window are summarised as chrome", () => {
+    const before = blank(400, 300);
+    const after = paint(paint(before, 20, 5, 60, 20), 100, 150, 15, 15);
+    const diff = diffFrames(before, after, { page: { x: 0, y: 60, width: 400, height: 240 } });
+    expect(diff.areas.map(area => area.x)).toEqual([100]);
+    expect(diff.regions).toBe(1);
+    expect(diff.chrome).toEqual({ box: { x: 20, y: 5, width: 60, height: 20 }, regions: 1 });
+  });
+});
+
+describe("changeOverview", () => {
+  test("outlines each listed area on a scaled copy of the window", async () => {
+    const before = blank(1280, 640), after = paint(before, 600, 300, 40, 40);
+    const diff = diffFrames(before, after);
+    const overview = await changeOverview(await png(after), diff);
+    const meta = await sharp(overview).metadata();
+    expect([meta.width, meta.height]).toEqual([640, 320]);
+    // The outline is drawn in its own colour just outside the area, at half scale.
+    const frame = await decodeFrame(overview), at = (x: number, y: number) => [...frame.data.subarray((y * frame.width + x) * 4, (y * frame.width + x) * 4 + 3)];
+    expect(at(299, 170)).toEqual([255, 31, 143]);
+    expect(at(100, 100)).toEqual([255, 255, 255]);
+  });
+});
+
 describe("changeCrops", () => {
-  test("crops each changed area with a margin from both captures", async () => {
+  test("crops each changed area with a margin from both captures, enlarging a small one with square pixels", async () => {
     const before = blank(), after = paint(blank(), 50, 30, 20, 10);
     const [crop] = await changeCrops(await png(before), await png(after), diffFrames(before, after));
     expect(crop.region).toEqual({ x: 38, y: 18, width: 44, height: 34 });
+    expect(crop.scale).toBe(4);
     const a = await decodeFrame(crop.before), b = await decodeFrame(crop.after);
-    expect([a.width, a.height, b.width, b.height]).toEqual([44, 34, 44, 34]);
-    expect(diffFrames(a, b).box).toEqual({ x: 12, y: 12, width: 20, height: 10 });
+    expect([a.width, a.height, b.width, b.height]).toEqual([176, 136, 176, 136]);
+    expect(diffFrames(a, b).box).toEqual({ x: 48, y: 48, width: 80, height: 40 });
   });
 
   test("only the three largest areas get crops", async () => {
