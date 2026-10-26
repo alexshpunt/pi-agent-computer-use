@@ -11,6 +11,8 @@ export type ComputerAddress =
   | { kind: "observation"; source: string; ref: string; hint?: string; delivery?: "background" | "foreground"; delayMs?: number };
 
 const references = new Set(["app", "window", "observation", "sequence", "window-state", "sandbox", "machine"]);
+/** Words a long address starts with; machine names and window names never take them. */
+export const ADDRESS_KINDS: ReadonlySet<string> = new Set([...references, "session", "display"]);
 const parts = new Set(["windows", "apps", "displays"]);
 
 /** Resolve this namespace or reject malformed owned addresses before any native work. */

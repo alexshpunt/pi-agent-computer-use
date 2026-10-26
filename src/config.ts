@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { findBundledRuntime, type BundledRuntime } from "./native-runtime.ts";
+import { ADDRESS_KINDS } from "./computer-address.ts";
 
 /** Trusted overrides and an internal verified bundle. No executable or per-window target comes from agent input. */
 export interface ComputerConfig {
@@ -88,7 +89,8 @@ function parseMachines(value: unknown): Record<string, MachineConfig> {
   const machines: Record<string, MachineConfig> = {};
   for (const [name, raw] of Object.entries(value)) {
     // "local" names this machine itself.
-    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name) || name === "local" || !raw || typeof raw !== "object" || Array.isArray(raw)) return invalid();
+    // Short addresses start with the machine name (computer:<name>/w3qk), so it never takes an address kind word.
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name) || name === "local" || ADDRESS_KINDS.has(name) || !raw || typeof raw !== "object" || Array.isArray(raw)) return invalid();
     const machine = raw as Record<string, unknown>;
     if (Object.keys(machine).some(key => !["ssh", "command", "runtime", "node", "package"].includes(key))
       || typeof machine.ssh !== "string" || typeof machine.command !== "string" || !machine.command.startsWith("/")

@@ -19,7 +19,7 @@ const record = (value: unknown): Record<string, unknown> => value !== null && ty
 const label = (value: unknown) => typeof value === "string" ? value.replace(/[\r\n\t]/g, " ").slice(0, 1024) : "";
 
 /** Agent guidance shared by the IDE plugin and the standalone tools. */
-export const COMPUTER_PATH_HELP = "Read docs:computer for native resources. computer:session, computer:machine/<name> (local, or a configured machine) with its /windows, /apps and /displays, its /display/primary or listed /display/ref, and returned computer:window/ref, observation/id, window-state/id or sequence/id, each running on the machine that issued it. Read window overviews before input; display/detail/frames are readonly.";
+export const COMPUTER_PATH_HELP = "Read docs:computer for native resources. computer:session, computer:machine/<name> (local, or a configured machine) with its /windows, /apps and /displays, its /display/primary or listed /display/ref, and returned computer:window/ref, observation/id, window-state/id or sequence/id, each running on the machine that issued it; results show short forms such as computer:<machine>/w3qk (o observation, s sequence), and computer:<name> after Insert {\"action\":\"name\",\"as\":\"<name>\"} into a window. Read window overviews before input; display/detail/frames are readonly.";
 export const COMPUTER_VIEWS_HELP = "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a browser window opened by open_browser or attached with attach_browser returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI, plus whether the window is hung and its process memory/CPU. ocr (alone or with capture options on a window, alone on an observation, or with region:x,y,width,height on an observation) adds Windows OCR lines with boxes in overview pixels; use maxLongEdge 3840 for small text. aria (alone or with ui capture options, on a window) returns its UI as a Playwright aria snapshot with hints as [ref=...]. changes (alone, or with ui, image or full and capture options, on a window) takes a fresh capture and lists only rows changed, added or removed since that window's previous observation, with the new observation's hints, plus changed pixel areas with before/after crops instead of the full image. regions (alone or with image/full options on a window, alone on its observation) lists icons and text areas found by Cua perception with boxes in overview pixels; click a box center with pixel input. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop|text,hint on an observation; element:text returns one element's full text. sequence:{duration_ms<=60000,fps<=30,max_frames<=300,timeout_ms,maxLongEdge,scale,region} on window/display reports actual_fps and last_frame_age_ms; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} / {select:'changed'} on sequence; add as:'sheet' (one tiled image with index/time labels, optional columns) or as:'max'|'min' (one per-pixel composite), with optional region:{x,y,width,height} in frame pixels and maxLongEdge. Detail/frames are readonly; text offset/limit select UI lines, never image cells.";
 export const COMPUTER_SEARCH_HELP = "Search computer:machine/<name>/apps or computer:machine/<name>/windows (local is this machine) for installed-app/permitted-window metadata, or an observation for its collected UI/readonly DOM. Read computer:machine/<name>/displays for monitor metadata. Discovery launches nothing; observation Search performs no new native walk or DOM query. Treat missing matches in a partial projection as unknown.";
 export const COMPUTER_INPUT_HELP = "Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation of a browser opened with Insert {\"action\":\"open_browser\"} (YOLO: \"profile\":\"agent\" keeps the agent's own logins between sessions), or of a running Chromium-based browser attached in YOLO with Insert {\"action\":\"attach_browser\"} into its window address (Chrome or Edge through a debugging port, the chrome://inspect/#remote-debugging switch or the Playwright Extension; an Electron/CEF app started with --remote-debugging-port=0 in open's args; a WebView2 app started with open \"debugging\":true or after {\"action\":\"webview2_debugging\",\"app\":\"x.exe\",\"enabled\":true} on its machine; VS Code's integrated browser through the Pi Browser Bridge; closing the session detaches), Insert one Playwright action such as {\"action\":\"fill\",\"target\":{\"label\":\"Name\"},\"text\":\"value\"}; actions target the active tab, and tab/navigation/dialog actions are listed in docs:computer. Insert {\"action\":\"open_sandbox\"} into a machine address to work in a separate disposable Windows Sandbox that does not touch the human's desktop, or {\"action\":\"open_session\"} for an isolated agent session on the same machine (several can run at once, each with its own desktop and foreground input); use the returned computer:sandbox/... address for Search, open and close (docs:computer). Machines are computer:machine/local (this one) and computer:machine/<configured name> (another Windows machine over SSH, started on first use); each takes the same commands. Insert {\"action\":\"put\",\"from\":\"<workspace file>\"}, {\"action\":\"get\",\"name\":\"<file>\",\"to\":\"<workspace path>\"} or {\"action\":\"files\"} into a machine address to move files through the session's own folder on that machine (removed on close); point app Open/Save dialogs there. The same addresses take {\"action\":\"clipboard_write\",\"text\"|\"image\":...}, {\"action\":\"clipboard_read\",\"image\":true}, {\"action\":\"record_start\",\"seconds\":30} and {\"action\":\"record_stop\",\"to\":\"<workspace path>\"} (main-display video) and {\"action\":\"audio_record\",\"seconds\":10,\"transcribe\":true} (playback audio with a transcript) in YOLO. Insert {\"action\":\"timeline\",\"events\":[{at_ms,type,...}]} with delivery=foreground into an observation for timed key/button/move/move_relative/wheel/pen events; everything held is released at the end (docs:computer). Insert {\"action\":\"resize\",\"width\":1920,\"height\":1080} into a display address to change that display's resolution in YOLO; closing the session restores it. Only after the user explicitly allows it, Insert {\"action\":\"setup\",\"part\":\"browser|firefox|perception|mxc|vscode-bridge\"} into a machine address to install a missing optional part there (docs:computer). Insert {\"action\":\"menu\",\"path\":[\"File\",\"Save As...\"]} into an observation to invoke a menu item by its labels, and {\"action\":\"kill\"} into the window address of an app this session opened to force-close it. Insert an action with a Playwright locator target, such as {\"action\":\"click\",\"target\":\"getByRole('button', { name: 'Save' })\"} or fill/check/select, into a native window address to act without a prior Read; it waits until exactly one element is ready. Insert {\"action\":\"wait_for\"|\"verify\",\"conditions\":[...]} into a window address to check UI state with the same locators, count or an aria snapshot template; every action reports what it changed in the window: UI rows, and changed pixel areas with before/after crops after an action on an image or full observation (\"successor\":false skips it), and \"expect\" adds a postcondition; or Insert {\"action\":\"batch\",\"steps\":[...]} into an observation for a fail-stop chain (docs:computer). Use no Write or native input on a DOM observation. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} (YOLO also {\"action\":\"open\",\"path\":\"C:\\\\...\\\\app.exe\",\"args\":[...]}) to a machine address, and {\"action\":\"close\"} to a machine address or to computer:session for every machine (the result lists each released part). Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; the action's successor observation is current for the next input. With \"successor\":false, delivered pixel-only input keeps its observation until the window is resized; otherwise refresh with Read. One sequence takes up to 2000 key, click and stroke steps. Never replay unknown prefixes. Foreground input requires an observed background refusal and pauses for 10 s after the human's own keyboard or mouse input; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.";
@@ -326,10 +326,11 @@ export function computerReceipt(source: string, action: string | null, outcome: 
 /** One computer Read: native blocks for the model, canonical blocks for scripts and the details renderers use. */
 export async function readComputer(resources: ComputerResources, source: string, cwd: string,
   request: { readonly views?: readonly string[]; readonly offset?: number; readonly limit?: number }, script: boolean, signal?: AbortSignal) {
-  const address = requireComputerAddress(source);
+  const address = resources.address(source);
   const result = await resources.read(address, cwd, request.views, signal);
   const paged = request.offset !== undefined || request.limit !== undefined;
-  let body = result ? presentComputerResult(result, paged) : resources.descriptor(address);
+  // The agent sees this run's short addresses; the long ones stay in structured details.
+  let body = resources.shorten(result ? presentComputerResult(result, paged) : resources.descriptor(address));
   const lines = body.split("\n"), offset = request.offset ?? 1;
   const start = offset < 0 ? Math.max(0, lines.length + offset) : Math.max(0, offset - 1);
   if (request.limit !== undefined && (!Number.isSafeInteger(request.limit) || request.limit < 0)) throw new ComputerRequestError("limit must be a nonnegative text line count.");
@@ -359,12 +360,12 @@ export async function performComputer(resources: ComputerResources, tool: "write
     const fields = tool === "write" ? ["path", "content"] : ["path", "text"];
     if (Object.keys(input).some(key => !fields.includes(key))) throw new ComputerRequestError("Computer input accepts no text anchors, ranges or insertion flags; its observation address binds the target.");
     if (typeof literal !== "string") throw new ComputerRequestError("Provide literal content for Write or one JSON command in Insert text.");
-    address = requireComputerAddress(source);
+    address = resources.address(source);
     const result = await resources.perform(address, cwd, literal, tool, signal);
     const effect = computerEffect(result);
     // Completion of the native request is separate from application-effect certainty.
     const ok = !result.isError && ["delivered", "observed", "closed"].includes(result.details.status);
-    const summary = presentComputerResult(result);
+    const summary = resources.shorten(presentComputerResult(result));
     // Images of an action result, such as before/after crops of its pixel change, follow the summary for the model.
     const images = result.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
     return { source, summary, ...(images.length ? { images } : {}), data: { kind: "computer-action", ok,
@@ -372,13 +373,19 @@ export async function performComputer(resources: ComputerResources, tool: "write
       receipt: computerResultText(result),
       ...(!ok ? { error: { code: typeof result.details.state?.code === "string" ? result.details.state.code : `COMPUTER_${effect.toUpperCase().replace("-", "_")}`,
         message: computerResultText(result) } } : {}) },
-      script: { ...computerReceipt(source, action, { result, inputConsumed: !resources.grantsAuthority(address), text: summary }) } };
+      script: { ...shortReceipt(resources, computerReceipt(source, action, { result, inputConsumed: !resources.grantsAuthority(address), text: summary })) } };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = resources.shorten(error instanceof Error ? error.message : String(error));
     return { source, summary: message, data: { kind: "computer-action", ok: false,
       effect: error instanceof ComputerRequestError ? "not-applied" : "unknown", error: { message } },
-      script: { ...computerReceipt(source, action, { error, inputConsumed: address ? !resources.grantsAuthority(address) : false }) } };
+      script: { ...shortReceipt(resources, computerReceipt(source, action, { error, inputConsumed: address ? !resources.grantsAuthority(address) : false })) } };
   }
+}
+/** A receipt whose window, sandbox and observation addresses are this run's short aliases. */
+function shortReceipt(resources: ComputerResources, receipt: ComputerReceipt): ComputerReceipt {
+  const short = (value: string | null | undefined) => value ? resources.shorten(value) : value;
+  return { ...receipt, window: short(receipt.window) ?? null, observation: short(receipt.observation) ?? null,
+    ...(receipt.sandbox ? { sandbox: short(receipt.sandbox)! } : {}), ...(receipt.reason ? { reason: resources.shorten(receipt.reason) } : {}), text: resources.shorten(receipt.text) };
 }
 function nativeBlocks(body: string, result: ComputerResult | undefined, uiOnly: boolean): Content[] {
   return [{ type: "text", text: body }, ...(uiOnly || !result ? [] : result.details.selected_frames
@@ -405,12 +412,12 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
     async tryResolve(source) {
       if (!owns(source)) return { kind: "not-handled" };
       try {
-        const address = requireComputerAddress(source);
+        const address = resources.address(source);
         return { kind: "resolved", resource: { source, skipPostEdit: true,
           // An expired reference still resolves, so Write/Insert reach the handler and return a refused receipt.
           read: async () => {
-            try { return [{ type: "text", text: resources.descriptor(address) }]; }
-            catch (error) { if (error instanceof ComputerRequestError) return [{ type: "text", text: `# Computer resource\nSource: ${source}\n${error.message}` }]; throw error; }
+            try { return [{ type: "text", text: resources.shorten(resources.descriptor(address)) }]; }
+            catch (error) { if (error instanceof ComputerRequestError) return [{ type: "text", text: resources.shorten(`# Computer resource\nSource: ${source}\n${error.message}`) }]; throw error; }
           } } };
       } catch (error) { return { kind: "failed", error }; }
     },
@@ -440,11 +447,11 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
           try {
             if (request.include !== undefined || request.exclude !== undefined || request.navigation !== undefined || request.caseSensitive || request.wholeWord)
               throw new ComputerRequestError("Computer Search uses native discovery/UI text predicates, not file globs or symbol navigation.");
-            const result = await resources.search(requireComputerAddress(request.path), context.cwd, request.query, request.limit, context.signal);
+            const result = await resources.search(resources.address(request.path), context.cwd, request.query, request.limit, context.signal);
             return { kind: "resolved", payload: result };
           } catch (error) { return { kind: "failed", error }; }
         },
-        format(payload) { const result = payload as ComputerResult; return { ...result, content: [{ type: "text", text: presentComputerResult(result) }] }; },
+        format(payload) { const result = payload as ComputerResult; return { ...result, content: [{ type: "text", text: resources.shorten(presentComputerResult(result)) }] }; },
         toScriptData(payload) { return { kind: "custom", resolverId: "computer", value: (payload as ComputerResult).details }; },
       } });
       api.describe(COMPUTER_SEARCH_HELP);
