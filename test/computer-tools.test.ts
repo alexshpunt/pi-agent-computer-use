@@ -291,7 +291,7 @@ test("Write and Insert on a computer address refuse and name the tool that does 
   for (const [action, tool] of [["click", "computer_click"], ["fill", "computer_type"], ["hotkey", "computer_press"], ["menu", "computer_select"],
     ["open_browser", "computer_open"], ["restore", "computer_window"], ["verify", "computer_wait"], ["navigate", "computer_browser"],
     ["put", "computer_files"], ["clipboard_read", "computer_clipboard"], ["record_start", "computer_record"], ["kill", "Delete"],
-    ["setup", "/computer-setup"], ["batch", "Codemode"]])
+    ["setup", "/computer-setup"], ["batch", "Codemode"], ["hold", "computer_press with hold_ms"], ["drag", "computer_drag"]])
     expect(computerEditRefusal("insert", { path: "computer:machine/local", text: JSON.stringify({ action }) })).toContain(`Use ${tool}`);
   // Unknown or unreadable commands still learn where the tools are.
   expect(computerEditRefusal("insert", { path: "computer:session", text: "not json" })).toMatch(/^Insert does not act on computer resources; nothing was sent\. Each operation has its own computer_\* tool: tool_search/);
