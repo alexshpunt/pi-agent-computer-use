@@ -90,7 +90,7 @@ text("Pointer contract passed: admission, receipts and no replay");`);
 test("real Pi never sends pointer input through Safe-disallowed, closed or reused window references", async () => {
   const { calls } = await scenario("native-pointer-access", `
 const listed=await windows();
-const external=listed.split("\\n").find(line=>line.includes("| Unowned fixture |")).match(/computer:window\\/[\\w-]+/)[0];
+const external=listed.split("\\n").find(line=>line.includes("| Unowned fixture |")).match(/computer:[\\w-]+\\/w\\d+[a-z]{2}/)[0];
 const externalView=await observe(external);
 await control("safe");
 if(await act(externalView,{action:"move",x:100,y:80,delivery_mode:"foreground"})!=="refused")throw Error("Safe sent input to external window");

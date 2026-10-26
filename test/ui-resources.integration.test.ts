@@ -15,7 +15,7 @@ test("real Pi Codemode refines full resources locally and dispatches only a curr
   // Any refused input spends its observation, so each refusal check acts on a fresh overview.
   const code = `${SCRIPT_HELPERS}
 const listed = await windows();
-const [win, otherWin] = [...listed.matchAll(/computer:window\\/[\\w-]+/g)].map(match => match[0]);
+const [win, otherWin] = [...listed.matchAll(/computer:[\\w-]+\\/w\\d+[a-z]{2}/g)].map(match => match[0]);
 const read = views => tools.computer_read({path:win,...(views?{views}:{})});
 // Only local refinement is under test here: clicks skip the default successor, so every native capture is a read.
 const click = async (view,hint) => (await insert(observation(view),{action:"click",hint,successor:false})).outcome;

@@ -26,7 +26,10 @@ export function registerFixtureComputerTools(pi: ExtensionAPI, getSession: (cwd:
 export const SCRIPT_HELPERS = String.raw`
 const body = value => typeof value === "string" ? value : value.note ?? value.text ?? "";
 const address = (value, kind, label) => {
-  const match = body(value).match(new RegExp((label ? label + ": " : "") + "(computer:" + kind + "/[\\w-]+)"));
+  // Results show short forms (computer:local/o3qk); a labelled line gives the address of either form.
+  const letter = { window: "w", observation: "o", sequence: "s", sandbox: "b", app: "a" }[kind];
+  const match = body(value).match(label ? new RegExp("^" + label + ": (computer:[\\w/-]+)", "m")
+    : new RegExp("(computer:" + kind + "/[\\w-]+|computer:[a-z0-9_-]+/" + letter + "[0-9]+[a-z]{2})"));
   if (!match) throw Error("No " + kind + " address in: " + body(value).slice(0, 600));
   return match[1];
 };

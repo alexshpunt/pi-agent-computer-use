@@ -1,3 +1,4 @@
+import { addressPattern } from "./addresses.ts";
 import { readFile } from "node:fs/promises";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -17,7 +18,7 @@ function field(value: unknown, key: string): unknown {
   return undefined;
 }
 const reference = (result: Result, kind: "window" | "observation") => {
-  const match = textOf(result).match(new RegExp(`computer:${kind}/[a-zA-Z0-9-]+`));
+  const match = textOf(result).match(addressPattern(kind));
   if (!match) throw Error(`No ${kind} resource in actual IDE result: ${textOf(result)}`);
   return match[0];
 };

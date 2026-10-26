@@ -13,7 +13,7 @@ for (const mode of ["yolo", "safe"] as const) {
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath,
       args: [path.resolve("test/fixtures/selected-display-driver.mjs"), log] }));
     const discover = `const r=await tools.computer_read({path:"computer:machine/local/displays"});
-const rows=r.split("\\n").filter(line=>line.startsWith("computer:machine/local/display/"));
+const rows=r.split("\\n").filter(line=>/^computer:local\\/d\\d+[a-z]{2} /.test(line));
 if(rows.length!==2)throw Error("Native discovery failed");
 const row=rows.find(line=>JSON.parse(line.slice(line.lastIndexOf(" | ")+3)).bounds.x<0);
 store("monitor",row.split(" | ")[0]);text(row);`;
