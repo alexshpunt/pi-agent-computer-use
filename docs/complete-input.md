@@ -21,7 +21,7 @@ Physical letter keys follow the active OS keyboard layout. Use `type_text` for l
 
 A relative drag endpoint is computed from the observed start: `to_x=from_x+dx`, `to_y=from_y+dy`. No global cursor or desktop offset is needed.
 
-Background delivery is the default. Explicit foreground is allowed only after an observed failure/refusal on the authorized window. The adapter never retries or escalates automatically.
+The typed tools choose delivery from the target (see [Act on windows](computer-resources.md#act-on-windows)): a click or scroll on an element goes through UI Automation with `uia_only`, and the driver refuses before sending anything when no pattern carries it; the tool then sends the same action as real input. Points, drags, keys and timelines are real input (`delivery_mode: "foreground"`). No route posts window messages.
 
 ## Bounded sequences
 
@@ -42,7 +42,7 @@ For computed drawing, choose points inside an actual observed canvas region. Map
 
 With the bundled runtime, `drag` accepts `via`: 1..254 intermediate `{x,y}` points. The endpoints and every intermediate point use the same current window PNG. One call presses the left button, follows all points and releases it. Do not pass `steps`, modifiers, or right/middle button with `via`.
 
-Background refuses before path input. Observe again after that refusal, then explicitly request foreground. It moves the real pointer; do not fight it during the stroke.
+A path is real input: it moves the real pointer; do not fight it during the stroke.
 
 A partial path returns `unknown`, preserving native `delivery.delivered_count` and the press/release summary. These count point moves, not completed batch steps. Later steps stop. Never replay the whole stroke or its uncertain remainder. Check the app's actual pixels before choosing another action.
 
@@ -54,7 +54,7 @@ With the bundled runtime, `hold` keeps 1..8 unique keys down for `duration_ms` 1
 
 Optional `actions` contains 1..32 complete left pixel clicks or drags from the same overview. Each drag may be straight or use `via`. Do not pass element tokens, per-action modifiers, button choices, key steps or nested holds. All requested pointer durations, including 50ms per click, must fit the hold interval. All keys and points are checked before input. Hold cannot nest in `sequence`.
 
-Start with background. After its native refusal, take a new overview and explicitly use foreground. The real keyboard and pointer are in use during the action; do not fight them. Existing held keys/modifiers or mouse buttons cause a preflight refusal, not a release-all.
+A hold is real input: the real keyboard and pointer are in use during the action; do not fight them. Existing held keys/modifiers or mouse buttons cause a preflight refusal, not a release-all.
 
 For Shift + brush, use `keys:["shift"]` and `actions:[{action:"drag",from_x:p.x,from_y:p.y,via:points,to_x:q.x,to_y:q.y,duration_ms:800}]` inside a hold of at least800ms. Points must come from the current overview. The native summary reports requested/measured time, inserted keys, completed pointer actions and press/release prefixes. Scheduling and input delivery add latency; timing is not real-time and OS auto-repeat is not promised.
 
