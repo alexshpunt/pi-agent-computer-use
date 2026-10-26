@@ -19,11 +19,28 @@ const record = (value: unknown): Record<string, unknown> => value !== null && ty
 const label = (value: unknown) => typeof value === "string" ? value.replace(/[\r\n\t]/g, " ").slice(0, 1024) : "";
 
 /** Agent guidance shared by the IDE plugin and the standalone tools. */
-export const COMPUTER_PATH_HELP = "Read docs:computer for native resources. computer:session, computer:machine/<name> (local, or a configured machine) with its /windows, /apps and /displays, its /display/primary or listed /display/ref, and returned computer:window/ref, observation/id, window-state/id or sequence/id, each running on the machine that issued it; results show short forms such as computer:<machine>/w3qk (o observation, s sequence), and computer:<name> after Insert {\"action\":\"name\",\"as\":\"<name>\"} into a window. Read window overviews before input; display/detail/frames are readonly.";
-export const COMPUTER_VIEWS_HELP = "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a browser window opened by open_browser or attached with attach_browser returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns fresh restore or management metadata without pixels/UI, plus whether the window is hung and its process memory/CPU. ocr (alone or with capture options on a window, alone on an observation, or with region:x,y,width,height on an observation) adds Windows OCR lines with boxes in overview pixels; use maxLongEdge 3840 for small text. aria (alone or with ui capture options, on a window) returns its UI as a Playwright aria snapshot with hints as [ref=...]. changes (alone, or with ui, image or full and capture options, on a window) takes a fresh capture and lists only rows changed, added or removed since that window's previous observation, with the new observation's hints, plus changed pixel areas with before/after crops instead of the full image. regions (alone or with image/full options on a window, alone on its observation) lists icons and text areas found by Cua perception with boxes in overview pixels; click a box center with pixel input. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop|text,hint on an observation; element:text returns one element's full text. sequence:{duration_ms<=60000,fps<=30,max_frames<=300,timeout_ms,maxLongEdge,scale,region} on window/display reports actual_fps and last_frame_age_ms; frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} / {select:'changed'} on sequence; add as:'sheet' (one tiled image with index/time labels, optional columns) or as:'max'|'min' (one per-pixel composite), with optional region:{x,y,width,height} in frame pixels and maxLongEdge. Detail/frames are readonly; text offset/limit select UI lines, never image cells.";
+export const COMPUTER_PATH_HELP = "Read docs:computer for native resources. computer:session, computer:machine/<name> (local, or a configured machine) with its /windows, /apps and /displays, its /display/primary or listed /display/ref, and returned computer:window/ref, observation/id or sequence/id, each running on the machine that issued it; results show short forms such as computer:<machine>/w3qk (o observation, s sequence), and computer:<name> after computer_window name. Read only looks; the computer_* tools act.";
+export const COMPUTER_VIEWS_HELP = "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a browser window opened or attached with computer_open returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns its minimized, maximized, visible and foreground state and bounds without pixels/UI, plus whether the window is hung and its process memory/CPU; computer_window changes them. ocr (alone or with capture options on a window, alone on an observation, or with region:x,y,width,height on an observation) adds Windows OCR lines with boxes in overview pixels; use maxLongEdge 3840 for small text. aria (alone or with ui capture options, on a window) returns its UI as a Playwright aria snapshot with hints as [ref=...]. changes (alone, or with ui, image or full and capture options, on a window) takes a fresh capture and lists only rows changed, added or removed since that window's previous observation, with the new observation's hints, plus changed pixel areas with before/after crops instead of the full image. regions (alone or with image/full options on a window, alone on its observation) lists icons and text areas found by Cua perception with boxes in overview pixels; click a box centre with computer_click at its x,y. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop|text,hint on an observation; element:text returns one element's full text. frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} / {select:'changed'} on a sequence address from computer_record; add as:'sheet' (one tiled image with index/time labels, optional columns) or as:'max'|'min' (one per-pixel composite), with optional region:{x,y,width,height} in frame pixels and maxLongEdge. Detail/frames are readonly; text offset/limit select UI lines, never image cells.";
 export const COMPUTER_SEARCH_HELP = "Search computer:machine/<name>/apps or computer:machine/<name>/windows (local is this machine) for installed-app/permitted-window metadata, or an observation for its collected UI/readonly DOM. Read computer:machine/<name>/displays for monitor metadata. Discovery launches nothing; observation Search performs no new native walk or DOM query. Treat missing matches in a partial projection as unknown.";
 export const COMPUTER_DELETE_HELP = "A computer window address closes that window like its close button (add ?force=true to kill the hung app of a window this session opened); a sandbox, isolated session or machine address releases it; computer:session releases everything computer use started.";
-export const COMPUTER_INPUT_HELP = "Computer Write sends content literally through type_text to a fresh UI/image observation address. On a DOM observation of a browser opened with Insert {\"action\":\"open_browser\"} (YOLO: \"profile\":\"agent\" keeps the agent's own logins between sessions), or of a running Chromium-based browser attached in YOLO with Insert {\"action\":\"attach_browser\"} into its window address (Chrome or Edge through a debugging port, the chrome://inspect/#remote-debugging switch or the Playwright Extension; an Electron/CEF app started with --remote-debugging-port=0 in open's args; a WebView2 app started with open \"debugging\":true or after {\"action\":\"webview2_debugging\",\"app\":\"x.exe\",\"enabled\":true} on its machine; VS Code's integrated browser through the Pi Browser Bridge; closing the session detaches), Insert one Playwright action such as {\"action\":\"fill\",\"target\":{\"label\":\"Name\"},\"text\":\"value\"}; actions target the active tab, and tab/navigation/dialog actions are listed in docs:computer. Insert {\"action\":\"open_sandbox\"} into a machine address to work in a separate disposable Windows Sandbox that does not touch the human's desktop, or {\"action\":\"open_session\"} for an isolated agent session on the same machine (several can run at once, each with its own desktop and foreground input); use the returned computer:sandbox/... address for Search, open and close (docs:computer). Machines are computer:machine/local (this one) and computer:machine/<configured name> (another Windows machine over SSH, started on first use); each takes the same commands. Insert {\"action\":\"put\",\"from\":\"<workspace file>\"}, {\"action\":\"get\",\"name\":\"<file>\",\"to\":\"<workspace path>\"} or {\"action\":\"files\"} into a machine address to move files through the session's own folder on that machine (removed on close); point app Open/Save dialogs there. The same addresses take {\"action\":\"clipboard_write\",\"text\"|\"image\":...}, {\"action\":\"clipboard_read\",\"image\":true}, {\"action\":\"record_start\",\"seconds\":30} and {\"action\":\"record_stop\",\"to\":\"<workspace path>\"} (main-display video) and {\"action\":\"audio_record\",\"seconds\":10,\"transcribe\":true} (playback audio with a transcript) in YOLO. Insert {\"action\":\"timeline\",\"events\":[{at_ms,type,...}]} with delivery=foreground into an observation for timed key/button/move/move_relative/wheel/pen events; everything held is released at the end (docs:computer). Insert {\"action\":\"resize\",\"width\":1920,\"height\":1080} into a display address to change that display's resolution in YOLO; closing the session restores it. Only after the user explicitly allows it, Insert {\"action\":\"setup\",\"part\":\"browser|firefox|perception|mxc|vscode-bridge\"} into a machine address to install a missing optional part there (docs:computer). Insert {\"action\":\"menu\",\"path\":[\"File\",\"Save As...\"]} into an observation to invoke a menu item by its labels, and {\"action\":\"kill\"} into the window address of an app this session opened to force-close it. Insert an action with a Playwright locator target, such as {\"action\":\"click\",\"target\":\"getByRole('button', { name: 'Save' })\"} or fill/check/select, into a native window address to act without a prior Read; it waits until exactly one element is ready. Insert {\"action\":\"wait_for\"|\"verify\",\"conditions\":[...]} into a window address to check UI state with the same locators, count or an aria snapshot template; every action reports what it changed in the window: UI rows, and changed pixel areas with before/after crops after an action on an image or full observation (\"successor\":false skips it), and \"expect\" adds a postcondition; or Insert {\"action\":\"batch\",\"steps\":[...]} into an observation for a fail-stop chain (docs:computer). Use no Write or native input on a DOM observation. Use optional ?hint=...&delivery=foreground&delay_ms=0 only on input observations. No implicit select-all, submit or program execution. Computer Insert sends {\"action\":\"restore\"} to a fresh window-state address for explicit restoration and activation without keys/clicks, or one JSON action to an observation, or {\"action\":\"open\",\"app\":\"Exact installed name\"} (YOLO also {\"action\":\"open\",\"path\":\"C:\\\\...\\\\app.exe\",\"args\":[...]}) to a machine address, and {\"action\":\"close\"} to a machine address or to computer:session for every machine (the result lists each released part). Close releases runtime, not documents. Omit window_ref/observation_id in JSON. Input consumes observations even on refusal; the action's successor observation is current for the next input. With \"successor\":false, delivered pixel-only input keeps its observation until the window is resized; otherwise refresh with Read. One sequence takes up to 2000 key, click and stroke steps. Never replay unknown prefixes. Foreground input requires an observed background refusal and pauses for 10 s after the human's own keyboard or mouse input; restore is a separate explicit activation, not input delivery. Safe/YOLO is user-controlled.";
+/** Each Insert command the typed tools replaced, by the tool that does it now. */
+const REPLACED: [RegExp, string][] = [
+  [/^(click|double_click|right_click|invoke|check|uncheck)$/, "computer_click"], [/^(type_text|type|fill|set_value)$/, "computer_type"],
+  [/^(key|hotkey|press)$/, "computer_press"], [/^(scroll|wheel)$/, "computer_scroll"], [/^(drag|hold)$/, "computer_drag"], [/^(hover|move_pointer)$/, "computer_hover"],
+  [/^(select|select_option|menu)$/, "computer_select"], [/^(timeline|sequence)$/, "computer_timeline"],
+  [/^(open|open_browser|open_sandbox|open_session|attach_browser|webview2_debugging)$/, "computer_open"],
+  [/^(move|resize|minimize|maximize|focus|restore|name)$/, "computer_window (resize of a display: computer_display)"], [/^(wait_for|verify)$/, "computer_wait"],
+  [/^(navigate|back|forward|reload|wait_load|new_tab|switch_tab|close_tab|dialog|upload|wait_download|cancel_download|evaluate)$/, "computer_browser"],
+  [/^(put|get|files)$/, "computer_files"], [/^clipboard_/, "computer_clipboard"], [/^(record_start|record_stop|audio_record)$/, "computer_record"],
+  [/^(close|kill)$/, "Delete (kill: Delete with ?force=true)"], [/^setup$/, "/computer-setup, which only the user runs (ask them)"], [/^batch$/, "a Codemode script"],
+];
+/** Why Write or Insert refuses a computer address, naming the tool that does what it was sent. */
+export function computerEditRefusal(tool: "write" | "insert", input: Record<string, unknown>): string {
+  let action: unknown = tool === "write" ? "type_text" : undefined;
+  if (tool === "insert" && typeof input.text === "string") try { action = (JSON.parse(input.text) as { action?: unknown })?.action; } catch { /* no action to map */ }
+  const replacement = typeof action === "string" ? REPLACED.find(([pattern]) => pattern.test(action as string))?.[1] : undefined;
+  return `${tool === "write" ? "Write" : "Insert"} does not act on computer resources; nothing was sent. ${replacement ? `Use ${replacement}. ` : ""}Each operation has its own computer_* tool: tool_search loads them with "computer open window", "computer click hover drag scroll", "computer type press select timeline", "computer wait browser" or "computer files clipboard record".`;
+}
 
 /** Present native resources without dumping provenance; full receipts remain in structured data. */
 export function presentComputerResult(result: ComputerResult, full = false): string {
@@ -33,13 +50,11 @@ export function presentComputerResult(result: ComputerResult, full = false): str
   if (d.window_ref) lines.push(`Window: ${computerSource("window", d.window_ref)}`);
   if (d.window_state_id && d.status === "observed") {
     const sample = d.window_state_kind === "management" ? record(state.state) : state;
-    lines.push(`State: ${computerSource("window-state", d.window_state_id)}`,
-      `Window state: minimized=${sample.minimized}, visible=${sample.visible}; foreground=${sample.foreground_at_target}, keyboard_focus=${sample.keyboard_focus_at_target}${d.window_state_kind === "management" ? `; maximized=${sample.maximized}` : ""}`);
+    lines.push(`Window state: minimized=${sample.minimized}, visible=${sample.visible}; foreground=${sample.foreground_at_target}, keyboard_focus=${sample.keyboard_focus_at_target}${d.window_state_kind === "management" ? `; maximized=${sample.maximized}` : ""}`);
     if (d.window_state_kind === "management") {
       lines.push(`Bounds: ${JSON.stringify(sample.bounds)}; source=${sample.bounds_source}; unit=${sample.coordinate_space}`,
-        `Current virtual desktop: ${record(sample.virtual_desktop).on_current_desktop}`,
-        "Use one Insert move/resize/minimize/maximize/focus or restore. Frame units are desktop pixels, not pointer coordinates.");
-    } else lines.push('Insert {"action":"restore"} once explicitly restores and activates this window. No pixel, typing or pointer authority.');
+        `Current virtual desktop: ${record(sample.virtual_desktop).on_current_desktop}`);
+    }
   }
   const invalidManagement = state.code === "tool_output_invalid" ? record(state.invalid_output) : {};
   const management = typeof state.mutation_attempted === "boolean" ? state : invalidManagement;
@@ -56,7 +71,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
       `Measured state: visible=${state.visible}; foreground=${state.foreground_at_target}, keyboard_focus=${state.keyboard_focus_at_target}`);
   }
   const id = d.observation_id ?? d.agent_image?.image_id;
-  if (typeof id === "string" && (d.status === "observed" || (d.dom || d.batch) && d.status === "delivered")) lines.push(`Observation: ${computerSource("observation", id)}`);
+  if (typeof id === "string" && (d.status === "observed" || d.dom && d.status === "delivered")) lines.push(`Observation: ${computerSource("observation", id)}`);
   if (d.agent_image) {
     const image = d.agent_image, output = record(image.output), configuration = record(image.configuration);
     lines.push(`Image: ${output.width}x${output.height} ${label(output.mimeType)}; ${label(image.route)}; ${label(image.coordinate_space)}`);
@@ -89,11 +104,11 @@ export function presentComputerResult(result: ComputerResult, full = false): str
       if (message) lines.push(message);
     }
     const dom = d.dom;
-    lines.push(dom.active ? `Page: ${label(dom.title)} | ${label(dom.url)} | tab ${dom.active}` : "Page: none; no tab is active. Insert {\"action\":\"switch_tab\",\"tab\":\"<id>\"}.");
+    lines.push(dom.active ? `Page: ${label(dom.title)} | ${label(dom.url)} | tab ${dom.active}` : "Page: none; no tab is active. Use computer_browser switch_tab.");
     for (const tab of dom.tabs ?? [])
       lines.push(`Tab ${tab.id}${tab.active ? " (active)" : ""}: ${label(tab.title)} | ${label(tab.url)} | ${tab.load}${tab.opener ? ` | opened by ${tab.opener}` : ""}${tab.dialog ? ` | ${tab.dialog} dialog open` : ""}`);
     if (dom.dialog) lines.push(`Dialog: ${dom.dialog.type} ${JSON.stringify(dom.dialog.message)}${dom.dialog.default_value !== undefined ? ` (default ${JSON.stringify(dom.dialog.default_value)})` : ""}. ` +
-      "The page waits for it: Insert {\"action\":\"dialog\",\"accept\":true} or false; an accepted prompt takes \"text\". Other page actions refuse until then.");
+      "The page waits for it: answer with computer_browser dialog accept true or false; an accepted prompt takes text. Other page actions refuse until then.");
     for (const item of dom.downloads ?? [])
       lines.push(`Download ${item.id}: ${label(item.filename)} | ${item.state} | tab ${item.tab}${item.bytes !== undefined ? ` | ${item.bytes} bytes` : ""}${item.path ? ` | ${label(item.path)}` : ""}${item.error ? ` | ${label(item.error)}` : ""}`);
     for (const event of dom.events ?? []) lines.push(`Event: ${label(event)}`);
@@ -160,13 +175,6 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     lines.push(`OCR: ${d.text_lines.length} lines; boxes in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`);
     for (const line of d.text_lines) lines.push(`"${label(line.text)}" | x=${line.x} y=${line.y} w=${line.width} h=${line.height}`);
   }
-  if (d.batch) for (const step of d.batch.steps)
-    lines.push(`Step ${step.index}: ${step.action} → ${step.outcome}${step.verdict ? ` (${step.verdict})` : ""}${step.changes ? `; ${changeCount(step.changes)}` : ""}${step.reason ? `; ${label(step.reason)}` : ""}`);
-  if (d.postcondition) {
-    const p = d.postcondition;
-    lines.push(`Postcondition: ${p.status}${p.reason ? `; ${p.reason}` : ""}`);
-    p.verification?.conditions.forEach((condition, i) => lines.push(`  Condition ${i + 1} → ${condition.verdict}${condition.observed != null ? ` (observed ${JSON.stringify(label(condition.observed))})` : ""}${condition.reason ? `; ${label(condition.reason)}` : ""}`));
-  }
   if (d.successor) {
     const s = d.successor, diff = s.diff;
     lines.push(s.observation_id ? `Successor: ${computerSource("observation", s.observation_id)}` : `Successor: none. ${s.reason ?? ""}`);
@@ -174,12 +182,11 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     else if (s.reason) lines.push(s.reason);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
-  lines.push(d.successor?.observation_id ? "Read the successor observation for the full state; it is current for input."
-    : d.batch && d.observation_id ? "The batch left this observation current for input. Never replay completed or uncertain steps."
-    : d.verification ? (d.verification.verdict === "satisfied" ? "Conditions held; this observation is current for input." : "Not verified: neither proof of success nor of failure beyond the listed verdicts. Never replay uncertain input blindly.")
-    : d.dom ? "Insert one JSON action into this observation, e.g. {\"action\":\"click\",\"target\":{\"ref\":\"e2\"}}. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
-    : d.window_state_id ? "Use the still-current state once. Cached Read does not renew authority; state does not grant typing or pointer input."
-    : d.status === "observed" ? "Detail/display/sequence frames are readonly; fresh window Read is required after detail or input."
+  lines.push(d.successor?.observation_id ? "Refs in this change list are current for the next input; Read the window for its full state."
+    : d.verification ? (d.verification.verdict === "satisfied" ? "Conditions held; refs of this sample are current for input." : "Not verified: neither proof of success nor of failure beyond the listed verdicts. Never replay uncertain input blindly.")
+    : d.dom ? "Act on the window with the computer_* input tools, a ref such as e2 as target. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
+    : d.window_state_id ? "This Read only looks; computer_window changes the window's state."
+    : d.status === "observed" ? "Refs of this Read are current for the next input to its window; detail, display and frame Reads give none."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
   const text = lines.join("\n");
   if (full || !d.dom || Buffer.byteLength(text) <= 24_000) return text;
@@ -189,9 +196,6 @@ export function presentComputerResult(result: ComputerResult, full = false): str
   return `${preview.join("\n")}\nDOM text preview reached its byte limit after ${preview.length} of ${lines.length} lines. Read this observation with offset and limit to page through it (each page names the next offset), or Search it; omitted lines are not absence.`;
 }
 
-/** One step's effect in a batch row: counts, or that nothing changed. */
-const changeCount = (c: { changed: number; added: number; removed: number }) =>
-  c.changed + c.added + c.removed ? `${c.changed} changed, ${c.added} added, ${c.removed} removed` : "nothing changed";
 
 /** Lines of a compact UI, DOM or pixel change list; changed and added rows carry the new observation's hints. */
 function diffLines(diff: StateDiff, afterAction = false): string[] {
@@ -242,12 +246,12 @@ function fittingLines(lines: readonly string[], budget: number): string[] {
 export function computerEffect(result: ComputerResult): "applied" | "not-applied" | "unknown" {
   if (!result.isError && ["delivered", "observed", "closed"].includes(result.details.status)) return "applied";
   const sequence = record(result.details.state?.sequence);
-  const delivered = (typeof sequence.completed === "number" && sequence.completed > 0) || (result.details.batch?.steps.some(step => step.outcome === "delivered") ?? false);
+  const delivered = typeof sequence.completed === "number" && sequence.completed > 0;
   return result.details.status === "refused" && !delivered ? "not-applied" : "unknown";
 }
 
 /**
- * The value a Codemode script receives from a computer Write or Insert. Every outcome resolves with this
+ * The value a Codemode script receives from a computer_* tool. Every outcome resolves with this
  * shape, so scripts branch on `outcome` instead of catching errors. Delivery never verifies application state.
  */
 export interface ComputerReceipt {
@@ -260,11 +264,11 @@ export interface ComputerReceipt {
   action: string | null;
   source: string;
   window: string | null;
-  /** The sandbox address an open_sandbox command started. */
+  /** The sandbox address computer_open started. */
   sandbox?: string;
   /** The new current observation issued by this call, such as a DOM action's next snapshot. */
   observation: string | null;
-  /** Whether the addressed observation or window state can no longer be used for input. */
+  /** Whether the addressed observation can no longer be used for input. */
   input_consumed: boolean;
   application_effect: "unverified";
   reason: string | null;
@@ -275,19 +279,15 @@ export interface ComputerReceipt {
   /** Verdict of a wait_for/verify command, with one entry per requested condition. */
   verification?: { verdict: "satisfied" | "unsatisfied" | "unknown"; timed_out: boolean; samples: number; elapsed_ms: number; reason?: string;
     conditions: { index: number; verdict: "satisfied" | "unsatisfied" | "unknown"; observed?: string | null; reason?: string }[] };
-  /** Per-step results of a sequence or batch. */
+  /** Per-step results of a native sequence. */
   steps?: { index: number; action: unknown; status: unknown; verdict?: string; reason?: string }[];
-  /** Why a batch stopped before its last step. */
-  stopped?: string;
-  /** Declared postcondition: verified by this action, already true before it, not reached, or undecidable. */
-  postcondition?: { status: "verified" | "preexisting" | "failed" | "unknown"; reason?: string; verdicts?: string[] };
   /** Compact change list from the action's input observation to `observation`. */
   changes?: { kind: string; changed: string[]; added: string[]; removed: string[]; counts: { changed: number; added: number; removed: number };
     page?: Record<string, unknown>; note?: string };
   /** The same receipt the model sees. */
   text: string;
 }
-/** Build the script receipt for one Write/Insert result, or for a request rejected before dispatch. */
+/** Build the script receipt for one computer action, or for a request rejected before dispatch. */
 export function computerReceipt(source: string, action: string | null, outcome: { result: ComputerResult; inputConsumed: boolean; text: string }
   | { error: unknown; inputConsumed: boolean }): ComputerReceipt {
   if ("error" in outcome) {
@@ -316,10 +316,6 @@ export function computerReceipt(source: string, action: string | null, outcome: 
     ...(d.verification ? { verification: { verdict: d.verification.verdict, timed_out: d.verification.timed_out, samples: d.verification.samples,
       elapsed_ms: d.verification.elapsed_ms, ...(d.verification.reason ? { reason: d.verification.reason } : {}), conditions: d.verification.conditions } } : {}),
     ...(Array.isArray(sequence.steps) ? { steps: (sequence.steps as Record<string, unknown>[]).map(step => ({ index: step.index as number, action: step.action, status: step.status })) } : {}),
-    ...(d.batch ? { steps: d.batch.steps.map(step => ({ index: step.index, action: step.action, status: step.outcome, ...(step.verdict ? { verdict: step.verdict } : {}), ...(step.reason ? { reason: step.reason } : {}) })),
-      ...(d.batch.stop_reason ? { stopped: d.batch.stop_reason } : {}) } : {}),
-    ...(d.postcondition ? { postcondition: { status: d.postcondition.status, ...(d.postcondition.reason ? { reason: d.postcondition.reason } : {}),
-      ...(d.postcondition.verification ? { verdicts: d.postcondition.verification.conditions.map(condition => condition.verdict) } : {}) } } : {}),
     ...(d.successor?.diff ? { changes: d.successor.diff } : {}),
     text: outcome.text,
   };
@@ -350,18 +346,9 @@ export async function readComputer(resources: ComputerResources, source: string,
     details: { source: address.source, resolvedBy: "computer", presentationTruncated: truncated, ...(result ? { computer: result.details } : {}) } };
 }
 
-/** One computer Write or Insert. Every outcome returns a summary and a script receipt instead of throwing. */
-export async function performComputer(resources: ComputerResources, tool: "write" | "insert", source: string,
-  input: Record<string, unknown>, cwd: string, signal?: AbortSignal) {
-  const literal = input[tool === "write" ? "content" : "text"];
-  let action: string | null = tool === "write" ? "type_text" : null;
-  if (tool === "insert" && typeof literal === "string") try { const parsed = JSON.parse(literal); if (typeof parsed?.action === "string") action = parsed.action; } catch { /* reported by perform */ }
-  return computerAction(resources, source, action, () => {
-    const fields = tool === "write" ? ["path", "content"] : ["path", "text"];
-    if (Object.keys(input).some(key => !fields.includes(key))) throw new ComputerRequestError("Computer input accepts no text anchors, ranges or insertion flags; its observation address binds the target.");
-    if (typeof literal !== "string") throw new ComputerRequestError("Provide literal content for Write or one JSON command in Insert text.");
-    return resources.address(source);
-  }, address => resources.perform(address, cwd, literal as string, tool, signal));
+/** Write or Insert on a computer address: a refused receipt that names the computer_* tool to use instead. */
+export function refuseComputerEdit(resources: ComputerResources, tool: "write" | "insert", source: string, input: Record<string, unknown>) {
+  return computerAction(resources, source, null, () => { throw new ComputerRequestError(computerEditRefusal(tool, input)); }, () => Promise.reject(new Error("unreachable")));
 }
 /**
  * Run one computer operation and present its outcome as an action result: the shortened summary, any images, and the
@@ -421,7 +408,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
   const guide = await readFile(new URL("../docs/computer-resources.md", import.meta.url), "utf8");
   connectAgentDocumentation(pi, [{ id: "computer", description: "Native computer resources, readonly vision and observation-bound input through ordinary IDE tools",
     markdown: guide,
-    triggers: ["read", "search", "write", "insert"].map(tool => ({ tool, resourcePrefixes: ["computer:"] })) }]);
+    triggers: ["read", "search"].map(tool => ({ tool, resourcePrefixes: ["computer:"] })) }]);
   const resources = new ComputerResources(getSession, closeSession, openSandbox, connectMachine, getMode);
   // Pi shutdown releases every machine, sandbox and session this computer use started.
   pi.on("session_shutdown", () => resources.closeAll().then(() => undefined));
@@ -433,7 +420,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         // Delete's force option is not part of the address; Delete itself checks where it applies.
         const address = resources.address(source.endsWith(FORCE) ? source.slice(0, -FORCE.length) : source);
         return { kind: "resolved", resource: { source, skipPostEdit: true,
-          // An expired reference still resolves, so Write/Insert reach the handler and return a refused receipt.
+          // An expired reference still resolves, so Delete reaches its handler and returns a refused receipt.
           read: async () => {
             try { return [{ type: "text", text: resources.shorten(resources.descriptor(address)) }]; }
             catch (error) { if (error instanceof ComputerRequestError) return [{ type: "text", text: resources.shorten(`# Computer resource\nSource: ${source}\n${error.message}`) }]; throw error; }
@@ -485,16 +472,16 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         for (const tool of ["write", "insert", "delete"] as const) api.addToolRenderer(computerActionRenderer(tool));
         renderersRegistered = true;
       });
+      // Write and Insert do not act on computer addresses; they refuse instead of treating the address as a file.
       for (const tool of ["write", "insert"] as const) api.tool(tool).addSemanticHandler({
         matches: input => owns(record(input).path),
-        execute: (context, input) => performComputer(resources, tool, context.sourceFor("path"), record(input), context.cwd, context.signal),
+        execute: (context, input) => refuseComputerEdit(resources, tool, context.sourceFor("path"), record(input)),
       });
       api.tool("delete").addSemanticHandler({
         matches: input => owns(record(input).path),
         execute: (context, input) => deleteComputer(resources, context.sourceFor("path"), record(input), context.cwd, context.signal),
       });
       api.tool("delete").describeField("path", COMPUTER_DELETE_HELP);
-      api.describe(COMPUTER_INPUT_HELP);
     } })),
   ]);
   return { resources, guide, attached: () => accepted.size === 3 };

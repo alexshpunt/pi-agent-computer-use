@@ -51,16 +51,18 @@ async function fixture() {
   const read = async (views = ["ui"]) => {
     const view = (await resources.read(address(window), cwd, views))!;
     const observation = computerSource("observation", view.details.observation_id!);
-    return { view, observation: address(observation), at: (index: number) => address(`${observation}?hint=${encodeURIComponent(view.details.ui!.elements[index].hint)}`) };
+    return { view, observation: address(observation), at: (index: number) => ({ ...address(observation), hint: view.details.ui!.elements[index].hint }) };
   };
   const walks = () => vi.mocked(driver.call).mock.calls.filter(([name]) => name === "get_window_state").length;
-  return { resources, window, read, walks };
+  // The app paints by itself, as an animation or another person would.
+  const paint = (x: number, y: number) => { dots.push({ x, y }); };
+  return { resources, window, read, walks, paint };
 }
 const images = (result: ComputerResult) => result.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
 
 test("an action on an observation with pixels reports the changed area with before and after crops", async () => {
   const f = await fixture(), { at } = await f.read(["full"]);
-  const result = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }), "insert");
+  const result = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }));
   expect(result.details.successor?.diff?.pixels).toMatchObject({ box: { x: 20, y: 40, width: 10, height: 10 }, regions: 1, crops: [{ x: 8, y: 28, width: 34, height: 34 }] });
   expect(presentComputerResult(result)).toMatch(/~ \d+:a Button "Count 0" → "Count 1"\nPixels changed in 1 area \(overview pixels; 0\.06% of the window\):\n  x=20 y=40 w=10 h=10; images 1 and 2 show x=8 y=28 w=34 h=34 before and after\n/);
   const [before, after] = images(result);
@@ -70,38 +72,39 @@ test("an action on an observation with pixels reports the changed area with befo
 
 test("pixel input on a canvas reports only its pixel change, and empty space reports nothing", async () => {
   const f = await fixture(), { observation } = await f.read(["full"]);
-  const stroke = await f.resources.perform(observation, cwd, JSON.stringify({ action: "click", x: 300, y: 200 }), "insert");
+  const stroke = await f.resources.perform(observation, cwd, JSON.stringify({ action: "click", x: 300, y: 200 }));
   expect(stroke.details.successor?.diff).toMatchObject({ counts: { changed: 0, added: 0, removed: 0 }, pixels: { box: { x: 297, y: 197, width: 6, height: 6 } } });
   expect(images(stroke)).toHaveLength(2);
   const next = address(computerSource("observation", stroke.details.successor!.observation_id!));
-  const empty = await f.resources.perform(next, cwd, JSON.stringify({ action: "click", x: 300, y: 60 }), "insert");
+  const empty = await f.resources.perform(next, cwd, JSON.stringify({ action: "click", x: 300, y: 60 }));
   expect(presentComputerResult(empty)).toMatch(/Nothing changed in the UI or the window's pixels within \d+ ms after the action\./);
   expect(images(empty)).toHaveLength(0);
 });
 
 test("an action on a UI-only observation says that pixels were not compared, and its successor has them", async () => {
   const f = await fixture(), { at } = await f.read();
-  const first = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }), "insert");
+  const first = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }));
   expect(presentComputerResult(first)).toMatch(/Pixels were not compared: the input observation had no pixels\./);
   const view = (await f.resources.read(address(computerSource("observation", first.details.successor!.observation_id!)), cwd, []))!;
   const hint = view.details.ui!.elements[0].hint;
-  const second = await f.resources.perform(address(`${computerSource("observation", first.details.successor!.observation_id!)}?hint=${hint}`), cwd, JSON.stringify({ action: "click" }), "insert");
+  const second = await f.resources.perform({ ...address(computerSource("observation", first.details.successor!.observation_id!)), hint } as ReturnType<typeof address>, cwd, JSON.stringify({ action: "click" }));
   expect(second.details.successor?.diff?.pixels?.box).toEqual({ x: 32, y: 40, width: 10, height: 10 });
 });
 
 test("a changes Read compares the window's pixels with its previous observation", async () => {
-  const f = await fixture(), { observation } = await f.read(["full"]);
-  await f.resources.perform(observation, cwd, JSON.stringify({ action: "click", x: 300, y: 200, successor: false }), "insert");
+  const f = await fixture();
+  await f.read(["full"]);
+  f.paint(200, 150);
   const changes = (await f.resources.read(address(f.window), cwd, ["changes"]))!;
-  expect(changes.details.changes?.diff?.pixels?.box).toEqual({ x: 297, y: 197, width: 6, height: 6 });
-  expect(presentComputerResult(changes)).toMatch(/Pixels changed in 1 area .*\n  x=297 y=197 w=6 h=6;/);
+  expect(changes.details.changes?.diff?.pixels?.box).toEqual({ x: 197, y: 147, width: 6, height: 6 });
+  expect(presentComputerResult(changes)).toMatch(/Pixels changed in 1 area .*\n  x=197 y=147 w=6 h=6;/);
   // Only the two crops, not the full overview.
   expect(images(changes)).toHaveLength(2);
 });
 
 test("an action reports what it changed by default, and its successor is the current observation", async () => {
   const f = await fixture(), { at } = await f.read();
-  const result = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }), "insert");
+  const result = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }));
   const shown = presentComputerResult(result);
   expect(shown).toMatch(/Changes: 1 changed, 0 added, 0 removed\n~ \d+:a Button "Count 0" → "Count 1"/);
   expect(f.resources.grantsAuthority(address(computerSource("observation", result.details.successor!.observation_id!)))).toBe(true);
@@ -109,34 +112,14 @@ test("an action reports what it changed by default, and its successor is the cur
 
 test("an action that changes nothing says so after looking again for a moment", async () => {
   const f = await fixture(), { at } = await f.read();
-  const result = await f.resources.perform(at(1), cwd, JSON.stringify({ action: "click" }), "insert");
+  const result = await f.resources.perform(at(1), cwd, JSON.stringify({ action: "click" }));
   expect(result.details.successor?.diff?.waited_ms).toBeGreaterThanOrEqual(300);
   expect(presentComputerResult(result)).toMatch(/Nothing changed in the UI within \d+ ms after the action\. Check that the target was right/);
 });
 
-test("successor false turns the change list off for one call", async () => {
-  const f = await fixture(), { at } = await f.read();
-  const before = f.walks();
-  const result = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click", successor: false }), "insert");
-  expect(result.details.status).toBe("delivered");
-  expect(result.details.successor).toBeUndefined();
-  expect(f.walks()).toBe(before);
-});
-
 test("a locator action on the window address compares with the walk that resolved its target", async () => {
   const f = await fixture();
-  const result = await f.resources.perform(address(f.window), cwd, JSON.stringify({ action: "click", target: "getByRole('button', { name: /Count/ })" }), "insert");
+  const result = await f.resources.perform(address(f.window), cwd, JSON.stringify({ action: "click", target: "getByRole('button', { name: /Count/ })" }));
   expect(result.details.successor?.diff?.changed).toEqual([expect.stringMatching(/Button "Count 0" → "Count 1"$/)]);
 });
 
-test("each batch step says what it changed, and the batch reports the change from its start", async () => {
-  const f = await fixture(), { view } = await f.read();
-  const result = await f.resources.perform(address(computerSource("observation", view.details.observation_id!)), cwd, JSON.stringify({ action: "batch", steps: [
-    { action: "click", target: "getByRole('button', { name: /Count/ })" },
-    { action: "click", target: "getByText('Status')" },
-    { action: "click", target: "getByRole('button', { name: /Count/ })" },
-  ] }), "insert");
-  expect(result.details.batch?.steps.map(step => step.changes)).toEqual([{ changed: 1, added: 0, removed: 0 }, { changed: 0, added: 0, removed: 0 }, undefined]);
-  expect(presentComputerResult(result)).toMatch(/Step 0: click → delivered; 1 changed, 0 added, 0 removed\nStep 1: click → delivered; nothing changed\n/);
-  expect(result.details.successor?.diff?.changed).toEqual([expect.stringMatching(/Button "Count 0" → "Count 2"$/)]);
-});

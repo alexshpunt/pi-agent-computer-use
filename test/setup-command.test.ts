@@ -98,19 +98,6 @@ test("setup refuses before any command for an unknown machine, another OS or a m
   expect(calls).toEqual([]);
 });
 
-test("the agent's setup Insert installs without starting the machine's driver and refuses malformed requests first", async () => {
-  const cwd = await project();
-  const getSession = vi.fn(), start = vi.fn();
-  const resources = new ComputerResources(getSession, async () => { throw new Error("unused"); }, undefined, start);
-  const insert = (ref: string, command: unknown) => resources.perform(parseComputerAddress(computerSource("machine", ref))!, cwd, JSON.stringify(command), "insert");
-  await expect(insert("local", { action: "setup", part: "flux" })).rejects.toThrow(/setup needs part.*explicitly allowed/);
-  await expect(insert("local", { action: "setup", part: "mxc", ssh: "x" })).rejects.toThrow(/belong to setup part machine/);
-  await expect(insert("lab", { action: "setup", part: "machine", ssh: "lab-wsl" })).rejects.toThrow(/from computer:machine\/local/);
-  await expect(insert("nowhere", { action: "setup", part: "mxc" })).rejects.toThrow(ComputerRequestError);
-  expect(getSession).not.toHaveBeenCalled();
-  expect(start).not.toHaveBeenCalled();
-});
-
 test("/computer-setup shows the usage, reports progress in the status line and the result or failure as a notification", async () => {
   const commands = new Map<string, { getArgumentCompletions: (prefix: string) => unknown; handler: (args: string, ctx: unknown) => Promise<void> }>();
   const run = vi.fn(async (_request: unknown, _cwd: string, options?: { progress?: (step: string) => void }) => { options?.progress?.("downloading"); return "Installed."; });
@@ -137,5 +124,5 @@ test("browsers use the portable Windows Node from setup first, an installed Node
   const installed = "/mnt/c/Program Files/nodejs/node.exe";
   expect(await findWindowsNode(undefined, fake([portable, installed]))).toBe(portable);
   expect(await findWindowsNode(undefined, fake([installed]))).toBe(installed);
-  await expect(findWindowsNode(undefined, fake([]))).rejects.toThrow(/Ask the user.*"part":"browser"/);
+  await expect(findWindowsNode(undefined, fake([]))).rejects.toThrow(/Ask the user.*\/computer-setup browser/);
 });

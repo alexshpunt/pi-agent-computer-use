@@ -11,7 +11,7 @@ test("control-state presentation separates desktop frame coordinates from pointe
       foreground_at_target: false, keyboard_focus_at_target: null, virtual_desktop: { on_current_desktop: null },
     } } } };
   const before = JSON.stringify(result), text = presentComputerResult(result);
-  expect(text).toContain("computer:window-state/management-state");
+  expect(text).not.toContain("computer:window-state/");
   expect(text).toContain('{"x":-100,"y":80,"width":640,"height":800}');
   expect(text).toContain("source=dwm_visible_frame; unit=windows_desktop_pixels");
   expect(text).toContain("maximized=true");
@@ -59,14 +59,14 @@ test("schema-rejected management retains an explicitly unvalidated prefix withou
   expect(text).not.toContain("Computer delivered");
   expect(JSON.stringify(result)).toBe(before);
 });
-test("window state exposes its restore-only address and independent foreground/focus metadata", () => {
+test("window state shows independent foreground/focus metadata and no state address", () => {
   const result: ComputerResult = { content: [], details: { status: "observed", mode: "yolo", window_state_id: "fresh-state",
     state: { minimized: true, visible: true, foreground_at_target: false, keyboard_focus_at_target: null } } };
   const text = presentComputerResult(result);
-  expect(text).toContain("computer:window-state/fresh-state");
+  expect(text).not.toContain("computer:window-state/");
   expect(text).toContain("minimized=true, visible=true");
   expect(text).toContain("foreground=false, keyboard_focus=null");
-  expect(text).toContain("restore");
+  expect(text).toContain("computer_window");
   expect(text).not.toContain("computer:observation/");
 });
 

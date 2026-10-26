@@ -51,7 +51,7 @@ const openParameters = Type.Object({
   }, { additionalProperties: false, description: "YOLO: set a WebView2 app's debugging port for its next start on that machine, so its window can be attached; opens nothing. Windows may ask the person there to approve the change." })),
 }, { additionalProperties: false });
 
-/** The Insert command that opens what computer_open asks for at this address. */
+/** The command that opens what computer_open asks for at this address. */
 export function openCommand(address: ComputerAddress, params: Static<typeof openParameters>): Record<string, unknown> {
   const { app, path, args, debugging, browser, url, profile, sandbox, isolated_session, webview2_debugging } = params;
   const chosen = [app !== undefined && "app", path !== undefined && "path", (browser ?? url ?? profile) !== undefined && "browser",
@@ -134,7 +134,7 @@ const waitParameters = Type.Object({
   stable: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, description: "wait: consecutive satisfied samples required, default 1." })),
 }, { additionalProperties: false });
 
-/** The Insert wait_for or verify command of computer_wait. */
+/** The wait_for or verify command of computer_wait. */
 export function waitCommand(params: Static<typeof waitParameters>): Record<string, unknown> {
   const { window: _window, mode, conditions, ...timing } = params;
   if (mode === "check" && Object.keys(timing).length) throw new ComputerRequestError(`check takes one sample, so ${Object.keys(timing).join(", ")} do not apply.`);
@@ -472,7 +472,7 @@ export function timelinePlan(params: Static<typeof timelineParameters>): InputPl
   return { label: "timeline", ...shared(params), native: { action: "timeline", events: params.events }, web };
 }
 /**
- * Register the typed computer_* tools that replace Insert commands one cluster at a time. They are deferred: a
+ * Register the typed computer_* tools, one per operation cluster. They are deferred: a
  * tool_search for computer loads them, so sessions that never use the computer pay nothing for them.
  */
 export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResources): void {
@@ -494,7 +494,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
         const address = resources.address(params.at);
         command = openCommand(address, params);
         return address;
-      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), "insert", signal)));
+      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), signal)));
     },
   });
   pi.registerTool({
@@ -524,7 +524,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
         const address = resources.address(params.window);
         if (address.kind !== "window") throw new ComputerRequestError("computer_wait needs a window address from Search, Read or a name.");
         return address;
-      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), "insert", signal)));
+      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), signal)));
     },
   });
   pi.registerTool({
@@ -550,7 +550,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
       return actionResult(await computerAction(resources, params.machine, params.action, () => {
         command = filesCommand(params);
         return machineAddress(resources, params.machine);
-      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), "insert", signal)));
+      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), signal)));
     },
   });
   pi.registerTool({
@@ -564,7 +564,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
       return actionResult(await computerAction(resources, params.machine, `clipboard_${params.action}`, () => {
         command = clipboardCommand(params);
         return machineAddress(resources, params.machine);
-      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), "insert", signal)));
+      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), signal)));
     },
   });
   pi.registerTool({
@@ -584,15 +584,15 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
         }
         return machineAddress(resources, params.at);
       }, async address => "views" in run
-        ? (await resources.read(address, ctx.cwd, run.views, signal))!
-        : resources.perform(address, ctx.cwd, JSON.stringify(run.command), "insert", signal)));
+        ? (await resources.sequence(address, ctx.cwd, run.views, signal))!
+        : resources.perform(address, ctx.cwd, JSON.stringify(run.command), signal)));
     },
   });
   /** Run one typed input on a window: the plan is built and checked before anything reaches the machine. */
-  const input = (window: string, action: string, build: () => InputPlan, cwd: string, signal?: AbortSignal) => {
+  const input = async (window: string, action: string, build: () => InputPlan, cwd: string, signal?: AbortSignal) => {
     let plan: InputPlan | undefined;
-    return computerAction(resources, window, action, () => { plan = build(); return resources.address(window); },
-      address => resources.input(address, cwd, plan!, signal)).then(actionResult);
+    return actionResult(await computerAction(resources, window, action, () => { plan = build(); return resources.address(window); },
+      address => resources.input(address, cwd, plan!, signal)));
   };
   const aimed = (args: Record<string, unknown>) => args.target !== undefined ? String(args.target) : args.x !== undefined ? `${args.x},${args.y}` : "";
   const inputAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
@@ -660,7 +660,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     ...rendered("computer_display", args => `${args.display} ${args.width}x${args.height}`),
     async execute(_id, params, signal, _update, ctx) {
       return actionResult(await computerAction(resources, params.display, "resize", () => resources.address(params.display),
-        address => resources.perform(address, ctx.cwd, JSON.stringify({ action: "resize", width: params.width, height: params.height }), "insert", signal)));
+        address => resources.perform(address, ctx.cwd, JSON.stringify({ action: "resize", width: params.width, height: params.height }), signal)));
     },
   });
 }

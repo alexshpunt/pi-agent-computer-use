@@ -113,8 +113,6 @@ export interface ComputerResult {
     rendered_frames?: Omit<RenderedFrames, "png">;
     /** Outcome of a bounded wait_for/verify; the conditions as requested, in order. */
     verification?: WaitResult & { spec: WaitSpec };
-    /** Declared postcondition of an action: verified now, already true before, not reached, or undecidable. */
-    postcondition?: { status: "verified" | "preexisting" | "failed" | "unknown"; reason?: string; verification?: WaitResult & { spec: WaitSpec } };
     /** The observation taken after an action and its compact difference from the action's input observation. */
     successor?: { observation_id?: string; diff?: StateDiff; reason?: string };
     /** A `changes` Read: this UI compared with the window's previous observation, or why there is no comparison. */
@@ -129,11 +127,6 @@ export interface ComputerResult {
     process?: ProcessHealth;
     /** Complete text of one native element from its observation. */
     element_text?: { hint: string; role: string | null; name: string | null; text: string; cut: boolean };
-    /** Per-step outcome of a mixed batch; the batch stops at the first step that is not delivered or satisfied. */
-    batch?: { total: number; completed: number; stop_reason: string; elapsed_ms: number;
-      steps: { index: number; action: string; outcome: string; reason?: string; verdict?: string;
-        /** What this step's action changed, when the next walk or page snapshot saw it; the batch's successor covers the last native step. */
-        changes?: { changed: number; added: number; removed: number } }[] };
   };
   isError?: boolean;
 }
@@ -752,7 +745,7 @@ export class ComputerSession {
       }
       const timer = setTimeout(() => { void this.recordStop(); }, seconds * 1000);
       this.recording = { timer, started: Date.now() };
-      return this.result("delivered", `Recording the main display for up to ${seconds} s. Stop it earlier with computer_record video_stop (or Insert record_stop) to fetch the video.`, state);
+      return this.result("delivered", `Recording the main display for up to ${seconds} s. Stop it earlier with computer_record video_stop to fetch the video.`, state);
     });
   }
 
@@ -772,7 +765,7 @@ export class ComputerSession {
   recordStop(): Promise<ComputerResult> {
     return this.queue(async () => {
       const current = this.recording;
-      if (!current || !this.host) return this.result("refused", "No recording is running, or it already stopped at its limit; list the session folder with computer_files (or Insert files) to see saved videos.");
+      if (!current || !this.host) return this.result("refused", "No recording is running, or it already stopped at its limit; list the session folder with computer_files to see saved videos.");
       clearTimeout(current.timer);
       this.recording = undefined;
       const native = await this.driver.call("stop_recording", {});
@@ -791,7 +784,7 @@ export class ComputerSession {
       try {
         const value = await this.host.webview2Debugging(app, enabled);
         return this.result("delivered", enabled
-          ? `WebView2 debugging is on for ${app} (${value}). It applies when the app next starts, whoever starts it, and stays until turned off; restart the app, then Insert attach_browser into its window.`
+          ? `WebView2 debugging is on for ${app} (${value}). It applies when the app next starts, whoever starts it, and stays until turned off; restart the app, then attach its window with computer_open.`
           : `WebView2 debugging is off for ${app}. It applies when the app next starts.`, { operation: "webview2_debugging", app, enabled, value: value ?? null });
       } catch (error) { return this.result("refused", `Changing the WebView2 policy failed: ${error instanceof Error ? error.message : error}`); }
     });
@@ -1086,7 +1079,7 @@ export class ComputerSession {
     try { entry = await this.current(ref, signal); }
     catch (error) { return this.result("refused", `Window lifetime check failed: ${error instanceof Error ? error.message : String(error)}`); }
     if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window. Discover again.");
-    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened with Insert {\"action\":\"open_browser\"} into a machine address, or attached with Insert {\"action\":\"attach_browser\"} into a Chrome or Edge window address (YOLO). Use image/ui/full Reads for other windows.",
+    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened or attached with computer_open (attaching is YOLO). Use image/ui/full Reads for other windows.",
       undefined, this.addressed(entry));
     return entry;
   }
@@ -1286,21 +1279,11 @@ export class ComputerSession {
     });
   }
 
-  /** Sample browser conditions once without changing the window's observations. Non-browser windows refuse. */
-  webCheck(ref: string, conditions: WaitSpec["conditions"], signal?: AbortSignal): Promise<ConditionResult[] | undefined> {
-    return this.queue<ConditionResult[] | undefined>(async () => {
-      const entry = this.entries.get(ref);
-      if (!entry?.web || !this.allowed(entry)) return undefined;
-      try { return await entry.web.request<ConditionResult[]>("check", { conditions }, signal); }
-      catch { return undefined; }
-    });
-  }
-
   /** The window's latest unannotated capture with pixels, the baseline for comparing its pixels; undefined when none is kept. */
   windowFrame(ref: string): WindowFrame | undefined { return this.entries.get(ref)?.frame; }
 
   /**
-   * A fresh observation without the human frame, for successors and batch steps: UI-only by default, or with
+   * A fresh observation without the human frame, for successors: UI-only by default, or with
    * pixels at a given overview size so they compare with an earlier capture.
    */
   observeQuiet(ref: string, signal?: AbortSignal, options: UiCaptureOptions = { granularity: "ui" }): Promise<ComputerResult> {
@@ -1329,7 +1312,8 @@ export class ComputerSession {
       try {
         const known = this.entries.get(ref);
         if (known && !this.allowed(known)) return this.denied(ref);
-        if (known) { known.dom = undefined; known.windowState = undefined; known.observation = undefined; known.detail = undefined; }
+        // Sampling state only looks: the window's observations stay current; restore and management retire them.
+        if (known) known.windowState = undefined;
         if (signal?.aborted) return this.result("refused", "Cancelled before window state acquisition.");
         const entry = await this.current(ref, signal);
         if (!entry) return this.result("refused", "Unknown, closed or reused window. Discover again.");
@@ -1347,8 +1331,8 @@ export class ComputerSession {
         const id = randomUUID();
         entry.windowState = { id, nativeId: state.state_id as string, kind };
         return this.result("observed", kind === "management"
-          ? "Fresh native control state. One Insert move/resize/minimize/maximize/focus or explicit restore consumes this state. Desktop-frame units are not pointer coordinates."
-          : "Fresh native window state. Insert restore explicitly restores and activates this exact window once. No pixels, UI hints, typing or pointer authority.", state,
+          ? "Fresh native window state. computer_window changes it; desktop-frame units are not pointer coordinates."
+          : "Fresh native window state. computer_window restore restores and activates this window.", state,
           { ...this.addressed(entry, kind === "management" ? (state.state as Record<string, unknown>).virtual_desktop : undefined), window_state_id: id, window_state_kind: kind });
       } catch (error) { return this.failed(error, false); }
     });
@@ -1434,7 +1418,7 @@ export class ComputerSession {
       const native = await this.driver.call("parse_visual_regions", { capture_id: observed.captureId, options: { max_regions: 300 } }, signal);
       if (native.isError) throw new Error((native.content.filter(c => c.type === "text").map(c => c.text).join(" ") || "parse_visual_regions failed")
         + " The regions view needs the Cua perception extension on this machine; if it is missing, ask the user before installing it "
-        + "(about 420 MB) and with their permission Insert {\"action\":\"setup\",\"part\":\"perception\"} into this machine's address.");
+        + "(about 420 MB) and ask them to run /computer-setup perception.");
       const parsed = native.structuredContent as { capture: { screenshot: { width: number } }; regions: {
         kind: "icon" | "text"; bounds: { x: number; y: number; width: number; height: number }; text?: string | null; label?: string | null; confidence: number }[] };
       const scale = (observed.width ?? parsed.capture.screenshot.width) / parsed.capture.screenshot.width;

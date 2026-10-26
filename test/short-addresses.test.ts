@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { computerSource } from "../src/computer-address.ts";
 import { ComputerRequestError, ComputerResources, type OpenedMachine } from "../src/computer-resources.ts";
 import { loadComputerConfig } from "../src/config.ts";
-import { performComputer, readComputer } from "../src/provider.ts";
+import { computerAction, readComputer } from "../src/provider.ts";
 import { ShortAddresses } from "../src/short-addresses.ts";
 import { ComputerSession, type Driver } from "../src/session.ts";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
@@ -33,10 +33,11 @@ function fixture() {
   const machine: OpenedMachine = { ref: "lab", session: remoteSession, describe: source => source, close: () => remoteSession.close() };
   const resources = new ComputerResources(async () => hostSession, async () => hostSession.close(), undefined, async () => machine);
   const search = async (source: string, query = "") => (await resources.search(resources.address(source), cwd, query)).details.state!.windows as { window_ref: string; title: string }[];
-  const insert = (source: string, command: unknown) => performComputer(resources, "insert", source, { path: source, text: JSON.stringify(command) }, cwd);
+  // computer_window name: the receipt and summary the tool returns.
+  const name = (source: string, as: string) => computerAction(resources, source, "name", () => resources.address(source), address => resources.name(address, cwd, as));
   const read = (source: string, views?: string[]) => readComputer(resources, source, cwd, { views }, false);
   const text = (read: Awaited<ReturnType<typeof readComputer>>) => read.content[0].type === "text" ? read.content[0].text : "";
-  return { resources, host, remote, search, insert, read, text };
+  return { resources, host, remote, search, name, read, text };
 }
 
 // LPT-932: the agent sees short addresses with the machine and a run tag, and can name windows.
@@ -52,12 +53,11 @@ test("presented addresses are short, per machine and kind, and resolve back to t
   expect(body).toMatch(new RegExp(`^Computer observed \\(yolo\\) on lab\\nWindow: computer:lab/w1${tag}\\nObservation: computer:lab/o1${tag}$`, "m"));
   expect(body).not.toMatch(/computer:(window|observation)\//);
   expect(f.resources.address(`computer:lab/w1${tag}`)).toMatchObject({ kind: "window", ref: game.window_ref });
-  // An observation alias keeps the long form's input options.
-  expect(f.resources.address(`computer:lab/o1${tag}?delivery=foreground`)).toMatchObject({ kind: "observation", ref: view.details.computer!.observation_id, delivery: "foreground" });
+  expect(f.resources.address(`computer:lab/o1${tag}`)).toMatchObject({ kind: "observation", ref: view.details.computer!.observation_id });
   // The short address works for Read; long addresses still work too.
   expect(f.text(await f.read(`computer:lab/w1${tag}`, ["ui"]))).toContain(`Observation: computer:lab/o2${tag}`);
   // Receipts for scripts carry the short addresses as well.
-  const receipt = await f.insert(`computer:lab/w1${tag}`, { action: "name", as: "game" });
+  const receipt = await f.name(`computer:lab/w1${tag}`, "game");
   expect(receipt.script).toMatchObject({ outcome: "delivered", window: `computer:lab/w1${tag}` });
 });
 
@@ -73,19 +73,18 @@ test("an alias from another run, or one never issued, refuses with the reason", 
 test("names resolve to their window, are unique while the window lives, and stop when it closes", async () => {
   const f = fixture();
   const [game] = await f.search("computer:machine/lab/windows", "regex:^Game$");
-  const named = await f.insert(computerSource("window", game.window_ref), { action: "name", as: "game" });
+  const named = await f.name(computerSource("window", game.window_ref), "game");
   expect(named.summary).toMatch(/computer:game now names computer:lab\/w1\w\w \(Game\)/);
   expect(f.resources.address("computer:game")).toMatchObject({ kind: "window", ref: game.window_ref });
   expect(f.text(await f.read("computer:game", ["ui"]))).toMatch(/^Computer observed \(yolo\) on lab/);
-  // Several windows match a title: the name command lists them instead of choosing.
-  const several = await f.insert("computer:machine/lab", { action: "name", as: "settings", title: "Game" });
-  expect(several.script.outcome).toBe("refused");
-  expect(several.summary).toMatch(/2 windows match "Game"[\s\S]*computer:lab\/w1\w\w \| Game\n- computer:lab\/w2\w\w \| Game settings/);
-  const settings = await f.insert("computer:machine/lab", { action: "name", as: "settings", title: "settings" });
+  const [other] = await f.search("computer:machine/lab/windows", "settings");
+  const settings = await f.name(computerSource("window", other.window_ref), "settings");
   expect(settings.script.outcome).toBe("delivered");
+  // Only windows take names.
+  expect((await f.name("computer:machine/lab", "lab2")).script.outcome).toBe("refused");
   // A live window's name is not taken over; bad names refuse.
-  expect((await f.insert("computer:settings", { action: "name", as: "game" })).summary).toMatch(/computer:game already names computer:lab\/w1\w\w \(Game\)/);
-  for (const bad of ["window", "lab", "Game", "9x", "a b"]) expect((await f.insert("computer:game", { action: "name", as: bad })).script.outcome).toBe("refused");
+  expect((await f.name("computer:settings", "game")).summary).toMatch(/computer:game already names computer:lab\/w1\w\w \(Game\)/);
+  for (const bad of ["window", "lab", "Game", "9x", "a b"]) expect((await f.name("computer:game", bad)).script.outcome).toBe("refused");
   const session = f.text(await f.read("computer:session"));
   expect(session).toMatch(/Window names[\s\S]*- computer:game → computer:lab\/w1\w\w \| Game\n- computer:settings → computer:lab\/w2\w\w \| Game settings/);
   // The window closes: its name disappears from the list and refuses.

@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { requireComputerAddress, ComputerResources, refKind } from "../src/computer-resources.ts";
+import { computerEditRefusal } from "../src/provider.ts";
 import { clickPlan, clipboardCommand, dragPlan, filesCommand, hoverPlan, openCommand, pressPlan, recordCommand, scrollPlan, selectPlan, timelinePlan, typePlan, waitCommand, windowCommand } from "../src/computer-tools.ts";
 import type { WebBrowser, WebLauncher } from "../src/web-browser.ts";
 import type { MachineHost } from "../src/machine-host.ts";
@@ -272,7 +273,7 @@ test("computer_record video_stop says where it fetched the video in the summary 
   const resources = new ComputerResources(async () => session, async () => session.close());
   const workspace = await mkdtemp(join(tmpdir(), "pi-record-"));
   const run = (command: Record<string, unknown>) => computerAction(resources, "computer:machine/local", String(command.action), () => at("computer:machine/local"),
-    address => resources.perform(address, workspace, JSON.stringify(command), "insert"));
+    address => resources.perform(address, workspace, JSON.stringify(command)));
   try {
     expect((await run({ action: "record_start", seconds: 30 })).summary).toContain("Stop it earlier with computer_record video_stop");
     const stopped = await run({ action: "record_stop", to: "out/run.mp4" });
@@ -284,4 +285,14 @@ test("computer_record video_stop says where it fetched the video in the summary 
     await session.close();
     await rm(workspace, { recursive: true, force: true });
   }
+});
+test("Write and Insert on a computer address refuse and name the tool that does the operation now", () => {
+  expect(computerEditRefusal("write", { path: "computer:observation/o1", content: "hi" })).toMatch(/^Write does not act on computer resources; nothing was sent\. Use computer_type\./);
+  for (const [action, tool] of [["click", "computer_click"], ["fill", "computer_type"], ["hotkey", "computer_press"], ["menu", "computer_select"],
+    ["open_browser", "computer_open"], ["restore", "computer_window"], ["verify", "computer_wait"], ["navigate", "computer_browser"],
+    ["put", "computer_files"], ["clipboard_read", "computer_clipboard"], ["record_start", "computer_record"], ["kill", "Delete"],
+    ["setup", "/computer-setup"], ["batch", "Codemode"]])
+    expect(computerEditRefusal("insert", { path: "computer:machine/local", text: JSON.stringify({ action }) })).toContain(`Use ${tool}`);
+  // Unknown or unreadable commands still learn where the tools are.
+  expect(computerEditRefusal("insert", { path: "computer:session", text: "not json" })).toMatch(/^Insert does not act on computer resources; nothing was sent\. Each operation has its own computer_\* tool: tool_search/);
 });

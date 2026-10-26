@@ -212,7 +212,7 @@ export class WindowsSandbox {
     const running = await this.ps(`if (Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) { 'running' }
 else { Get-Process WindowsSandboxServer -ErrorAction SilentlyContinue | Stop-Process -Force }`, signal);
     if (running.includes("running")) throw new ComputerRequestError("Windows Sandbox is already running on this machine, and Windows allows only one. "
-      + "Close it first (Insert close into its computer:sandbox address if this session opened it), then open a new one. Nothing was started.");
+      + "Close it first (Delete its computer:sandbox address if this session opened it), then open a new one. Nothing was started.");
     const startedAt = this.startedAt = new Date().toISOString();
     this.launched = true;
     await this.ps(`Start-Process explorer.exe -ArgumentList ${psString(`${windows}\\sandbox.wsb`)}`, signal);
@@ -298,7 +298,7 @@ ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoPr
     const lines = [`# Windows Sandbox`, `Address: ${source}`, `Sandbox id: ${this.id ?? "unknown"}`,
       "The sandbox window stays minimized on the host; closing it stops the sandbox. Clipboard, audio, video and printers are not shared."];
     for (const share of this.shares) lines.push(`Shared: ${share.host} -> ${share.guest} (${share.writable ? "read/write" : "read-only"})`);
-    lines.push("Search this address for guest windows. Insert {\"action\":\"open\",\"app\":\"...\"} to start a guest app, or {\"action\":\"close\"} to destroy the sandbox.");
+    lines.push("Search this address for guest windows. computer_open at this address starts a guest app; Delete destroys the sandbox.");
     return lines.join("\n");
   }
 }

@@ -83,8 +83,7 @@ test("strict UIA actions keep the sentinel foreground and the target's desktop",
   };
 
   const focus = async (window: string) => {
-    const state = await live.read(window, ["state"]);
-    expect((await live.insert(`computer:window-state/${state.details.window_state_id}`, { action: "focus" })).details.status).toBe("delivered");
+    expect((await live.resources.manageWindow(live.resources.address(window), live.cwd, { action: "focus" })).details.status).toBe("delivered");
     await sleep(1000);
   };
   await focus(sentinel);

@@ -31,15 +31,29 @@ export async function connectLive(cwd = process.cwd()) {
   // A machine starts on its first use; the live checks use the configured one unless LIVE_MACHINE=local.
   const machine = computerSource("machine", name);
   const runner = name === "local" ? localRunner(config.interop) : sshRunner((await machineConfig(cwd, name)).ssh);
+  /**
+   * One engine command, as the computer_* tools send it: `?hint=` and `?delivery=` on an observation become its ref and
+   * delivery_mode, close goes to Delete and kill to Delete with ?force=true, as the tools do.
+   */
+  const engine = (path: string, command: Record<string, unknown>, signal?: AbortSignal) => {
+    const [base, query] = path.split("?");
+    if (command.action === "close") return resources.delete(base, cwd, signal);
+    if (command.action === "kill") return resources.delete(`${base}?force=true`, cwd, signal);
+    const options = new URLSearchParams(query ?? "");
+    const address = { ...at(base), ...(options.get("hint") ? { hint: options.get("hint")! } : {}) } as ComputerAddress;
+    const delivery = options.get("delivery");
+    return resources.perform(address, cwd, JSON.stringify(delivery ? { ...command, delivery_mode: delivery } : command), signal);
+  };
   return {
     resources, machine, cwd, runner,
     /** Where to Search this machine's windows. */
     windows: computerSource("machine", name, "windows"),
     /** Where to Read this machine's displays. */
     displays: computerSource("machine", name, "displays"),
-    read: (path: string, views?: string[]) => resources.read(at(path), cwd, views) as Promise<ComputerResult>,
+    // Live checks drive the engine under the computer_* tools directly; a sequence view is computer_record's capture.
+    read: (path: string, views?: string[]) => (views?.some(view => view.startsWith("sequence")) ? resources.sequence(at(path), cwd, views) : resources.read(at(path), cwd, views)) as Promise<ComputerResult>,
     search: (path: string, query: string) => resources.search(at(path), cwd, query),
-    insert: (path: string, command: unknown, signal?: AbortSignal) => resources.perform(at(path), cwd, JSON.stringify(command), "insert", signal),
+    insert: (path: string, command: unknown, signal?: AbortSignal) => engine(path, command as Record<string, unknown>, signal),
     /** Run a Windows PowerShell command on the machine, like a human changing something outside the session. */
     powershell: (command: string) => runner.run(WINDOWS_POWERSHELL, ["-NoProfile", "-Command", command]),
     /** Ask one window this check opened to close (WM_CLOSE to that HWND); other windows of its process stay open. */
@@ -47,8 +61,8 @@ export async function connectLive(cwd = process.cwd()) {
       `Add-Type -Name Close -Namespace PiLive -MemberDefinition '[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'; [void][PiLive.Close]::PostMessage([IntPtr]${hwnd}, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)`]).catch(() => ""),
     /** Force-close a process this check opened, for example a modified test document. Only for apps with one process per window. */
     kill: (pid: number) => runner.run(WINDOWS_POWERSHELL, ["-NoProfile", "-Command", `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`]).catch(() => ""),
-    write: (path: string, text: string) => resources.perform(at(path), cwd, text, "write"),
-    close: () => resources.perform(at("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert").catch(() => undefined),
+    write: (path: string, text: string) => engine(path, { action: "type_text", text }),
+    close: () => resources.delete("computer:session", cwd).catch(() => undefined),
   };
 }
 

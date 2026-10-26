@@ -19,6 +19,6 @@ const exists = (file: string) => access(file).then(() => true, () => false);
 export async function findWindowsNode(interop?: string, deps = { localAppData: windowsLocalAppData, exists }): Promise<string> {
   const candidates = [portableNodePath(await deps.localAppData(interop)), INSTALLED_NODE];
   for (const candidate of candidates) if (await deps.exists(candidate)) return candidate;
-  throw new Error("Browsers need Node.js on Windows, and none is installed here. Ask the user before installing it; "
-    + "with their permission Insert {\"action\":\"setup\",\"part\":\"browser\"} into this machine's address (about 30 MB into their own folders), then open the browser again.");
+  throw new Error("Browsers need Node.js on Windows, and none is installed here. Ask the user to install it "
+    + "with /computer-setup browser (about 30 MB into their own folders), then open the browser again.");
 }

@@ -112,7 +112,7 @@ function listTabs(): WebTab[] {
     ...(tab.opener ? { opener: tab.opener } : {}), ...(tab.dialog ? { dialog: tab.dialog.type() } : {}) }));
 }
 function current(): Tab {
-  if (!active) throw new Error("No tab is active. Insert {\"action\":\"switch_tab\",\"tab\":\"t1\"} with an id from the tab list; nothing was sent.");
+  if (!active) throw new Error("No tab is active. Choose one with computer_browser switch_tab and an id from the tab list; nothing was sent.");
   return active;
 }
 function idle(tab: Tab): Page {
@@ -186,8 +186,8 @@ async function open({ browser, url, profile: kind, attach: target }: WebLaunchOp
   context = browser === "firefox"
     ? await firefox.launchPersistentContext(directory, { headless: false, viewport: null }).catch((error: Error) => {
       if (!/Executable doesn't exist/.test(error.message)) throw error;
-      throw new Error("Playwright's Firefox is not installed on this machine. Ask the user before installing it; with their permission "
-        + "Insert {\"action\":\"setup\",\"part\":\"firefox\"} into this machine's address, then open the browser again.");
+      throw new Error("Playwright's Firefox is not installed on this machine. Ask the user to install it "
+        + "with /computer-setup firefox, then open the browser again.");
     })
     : await chromium.launchPersistentContext(directory, {
       channel: browser, headless: false, chromiumSandbox: true, viewport: null, ignoreDefaultArgs: true,
@@ -304,7 +304,7 @@ async function attach({ pid, title }: { pid: number; title: string }) {
     catch (error) { throw new Error(`VS Code's browser bridge did not accept the connection: ${error instanceof Error ? error.message.split("\n")[0] : error}. Open an integrated browser tab (Browser: Open Integrated Browser) and attach again. Nothing was attached.`); }
     via = "vscode";
   } else if (!found) {
-    throw new Error(`No Chromium debugging endpoint in this window's processes (${[...new Set(tree.processes.map(item => item.name))].slice(0, 6).join(", ")}). Start an Electron or CEF app with --remote-debugging-port=0 in open's args; for a WebView2 app, Insert {"action":"webview2_debugging","app":"<exe name>","enabled":true} into its machine and start the app again; for VS Code, install the browser bridge (docs:computer). Nothing was attached.`);
+    throw new Error(`No Chromium debugging endpoint in this window's processes (${[...new Set(tree.processes.map(item => item.name))].slice(0, 6).join(", ")}). Start an Electron or CEF app with --remote-debugging-port=0 in open's args; for a WebView2 app, set computer_open webview2_debugging on its machine and start the app again; for VS Code, install the browser bridge (docs:computer). Nothing was attached.`);
   } else if (togglePort && togglePath?.startsWith("/devtools/browser/")) {
     // Chrome asks "Allow remote debugging?" before it completes the handshake, so the connect waits for approval.
     try { attached = await chromium.connectOverCDP(`ws://127.0.0.1:${togglePort}${togglePath}`, { timeout: ATTACH_APPROVAL_MS }); }

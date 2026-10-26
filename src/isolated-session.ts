@@ -66,7 +66,7 @@ export class IsolatedSession {
     const local = (await this.ps("$env:LOCALAPPDATA", signal)).trim();
     this.wxc = `${local}\\PiComputerUse\\mxc\\wxc-exec.exe`;
     if ((await this.ps(`Test-Path -LiteralPath ${psString(this.wxc)}`, signal)).trim() !== "True")
-      throw new ComputerRequestError(`MXC is not installed on this machine (${this.wxc}). Ask the user before installing it; with their permission Insert {"action":"setup","part":"mxc"} into this machine's address, then open the session again.`);
+      throw new ComputerRequestError(`MXC is not installed on this machine (${this.wxc}). Ask the user to install it with /computer-setup mxc, then open the session again.`);
     const windows = `${local}\\PiComputerUse\\sessions\\${this.ref}`;
     this.workdir = { windows, unix: await this.host.path(`${local}\\PiComputerUse\\sessions`, "unix").then(parent => `${parent}/${this.ref}`) };
     await this.host.mkdir(this.workdir.unix);
@@ -127,6 +127,6 @@ export class IsolatedSession {
   describe(source: string): string {
     return [`# Isolated Windows session`, `Address: ${source}`, `Agent user: ${this.user ?? "unknown"}`,
       "A separate Windows session for the agent on this machine (MXC isolation_session): its own desktop, clipboard and input, invisible to the human. Several can run at once.",
-      "Search this address for its windows. Insert {\"action\":\"open\",\"app\":\"...\"} to start an app in it, or {\"action\":\"close\"} to remove it."].join("\n");
+      "Search this address for its windows. computer_open at this address starts an app in it; Delete removes it."].join("\n");
   }
 }

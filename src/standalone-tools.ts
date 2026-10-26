@@ -2,21 +2,17 @@ import { Type, type JsonValue } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { ComputerResources } from "./computer-resources.ts";
-import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
-import { actionResult, computerNamespace, receiptSchema, registerComputerDelete } from "./computer-tools.ts";
-import {
-  COMPUTER_INPUT_HELP, COMPUTER_PATH_HELP, COMPUTER_SEARCH_HELP, COMPUTER_VIEWS_HELP,
-  performComputer, presentComputerResult, readComputer,
-} from "./provider.ts";
+import { computerNamespace, registerComputerDelete } from "./computer-tools.ts";
+import { COMPUTER_PATH_HELP, COMPUTER_SEARCH_HELP, COMPUTER_VIEWS_HELP, presentComputerResult, readComputer } from "./provider.ts";
 
 const GUIDE = "docs:computer";
 const image = Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() });
 const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
 /**
- * Offer computer use without Pi Agent IDE: the same computer: resources through deferred computer_read, computer_search,
- * computer_write, computer_insert and computer_delete tools that tool_search finds. Tools stay off the model's tool list until a search loads them.
+ * Offer computer use without Pi Agent IDE: computer_read, computer_search and computer_delete stand in for the IDE's Read,
+ * Search and Delete. Like the other computer_* tools they are deferred, off the model's tool list until tool_search loads them.
  */
 export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerResources, guide: string): void {
   const namespace = computerNamespace();
@@ -69,29 +65,5 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
       return { content: [{ type: "text", text: resources.shorten(presentComputerResult(result)) }], details: result.details, ...(result.isError ? { isError: true } : {}) };
     },
   });
-  for (const tool of ["write", "insert"] as const) {
-    const field = tool === "write" ? "content" : "text";
-    const renderer = computerActionRenderer(tool);
-    pi.registerTool({
-      name: `computer_${tool}`, label: `Computer ${tool}`, exposure: "deferred", namespace,
-      description: tool === "write"
-        ? "Use computer_write to type literal text into the app window of a fresh observation address."
-        : "Use computer_insert to send one JSON command: an input action into an observation, open/close/browser/sandbox commands into a machine, or wait/verify into a window.",
-      parameters: Type.Object({
-        path: Type.String({ description: tool === "write"
-          ? "A fresh computer:observation/... address, optionally with ?hint=...&delivery=foreground&delay_ms=0."
-          : "The computer: address that receives the command: an observation, window, window-state, display, machine, sandbox or computer:session." }),
-        [field]: Type.String({ description: tool === "write" ? "Literal text to type. Nothing is selected, submitted or executed." : COMPUTER_INPUT_HELP }),
-      }, { additionalProperties: false }),
-      outputSchema: receiptSchema,
-      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-      renderCall: args => new Text(`computer_${tool} ${plain((args as { path: string }).path)}`, 0, 0),
-      renderResult: renderer.renderResult,
-      async execute(_id, params, signal, _update, ctx) {
-        const input = params as Record<string, unknown>;
-        return actionResult(await performComputer(resources, tool, String(input.path), input, ctx.cwd, signal));
-      },
-    });
-  }
   registerComputerDelete(pi, resources);
 }

@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import sharp from "sharp";
 import { computerSource } from "../src/computer-address.ts";
 import { ComputerResources, requireComputerAddress } from "../src/computer-resources.ts";
+import { typePlan } from "../src/computer-tools.ts";
 import { ComputerSession, type ComputerMode, type Content, type Driver, type DriverResult } from "../src/session.ts";
 
 const cwd = "/synthetic-computer-fixture";
@@ -56,7 +57,7 @@ async function fixture() {
     setBounds(value: typeof liveBounds) { liveBounds = value; } };
 }
 
-test("literal Write preserves all text and descriptor/UI reads do not refresh native grounding", async () => {
+test("typed text is sent exactly and descriptor/UI reads do not refresh native grounding", async () => {
   const f = await fixture(), view = await f.read(["ui"]);
   const before = f.native().length;
   expect(f.resources.descriptor(view.observation)).toContain(view.source);
@@ -64,8 +65,8 @@ test("literal Write preserves all text and descriptor/UI reads do not refresh na
   expect((await f.resources.search(view.observation, cwd, "Text field"))?.details.status).toBe("observed");
   expect(f.native()).toHaveLength(before);
   const literal = '  {"looks":"like JSON"}\n"quoted text"\n  ';
-  const target = address(`${view.source}?hint=${encodeURIComponent(view.hint!)}&delivery=foreground&delay_ms=0`);
-  const written = await f.resources.perform(target, cwd, literal, "write");
+  const target = { ...view.observation, hint: view.hint! } as typeof view.observation;
+  const written = await f.resources.perform(target, cwd, JSON.stringify({ action: "type_text", text: literal, delivery_mode: "foreground", delay_ms: 0 }));
   expect(written.details.status).toBe("delivered");
   // The only captures after input are the successor's UI walks; the unchanged fixture UI reads as no change.
   expect(written.details.successor?.diff?.counts).toEqual({ changed: 0, added: 0, removed: 0 });
@@ -75,7 +76,7 @@ test("literal Write preserves all text and descriptor/UI reads do not refresh na
     target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "foreground",
     element_token: "snapshot-1:0", text: literal, delay_ms: 0,
   }, undefined]]);
-  await expect(f.resources.perform(target, cwd, "replay", "write")).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "type_text", text: "replay" }))).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
@@ -83,13 +84,13 @@ test.each(["refused", "unknown"] as const)("a native %s receipt consumes the pro
   const f = await fixture(), view = await f.read(["ui"]);
   f.setOutcome({ isError: true, content: [{ type: "text", text: "Native outcome" }], structuredContent: { status } });
   const command = JSON.stringify({ action: "click", hint: view.hint });
-  const result = await f.resources.perform(view.observation, cwd, command, "insert");
+  const result = await f.resources.perform(view.observation, cwd, command);
   expect(result.details.status).toBe(status);
   // A refusal sent nothing, so nothing is re-read; an unknown outcome gets a successor to show what may have happened.
   if (status === "refused") expect(f.captures()).toHaveLength(1);
   else expect(result.details.successor?.observation_id).toBeDefined();
   const captured = f.captures().length;
-  await expect(f.resources.perform(view.observation, cwd, command, "insert")).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, command)).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
@@ -115,15 +116,16 @@ test("per-Read native cap is forwarded without changing the session defaults", a
 
 test("temporal Read retires input authority and frame selection does not recapture", async () => {
   const f = await fixture(), view = await f.read();
-  const captured = await f.resources.read(f.window, cwd, ['sequence:{"duration_ms":1,"max_frames":1}']);
+  await expect(f.resources.read(f.window, cwd, ['sequence:{"duration_ms":1,"max_frames":1}'])).rejects.toThrow(/computer_record/);
+  const captured = await f.resources.sequence(f.window, cwd, ['sequence:{"duration_ms":1,"max_frames":1}']);
   expect(captured?.details.sequence?.frames).toHaveLength(1);
-  await expect(f.resources.perform(view.observation, cwd, "stale", "write")).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "stale" }))).rejects.toThrow(/expired/i);
   const sequence = address(computerSource("sequence", captured!.details.sequence!.sequence_id));
   const before = f.captures().length;
   const frames = await f.resources.read(sequence, cwd, ["frames:first"]);
   expect(frames?.content.some(block => block.type === "image")).toBe(true);
   expect(frames?.details.selected_frames?.[0].index).toBe(0);
-  await expect(f.resources.perform(sequence, cwd, "not authority", "write")).rejects.toThrow(/observation address/i);
+  await expect(f.resources.perform(sequence, cwd, JSON.stringify({ action: "type_text", text: "not authority" }))).rejects.toThrow(/observation address/i);
   expect(f.captures()).toHaveLength(before);
   expect(f.inputs()).toHaveLength(0);
 });
@@ -132,9 +134,9 @@ test("a new overview retires the prior resource instead of rebinding its hint", 
   const f = await fixture(), first = await f.read(["ui"]), latest = await f.read(["ui"]);
   expect(latest.source).not.toBe(first.source);
   await expect(f.resources.read(first.observation, cwd, ["ui"])).rejects.toThrow(/expired/i);
-  await expect(f.resources.perform(first.observation, cwd, "stale", "write")).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(first.observation, cwd, JSON.stringify({ action: "type_text", text: "stale" }))).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(0);
-  expect((await f.resources.perform(address(`${latest.source}?hint=${encodeURIComponent(latest.hint!)}`), cwd, "current", "write")).details.status).toBe("delivered");
+  expect((await f.resources.perform({ ...latest.observation, hint: latest.hint! } as typeof latest.observation, cwd, JSON.stringify({ action: "type_text", text: "current" }))).details.status).toBe("delivered");
   expect(f.inputs()[0][1]).toMatchObject({ element_token: "snapshot-2:0", text: "current" });
   // Two overviews, then the input, then the successor's captures.
   const order = f.native().map(([name]) => name).filter(name => name !== "list_windows" && name !== "get_window_control_state");
@@ -149,7 +151,7 @@ test.each(["safe", "closed", "reused"] as const)("%s targets refuse cached reads
   const checked = await f.resources.read(view.observation, cwd, ["ui"]);
   expect(checked?.details.status).toBe("refused");
   expect(checked?.content.every(block => block.type === "text")).toBe(true);
-  await expect(f.resources.perform(view.observation, cwd, "forbidden", "write")).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "forbidden" }))).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
 });
 
@@ -157,18 +159,18 @@ test.each(["safe", "closed", "reused"] as const)("%s after reading refuses direc
   const f = await fixture(), view = await f.read(["ui"]);
   if (change === "safe") f.setMode("safe");
   else f.setLifetime(change === "closed" ? undefined : "different-native-life");
-  expect((await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", hint: view.hint }), "insert")).details.status).toBe("refused");
+  expect((await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", hint: view.hint }))).details.status).toBe("refused");
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
 });
 
-test("display resources and their observations never grant Write or Insert authority", async () => {
+test("display resources and their observations never take input", async () => {
   const f = await fixture(), display = address("computer:machine/local/display/primary");
   const result = await f.resources.read(display, cwd);
   expect(result?.details.status).toBe("observed");
   const observed = address(computerSource("observation", result!.details.agent_image!.image_id as string));
   for (const target of [display, observed]) {
-    await expect(f.resources.perform(target, cwd, "not input", "write")).rejects.toThrow(/observation|readonly/i);
-    await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "click", x: 10, y: 10 }), "insert")).rejects.toThrow(/observation|readonly|only resize/i);
+    await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "type_text", text: "not input" }))).rejects.toThrow(/observation|readonly|only resize/i);
+    await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "click", x: 10, y: 10 }))).rejects.toThrow(/observation|readonly|only resize/i);
   }
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
   f.setMode("safe");
@@ -186,7 +188,7 @@ test("a successful rectangle Read is readonly detail and consumes its overview w
   expect(detail?.details).not.toHaveProperty("observation_id");
   expect(f.captures()).toHaveLength(1);
   expect(f.native().filter(([name]) => name === "zoom")).toEqual([["zoom", { pid: 42, window_id: 91, x1: 80, y1: 60, x2: 120, y2: 80 }, undefined]]);
-  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x: 100, y: 70 }), "insert")).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x: 100, y: 70 }))).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(0);
 });
 
@@ -194,19 +196,19 @@ test("invalid JSON and identity overrides are rejected before native input and c
   const f = await fixture(), view = await f.read(["ui"]);
   for (const value of ["not JSON", "[]", JSON.stringify({ action: "click", hint: view.hint, window_ref: "other-window" }),
     JSON.stringify({ action: "click", hint: view.hint, observation_id: "other-observation" })])
-    await expect(f.resources.perform(view.observation, cwd, value, "insert")).rejects.toThrow();
-  const hinted = address(`${view.source}?hint=${encodeURIComponent(view.hint!)}`);
-  await expect(f.resources.perform(hinted, cwd, JSON.stringify({ action: "click", x: 100, y: 70 }), "insert")).rejects.toThrow(/target|hint/i);
+    await expect(f.resources.perform(view.observation, cwd, value)).rejects.toThrow();
+  const hinted = { ...view.observation, hint: view.hint! } as typeof view.observation;
+  await expect(f.resources.perform(hinted, cwd, JSON.stringify({ action: "click", x: 100, y: 70 }))).rejects.toThrow(/target|hint/i);
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
-  expect((await f.resources.perform(hinted, cwd, "valid literal", "write")).details.status).toBe("delivered");
+  expect((await f.resources.perform(hinted, cwd, JSON.stringify({ action: "type_text", text: "valid literal" }))).details.status).toBe("delivered");
   expect(f.inputs()[0][1]).toMatchObject({ target: { kind: "window", pid: 42, window_id: 91 }, text: "valid literal" });
 });
 
 test("pre-dispatch cancellation cannot send input or leave a reusable provider handle", async () => {
   const f = await fixture(), view = await f.read(["ui"]), cancellation = new AbortController();
   cancellation.abort();
-  expect((await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", hint: view.hint }), "insert", cancellation.signal)).details.status).toBe("refused");
-  await expect(f.resources.perform(view.observation, cwd, "retry", "write")).rejects.toThrow(/expired/i);
+  expect((await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", hint: view.hint }), cancellation.signal)).details.status).toBe("refused");
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "retry" }))).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
 });
 
@@ -218,22 +220,21 @@ test.each(["native-partial", "in-flight-cancel"] as const)("%s preserves the att
     { action: "type_text", hint: view.hint, text: "first prefix", delay_ms: 0 },
     { action: "key", key: "return" },
   ] });
-  const result = await f.resources.perform(view.observation, cwd, command, "insert", cancellation.signal);
+  const result = await f.resources.perform(view.observation, cwd, command, cancellation.signal);
   // A cancelled sequence lets its current step finish and reports it; a native partial step stays unknown.
   expect(result.details.status).toBe(interruption === "native-partial" ? "unknown" : "refused");
   expect(result.details.state).toMatchObject({ sequence: { total: 2, attempted: 1, completed: interruption === "native-partial" ? 0 : 1, steps: [{ action: "type_text" }] } });
   expect(f.inputs()).toHaveLength(1); expect(f.inputs()[0][1]).toMatchObject({ text: "first prefix" });
   const captured = f.captures().length;
-  await expect(f.resources.perform(view.observation, cwd, command, "insert")).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, command)).rejects.toThrow(/expired/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
-test("an address delivery preference does not block semantic actions", async () => {
+test("foreground delivery does not block semantic actions", async () => {
   const f = await fixture();
   (f.driver as Driver & { semanticActions: boolean }).semanticActions = true;
   const view = await f.read();
-  const hinted = address(`${view.source}?hint=${encodeURIComponent(view.hint!)}&delivery=foreground`);
-  await f.resources.perform(hinted, cwd, JSON.stringify({ action: "set_value", text: "13" }), "insert");
+  await f.resources.input(f.window, cwd, typePlan({ window: f.window.source, target: view.hint!, text: "13", replace: true, foreground: true }));
   expect(f.inputs().map(([name]) => name)).toEqual(["semantic_action"]);
   expect(f.inputs()[0][1]).toMatchObject({ operation: "set_value", value: "13" });
   expect(f.inputs()[0][1]).not.toHaveProperty("delivery_mode");
@@ -248,26 +249,3 @@ test("a display overview accepts a size for that Read only", async () => {
   await expect(f.resources.read(display, cwd, ['capture:{"max_elements":5}'])).rejects.toThrow(/accepts only capture/);
 });
 
-test("pixel-only input without a successor keeps the observation until the window size changes; UI hints and other input spend it", async () => {
-  const f = await fixture();
-  (f.driver as Driver & { windowManagement: boolean }).windowManagement = true;
-  const view = await f.read();
-  // A default successor would replace the observation; without one, pixel-only input keeps it for more pixel input.
-  const click = (x: number) => f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x, y: 40, successor: false }), "insert");
-  for (const x of [10, 20, 30]) expect((await click(x)).details.status).toBe("delivered");
-  expect(f.captures()).toHaveLength(1);
-  // The native capture is single-use; kept observations send window-local pixels without it.
-  expect(f.inputs()[0][1]).toMatchObject({ capture_id: "capture-1" });
-  expect(f.inputs()[1][1]).not.toHaveProperty("capture_id");
-  const hinted = await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", hint: view.hint }), "insert");
-  expect(hinted.details.status).toBe("refused");
-  expect(hinted.content[0]).toMatchObject({ text: expect.stringContaining("UI hints of this observation expired") });
-  const again = await f.read();
-  f.setBounds({ x: 300, y: 90, width: 500, height: 320 });
-  expect((await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5, successor: false }), "insert")).details.status).toBe("delivered");
-  f.setBounds({ x: 300, y: 90, width: 640, height: 320 });
-  const resized = await f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5, successor: false }), "insert");
-  expect(resized.details.status).toBe("refused");
-  expect(resized.content[0]).toMatchObject({ text: expect.stringContaining("resized from 500x320 to 640x320") });
-  await expect(f.resources.perform(again.observation, cwd, JSON.stringify({ action: "click", x: 5, y: 5 }), "insert")).rejects.toThrow(/expired/i);
-});
