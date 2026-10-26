@@ -1,7 +1,12 @@
 import { randomUUID, createHash } from "node:crypto";
 import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./selected-displays.ts";
-import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
-import { renderFrames, type FrameRendering, type RenderedFrames } from "./contact-sheet.ts";
+import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type FrameSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
+import { changeLines, differs, frameChanges, framesBetween, sheetFrames, WATCH_LIMITS, WATCH_SHEET_FRAMES, writeWatchFiles, type WatchFiles, type WatchSpan } from "./watch.ts";
+import type { PixelBox } from "./pixel-diff.ts";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { renderFrames, type FrameMark, type FrameRendering, type RenderedFrames } from "./contact-sheet.ts";
 import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
 import { isSemanticAction, semanticReceipt } from "./semantic-actions.ts";
@@ -65,6 +70,11 @@ export interface Driver {
   overviewKernel?: CuaVisionSettings["kernel"];
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
+  /**
+   * A second driver process on the same desktop for captures that run while this one acts: a driver answers one call
+   * at a time, so a capture sent during a long drag would wait for its end. Absent where only one connection exists.
+   */
+  companion?(): Driver | undefined;
   close(): Promise<void>;
 }
 /** One complete action or bounded known-target sequence, grounded in one window overview. */
@@ -113,6 +123,10 @@ export interface ComputerResult {
     captured?: { image: boolean; ui: boolean };
     sequence?: ReturnType<typeof sequenceMetadata>;
     selected_frames?: Omit<SequenceFrame, "image">[];
+    /** A watch this result started or stopped: what it watches, whether it still runs, the actions it noted and, once stopped, its files. */
+    watch?: { sequence_id: string; watching: string; running: boolean; marks: FrameMark[]; changed_frames?: number; files?: WatchFiles };
+    /** An action's span in each running watch of its window, in the watch's milliseconds, with the frames captured during it. */
+    watch_spans?: WatchSpan[];
     /** How a sheet or composite Read placed the selected frames in its one image. */
     rendered_frames?: Omit<RenderedFrames, "png">;
     /** Outcome of a bounded wait_for/verify; the conditions as requested, in order. */
@@ -148,6 +162,8 @@ interface WindowEntry { ref: string; target: WindowTarget; identity: string; own
   seen?: { width: number; height: number };
   windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark; frame?: WindowFrame }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
+/** A watch of a window: its growing sequence, when its clock started, the actions noted in it and how to stop it. */
+interface Watching { window_ref: string; watching: string; sequence?: FrameSequence; started: number; marks: FrameMark[]; stop: AbortController; finished: boolean; done: Promise<FrameSequence> }
 /** A discovery query: `regex:<pattern>` is a case-insensitive regular expression, anything else a case-insensitive substring. */
 export function textMatcher(query?: string): (text: string) => boolean {
   if (!query) return () => true;
@@ -189,6 +205,11 @@ export class ComputerSession {
   private recordings = 0;
   private audioClips = 0;
   private readonly sequences = new SequenceStore();
+  /** Watches by sequence id until stopWatch reports them; they capture through `watcher`, a second driver where one exists. */
+  private readonly watches = new Map<string, Watching>();
+  private watcher?: Driver;
+  /** Temporary folders of stopped watches' files, removed when the session closes. */
+  private readonly watchDirs = new Set<string>();
   private uiSerial = 0;
   private uiImages: Observation[] = [];
   /**
@@ -676,6 +697,160 @@ export class ComputerSession {
         return this.result("refused", "Frame selection failed. Check captured-frame indexes and the source's current lifetime.");
       }
     });
+  }
+
+  /**
+   * Start watching a window, or with `crop` (a viewport's rectangle in full-resolution window pixels) a part of it.
+   * Frames come from a second driver process in the background, outside the session's queue, so the agent acts
+   * meanwhile and a long drag is seen while it runs. Returns once the first frame is in; the sequence then grows until
+   * stopWatch, its time limit, its frame or byte limit, or the session closing.
+   */
+  async startWatch(window_ref: string, watching: string, options: { fps: number; timeout_ms: number; maxLongEdge: number; crop?: PixelBox }, signal?: AbortSignal): Promise<ComputerResult> {
+    const entry = this.entries.get(window_ref);
+    if (!entry || !this.allowed(entry)) return this.result("refused", "Unknown or unavailable window reference. Search its machine's windows again.");
+    const permitted = () => this.entries.get(window_ref) === entry && this.allowed(entry);
+    const driver = this.watcher ??= this.driver.companion?.() ?? this.driver;
+    // Watch frames come from the window's own pixels at a size that gives the crop maxLongEdge pixels on its long edge.
+    let cap = Math.min(FULL_RESOLUTION, options.maxLongEdge);
+    const fullSize = (state: Record<string, unknown>) => {
+      const width = state.screenshot_original_width, height = state.screenshot_original_height;
+      if (typeof width !== "number" || typeof height !== "number" || width <= 0 || height <= 0) return undefined;
+      const fit = Math.min(1, FULL_RESOLUTION / Math.max(width, height));
+      return { width: Math.round(width * fit), height: Math.round(height * fit) };
+    };
+    if (options.crop) {
+      let probe: DriverResult;
+      try { probe = await driver.call("get_window_state", { ...entry.target, include_accessibility_tree: false, max_image_dimension: 64 }, signal); }
+      catch (error) { return this.result("refused", `The watch did not start: ${error instanceof Error ? error.message : error}`); }
+      const full = probe.isError || !probe.structuredContent ? undefined : fullSize(probe.structuredContent);
+      if (!full) return this.result("refused", "The watch did not start: the window could not be captured.");
+      const long = Math.max(options.crop.width, options.crop.height);
+      cap = Math.max(64, Math.min(FULL_RESOLUTION, Math.ceil(Math.max(full.width, full.height) * Math.min(options.maxLongEdge, long) / long)));
+    }
+    const capture = async (active: AbortSignal) => {
+      if (!permitted()) throw new SequenceStop(this.entries.has(window_ref) ? "access_revoked" : "target_lost");
+      const nativeStarted = performance.now();
+      const native = await driver.call("get_window_state", { ...entry.target, include_accessibility_tree: false, max_image_dimension: cap }, active);
+      const native_completed_at = performance.now();
+      active.throwIfAborted();
+      if (!permitted()) throw new SequenceStop(this.entries.has(window_ref) ? "access_revoked" : "target_lost");
+      const state = native.structuredContent;
+      if (native.isError || !state || state.status === "refused" || state.effect === "refused") throw new SequenceStop("capture_failed");
+      // Identity is not asked here: its peer takes one request at a time and the session's own calls use it.
+      if ((state.pid !== undefined && state.pid !== entry.target.pid) || (state.window_id !== undefined && state.window_id !== entry.target.window_id))
+        throw new SequenceStop("target_lost");
+      const images = native.content.filter((block): block is SequenceFrame["image"] => block.type === "image");
+      const context = this.overview(state, "watch-frame", false, images);
+      if (!context || Math.max(context.width, context.height) > cap || images[0].data.length > 16 * 1024 * 1024) throw new SequenceStop("capture_failed");
+      let source = this.source("window", state, { session_id: this.sessionId, window_ref, ...entry.target });
+      source.semantic_scope = "none"; source.capabilities = { read: true, input: "none", detail: "unsupported" };
+      let image = images[0];
+      const full = options.crop && fullSize(state);
+      if (options.crop && full) {
+        // The viewport follows the window: its rectangle is relative to the window's top-left corner.
+        const kx = context.width / full.width, ky = context.height / full.height, crop = options.crop;
+        const region = { x: Math.round(crop.x * kx), y: Math.round(crop.y * ky), width: Math.max(1, Math.round(crop.width * kx)), height: Math.max(1, Math.round(crop.height * ky)) };
+        if (region.x >= context.width || region.y >= context.height) throw new SequenceStop("capture_failed");
+        ({ image, source } = await cropSequenceFrame(image, source, region, false));
+      }
+      return { image, source, native_completed_at, native_latency_ms: native_completed_at - nativeStarted };
+    };
+    const stop = new AbortController();
+    const watch: Watching = { window_ref, watching, started: 0, marks: [], stop, finished: false, done: Promise.resolve(undefined as unknown as FrameSequence) };
+    watch.done = collectSequence({ duration_ms: options.timeout_ms, fps: options.fps, max_frames: WATCH_LIMITS.max_frames, timeout_ms: options.timeout_ms + 20_000 }, capture,
+      undefined, undefined, { limits: WATCH_LIMITS, stop: stop.signal, started: (sequence, at) => {
+        watch.sequence = sequence; watch.started = at;
+        sequence.configuration = { ...this.overviewSettings(), maxLongEdge: cap };
+        this.sequences.put(sequence, true);
+        this.watches.set(sequence.sequence_id, watch);
+      } }).then(sequence => {
+      watch.finished = true;
+      if (this.watches.get(sequence.sequence_id) === watch) this.sequences.put(sequence);
+      return sequence;
+    });
+    // Return with the first frame, so a watch that cannot capture says so now; starting the second driver takes a few seconds.
+    const deadline = performance.now() + 30_000;
+    while (!watch.finished && !watch.sequence?.frames.length && performance.now() < deadline && !signal?.aborted) await delay(20);
+    const sequence = watch.sequence!;
+    if (!sequence?.frames.length) {
+      stop.abort();
+      const ended = await watch.done;
+      this.watches.delete(ended.sequence_id);
+      return this.result("refused", `The watch did not start: ${signal?.aborted ? "cancelled" : ended.stop_reason === "stopped" ? "no frame came within 30 s" : ended.stop_reason}.`);
+    }
+    const size = sequence.frames[0].source.image.dimensions;
+    return this.result("observed", `Watching ${watching} at up to ${options.fps} FPS in the background, ${size.width}x${size.height} frames. ` +
+      `Act on the window as usual: each action's receipt names its span and frames in this watch. Read the sequence with frames:last for the newest frame; computer_record watch_stop at the sequence returns the contact sheet, change statistics and files. ` +
+      `It stops by itself after ${Math.round(options.timeout_ms / 1000)} s or ${WATCH_LIMITS.max_frames} frames, and when the session closes.`,
+      undefined, { ...this.addressed(entry), sequence: sequenceMetadata(sequence), watch: { sequence_id: sequence.sequence_id, watching, running: true, marks: [] } });
+  }
+
+  /** Note an action on a window in each running watch of it: the action's span in the watch's time and the frames captured during it so far. */
+  markWatches(window_ref: string, label: string, start: number, end: number): WatchSpan[] {
+    const spans: WatchSpan[] = [];
+    for (const watch of this.watches.values()) {
+      if (watch.window_ref !== window_ref || watch.finished || !watch.sequence) continue;
+      const mark = { label, start_ms: start - watch.started, end_ms: end - watch.started };
+      watch.marks.push(mark);
+      spans.push({ sequence_id: watch.sequence.sequence_id, label, from_ms: mark.start_ms, to_ms: mark.end_ms, frames: framesBetween(watch.sequence.frames, mark.start_ms, mark.end_ms) });
+    }
+    return spans;
+  }
+  /** Whether this sequence is a watch that has not been stopped with stopWatch yet. */
+  isWatch(id: string): boolean { return this.watches.has(id); }
+
+  /**
+   * Stop a watch: a contact sheet of the frames that changed with the actions marked, change statistics of every
+   * frame, and the frames as files in `dir` (a temporary folder removed when the session closes, unless given), with an
+   * animated WebP when asked. The sequence keeps its frames for frames: Reads.
+   */
+  async stopWatch(id: string, files: { dir?: string; animation?: boolean } = {}): Promise<ComputerResult> {
+    const watch = this.watches.get(id);
+    if (!watch) return this.result("refused", this.sequences.get(id) ? "This sequence is no running watch; Read it with a frames: view." : "No watch of this session has this address. Watches do not survive reload or close.");
+    watch.stop.abort();
+    const sequence = await watch.done;
+    this.watches.delete(id);
+    const entry = this.entries.get(watch.window_ref);
+    if (entry ? !this.allowed(entry) : this.getMode() !== "yolo") {
+      this.sequences.clear();
+      return this.result("refused", "The watched window is no longer accessible; its frames are withheld.");
+    }
+    const reasons: Record<FrameSequence["stop_reason"], string> = { stopped: "stopped", completed: "stopped by itself at its time limit", frame_limit: "stopped by itself at its frame limit",
+      byte_limit: "stopped by itself at its memory limit", timeout: "stopped by itself at its time limit", cancelled: "cancelled", target_lost: "stopped: the window closed",
+      access_revoked: "stopped: access to the window ended", capture_failed: "stopped: a capture failed" };
+    const frames = sequence.frames;
+    const changes = await frameChanges(frames);
+    const distinct = frames.filter((_, i) => differs(frames, i)).length;
+    const lines = [`Watch of ${watch.watching} ${reasons[sequence.stop_reason]}: ${frames.length} frames over ${(sequence.elapsed_ms / 1000).toFixed(1)} s` +
+      `${sequence.actual_fps ? ` at ${sequence.actual_fps.toFixed(1)} FPS` : ""}; ${distinct === 1 ? "1 differs" : `${distinct} differ`} from the frame before.`];
+    if (watch.marks.length) lines.push("Actions (ms of the watch):", ...watch.marks.map(mark => {
+      const span = framesBetween(frames, mark.start_ms, mark.end_ms);
+      return `- ${mark.label} ${Math.round(mark.start_ms)}–${Math.round(mark.end_ms)} ms, ${span ? `frames ${span.from}–${span.to}` : "no frame during it"}`;
+    }));
+    const moving = changeLines(changes, watch.marks);
+    lines.push(moving.length ? "Biggest changes against the frame before (share of the frame's pixels, box in its pixels):" : "No frame changed against the one before.", ...moving);
+    const content: Content[] = [];
+    let rendered: Omit<RenderedFrames, "png"> | undefined;
+    if (frames.length) {
+      const { png, ...layout } = await renderFrames(sheetFrames(frames, watch.marks), { as: "sheet", marks: watch.marks });
+      rendered = layout;
+      lines.push(`Contact sheet: the frames that changed (at most ${WATCH_SHEET_FRAMES}, kept around each action and spread over the rest) and the last one, ${layout.columns}x${layout.rows} tiles in time order, each under "#index · time"; an orange label means an action ran then. Frames: ${layout.tiles.map(tile => `#${tile.index}`).join(", ")}.`);
+      content.push({ type: "image", mimeType: "image/png", data: png.toString("base64") });
+    }
+    const dir = files.dir ?? join(tmpdir(), "pi-computer-use-watch", id);
+    let written: WatchFiles | undefined;
+    try {
+      written = await writeWatchFiles(dir, sequence, watch.marks, changes, { watching: watch.watching }, files.animation);
+      if (!files.dir) this.watchDirs.add(dir);
+      lines.push(`Files in ${dir}: ${written.frames} PNG ${written.frames === 1 ? "frame" : "frames"} (each frame that differs from the one before), watch.json with every frame's time, file, change and actions${written.animation ? ", and watch.webp, an animation in real time" : ""}.` +
+        (files.dir ? "" : " The folder is removed when the computer session closes."));
+    } catch (error) { lines.push(`The frames were not written to ${dir}: ${error instanceof Error ? error.message : error}`); }
+    lines.push("Read the sequence with a frames: view for other frames.");
+    const result = this.result(frames.length ? "observed" : "refused", lines.join("\n"), undefined,
+      { sequence: sequenceMetadata(sequence), ...(rendered ? { rendered_frames: rendered } : {}),
+        watch: { sequence_id: id, watching: watch.watching, running: false, marks: watch.marks, changed_frames: distinct, ...(written ? { files: written } : {}) } });
+    result.content.push(...content);
+    return result;
   }
   /** Enumerate native Windows monitors in YOLO. References grant read access, never input. */
   displays(signal?: AbortSignal): Promise<ComputerResult> {
@@ -1856,6 +2031,14 @@ export class ComputerSession {
   /** Close session-opened browsers (deleting their profiles), detach from attached ones and release the native runtime. Other windows/files are not closed or saved. */
   close(): Promise<ComputerResult> {
     return this.queue(async () => {
+      const watches = [...this.watches.values()];
+      this.watches.clear();
+      for (const watch of watches) watch.stop.abort();
+      await Promise.allSettled(watches.map(watch => watch.done));
+      if (this.watcher && this.watcher !== this.driver) await this.watcher.close().catch(() => undefined);
+      this.watcher = undefined;
+      await Promise.allSettled([...this.watchDirs].map(dir => rm(dir, { recursive: true, force: true })));
+      this.watchDirs.clear();
       this.entries.clear(); this.displayEntries.clear(); this.displayOverview = undefined; this.uiImages = []; this.sequences.clear();
       const browsers = [...this.browsers.values()];
       this.browsers.clear();

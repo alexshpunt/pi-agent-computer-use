@@ -7,7 +7,13 @@ export interface FrameRegion { x: number; y: number; width: number; height: numb
  * How selected frames are returned: one image each (the default), one tiled contact sheet, or one per-pixel
  * maximum or minimum composite. `region` crops every frame first; `maxLongEdge` bounds the returned image.
  */
-export interface FrameRendering { as: "sheet" | "max" | "min"; region?: FrameRegion; columns?: number; maxLongEdge?: number }
+export interface FrameRendering { as: "sheet" | "max" | "min"; region?: FrameRegion; columns?: number; maxLongEdge?: number; marks?: readonly FrameMark[] }
+/** An action during the frames, in their timestamps: a sheet labels the frames it covers with its name on an orange strip. */
+export interface FrameMark { label: string; start_ms: number; end_ms: number }
+/** The labels of the actions a frame's time falls in. */
+export function marksAt(marks: readonly FrameMark[] | undefined, timestamp: number): string[] {
+  return (marks ?? []).filter(mark => timestamp >= mark.start_ms && timestamp <= mark.end_ms).map(mark => mark.label);
+}
 /** Bounds of a rendered sheet or composite. */
 export const RENDER_LIMITS = { columns: 10, maxLongEdge: 4096, defaultLongEdge: 1600 } as const;
 
@@ -42,9 +48,9 @@ async function decode(frame: SequenceFrame, region: FrameRegion | undefined): Pr
 }
 
 const escape = (value: string) => value.replace(/[<>&]/g, char => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[char]!);
-/** A dark label strip with the frame's index and time, drawn as SVG text. */
-function label(text: string, width: number): Buffer {
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${LABEL_HEIGHT}"><rect width="${width}" height="${LABEL_HEIGHT}" fill="#000"/>` +
+/** A label strip with the frame's index and time, drawn as SVG text: dark, or orange while an action ran. */
+function label(text: string, width: number, action = false): Buffer {
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${LABEL_HEIGHT}"><rect width="${width}" height="${LABEL_HEIGHT}" fill="${action ? "#c2410c" : "#000"}"/>` +
     `<text x="4" y="13" font-family="sans-serif" font-size="12" fill="#fff">${escape(text)}</text></svg>`);
 }
 
@@ -67,7 +73,8 @@ async function sheet(frames: readonly SequenceFrame[], rendering: FrameRendering
     const png = await sharp(d.data, { raw: { width: d.width, height: d.height, channels: 3 } })
       .resize(tile.width, tile.height, { fit: "contain", background: "#202020", kernel: "lanczos3" }).png().toBuffer();
     const { x, y } = tiles[i];
-    return [{ input: label(`#${frames[i].index} · ${Math.round(frames[i].timestamp_ms)} ms`, tile.width), left: x, top: y - LABEL_HEIGHT },
+    const actions = marksAt(rendering.marks, frames[i].timestamp_ms);
+    return [{ input: label(`#${frames[i].index} · ${Math.round(frames[i].timestamp_ms)} ms${actions.length ? ` · ${actions.join(", ")}` : ""}`, tile.width, actions.length > 0), left: x, top: y - LABEL_HEIGHT },
       { input: png, left: x, top: y }];
   }));
   const png = await sharp({ create: { width, height, channels: 3, background: "#202020" } }).composite(layers.flat()).png().toBuffer();

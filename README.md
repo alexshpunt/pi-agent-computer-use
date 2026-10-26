@@ -67,6 +67,7 @@ From there the agent can:
 - name a viewport, a rectangle of a window such as a game canvas, with `computer_view`: it shows that part at the window's own resolution, follows the window, takes clicks at points of its image and reports what changed only there;
 - crop one element at full resolution;
 - record a short sequence of frames with `computer_record` to watch an animation or a progress bar, then pick the frames it needs;
+- watch a window or a viewport in the background while acting on it, such as panning a panorama by dragging: each action's receipt names the frames it covered, and stopping returns a contact sheet with the actions marked, change statistics and the frames as files;
 - read a window's `state` to see whether the app is hung and how much memory it uses.
 
 ### Input

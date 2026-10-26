@@ -220,16 +220,17 @@ export function clipboardCommand(params: Static<typeof clipboardParameters>): Re
 }
 
 const recordParameters = Type.Object({
-  at: Type.String({ description: "video_start, video_stop and audio: computer:machine/<name>; sequence: a window or display address." }),
-  action: Type.Union([Type.Literal("video_start"), Type.Literal("video_stop"), Type.Literal("audio"), Type.Literal("sequence")], { description: "video_start records the machine's main display to video (YOLO) until video_stop or seconds pass; video_stop ends it and can fetch the file; audio records the machine's playback for seconds (YOLO); sequence captures frames of a window or display over duration_ms and returns a sequence address, whose frames Read shows with a frames: view." }),
+  at: Type.String({ description: "video_start, video_stop and audio: computer:machine/<name>; sequence: a window or display address; watch: a window address, or a viewport address from computer_view such as computer:game/pano to watch part of a window; watch_stop: the sequence address watch returned." }),
+  action: Type.Union([Type.Literal("video_start"), Type.Literal("video_stop"), Type.Literal("audio"), Type.Literal("sequence"), Type.Literal("watch"), Type.Literal("watch_stop")], { description: "video_start records the machine's main display to video (YOLO) until video_stop or seconds pass; video_stop ends it and can fetch the file; audio records the machine's playback for seconds (YOLO); sequence captures frames of a window or display over duration_ms and returns a sequence address, whose frames Read shows with a frames: view; watch starts capturing a window or viewport in the background and returns a sequence address at once, while the agent keeps acting on the window and each action's receipt names its span and frames in the watch; watch_stop ends a watch and returns a contact sheet with the actions marked, per-frame change statistics and the frames as files." }),
   seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 600, description: "video_start: recording limit, 1..600; audio: recording length, 1..300." })),
-  to: Type.Optional(Type.String({ description: "video_stop and audio: workspace path to fetch the recorded file into." })),
+  to: Type.Optional(Type.String({ description: "video_stop and audio: workspace path to fetch the recorded file into; watch_stop: workspace folder for the frames, default a temporary folder removed when the computer session closes." })),
   transcribe: Type.Optional(Type.Boolean({ description: "audio: add a speech transcript made by faster-whisper on this machine; it can be wrong." })),
+  video: Type.Optional(Type.Boolean({ description: "watch_stop: also write watch.webp, an animation of the frames in real time." })),
   duration_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 60000, description: "sequence: capture length." })),
-  fps: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, description: "sequence: frames per second to aim for, default 4; the result reports the rate reached." })),
+  fps: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, description: "sequence and watch: frames per second to aim for, default 4 for sequence and 10 for watch; the result reports the rate reached." })),
   max_frames: Type.Optional(Type.Integer({ minimum: 1, maximum: 300, description: "sequence: frame limit, default 40." })),
-  timeout_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 90000, description: "sequence: total time limit, at least duration_ms, default 15000." })),
-  maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096, description: "sequence: longest frame edge in pixels." })),
+  timeout_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 300000, description: "sequence: total time limit, at least duration_ms, at most 90000, default 15000; watch: when the watch stops by itself, default 60000." })),
+  maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096, description: "sequence: longest frame edge in pixels; watch: longest frame edge, default 800, at most the viewport's own pixels." })),
   scale: Type.Optional(Type.Number({ minimum: 0.05, maximum: 1, description: "sequence: frame scale instead of maxLongEdge." })),
   region: Type.Optional(Type.Object({ x: Type.Integer({ minimum: 0 }), y: Type.Integer({ minimum: 0 }), width: Type.Integer({ minimum: 1 }), height: Type.Integer({ minimum: 1 }) },
     { additionalProperties: false, description: "sequence: part of the window or display to capture, in its local pixels." })),
@@ -237,11 +238,19 @@ const recordParameters = Type.Object({
 
 const SEQUENCE_FIELDS = ["duration_ms", "fps", "max_frames", "timeout_ms", "maxLongEdge", "scale", "region"];
 
-/**
- * What computer_record runs: a machine command for video and audio, or the Read sequence view of a window or display.
- */
-export function recordCommand(params: Static<typeof recordParameters>): { command: Record<string, unknown> } | { views: string[] } {
+/** What computer_record runs: a machine command for video and audio, the Read sequence view of a window or display, or a watch start or stop. */
+export type RecordRun = { command: Record<string, unknown> } | { views: string[] }
+  | { watch: { fps?: number; timeout_ms?: number; maxLongEdge?: number } } | { stop: { to?: string; video?: boolean } };
+export function recordCommand(params: Static<typeof recordParameters>): RecordRun {
   const { at: _at, action, ...fields } = params;
+  if (action === "watch") {
+    fieldsFor(action, fields, ["fps", "timeout_ms", "maxLongEdge"]);
+    return { watch: fields };
+  }
+  if (action === "watch_stop") {
+    fieldsFor(action, fields, ["to", "video"]);
+    return { stop: fields };
+  }
   if (action === "sequence") {
     fieldsFor(action, fields, SEQUENCE_FIELDS, ["duration_ms"]);
     const views = [`sequence:${JSON.stringify(fields)}`];
@@ -586,22 +595,24 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_record", label: "Computer record",
-    description: "Use computer_record to record a machine's display to video or its playback audio, or to capture frames of a window or display over time for motion and animation.",
+    description: "Use computer_record to record a machine's display to video or its playback audio, to capture frames of a window or display over time for motion and animation, or to watch a window or viewport in the background while acting on it, such as panning a panorama or dragging a 3D camera.",
     parameters: recordParameters,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_record", args => `${args.at} ${args.action}${args.seconds ? ` ${args.seconds} s` : args.duration_ms ? ` ${args.duration_ms} ms` : ""}`),
     async execute(_id, params, signal, _update, ctx) {
-      let run: ReturnType<typeof recordCommand> = { command: {} };
+      let run: RecordRun = { command: {} };
       return actionResult(await computerAction(resources, params.at, params.action, () => {
         run = recordCommand(params);
+        if ("watch" in run || "stop" in run) return resources.address(params.at);
         if ("views" in run) {
           const address = resources.address(params.at);
           if (address.kind !== "window" && address.kind !== "display") throw new ComputerRequestError("sequence captures a window or display address.");
           return address;
         }
         return machineAddress(resources, params.at);
-      }, async address => "views" in run
-        ? (await resources.sequence(address, ctx.cwd, run.views, signal))!
+      }, async address => "watch" in run ? resources.watch(address, ctx.cwd, run.watch, signal)
+        : "stop" in run ? resources.stopWatch(address, ctx.cwd, run.stop, signal)
+        : "views" in run ? (await resources.sequence(address, ctx.cwd, run.views, signal))!
         : resources.perform(address, ctx.cwd, JSON.stringify(run.command), signal)));
     },
   });

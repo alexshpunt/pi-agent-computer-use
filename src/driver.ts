@@ -296,6 +296,13 @@ export class McpDriver implements Driver {
     });
     return transport;
   }
+  /**
+   * Another driver process with this configuration, for captures alongside this one's input. A guest endpoint takes one
+   * connection, so it has none.
+   */
+  companion(): McpDriver | undefined {
+    return this.config.endpoint ? undefined : new McpDriver(this.config, this.version);
+  }
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
     if (["get_window_control_state", "manage_window"].includes(name) && !this.windowManagement)

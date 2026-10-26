@@ -23,7 +23,8 @@ export interface FrameSequence {
   /** How old the newest frame was when the sequence returned: time from its native completion to the result. */
   last_frame_age_ms: number | null;
   skipped_slots: number[]; pending_slots: number; payload_bytes: number;
-  stop_reason: "completed" | "frame_limit" | "byte_limit" | "cancelled" | "timeout" | "target_lost" | "access_revoked" | "capture_failed";
+  /** stopped: a watch stopped by request, with every frame it captured until then. */
+  stop_reason: "completed" | "stopped" | "frame_limit" | "byte_limit" | "cancelled" | "timeout" | "target_lost" | "access_revoked" | "capture_failed";
   frames: SequenceFrame[];
   configuration?: CuaVisionSettings;
   interval_ms?: { min: number; max: number; mean: number };
@@ -35,12 +36,13 @@ const byteBudget = 48 * 1024 * 1024;
 export class SequenceStop extends Error {
   constructor(readonly reason: FrameSequence["stop_reason"]) { super(reason); }
 }
+/** Bounds of a capture: its length, rate, frame count and total time. */
+export interface CaptureLimits { duration_ms: number; fps: number; max_frames: number; timeout_ms: number }
 /** Limits of one sequence: a minute of frames at up to 30 FPS; one Read still selects at most 40 of them. */
 export const SEQUENCE_LIMITS = { duration_ms: 60_000, fps: 30, max_frames: 300, timeout_ms: 90_000, selected: 40 } as const;
 /** Validate before native dispatch; requested FPS is a sampling goal, never a performance promise. */
-export function validateSequence(options: SequenceOptions): FrameSequence["requested"] {
+export function validateSequence(options: SequenceOptions, L: CaptureLimits = SEQUENCE_LIMITS): FrameSequence["requested"] {
   const result = { duration_ms: options.duration_ms, fps: options.fps ?? 4, max_frames: options.max_frames ?? 40, timeout_ms: options.timeout_ms ?? 15000 };
-  const L = SEQUENCE_LIMITS;
   if (!Number.isSafeInteger(result.duration_ms) || result.duration_ms < 1 || result.duration_ms > L.duration_ms ||
     !Number.isFinite(result.fps) || result.fps < 1 || result.fps > L.fps ||
     !Number.isSafeInteger(result.max_frames) || result.max_frames < 1 || result.max_frames > L.max_frames ||
@@ -52,15 +54,28 @@ export function validateSequence(options: SequenceOptions): FrameSequence["reque
   return result;
 }
 
-/** Sequential sampling skips missed slots. The clock seam allows deterministic timing contract checks. */
+/** What a long-running capture such as a watch adds: its own limits, a stop request that keeps the frames, and its sequence as soon as it starts. */
+export interface CaptureHooks {
+  limits?: CaptureLimits;
+  /** Ends sampling with stop_reason "stopped"; frames captured until then stay. */
+  stop?: AbortSignal;
+  /** Receives the sequence, which then grows frame by frame, and the clock time its timestamps count from. */
+  started?(sequence: FrameSequence, at: number): void;
+}
+/**
+ * Sequential sampling skips missed slots. The clock seam allows deterministic timing contract checks. A frame with the
+ * same bytes as the one before shares its image and adds nothing to the byte budget, so a still window costs little.
+ */
 export async function collectSequence(options: SequenceOptions,
   capture: (signal: AbortSignal) => Promise<{ image: SequenceFrame["image"]; source: ObservationSource; native_completed_at?: number; native_latency_ms?: number }>, signal?: AbortSignal,
-  clock: { now(): number; wait(ms: number, active: AbortSignal): Promise<void> } = { now: () => performance.now(), wait: (ms, active) => delay(ms, undefined, { signal: active }) }): Promise<FrameSequence> {
-  const requested = validateSequence(options); const started = clock.now();
+  clock: { now(): number; wait(ms: number, active: AbortSignal): Promise<void> } = { now: () => performance.now(), wait: (ms, active) => delay(ms, undefined, { signal: active }) },
+  hooks: CaptureHooks = {}): Promise<FrameSequence> {
+  const requested = validateSequence(options, hooks.limits); const started = clock.now();
   const timeout = AbortSignal.timeout(requested.timeout_ms);
-  const active = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const active = AbortSignal.any([timeout, ...(signal ? [signal] : []), ...(hooks.stop ? [hooks.stop] : [])]);
   const sequence: FrameSequence = { sequence_id: "seq-" + randomUUID(), requested, started_at: new Date().toISOString(),
     elapsed_ms: 0, sample_span_ms: 0, actual_fps: null, last_frame_age_ms: null, skipped_slots: [], pending_slots: 0, payload_bytes: 0, stop_reason: "completed", frames: [] };
+  hooks.started?.(sequence, started);
   const interval = 1000 / requested.fps; const slots = Math.ceil(requested.duration_ms / interval);
   let slot = 0;
   try {
@@ -79,17 +94,21 @@ export async function collectSequence(options: SequenceOptions,
       const before = clock.now(); const result = await capture(active); const after = clock.now();
       active.throwIfAborted();
       const bytes = Buffer.from(result.image.data, "base64");
-      if (bytes.length > 12 * 1024 * 1024 || sequence.payload_bytes + bytes.length > byteBudget) { sequence.stop_reason = "byte_limit"; break; }
+      const hash = createHash("sha256").update(bytes).digest("hex");
       const previous = sequence.frames.at(-1);
       const geometry = (source: ObservationSource) => JSON.stringify({ image: source.image, scale: source.scale });
+      const geometryChanged = !!previous && geometry(previous.source) !== geometry(result.source);
+      const repeated = !!previous && previous.hash === hash && !geometryChanged;
+      if (!repeated && (bytes.length > 12 * 1024 * 1024 || sequence.payload_bytes + bytes.length > byteBudget)) { sequence.stop_reason = "byte_limit"; break; }
       sequence.frames.push({ index: sequence.frames.length, slot, timestamp_ms: (result.native_completed_at ?? after) - started, capture_started_ms: before - started,
-        capture_latency_ms: result.native_latency_ms ?? after - before, sample_latency_ms: after - before, hash: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length,
-        source: result.source, geometry_changed: !!previous && geometry(previous.source) !== geometry(result.source), image: result.image });
-      sequence.payload_bytes += bytes.length; slot++;
+        capture_latency_ms: result.native_latency_ms ?? after - before, sample_latency_ms: after - before, hash, bytes: bytes.length,
+        source: result.source, geometry_changed: geometryChanged, image: repeated ? previous.image : result.image });
+      if (!repeated) sequence.payload_bytes += bytes.length;
+      slot++;
       while (slot < slots && slot * interval < clock.now() - started) sequence.skipped_slots.push(slot++);
     }
   } catch (error) {
-    sequence.stop_reason = signal?.aborted ? "cancelled" : timeout.aborted ? "timeout" : error instanceof SequenceStop ? error.reason : "capture_failed";
+    sequence.stop_reason = hooks.stop?.aborted ? "stopped" : signal?.aborted ? "cancelled" : timeout.aborted ? "timeout" : error instanceof SequenceStop ? error.reason : "capture_failed";
   }
   sequence.elapsed_ms = clock.now() - started;
   sequence.last_frame_age_ms = sequence.frames.length ? sequence.elapsed_ms - sequence.frames.at(-1)!.timestamp_ms : null;
@@ -147,14 +166,21 @@ export async function cropSequenceFrame(image: SequenceFrame["image"], source: O
     coordinate_space: "detail_image_pixels" as const, dimensions: { width: applied.width, height: applied.height }, origin,
     crop: { requested, applied, coordinate_space: "uncropped_image_pixels" as const } } } };
 }
-/** Private bounded frame resources. Reload/close drops pixels; readers must recheck source access. */
+/**
+ * Private bounded frame resources. Reload/close drops pixels; readers must recheck source access. A running watch is
+ * never evicted; once it stops, putting it again makes it an ordinary sequence.
+ */
 export class SequenceStore {
   private readonly sequences = new Map<string, FrameSequence>();
-  put(sequence: FrameSequence): void {
+  private readonly running = new Set<string>();
+  put(sequence: FrameSequence, running = false): void {
+    this.sequences.delete(sequence.sequence_id);
     this.sequences.set(sequence.sequence_id, sequence);
-    while (this.sequences.size > 3 || [...this.sequences.values()].reduce((sum, s) => sum + s.payload_bytes, 0) > byteBudget)
-      this.sequences.delete(this.sequences.keys().next().value!);
+    if (running) this.running.add(sequence.sequence_id); else this.running.delete(sequence.sequence_id);
+    const evictable = () => [...this.sequences.keys()].filter(id => !this.running.has(id));
+    while (evictable().length && (evictable().length > 3 || [...this.sequences.values()].reduce((sum, s) => sum + s.payload_bytes, 0) > byteBudget))
+      this.sequences.delete(evictable()[0]);
   }
   get(id: string): FrameSequence | undefined { return this.sequences.get(id); }
-  clear(): void { this.sequences.clear(); }
+  clear(): void { this.sequences.clear(); this.running.clear(); }
 }

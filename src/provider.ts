@@ -165,6 +165,11 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     lines.push(`Sequence: ${computerSource("sequence", sequence.sequence_id)}`,
       `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; last_frame_age_ms=${sequence.last_frame_age_ms === null ? null : Math.round(sequence.last_frame_age_ms)}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
   }
+  if (d.watch) lines.push(d.watch.running
+    ? `Watch: ${d.watch.watching} runs in the background as ${computerSource("sequence", d.watch.sequence_id)}; computer_record watch_stop at that address stops it`
+    : `Watch: ${d.watch.watching} stopped; ${d.watch.changed_frames ?? 0} frames changed${d.watch.files ? `; files in ${d.watch.files.dir}` : ""}`);
+  for (const span of d.watch_spans ?? [])
+    lines.push(`Watch: ${span.label} ran ${Math.round(span.from_ms)}–${Math.round(span.to_ms)} ms into ${computerSource("sequence", span.sequence_id)}; ${span.frames ? `frames ${span.frames.from}–${span.frames.to}` : "no frame captured during it yet"}`);
   if (d.process) lines.push(d.process.responding
     ? `Process: ${d.process.name} (pid ${d.process.pid}) responds; ${d.process.memory_mb} MB memory, ${d.process.cpu_seconds} s CPU`
     : `Process: ${d.process.name} (pid ${d.process.pid}) is NOT responding; ${d.process.memory_mb} MB memory. Capture and input cannot recover a hung app: wait and read again, or close it.`);
@@ -187,6 +192,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     : d.verification ? (d.verification.verdict === "satisfied" ? "Conditions held; refs of this sample are current for input." : "Not verified: neither proof of success nor of failure beyond the listed verdicts. Never replay uncertain input blindly.")
     : d.dom ? "Act on the window with the computer_* input tools, a ref such as e2 as target. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
     : d.window_state_id ? "This Read only looks; computer_window changes the window's state."
+    : d.watch && d.status === "observed" ? "A watch only looks: the window's refs and points stay as they were for input."
     : d.viewport && d.status === "observed" ? "Act in this viewport with the computer_* input tools at its address; a viewport Read gives no refs."
     : d.status === "observed" ? "Refs of this Read are current for the next input to its window; detail, display and frame Reads give none."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
@@ -281,6 +287,10 @@ export interface ComputerReceipt {
   viewport?: string;
   /** The sandbox address computer_open started. */
   sandbox?: string;
+  /** The sequence address of a watch this call started or stopped. */
+  watch?: string;
+  /** The action's span in each running watch of its window, in that watch's milliseconds, with the frames captured during it. */
+  watch_spans?: { sequence: string; from_ms: number; to_ms: number; frames: { from: number; to: number } | null }[];
   /** The new current observation issued by this call, such as a DOM action's next snapshot. */
   observation: string | null;
   /** Whether the addressed observation can no longer be used for input. */
@@ -323,6 +333,8 @@ export function computerReceipt(source: string, action: string | null, outcome: 
     window: typeof d.window_ref === "string" ? computerSource("window", d.window_ref) : null,
     ...(d.viewport ? { viewport: d.viewport.source } : {}),
     ...(typeof d.sandbox_ref === "string" ? { sandbox: computerSource("sandbox", d.sandbox_ref) } : {}),
+    ...(d.watch ? { watch: computerSource("sequence", d.watch.sequence_id) } : {}),
+    ...(d.watch_spans ? { watch_spans: d.watch_spans.map(span => ({ sequence: computerSource("sequence", span.sequence_id), from_ms: span.from_ms, to_ms: span.to_ms, frames: span.frames })) } : {}),
     observation: next ? computerSource("observation", next) : null,
     input_consumed: outcome.inputConsumed, application_effect: "unverified",
     reason: failed ? computerResultText(outcome.result).split("\n{", 1)[0] : null,

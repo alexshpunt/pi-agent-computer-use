@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { parseComputerAddress, computerSource, displaySource, viewportSource, ADDRESS_KINDS, NAME, type ComputerAddress } from "./computer-address.ts";
 import { clipViewport, pngSize, viewportImage, viewportImageSize, viewportPoint, viewportRect, windowPoint, VIEWPORT_CAP, type Viewport } from "./viewport.ts";
 import { FULL_RESOLUTION } from "./cua-image-settings.ts";
+import { WATCH_DEFAULTS } from "./watch.ts";
 import type { PixelBox } from "./pixel-diff.ts";
 import { ShortAddresses, SHORT_REFERENCE } from "./short-addresses.ts";
 import { parseComputerViews, type ComputerViews } from "./computer-views.ts";
@@ -979,7 +980,9 @@ export class ComputerResources {
     if (management && state.details.window_state_kind !== "management")
       return this.stamp(place, { ...state, content: [{ type: "text", text: "This native runtime can only restore and activate windows, not move, resize, minimize, maximize or focus them." }],
         details: { ...state.details, status: "refused" } });
-    return this.stamp(place, management ? await session.manageWindow(address.ref, id, management, signal) : await session.restoreWindow(address.ref, id, signal));
+    const started = performance.now();
+    const result = management ? await session.manageWindow(address.ref, id, management, signal) : await session.restoreWindow(address.ref, id, signal);
+    return this.stamp(place, ComputerResources.watched(result, session.markWatches(address.ref, String(command.action), started, performance.now())));
   }
   /**
    * Run one page operation (navigation, tabs, dialogs, files, page code) in a browser window by its address. The
@@ -1010,13 +1013,39 @@ export class ComputerResources {
     if (viewport && plan.space !== undefined) throw new ComputerRequestError("space does not apply in a viewport: its points are pixels of the viewport's image.");
     const place = this.place(address);
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    const started = performance.now();
     let result = await this.inputStep(address.ref, session, plan, cwd, signal, viewport);
     // A follow-up such as Enter after typing runs only after the first part was delivered.
     if (plan.then && result.details.status === "delivered") {
       const next = await this.inputStep(address.ref, session, plan.then, cwd, signal, viewport);
       result = { ...next, content: [...result.content, ...next.content] };
     }
-    return this.stamp(place, result);
+    return this.stamp(place, ComputerResources.watched(result, session.markWatches(address.ref, plan.label, started, performance.now())));
+  }
+  /** An action's receipt with its spans in the running watches of its window. */
+  private static watched(result: ComputerResult, spans: NonNullable<ComputerResult["details"]["watch_spans"]>): ComputerResult {
+    return spans.length ? { ...result, details: { ...result.details, watch_spans: spans } } : result;
+  }
+  /**
+   * Start a watch for computer_record: frames of a window, or of a viewport at its own pixels, captured in the
+   * background while the agent acts. The receipt names the sequence address that grows until watch_stop.
+   */
+  async watch(address: ComputerAddress, cwd: string, options: { fps?: number; timeout_ms?: number; maxLongEdge?: number }, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "window" && address.kind !== "viewport")
+      throw new ComputerRequestError("watch takes a window address, or a viewport address from computer_view such as computer:game/pano to watch part of a window.");
+    const viewport = address.kind === "viewport" ? this.viewport(address) : undefined;
+    const place = this.place(address);
+    const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    const watching = viewport ? viewportSource(viewport.window_ref, viewport.name) : computerSource("window", address.ref);
+    return this.stamp(place, await session.startWatch(address.ref, watching, { fps: options.fps ?? WATCH_DEFAULTS.fps,
+      timeout_ms: options.timeout_ms ?? WATCH_DEFAULTS.timeout_ms, maxLongEdge: options.maxLongEdge ?? WATCH_DEFAULTS.maxLongEdge, ...(viewport ? { crop: viewport.rect } : {}) }, signal));
+  }
+  /** Stop a watch: its contact sheet with actions marked, change statistics and files, in `to` (a workspace folder) when given. */
+  async stopWatch(address: ComputerAddress, cwd: string, options: { to?: string; video?: boolean }, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "sequence") throw new ComputerRequestError("watch_stop takes the sequence address its watch returned.");
+    const place = this.place(address);
+    const { session } = await this.routeAddress(cwd, address, signal);
+    return this.stamp(place, await session.stopWatch(address.ref, { ...(options.to !== undefined ? { dir: resolve(cwd, options.to) } : {}), animation: options.video === true }));
   }
   private async inputStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal, viewport?: Viewport): Promise<ComputerResult> {
     const ref = refKind(plan.target);
