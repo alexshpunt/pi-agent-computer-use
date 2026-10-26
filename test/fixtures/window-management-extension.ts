@@ -188,6 +188,15 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const restored = await window({ action: "restore" });
         assert(!restored.isError && find(restored, "restore_requested") === true, `computer_window restore failed: ${body(restored)}`);
         await control("reset");
+        // computer_wait samples the window's UI and sends nothing: the synthetic walk is complete and empty.
+        const button = "getByRole('button', { name: 'Save' })";
+        const absent = await call("computer_wait", { window: first, mode: "check", conditions: [{ target: button, is: "absent" }] });
+        assert(!absent.isError && find(absent, "verdict") === "satisfied", `computer_wait check failed: ${body(absent)}`);
+        const waited = await call("computer_wait", { window: first, timeout_ms: 300, conditions: [{ target: button, is: "exists" }] });
+        assert(find(waited, "verdict") === "unsatisfied" && find(waited, "timed_out") === true, `computer_wait did not time out: ${body(waited)}`);
+        await denied("computer_wait", { window: "computer:machine/local", conditions: [{ target: button, is: "exists" }] });
+        await denied("computer_wait", { window: first, mode: "check", timeout_ms: 10, conditions: [{ target: button, is: "exists" }] });
+        await denied("computer_browser", { window: first, action: "reload" });
         const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned management fixture" }), "window");
         mode = "safe";
         const refused = await window({ action: "focus" }, external);

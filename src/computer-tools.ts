@@ -90,6 +90,60 @@ const displayParameters = Type.Object({
   height: Type.Integer({ minimum: 480, maximum: 16384, description: "New height in physical pixels." }),
 }, { additionalProperties: false });
 
+/** An element of a window or page: a Playwright locator string, or locator fields that must all match. */
+const targetSchema = (description: string) => Type.Union([
+  Type.String({ description: "A Playwright locator such as getByRole('button', { name: 'Save' }) or getByLabel('Name').nth(1)." }),
+  Type.Object({
+    ref: Type.Optional(Type.String({ description: "Browser pages: an aria ref such as e12 from the page's latest snapshot, alone." })),
+    role: Type.Optional(Type.String()), name: Type.Optional(Type.String({ description: "Accessible name; needs role." })),
+    label: Type.Optional(Type.String()), text: Type.Optional(Type.String()), placeholder: Type.Optional(Type.String()), test_id: Type.Optional(Type.String()),
+    css: Type.Optional(Type.String({ description: "Browser pages only." })),
+    exact: Type.Optional(Type.Boolean({ description: "Match name and text exactly instead of as a case-insensitive substring." })),
+    frames: Type.Optional(Type.Array(Type.String(), { maxItems: 8, description: "Browser pages only: CSS selectors of the nested iframes, outermost first." })),
+  }, { additionalProperties: false }),
+], { description });
+
+const waitParameters = Type.Object({
+  window: Type.String({ description: "Window address from Search, Read or a name; a browser window checks its active tab." }),
+  conditions: Type.Array(Type.Object({
+    target: Type.Optional(targetSchema("The element the check applies to; omit for aria on the whole window or page, and for url_contains and title.")),
+    is: Type.Optional(Type.Union([Type.Literal("exists"), Type.Literal("absent"), Type.Literal("visible"), Type.Literal("hidden"), Type.Literal("enabled"), Type.Literal("disabled"), Type.Literal("selected"), Type.Literal("checked"), Type.Literal("unchecked"), Type.Literal("focused")], { description: "State the target is in." })),
+    value: Type.Optional(Type.String({ description: "The target's value (its name if it has none, or a page element's text) equals this." })),
+    contains: Type.Optional(Type.String({ description: "The target's value, name or text contains this." })),
+    count: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: "Exactly this many elements match the target." })),
+    aria: Type.Optional(Type.String({ description: "Playwright aria snapshot template the target's subtree, or the whole window or page, contains, such as - button /Count \\d+/." })),
+    url_contains: Type.Optional(Type.String({ description: "Browser windows: the active tab's URL contains this." })),
+    title: Type.Optional(Type.String({ description: "Browser windows: the active tab's title equals this." })),
+  }, { additionalProperties: false }), { minItems: 1, maxItems: 16, description: "Every condition must hold. Each takes one check: is, value, contains, count or aria with a target, aria alone, or url_contains or title alone." }),
+  mode: Type.Optional(Type.Union([Type.Literal("wait"), Type.Literal("check")], { description: "wait (default) samples until every condition holds or timeout_ms passes; check takes one sample." })),
+  timeout_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "wait: longest wait, default 5000." })),
+  interval_ms: Type.Optional(Type.Integer({ minimum: 50, maximum: 5000, description: "wait: time between samples, default 250." })),
+  stable: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, description: "wait: consecutive satisfied samples required, default 1." })),
+}, { additionalProperties: false });
+
+/** The Insert wait_for or verify command of computer_wait. */
+export function waitCommand(params: Static<typeof waitParameters>): Record<string, unknown> {
+  const { window: _window, mode, conditions, ...timing } = params;
+  if (mode === "check" && Object.keys(timing).length) throw new ComputerRequestError(`check takes one sample, so ${Object.keys(timing).join(", ")} do not apply.`);
+  return { action: mode === "check" ? "verify" : "wait_for", conditions, ...timing };
+}
+
+const browserParameters = Type.Object({
+  window: Type.String({ description: "Window address of a browser opened with computer_open or attached to it." }),
+  action: Type.Union([Type.Literal("navigate"), Type.Literal("back"), Type.Literal("forward"), Type.Literal("reload"), Type.Literal("wait_load"), Type.Literal("new_tab"), Type.Literal("switch_tab"), Type.Literal("close_tab"), Type.Literal("dialog"), Type.Literal("upload"), Type.Literal("wait_download"), Type.Literal("cancel_download"), Type.Literal("evaluate")], { description: "What to do in the active tab: navigate to url; back, forward or reload; wait_load until the page reaches state; new_tab (optional url) becomes active; switch_tab or close_tab by tab; dialog answers the open JavaScript dialog; upload files into target; wait_download or cancel_download by download; evaluate runs expression." }),
+  url: Type.Optional(Type.String({ description: "navigate and new_tab: an http(s) URL." })),
+  tab: Type.Optional(Type.String({ description: "switch_tab and close_tab: a tab id such as t2 from the snapshot's tab list; close_tab defaults to the active tab." })),
+  state: Type.Optional(Type.Union([Type.Literal("load"), Type.Literal("domcontentloaded"), Type.Literal("networkidle")], { description: "wait_load: load state to reach, default load." })),
+  accept: Type.Optional(Type.Boolean({ description: "dialog: accept (true) or dismiss (false)." })),
+  text: Type.Optional(Type.String({ description: "dialog: the answer to an accepted prompt." })),
+  target: Type.Optional(targetSchema("upload: the file input, or with chooser the element that opens the file chooser; evaluate: the element passed to a function expression.")),
+  files: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 32, description: "upload: absolute WSL or Windows paths of existing files." })),
+  chooser: Type.Optional(Type.Boolean({ description: "upload: click target and fill the file chooser it opens; no native dialog appears." })),
+  download: Type.Optional(Type.String({ description: "wait_download and cancel_download: a download id such as d1; defaults to the latest." })),
+  expression: Type.Optional(Type.String({ description: "evaluate: JavaScript; a function expression is called with the target element. Promises are awaited." })),
+  timeout_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 60000, description: "Time limit; default 5000 for switch_tab, close_tab, dialog and cancel_download, 30000 otherwise." })),
+}, { additionalProperties: false });
+
 /**
  * Register the typed computer_* tools that replace Insert commands one cluster at a time. They are deferred: a
  * tool_search for computer loads them, so sessions that never use the computer pay nothing for them.
@@ -128,6 +182,34 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
         command = windowCommand(params);
         return resources.address(params.window);
       }, address => resources.manageWindow(address, ctx.cwd, command, signal)));
+    },
+  });
+  pi.registerTool({
+    ...common, name: "computer_wait", label: "Computer wait",
+    description: "Use computer_wait to wait until a window's UI or a browser page meets conditions, or to check them once, without sending input. The last sample becomes the window's current observation.",
+    parameters: waitParameters,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    ...rendered("computer_wait", args => `${args.window} ${args.mode ?? "wait"} ${(args.conditions as unknown[] | undefined)?.length ?? 0} condition(s)`),
+    async execute(_id, params, signal, _update, ctx) {
+      let command: Record<string, unknown> = {};
+      return actionResult(await computerAction(resources, params.window, params.mode === "check" ? "verify" : "wait_for", () => {
+        command = waitCommand(params);
+        const address = resources.address(params.window);
+        if (address.kind !== "window") throw new ComputerRequestError("computer_wait needs a window address from Search, Read or a name.");
+        return address;
+      }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), "insert", signal)));
+    },
+  });
+  pi.registerTool({
+    ...common, name: "computer_browser", label: "Computer browser",
+    description: "Use computer_browser to navigate, manage tabs, answer JavaScript dialogs, upload or download files, and run page JavaScript in a browser window. The result shows the page's fresh snapshot.",
+    parameters: browserParameters,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    ...rendered("computer_browser", args => `${args.window} ${args.action}${args.url ? ` ${args.url}` : args.tab ? ` ${args.tab}` : ""}`),
+    async execute(_id, params, signal, _update, ctx) {
+      const { window, ...command } = params;
+      return actionResult(await computerAction(resources, window, params.action, () => resources.address(window),
+        address => resources.browserAction(address, ctx.cwd, command, signal)));
     },
   });
   pi.registerTool({
