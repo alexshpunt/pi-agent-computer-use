@@ -127,6 +127,8 @@ function openTarget(command: Record<string, unknown>, where: string): string | {
   if (!Array.isArray(args) || args.length > 32 || args.some(arg => typeof arg !== "string" || arg.length > 8192)) throw new ComputerRequestError("args must be up to 32 strings.");
   return { path: command.path, args: args as string[], ...(command.debugging ? { debugging: true } : {}) };
 }
+/** Browser operations that need no element of a snapshot: computer_browser runs them on a browser window. */
+export const PAGE_ACTIONS = ["navigate", "back", "forward", "reload", "wait_load", "new_tab", "switch_tab", "close_tab", "dialog", "upload", "wait_download", "cancel_download", "evaluate"];
 /** The Delete option that kills the process of a hung window the session opened instead of asking it to close. */
 export const FORCE = "?force=true";
 const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop", "audio_record"];
@@ -850,6 +852,22 @@ export class ComputerResources {
       return this.stamp(place, { ...state, content: [{ type: "text", text: "This native runtime can only restore and activate windows, not move, resize, minimize, maximize or focus them." }],
         details: { ...state.details, status: "refused" } });
     return this.stamp(place, management ? await session.manageWindow(address.ref, id, management, signal) : await session.restoreWindow(address.ref, id, signal));
+  }
+  /**
+   * Run one page operation (navigation, tabs, dialogs, files, page code) in a browser window by its address. The
+   * window's earlier observations retire, and the page's next snapshot becomes its current observation.
+   */
+  async browserAction(address: ComputerAddress, cwd: string, command: Record<string, unknown>, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "window") throw new ComputerRequestError("computer_browser needs the window address of a browser opened with computer_open or attached to it.");
+    if (!PAGE_ACTIONS.includes(String(command.action))) throw new ComputerRequestError(`computer_browser runs ${PAGE_ACTIONS.join(", ")}.`);
+    let action;
+    try { action = validateWebAction(command); }
+    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    const place = this.place(address);
+    const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    this.retireWindow(address.ref);
+    const result = await session.actPage(address.ref, action, signal);
+    return this.stamp(place, result.details.dom ? this.remember({ window_ref: address.ref }, result) : result);
   }
   /** Dispatch exactly one literal Write or JSON Insert against its address-bound target; the receipt names its machine. */
   async perform(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {

@@ -39,7 +39,7 @@ test("without Pi Agent IDE, tool_search finds the deferred computer tools and th
     expect(getToolExecution(result, id).isError, getToolResultText(result, id)).toBe(false);
   expect(getToolResultText(result, "find")).toContain("computer_read");
   // One search for computer loads the whole namespace.
-  for (const tool of ["computer_open", "computer_window", "computer_display", "computer_delete"]) expect(getToolResultText(result, "find")).toContain(tool);
+  for (const tool of ["computer_open", "computer_window", "computer_display", "computer_wait", "computer_browser", "computer_delete"]) expect(getToolResultText(result, "find")).toContain(tool);
   // A typed tool refuses a bad address with a receipt before any native work.
   expect(getToolExecution(result, "display").isError).toBe(true);
   expect(getToolResultText(result, "display")).not.toContain("unknown");
@@ -73,7 +73,7 @@ test("with Pi Agent IDE, computer use extends Read, Search, Insert and Delete an
     expect(getToolResultText(result, "force")).toContain("?force=true applies to window addresses only.");
     expect(getToolResultText(result, "find")).not.toContain("computer_read");
     expect(getToolResultText(result, "find")).not.toContain("computer_delete");
-    for (const tool of ["computer_open", "computer_window", "computer_display"]) expect(getToolResultText(result, "find")).toContain(tool);
+    for (const tool of ["computer_open", "computer_window", "computer_display", "computer_wait", "computer_browser"]) expect(getToolResultText(result, "find")).toContain(tool);
     for (const id of ["session", "close", "delete"])
       expect(getToolExecution(result, id).isError, getToolResultText(result, id)).toBe(false);
     expect(getToolResultText(result, "session")).toContain("computer:session");

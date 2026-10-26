@@ -1176,6 +1176,25 @@ export class ComputerSession {
     });
   }
 
+  /**
+   * Perform one page action in the active tab of a browser window without a DOM observation: navigation, tabs,
+   * dialogs, files and page code. Refs in a target resolve against the page's latest snapshot. The result carries
+   * the page's next snapshot as a new observation.
+   */
+  actPage(ref: string, action: WebAction, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = await this.webEntry(ref, signal);
+      if (!("ref" in entry)) return entry;
+      if (!this.allowed(entry)) return this.denied(ref);
+      entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      try {
+        const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
+        return this.result("delivered", `Playwright performed ${action.action}. Check the fresh snapshot below for the page's response.`,
+          undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
+      } catch (error) { return this.webFailure(entry, error, true); }
+    });
+  }
+
   /** Whether this window is a browser this session opened or attached, whose pages Playwright drives. */
   isBrowserWindow(ref: string): boolean {
     return this.entries.get(ref)?.web !== undefined;

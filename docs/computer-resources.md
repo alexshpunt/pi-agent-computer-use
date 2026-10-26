@@ -18,6 +18,8 @@ Some operations have their own tool with typed fields, in both modes. They are d
 | `computer_open` | Starts an app by name or path, a Playwright browser, a Windows Sandbox or an isolated session at a machine address; opens an app address; attaches Playwright to a browser window address | Insert `open`, `open_browser`, `open_sandbox`, `open_session`, `attach_browser` |
 | `computer_window` | Moves, resizes, maximizes, minimizes, focuses or restores a window by its address | Read `state`, then Insert into the window-state address |
 | `computer_display` | Changes a display's resolution | Insert `resize` into a display |
+| `computer_wait` | Waits until a window's UI or a browser page meets [conditions](#verify-and-wait), or checks them once (`mode: "check"`) | Insert `wait_for` and `verify` into a window |
+| `computer_browser` | Navigates, manages tabs, answers dialogs, uploads, waits for or cancels downloads, and runs page JavaScript in a browser window by its address | Insert of those [page actions](#browser-pages) into a DOM observation |
 | Delete (`computer_delete` without IDE) | Closes a window like its close button, or releases a sandbox, isolated session, machine or `computer:session` | Insert `close` and `kill` |
 
 Delete of a window asks it to close: a browser the session opened closes with its disposable profile, an attached browser is detached first, and any other window gets the standard close request. The receipt says whether the window closed; an app that asks about unsaved work keeps it open, so Read it next. Add `?force=true` to the window address to kill the hung app of a window this session opened. Safe mode closes only windows the session opened.
@@ -148,6 +150,8 @@ Insert one JSON action into the latest DOM observation:
 | `wait_download` | optional `download` id; defaults to the latest |
 | `cancel_download` | optional `download` id; defaults to the latest |
 | `evaluate` | `expression` (JavaScript); optional `target` passed to a function expression |
+
+`computer_browser` runs `navigate`, `back`, `forward`, `reload`, `wait_load`, the tab actions, `dialog`, `upload`, the download actions and `evaluate` on the browser's window address, with the same fields; it needs no DOM observation first, and a `ref` target resolves against the page's latest snapshot.
 
 Every action accepts `timeout_ms` (1..60000; default 5000, 30000 for navigation, `wait_load`, `new_tab`, `upload`, `wait_download` and `evaluate`). Playwright waits for the element to be visible, stable, enabled and to receive events, then sends normal browser input. For example:
 
@@ -377,7 +381,7 @@ Files and other resources keep returning text.
 
 ## Verify and wait
 
-Insert `{"action":"wait_for","conditions":[...],"timeout_ms":3000}` into a **window** address to wait until every condition holds, or `{"action":"verify","conditions":[...]}` for one sample. Nothing is sent to the window. Optional `interval_ms` (50..5000, default 250) sets the sample spacing and `stable` (1..10) how many consecutive samples must agree; `timeout_ms` is 0..60000 (default 5000). Up to 16 conditions; each has one check:
+Call `computer_wait` with the window address and conditions, or Insert `{"action":"wait_for","conditions":[...],"timeout_ms":3000}` into a **window** address to wait until every condition holds, or `{"action":"verify","conditions":[...]}` for one sample. Nothing is sent to the window. Optional `interval_ms` (50..5000, default 250) sets the sample spacing and `stable` (1..10) how many consecutive samples must agree; `timeout_ms` is 0..60000 (default 5000). Up to 16 conditions; each has one check:
 
 | Check | Native windows | Browser pages |
 | --- | --- | --- |

@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { requireComputerAddress, ComputerResources } from "../src/computer-resources.ts";
-import { openCommand, windowCommand } from "../src/computer-tools.ts";
+import { openCommand, waitCommand, windowCommand } from "../src/computer-tools.ts";
+import type { WebBrowser, WebLauncher } from "../src/web-browser.ts";
 import type { MachineHost } from "../src/machine-host.ts";
 import { deleteComputer } from "../src/provider.ts";
 import { ComputerSession, type ComputerMode, type Driver } from "../src/session.ts";
@@ -34,6 +35,52 @@ test("computer_window takes exactly the fields of its action", () => {
   expect(windowCommand({ window: "w", action: "restore" })).toEqual({ action: "restore" });
   expect(() => windowCommand({ window: "w", action: "move", x: 1 })).toThrow("move needs x and y and nothing else.");
   expect(() => windowCommand({ window: "w", action: "focus", width: 1 })).toThrow("focus takes no coordinates or size.");
+});
+
+test("computer_wait maps to wait_for or a single verify sample", () => {
+  const conditions = [{ target: "getByRole('button', { name: 'Save' })", is: "enabled" as const }];
+  expect(waitCommand({ window: "w", conditions, timeout_ms: 2000, stable: 2 })).toEqual({ action: "wait_for", conditions, timeout_ms: 2000, stable: 2 });
+  expect(waitCommand({ window: "w", conditions, mode: "check" })).toEqual({ action: "verify", conditions });
+  expect(() => waitCommand({ window: "w", conditions, mode: "check", timeout_ms: 10 })).toThrow("check takes one sample, so timeout_ms do not apply.");
+});
+
+/** A Chrome window (pid 4100) attached to a fake Playwright worker that records page actions. */
+function browserFixture() {
+  const target = { pid: 4100, window_id: 77, title: "Page - Google Chrome", app_name: "chrome.exe" };
+  const driver: Driver = {
+    identity: vi.fn(async () => "life-77") as Driver["identity"], close: vi.fn(async () => {}),
+    call: vi.fn<Driver["call"]>(async name => {
+      if (name === "list_windows") return { content: [], structuredContent: { windows: [target] } };
+      throw new Error(`Unexpected native call ${name}`);
+    }),
+  };
+  const page = vi.fn(async (_kind: string, _action?: unknown) => ({ url: "https://example.com/next", title: "Next", snapshot: "- heading \"Next\" [ref=e1]", tabs: [], events: [] }));
+  const launch = vi.fn<WebLauncher>(async () => ({ browser: { close: vi.fn(async () => {}), page } as unknown as WebBrowser,
+    opened: { pid: target.pid, version: "155", url: "https://example.com", title: "Page", via: "cdp" } }));
+  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, undefined, launch);
+  const resources = new ComputerResources(async () => session, async () => session.close());
+  const window = async () => {
+    const ref = ((await resources.search(at("computer:machine/local/windows"), cwd, "Chrome")).details.state!.windows as { window_ref: string }[])[0].window_ref;
+    expect((await session.attachBrowser(ref)).details.status).toBe("delivered");
+    return at(`computer:window/${ref}`);
+  };
+  return { resources, page, window };
+}
+
+test("computer_browser runs a page action on the window and returns the page's next snapshot", async () => {
+  const f = browserFixture();
+  const window = await f.window();
+  const result = await f.resources.browserAction(window, cwd, { action: "navigate", url: "https://example.com/next" });
+  expect(result.details).toMatchObject({ status: "delivered", machine: "local" });
+  expect(f.page).toHaveBeenLastCalledWith("act", { action: "navigate", url: "https://example.com/next" }, undefined);
+  // The snapshot is the window's current observation, so its refs ground the next action.
+  const id = result.details.observation_id!;
+  expect((await f.resources.read(at(`computer:observation/${id}`), cwd)).details.status).toBe("observed");
+  await expect(f.resources.browserAction(window, cwd, { action: "click", target: { ref: "e1" } })).rejects.toThrow("computer_browser runs navigate, back");
+  await expect(f.resources.browserAction(window, cwd, { action: "navigate", url: "file:///etc/passwd" })).rejects.toThrow("url must be HTTP(S)");
+  await expect(f.resources.browserAction(at("computer:machine/local"), cwd, { action: "reload" })).rejects.toThrow("computer_browser needs the window address");
+  // Refused requests never reach Playwright.
+  expect(f.page).toHaveBeenCalledTimes(1);
 });
 
 /** One window (pid 10, id 7) a session can list and observe; the host decides how a close request ends. */
