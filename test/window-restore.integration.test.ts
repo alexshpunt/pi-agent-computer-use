@@ -9,7 +9,7 @@ const fixture = path.join(root, "test/fixtures/window-restore-extension.ts");
 const driver = path.join(root, "test/fixtures/window-restore-driver.mjs");
 
 // Pattern: real-Pi extension example + ordinary IDE provider cases.
-// Contract: state resources grant one restore, no pixel/input authority, and preserve interrupted native prefixes.
+// Contract: computer_window restores against its own state sample, grants no pixel/input authority, and preserves interrupted native prefixes.
 for (const scenario of ["workflow", "admission"] as const) test.each([false, true])(
   `ordinary IDE metadata-only restore protects ${scenario} (providerFirst=%s)`,
   async providerFirst => {
@@ -24,7 +24,7 @@ for (const scenario of ["workflow", "admission"] as const) test.each([false, tru
         artifactsDir: testArtifactsDir(import.meta.filename), cwd, isolateUserResources: true, rawMode: false,
         piCommand: PI_COMMAND,
         extensions: providerFirst ? [fixture, extension] : [extension, fixture],
-        tools: ["read", "search", "write", "insert", "verify_window_restore"], timeoutMs: 90_000,
+        tools: ["read", "search", "write", "insert", "delete", "verify_window_restore"], timeoutMs: 90_000,
         conversation: [assistantMessage([toolCall({ id: "restore-proof", name: "verify_window_restore", arguments: { scenario } })], { stopReason: "toolUse" }),
           assistantMessage([text("Finished the synthetic window restore scenario.")])],
       }).run("Use ordinary IDE tools against the synthetic native window fixture. Never activate real windows or use keyboard/pointer fallback.");

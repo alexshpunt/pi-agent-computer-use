@@ -16,7 +16,7 @@ function find(value: unknown, key: string): unknown {
   for (const child of Object.values(value)) { const found = find(child, key); if (found !== undefined) return found; }
   return undefined;
 }
-function reference(result: Result, kind: "window" | "window-state" | "observation"): string {
+function reference(result: Result, kind: "window" | "observation"): string {
   const found = body(result).match(addressPattern(kind));
   assert(found, `No ${kind} resource: ${body(result)}`); return found[0];
 }
@@ -78,104 +78,87 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       const journal = async (): Promise<Row[]> => (await readFile(log!, "utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
       const count = async (name: string) => (await journal()).filter(row => row.name === name).length;
       const control = (operation: string, window_id = 91) => driver!.call("fixture_control", { operation, window_id }, signal);
+      // A state Read only looks: no pixels, no address that grants anything, and the window's observations stay.
       const stateRead = async (window: string) => {
         const result = await ok("read", { path: window, views: ["state"] });
         assert(result.content.every(block => block.type !== "image"), "Management state granted pixels");
+        assert(!/computer:window-state\//.test(body(result)), `State Read issued a window-state address: ${body(result)}`);
         if (management) {
           assert(find(result, "coordinate_space") === "windows_desktop_pixels" && find(result, "bounds_source") !== undefined,
             `State lost explicit desktop bounds source: ${body(result)}`);
           assert(find(result, "virtual_desktop") !== undefined, `State dropped native desktop membership: ${body(result)}`);
         }
-        return reference(result, "window-state");
+        return result;
       };
-      const insert = (state: string, command: Record<string, unknown>) => call("insert", { path: state, text: JSON.stringify(command) });
-      const move = { action: "move", x: -20, y: 120, unit: "windows_desktop_pixels" };
-      const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: '{"action":"open","app":"Notepad"}' }), "window");
-      assert(!pi.getAllTools().some(tool => /^computer_(read|search|write|insert)$/.test(tool.name)), "Standalone computer tools leaked into the IDE provider");
+      // computer_window samples the window's state itself and sends one command against that sample.
+      const manage = (window: string, command: Record<string, unknown>, callSignal = signal) => call("computer_window", { window, ...command }, callSignal);
+      const move = { action: "move", x: -20, y: 120 };
+      const open = async () => reference(await ok("computer_open", { at: "computer:machine/local", app: "Notepad" }), "window");
+      assert(!pi.getAllTools().some(tool => /^computer_(read|search|delete)$/.test(tool.name)), "Standalone computer tools leaked into the IDE provider");
       const first = await open(), second = await open();
       const listed = await ok("search", { path: "computer:machine/local/windows", query: "Owned management fixture" });
       assert(body(listed).includes(first) && body(listed).includes(second), "Search lost exact-source references");
-      let state = await stateRead(first);
+      await stateRead(first);
       if (scenario === "workflow") {
-        const statusBefore = await count("get_window_control_state"), captureBefore = await count("get_window_state");
-        const cached = await ok("read", { path: state });
-        assert(reference(cached, "window-state") === state, "Cached Read renewed one-use admission");
-        assert(await count("get_window_control_state") === statusBefore && await count("get_window_state") === captureBefore,
-          "Cached Read acquired hidden metadata or pixels");
         const invalid = [
-          { action: "move", x: 1, y: 2 }, { ...move, unit: "css_pixels" }, { ...move, x: 1.5 }, { ...move, x: 100001 },
-          { ...move, y: -100001 }, { action: "move", x: 1, unit: "windows_desktop_pixels" },
-          { action: "resize", width: 0, height: 80, unit: "windows_desktop_pixels" },
-          { action: "resize", width: 32768, height: 80, unit: "windows_desktop_pixels" },
-          { action: "resize", width: 100, height: 2.5, unit: "windows_desktop_pixels" },
-          { ...move, width: 10 }, { ...move, pid: 42 }, { ...move, window_id: 91 }, { ...move, state_id: "foreign" },
-          { ...move, delivery_mode: "foreground" }, { ...move, hint: "1" }, { ...move, animation: {} },
-          { action: "sequence", sequence: [move] }, { action: "focus", unit: "windows_desktop_pixels" },
+          { action: "move", x: 1 }, { ...move, x: 100001 }, { ...move, y: -100001 },
+          { action: "resize", width: 0, height: 80 }, { action: "resize", width: 32768, height: 80 },
+          { ...move, width: 10 }, { ...move, unit: "css_pixels" }, { ...move, pid: 42 }, { ...move, state_id: "foreign" }, { ...move, delivery_mode: "foreground" },
           { action: "minimize", x: 1 }, { action: "maximize", height: 5 }, { action: "click", x: 1, y: 1 },
         ];
-        await denied("write", { path: state, content: "never type" });
-        for (const command of invalid) await denied("insert", { path: state, text: JSON.stringify(command) });
-        assert(await count("manage_window") === 0, "Invalid geometry or borrowed input authority reached native mutation");
-        const result = await insert(state, move);
+        // Write and Insert never act on a window; they name the tool that does.
+        assert(body(await denied("write", { path: first, content: "never type" })).includes("computer_type"), "Write refusal named no tool");
+        assert(body(await denied("insert", { path: first, text: JSON.stringify(move) })).includes("computer_window"), "Insert refusal named no tool");
+        for (const command of invalid) {
+          const result = await call("computer_window", { window: first, ...command });
+          assert(result.isError, `computer_window accepted ${JSON.stringify(command)}: ${body(result).split("\n")[0]}`);
+        }
+        assert(await count("manage_window") === 0, "Invalid geometry reached native mutation");
+        const result = await manage(first, move);
         assert(!result.isError && semantic(result).effect === "applied", `Valid desktop move failed: ${body(result)}`);
         assert(find(result, "mutation_attempted") === true && find(result, "postcondition_confirmed") === true,
           "Delivered management discarded native completion prefix");
-        await denied("insert", { path: state, text: JSON.stringify(move) }); await denied("read", { path: state });
-        assert(await count("manage_window") === 1 && await count("get_window_control_state") === statusBefore,
-          "Consumed admission replayed or editor resolution refreshed native state");
-        const operations = [{ action: "resize", width: 180, height: 120, unit: "windows_desktop_pixels" },
-          { action: "focus" }, { action: "maximize" }, { action: "minimize" }];
-        for (const command of operations) {
-          await control("reset"); state = await stateRead(first);
-          const result = await insert(state, command);
+        for (const command of [{ action: "resize", width: 180, height: 120 }, { action: "focus" }, { action: "maximize" }, { action: "minimize" }]) {
+          await control("reset");
+          const result = await manage(first, command);
           assert(!result.isError && semantic(result).effect === "applied", `Valid ${command.action} failed: ${body(result)}`);
         }
-        await control("reset"); await control("outer_bounds"); state = await stateRead(first);
-        const outer = await insert(state, move);
+        await control("reset"); await control("outer_bounds");
+        const outer = await manage(first, move);
         assert(!outer.isError && find(outer, "bounds_source") === "window_rect", "Explicit outer bounds became visible-frame coordinates");
-        await control("reset"); const retired = await stateRead(first); await stateRead(first);
-        await denied("insert", { path: retired, text: JSON.stringify(move) });
-        state = await stateRead(first); const ui = await ok("read", { path: first, views: ["ui"] });
-        await denied("insert", { path: state, text: JSON.stringify(move) });
-        const observation = reference(ui, "observation");
-        await denied("insert", { path: observation, text: JSON.stringify(move) });
-        await stateRead(first); await denied("write", { path: observation, content: "retired UI" });
-        state = await stateRead(first);
-        await ok("read", { path: first, views: ['sequence:{"duration_ms":200,"fps":10,"max_frames":2}'] });
-        await denied("insert", { path: state, text: JSON.stringify(move) });
-        assert(await count("manage_window") === 6, "Read-only authority retirement sent a mutation");
+        // A state Read between a UI Read and input keeps the UI observation's refs current.
+        const ui = await ok("read", { path: first, views: ["ui"] });
+        await stateRead(first);
+        await ok("read", { path: reference(ui, "observation") });
+        assert(await count("manage_window") === 6, "Read-only state sent a mutation");
       } else if (scenario === "admission") {
         const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned management fixture" }), "window");
-        const externalState = await stateRead(external); mode = "safe";
-        const refused = await denied("insert", { path: externalState, text: JSON.stringify(move) });
+        await stateRead(external); mode = "safe";
+        const refused = await denied("computer_window", { window: external, ...move });
         assert(semantic(refused).effect === "not-applied", "Safe denial lost no-dispatch effect");
         assert(await count("manage_window") === 0, "Safe denial dispatched management");
-        state = await stateRead(first); const prior = await count("get_window_control_state");
-        await ok("read", { path: state }); assert(await count("get_window_control_state") === prior, "Safe cached Read renewed state");
         const aborted = new AbortController(); aborted.abort();
-        const cancelled = await call("insert", { path: state, text: JSON.stringify(move) }, aborted.signal);
+        const cancelled = await manage(first, move, aborted.signal);
         assert(cancelled.isError && await count("manage_window") === 0, "Pre-dispatch cancellation mutated the source");
-        state = await stateRead(first); await control("close_first");
-        await denied("read", { path: state }); await denied("insert", { path: state, text: JSON.stringify(move) });
-        state = await stateRead(second); await control("reuse_second");
-        await denied("insert", { path: state, text: JSON.stringify(move) });
+        await control("close_first");
+        await denied("computer_window", { window: first, ...move });
+        await control("reuse_second");
+        await denied("computer_window", { window: second, ...move });
         assert(await count("manage_window") === 0, "Closed/reused source sent native mutation");
         mode = "yolo";
         const replacement = reference(await ok("search", { path: "computer:machine/local/windows", query: "Owned management fixture 92" }), "window");
-        state = await stateRead(replacement); await control("reused_after_dispatch", 92);
-        const reused = await denied("insert", { path: state, text: JSON.stringify(move) });
+        await control("reused_after_dispatch", 92);
+        const reused = await denied("computer_window", { window: replacement, ...move });
         assert(semantic(reused).effect === "unknown" && find(reused, "postcondition_confirmed") === true,
           "Post-dispatch reuse became success or discarded completed prefix");
-        await denied("insert", { path: state, text: JSON.stringify(move) });
-        assert(await count("manage_window") === 1, "Post-dispatch reuse was replayed");
+        assert(await count("manage_window") === 1, "Post-dispatch reuse sent an extra mutation");
       } else if (scenario === "typed") {
-        // computer_window samples its own one-use state: no window-state address, and invalid fields never reach native code.
         const window = (args: Record<string, unknown>, target = first) => call("computer_window", { window: target, ...args });
         for (const bad of [{ action: "move", x: 1 }, { action: "maximize", x: 1 }, { action: "resize", width: 10 }, { action: "restore", y: 2 }]) {
           const result = await window(bad);
           assert(result.isError, `computer_window accepted ${JSON.stringify(bad)}: ${body(result)}`);
         }
-        await denied("computer_window", { window: state, action: "focus" });
+        await denied("computer_window", { window: "computer:machine/local", action: "focus" });
         assert(await count("manage_window") === 0, "Invalid computer_window calls reached native management");
         const moved = await window({ action: "move", x: -20, y: 120 });
         assert(!moved.isError && semantic(moved).effect === "applied" && body(moved).includes("on local"), `computer_window move failed: ${body(moved)}`);
@@ -217,47 +200,38 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       } else if (scenario === "receipts") {
         for (const operation of ["refused", "partial", "final_cancel", "wrong_state", "wrong_window", "wrong_operation", "wrong_route",
           "missing_focus", "missing_prefix", "missing_receipt", "wrong_request", "wrong_before", "constrained", "changed_source", "contradictory_foreground"]) {
-          await control("reset"); state = await stateRead(first); await control(operation);
-          const result = await denied("insert", { path: state, text: JSON.stringify(move) }), action = semantic(result);
+          await control("reset"); await control(operation);
+          const result = await denied("computer_window", { window: first, ...move }), action = semantic(result);
           assert(action.effect === (operation === "refused" ? "not-applied" : "unknown"), `Wrong effect for ${operation}: ${body(result)}`);
           if (["partial", "final_cancel"].includes(operation)) assert(find(result, "mutation_attempted") === true, `${operation} lost attempted prefix`);
           if (operation === "final_cancel") assert(find(result, "postcondition_confirmed") === true, "Final cancellation lost completed prefix");
-          const before = await count("manage_window");
-          await denied("insert", { path: state, text: JSON.stringify(move) }); await denied("read", { path: state });
-          assert(await count("manage_window") === before, `${operation} was replayed`);
         }
-        await control("reset"); state = await stateRead(first);
+        await control("reset");
         const abortAfter = new AbortController(); cancelAfterDispatch = abortAfter;
-        const cancelled = await call("insert", { path: state, text: JSON.stringify(move) }, abortAfter.signal);
+        const cancelled = await manage(first, move, abortAfter.signal);
         assert(cancelled.isError && semantic(cancelled).effect === "unknown" && find(cancelled, "postcondition_confirmed") === true,
           `Cancellation after native completion discarded the delivered prefix: ${body(cancelled)}`);
-        const countAfter = await count("manage_window");
-        await denied("insert", { path: state, text: JSON.stringify(move) });
-        assert(await count("manage_window") === countAfter, "Post-dispatch cancellation was replayed");
       } else {
-        await control("minimized"); state = await stateRead(first);
-        const focus = await denied("insert", { path: state, text: '{"action":"focus"}' });
+        await control("minimized");
+        const focus = await denied("computer_window", { window: first, action: "focus" });
         assert(semantic(focus).effect === "not-applied" && find(focus, "mutation_attempted") === false && await count("restore_window") === 0,
           "Focus implicitly restored or activated a minimized target");
-        state = await stateRead(first);
-        const restored = await insert(state, { action: "restore" });
+        const restored = await manage(first, { action: "restore" });
         assert(!restored.isError && semantic(restored).effect === "applied" && find(restored, "restore_requested") === true,
           `Control admission lost existing restore: ${body(restored)}`);
-        await denied("insert", { path: state, text: JSON.stringify(move) });
         for (const situation of ["other_desktop", "unknown_desktop"]) {
-          await control("reset"); await control(situation); state = await stateRead(first);
-          const result = await denied("insert", { path: state, text: '{"action":"focus"}' });
+          await control("reset"); await control(situation);
+          const result = await denied("computer_window", { window: first, action: "focus" });
           assert(semantic(result).effect === "not-applied" && find(result, "mutation_attempted") === false,
             `${situation} activation implicitly switched desktops`);
         }
-        management = false; await control("reset"); await control("minimized"); state = await stateRead(first);
-        const legacyReads = await count("get_window_status"), managementBefore = await count("manage_window");
-        await ok("read", { path: state });
-        await denied("insert", { path: state, text: JSON.stringify(move) });
-        assert(await count("manage_window") === managementBefore && await count("get_window_status") === legacyReads,
-          "Restore-only state borrowed management authority or silently refreshed state");
-        state = await stateRead(first);
-        const legacy = await insert(state, { action: "restore" });
+        management = false; await control("reset"); await control("minimized");
+        const managementBefore = await count("manage_window");
+        await stateRead(first);
+        const refused = await denied("computer_window", { window: first, ...move });
+        assert(/only restore and activate/.test(body(refused)), `Restore-only runtime refusal changed: ${body(refused)}`);
+        assert(await count("manage_window") === managementBefore, "Restore-only state borrowed management authority");
+        const legacy = await manage(first, { action: "restore" });
         assert(!legacy.isError && find(legacy, "restore_requested") === true, `Legacy flat restore changed: ${body(legacy)}`);
         restoration = false;
         const before = await count("get_window_status");
@@ -268,7 +242,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       assert(rows.every(row => ["fixture_identity", "fixture_control", "list_apps", "list_windows", "launch_app", "get_window_state",
         "get_window_status", "get_window_control_state", "restore_window", "manage_window"].includes(row.name)),
         "Management used hidden input, desktop capture or activation fallback");
-      await ok("insert", { path: "computer:session", text: '{"action":"close"}' });
+      await ok("delete", { path: "computer:session" });
       return { content: [{ type: "text" as const, text: `IDE window management ${scenario} contract passed` }],
         details: { scenario, mutations: rows.filter(row => row.name === "manage_window").length } };
     },

@@ -9,7 +9,7 @@ const fixture = path.join(root, "test/fixtures/window-management-extension.ts");
 const driver = path.join(root, "test/fixtures/window-management-driver.mjs");
 
 // Pattern: executable real-Pi extension example and the ordinary-IDE restore suite.
-// Contract: native desktop geometry is one-use management authority, never pixel/input authority.
+// Contract: computer_window samples native desktop geometry for one command; it is never pixel/input authority.
 for (const scenario of ["workflow", "admission", "receipts", "restore", "typed"] as const) test.each([false, true])(
   `ordinary IDE window management protects ${scenario} (providerFirst=%s)`,
   async providerFirst => {
@@ -24,7 +24,7 @@ for (const scenario of ["workflow", "admission", "receipts", "restore", "typed"]
         artifactsDir: testArtifactsDir(import.meta.filename), cwd, isolateUserResources: true, rawMode: false,
         piCommand: PI_COMMAND,
         extensions: providerFirst ? [fixture, extension] : [extension, fixture],
-        tools: ["read", "search", "write", "insert", "verify_window_management"], timeoutMs: 90_000,
+        tools: ["read", "search", "write", "insert", "delete", "verify_window_management"], timeoutMs: 90_000,
         conversation: [assistantMessage([toolCall({ id: "management-proof", name: "verify_window_management", arguments: { scenario } })], { stopReason: "toolUse" }),
           assistantMessage([text("Finished the synthetic window management scenario.")])],
       }).run("Use ordinary IDE tools against the synthetic MCP window fixture only. Never operate a real desktop or use input fallback.");
