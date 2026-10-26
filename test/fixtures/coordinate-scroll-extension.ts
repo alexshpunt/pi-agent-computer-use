@@ -111,24 +111,17 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       const image = view.content.find(block => block.type === "image");
       assert(image?.mimeType === "image/png" && image.data, "Native overview image did not reach actual Pi");
       if (scenario === "receipts") {
-        // foreground: false keeps a background refusal as it is.
-        const refused = await rejected(first, { foreground: false }), refusal = semantic(refused), refusalState = record(refusal.state);
-        assert(refusal.status === "refused" && refusal.effect === "not-applied" && refusalState.code === "background_unavailable" && refusalState.pointer_attempted === false,
-          "Structured background refusal lost its no-input evidence");
-        // A refusal spends the observation; by default the same refusal sends the scroll again in the foreground, and the
-        // window keeps foreground delivery.
-        await observe(first);
+        // A scroll at a point is real input: the wheel goes in the foreground at once.
         const delivered = await scroll(first, { delta_x: -2, delta_y: 3 }), receipt = semantic(delivered), state = record(receipt.state);
         assert(!delivered.isError && receipt.status === "delivered" && receipt.effect === "applied" && state.unit === "wheel_detents" &&
           JSON.stringify(state.delivered_axes) === '["y","x"]' && state.pointer_changed === null && record(receipt.action_capability).actual_delivery === "foreground",
           `Truthful two-axis structured receipt lost: ${textOf(delivered)}`);
-        assert(textOf(delivered).includes("refused background input"), "The foreground retry was not reported");
         await observe(first, "image");
         const imageOnly = await scroll(first, { x: 120, y: 90, delta_x: 1, delta_y: 0 });
         assert(!imageOnly.isError && semantic(imageOnly).status === "delivered", "Image-only scroll refused");
-        for (const operation of ["partial", "last_check", "wrong_unit", "wrong_delta", "wrong_axes", "background_success"]) {
+        for (const operation of ["partial", "last_check", "wrong_unit", "wrong_delta", "wrong_axes"]) {
           await control(operation); view = await observe(first);
-          const result = await rejected(first, { x: 130, y: 100, delta_x: 1, delta_y: 1, ...(operation === "background_success" ? { foreground: false } : {}) });
+          const result = await rejected(first, { x: 130, y: 100, delta_x: 1, delta_y: 1 });
           const action = semantic(result), native = record(action.state);
           assert(action.status === "unknown" && action.effect === "unknown", `${operation} lost structured uncertainty`);
           if (operation === "partial") assert(native.pointer_delivered === true && JSON.stringify(native.attempted_axes) === '["y","x"]' &&
@@ -147,18 +140,18 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert(cropped.content.some(block => block.type === "image" && block.mimeType === "image/jpeg") && field(cropped.details, "input") === "none" &&
           field(cropped.details, "observation_id") === undefined, "Detail granted input authority");
         await control("capability_off"); await observe(first);
-        await rejected(first, { foreground: true });
+        await rejected(first);
         await control("capability_on");
         const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned fixture" }), "window");
         await observe(external); await control("safe");
-        await rejected(external, { foreground: true });
+        await rejected(external);
         await observe(first, "image");
-        const owned = await scroll(first, { foreground: true });
+        const owned = await scroll(first);
         assert(!owned.isError && semantic(owned).status === "delivered", "Safe denied owned image scroll");
         await observe(first); await control("close_first");
-        await rejected(first, { foreground: true });
+        await rejected(first);
         await observe(second); await control("recycle_second");
-        await rejected(second, { foreground: true });
+        await rejected(second);
         // Insert never acts on a window; it names the tool that does.
         const insert = await denied("insert", { path: first, text: JSON.stringify({ action: "scroll", x: 100, y: 80, delta_y: 2, unit: "wheel_detents" }) });
         assert(textOf(insert).includes("computer_scroll"), "Insert refusal named no tool");

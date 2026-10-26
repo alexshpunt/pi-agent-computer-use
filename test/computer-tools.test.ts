@@ -138,7 +138,6 @@ test("typed input refuses mismatched targets before anything reaches the machine
   await expect(f.resources.input(window, cwd, clickPlan({ window: "x", target: "e4" }))).rejects.toThrow("e4 is a page ref from a DOM Read; this window is not a browser page");
   await expect(f.resources.input(window, cwd, clickPlan({ window: "x", x: 1, y: 2, space: "page" }))).rejects.toThrow("space applies to browser windows only");
   await expect(f.resources.input(window, cwd, clickPlan({ window: "x", target: "9:z" }))).rejects.toThrow("9:z is not a ref of this window's latest Read");
-  await expect(f.resources.input(window, cwd, { ...hoverPlan({ window: "x", target: "getByText('a')" }), foreground: false })).rejects.toThrow("hover on a native window moves the real pointer");
 });
 
 /** A Chrome window (pid 4100) attached to a fake Playwright worker that records page actions. */

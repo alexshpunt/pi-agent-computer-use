@@ -14,7 +14,7 @@ test("real Pi draws a held path through its points and preserves a partial strok
   }));
   const code = `${SCRIPT_HELPERS}
 const opened = await openApp("Notepad");
-const stopped = await tools.computer_drag({window:opened.window,foreground:true,from:{x:20,y:30},via:[{x:40,y:80},{x:90,y:70}],to:{x:100,y:30},duration_ms:800});
+const stopped = await tools.computer_drag({window:opened.window,from:{x:20,y:30},via:[{x:40,y:80},{x:90,y:70}],to:{x:100,y:30},duration_ms:800});
 if(stopped.outcome !== "unknown" || stopped.effect !== "unknown") throw Error("Lost partial path: " + stopped.text);
 text(stopped.text);
 text("Held path guards passed");`;

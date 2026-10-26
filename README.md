@@ -78,7 +78,7 @@ Input goes to a window by its address and targets an element by a ref from the l
 - run a timeline of timed key, button, mouse and pen events, with raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
 - invoke, select or set values through UI Automation, and open menu items by their labels.
 
-Input starts in the background where Windows allows it, so your own pointer and focus stay put. Foreground input is a separate step the agent has to ask for, and it pauses whenever you touch the keyboard or mouse.
+What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input takes the front window, and it pauses whenever you touch the keyboard or mouse. Nothing is posted to windows as messages that an app could silently drop. To keep your desktop untouched, give the agent a sandbox or an isolated session.
 
 ### Results and checks
 

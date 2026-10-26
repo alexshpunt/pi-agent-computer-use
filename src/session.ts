@@ -72,6 +72,8 @@ export type Action = {
   window_ref: string;
   observation_id: string;
   delivery_mode?: "background" | "foreground";
+  /** A click or scroll on an element token goes through UI Automation only; the driver refuses when no pattern carries it. */
+  uia_only?: boolean;
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
 /** A stored Playwright snapshot of the active tab, with the tab list, any held dialog and events since the previous snapshot. */
 export interface WebDom extends WebPage { truncated: boolean; matches?: number }
@@ -1604,11 +1606,13 @@ export class ComputerSession {
         const change = await this.observationChange(entry, observed, signal).catch((error: unknown) => `the window state could not be read (${error instanceof Error ? error.message : error})`);
         if (change) { entry.observation = undefined; return this.result("refused", `Observation expired: ${change}. Read the window again; no input was dispatched.`); }
       }
-      const { window_ref: _ref, observation_id: _id, delivery_mode, ...command } = action;
+      const { window_ref: _ref, observation_id: _id, delivery_mode, uia_only, ...command } = action;
       const batch = command.action === "sequence";
       let commands: InputStep[];
       try {
         if (delivery_mode !== undefined && !["background", "foreground"].includes(delivery_mode)) throw new Error("Unsupported delivery mode.");
+        if (uia_only !== undefined && (uia_only !== true || delivery_mode === "foreground" || batch || !["click", "scroll"].includes(String(command.action))))
+          throw new Error("uia_only takes one background click or scroll on an element.");
         if (batch) {
           if (Object.keys(command).some(key => !["action", "sequence"].includes(key)) || !Array.isArray(command.sequence) || command.sequence.length < 1 || command.sequence.length > SEQUENCE_STEPS)
             throw new Error(`A sequence needs 1..${SEQUENCE_STEPS} steps and no conflicting top-level action fields.`);
@@ -1682,7 +1686,7 @@ export class ComputerSession {
           if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
           // The native capture is single-use: the first step that binds to it spends it, later pixel steps use the window's current mapping.
-          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", capture, this.driver.captureBoundDrag);
+          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", capture, this.driver.captureBoundDrag, uia_only);
           if (args.capture_id !== undefined) capture = undefined;
           // AX bounds are native. Only native click receipts establish an exact pixel action mark.
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };

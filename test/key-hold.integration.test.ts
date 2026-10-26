@@ -14,7 +14,7 @@ test("real Pi holds keys for a bounded time and preserves release uncertainty", 
   }));
   const code = `${SCRIPT_HELPERS}
 const opened = await openApp("Notepad");
-const press = command => tools.computer_press({window:opened.window,foreground:true,hold_ms:500,...command});
+const press = command => tools.computer_press({window:opened.window,hold_ms:500,...command});
 const complete = await press({key:"shift+w"});
 if(complete.outcome !== "delivered" || !complete.text.includes("keys_released=true")) throw Error("Complete hold receipt lost: " + complete.text);
 const partial = await press({key:"escape"});

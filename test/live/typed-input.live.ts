@@ -50,10 +50,11 @@ test("one action vocabulary drives a native window by locator, ref and point", a
     expect(await holds(window, [{ target: field, value: "hello" }])).toBe("satisfied");
     expect((await act(window, typePlan({ window, target: field, text: "world", replace: true, submit: true }))).result.details.status).toBe("delivered");
     expect(await holds(window, [{ target: field, value: "world" }])).toBe("satisfied");
-    expect((await act(window, pressPlan({ window, key: "ctrl+a" }))).result.details.status).toBe("delivered");
-    expect((await act(window, pressPlan({ window, key: "Backspace" }))).result.details.status).toBe("delivered");
+    // Keys are real key presses, so the app behaves as for a person: a WinForms TextBox ignores ctrl+a. End clears the
+    // selection replace left, and shift+Home selects the text again only if the chord arrives as a chord: a bare Home
+    // would leave the caret at the start and Backspace would delete nothing.
+    for (const key of ["End", "shift+Home", "Backspace"]) expect((await act(window, pressPlan({ window, key }))).result.details.status).toBe("delivered");
     // An empty field's value falls back to its name in conditions, so its aria line shows the emptiness: no ": value".
-    // A chord must reach the app as a chord: a bare "a" would leave "worlda" behind instead of an empty field.
     const field_line = /textbox "Field".*$/m.exec(presentComputerResult(await live.read(window, ["aria"])))![0];
     expect(field_line).toMatch(/^textbox "Field" \[ref=[0-9a-z]+:[a-z]+\]$/);
     expect((await act(window, selectPlan({ window, target: "getByRole('list', { name: 'Pick' })", values: ["beta"] }))).result.details.status).toBe("delivered");
@@ -67,6 +68,29 @@ test("one action vocabulary drives a native window by locator, ref and point", a
     expect(timeline.result.details.status, timeline.body).toBe("delivered");
     expect(await holds(window, [{ target: "getByRole('button', { name: /^Count [45]$/ })", is: "exists" }])).toBe("satisfied");
   } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
+});
+
+// LPT-942: what the agent sees structurally is pressed structurally; without a pattern the same call uses the real pointer.
+test("a ref is pressed through UI Automation without taking the foreground, and a ref without a pattern gets the real pointer", async () => {
+  const title = `pi-route-${Date.now()}`;
+  const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title), title);
+  try {
+    const foreground = async () => ((await live.read(window, ["state"])).details.state?.state as { foreground_at_target: boolean }).foreground_at_target;
+    const refOf = async (pattern: RegExp) => pattern.exec(presentComputerResult(await live.read(window, ["ui"])))![1];
+    const button = await refOf(/^([0-9a-z]+:[a-z]+) \| Button \| Count 0/m);
+    const structural = await act(window, clickPlan({ window, target: button }));
+    expect(structural.result.details.status, structural.body).toBe("delivered");
+    expect(structural.body).not.toContain("real pointer");
+    expect(await holds(window, [{ target: "getByRole('button', { name: 'Count 1' })", is: "exists" }])).toBe("satisfied");
+    // UI Automation pressed the button in the background: the window never came to the front.
+    expect(await foreground()).toBe(false);
+    const field = await refOf(/^([0-9a-z]+:[a-z]+) \| Edit \| Field/m);
+    const real = await act(window, clickPlan({ window, target: field }));
+    expect(real.result.details.status, real.body).not.toBe("refused");
+    expect(real.body).toContain("No UI Automation pattern of the target carried this click, so this call used the real pointer.");
+  } finally {
+    await deleteComputer(live.resources, `${window}?force=true`, { path: `${window}?force=true` }, live.cwd);
+  }
 });
 
 test("points of a native canvas draw strokes that the receipt shows as changed pixels", async () => {

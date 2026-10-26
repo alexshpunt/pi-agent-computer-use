@@ -2,16 +2,16 @@ import { expect, test, vi } from "vitest";
 import sharp from "sharp";
 import { computerSource } from "../src/computer-address.ts";
 import { ComputerResources, requireComputerAddress } from "../src/computer-resources.ts";
-import { clickPlan, typePlan } from "../src/computer-tools.ts";
+import { clickPlan, pressPlan, scrollPlan, typePlan } from "../src/computer-tools.ts";
 import { ComputerSession, type ComputerMode, type Content, type Driver, type DriverResult } from "../src/session.ts";
 
 const cwd = "/synthetic-computer-fixture";
 const address = requireComputerAddress;
-const inputNames = new Set(["type_text", "click", "press_key", "hotkey", "scroll", "drag", "semantic_action"]);
+const inputNames = new Set(["type_text", "click", "press_key", "hotkey", "scroll", "scroll_at", "drag", "semantic_action"]);
 
 async function fixture() {
   let mode: ComputerMode = "yolo", lifetime: string | undefined = "native-life", serial = 0;
-  let outcome: DriverResult = { content: [], structuredContent: { effect: "confirmed" } };
+  let outcome: DriverResult | ((name: string, args: Record<string, unknown>) => DriverResult) = { content: [], structuredContent: { effect: "confirmed" } };
   let afterInput: (() => void) | undefined;
   let liveBounds = { x: 80, y: 90, width: 500, height: 320 };
   const raw = await sharp({ create: { width: 500, height: 320, channels: 3, background: "#eef4ff" } }).png().toBuffer();
@@ -33,7 +33,7 @@ async function fixture() {
       } };
       if (name === "get_window_control_state") return { content: [], structuredContent: { state: { bounds: liveBounds, minimized: false, visible: true } } };
       if (name === "zoom") return { content: [jpeg], structuredContent: { width: 40, height: 20, x_offset: 80, y_offset: 60 } };
-      if (inputNames.has(name)) { afterInput?.(); return outcome; }
+      if (inputNames.has(name)) { afterInput?.(); return typeof outcome === "function" ? outcome(name, args) : outcome; }
       throw Error(`Unexpected native call ${name}: ${JSON.stringify(args)}`);
     }),
   };
@@ -53,7 +53,7 @@ async function fixture() {
   };
   return { session, resources, driver, window, native, inputs, captures, read,
     setMode(value: ComputerMode) { mode = value; }, setLifetime(value: string | undefined) { lifetime = value; },
-    setOutcome(value: DriverResult) { outcome = value; }, afterInput(value: () => void) { afterInput = value; },
+    setOutcome(value: typeof outcome) { outcome = value; }, afterInput(value: () => void) { afterInput = value; },
     setBounds(value: typeof liveBounds) { liveBounds = value; } };
 }
 
@@ -258,14 +258,47 @@ test.each(["native-partial", "in-flight-cancel"] as const)("%s preserves the att
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
-test("foreground delivery does not block semantic actions", async () => {
+test("computer_type replace on a ref sets the value through UI Automation, without a delivery mode", async () => {
   const f = await fixture();
   (f.driver as Driver & { semanticActions: boolean }).semanticActions = true;
   const view = await f.read();
-  await f.resources.input(f.window, cwd, typePlan({ window: f.window.source, target: view.hint!, text: "13", replace: true, foreground: true }));
+  await f.resources.input(f.window, cwd, typePlan({ window: f.window.source, target: view.hint!, text: "13", replace: true }));
   expect(f.inputs().map(([name]) => name)).toEqual(["semantic_action"]);
   expect(f.inputs()[0][1]).toMatchObject({ operation: "set_value", value: "13" });
   expect(f.inputs()[0][1]).not.toHaveProperty("delivery_mode");
+});
+
+// LPT-942: what the agent sees structurally is pressed structurally; points and keys are real input.
+test("a click on a ref goes through UI Automation only, and no pattern means the real pointer", async () => {
+  const f = await fixture();
+  let view = await f.read();
+  const structural = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint! }));
+  expect(structural.details.status).toBe("delivered");
+  expect(f.inputs()).toEqual([["click", { target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "background", element_token: expect.any(String), uia_only: true }, undefined]]);
+  // The driver finds no pattern: it refuses before sending anything, and the click goes again with the real pointer.
+  f.setOutcome((_name, args) => args.uia_only ? { isError: true, content: [{ type: "text", text: "no UIA pattern" }],
+    structuredContent: { code: "background_unavailable", effect: "refused", escalation: { recommended: "foreground" } } } : { content: [], structuredContent: { effect: "confirmed" } });
+  view = await f.read();
+  const real = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint! }));
+  expect(real.details.status).toBe("delivered");
+  expect(real.content[0]).toEqual({ type: "text", text: "No UI Automation pattern of the target carried this click, so this call used the real pointer." });
+  const [refused, sent] = f.inputs().slice(1);
+  expect(refused[1]).toMatchObject({ uia_only: true, delivery_mode: "background" });
+  expect(sent[0]).toBe("click");
+  expect(sent[1]).toMatchObject({ delivery_mode: "foreground" });
+  expect(sent[1]).not.toHaveProperty("uia_only");
+});
+
+test("points and keys are real input; nothing posts window messages", async () => {
+  const f = await fixture();
+  (f.driver as Driver & { coordinateScroll: boolean }).coordinateScroll = true;
+  await f.read();
+  await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70 }));
+  await f.resources.input(f.window, cwd, pressPlan({ window: f.window.source, key: "ctrl+s" }));
+  await f.resources.input(f.window, cwd, typePlan({ window: f.window.source, text: "hi" }));
+  await f.resources.input(f.window, cwd, scrollPlan({ window: f.window.source, delta_y: 2 }));
+  expect(f.inputs().map(([name, args]) => [name, (args as { delivery_mode?: string }).delivery_mode, "uia_only" in (args as object)])).toEqual([
+    ["click", "foreground", false], ["hotkey", "foreground", false], ["type_text", "foreground", false], ["scroll_at", "foreground", false]]);
 });
 
 test("a display overview accepts a size for that Read only", async () => {

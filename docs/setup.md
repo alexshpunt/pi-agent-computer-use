@@ -30,7 +30,7 @@ Computer use works through `computer:` addresses: the ordinary Pi Agent IDE Read
 
 Opening means a **new window**, not an existing window or new tab. Apps differ: some are single-instance or create several startup windows. If the result is `unknown`, discover what actually appeared before deciding. Never blindly relaunch. A new window is not necessarily an empty document: applications can restore prior state. Read tree and pixels before editing.
 
-Background is the default. Foreground is explicit and only follows an observed background refusal or no-op. `delivered` does not prove the requested task is complete. Check fresh UI value and PNG. `unknown` may include a partial change; never replay without checking.
+A click or scroll on an element goes through UI Automation in the background; points, drags and keys are real input in the foreground. `delivered` does not prove the requested task is complete. Check fresh UI value and PNG. `unknown` may include a partial change; never replay without checking.
 
 Clear or close only task-owned or explicitly authorized documents. Closing `computer:session` releases the runtime; it does not close application windows or save documents.
 

@@ -39,7 +39,7 @@ text("Capture-bound drag refusal and fresh recovery passed");`;
     // Each drag names the latest capture before it; the stale one carries the capture taken before the window grew.
     const latest = (index: number) => calls.slice(0, index).filter(c => c.name === "get_window_state").length;
     const drags = calls.flatMap((c, index) => c.name === "drag" ? [{ args: c.arguments, capture: `capture-${latest(index)}` }] : []);
-    for (const drag of drags) expect(drag.args).toEqual({ target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "background",
+    for (const drag of drags) expect(drag.args).toEqual({ target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "foreground",
       capture_id: drag.capture, from_x: 30, from_y: 40, to_x: 100, to_y: 80, duration_ms: 100 });
     expect(calls.some(c => c.name === "bring_to_front")).toBe(false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
