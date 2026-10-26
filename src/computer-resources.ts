@@ -955,7 +955,8 @@ export class ComputerResources {
     if (!view.ocr) return result;
     const image = result.content.find(block => block.type === "image")!;
     let lines;
-    try { lines = await session.recognizeText(image, undefined, signal); }
+    // The whole image as a region: Windows OCR then reads it enlarged, so small text of a small viewport reads too.
+    try { lines = await session.recognizeText(image, { x: 0, y: 0, ...result.details.viewport!.image }, signal); }
     catch (error) { throw new ComputerRequestError(`Text recognition failed: ${error instanceof Error ? error.message : error}`); }
     return { ...result, details: { ...result.details, text_lines: lines } };
   }
@@ -1086,11 +1087,13 @@ export class ComputerResources {
       const pixels = plan.point !== undefined || plan.end !== undefined || command.unit === "wheel_detents" || action === "timeline";
       if (hint) this.hinted(view, hint);
       else if (!view.native || pixels && view.native.width === undefined || viewport && !view.native.full) {
-        // A viewport maps its points into a full-resolution capture of its window; the image the agent saw stays its latest.
-        if (viewport) this.retireWindow(window, "native");
-        const captured = viewport ? this.remember({ window_ref: window }, await session.observeFull(window, signal))
-          : await this.read({ kind: "window", ref: window, source: computerSource("window", window) }, cwd, ["image"], signal);
-        if (!captured || captured.details.status !== "observed") return captured ?? { content: [{ type: "text", text: "The window could not be captured; nothing was sent." }], details: { status: "refused", mode: this.getMode(), window_ref: window }, isError: true };
+        // A quiet capture: the image the agent saw stays the space of its points. A viewport maps its points into a
+        // full-resolution capture; other points go to a capture the size of the agent's latest image.
+        const seen = view.seen ? Math.max(64, view.seen.width, view.seen.height) : undefined;
+        this.retireWindow(window, "native");
+        const captured = this.remember({ window_ref: window }, await (viewport ? session.observeFull(window, signal)
+          : session.observeQuiet(window, signal, { granularity: "image", ...(seen && seen <= FULL_RESOLUTION ? { maxLongEdge: seen, scale: 1 } : {}) })));
+        if (captured.details.status !== "observed") return captured;
         view = session.inputView(window);
       }
       const native = view.native!;

@@ -141,6 +141,15 @@ describe("viewports of a window", () => {
     expect(f.dots.at(-1)).toEqual({ x: 500, y: 320 });
   });
 
+  test("a capture the agent is not shown keeps the agent's latest image as the space of its points", async () => {
+    const f = await fixture();
+    await f.overview();
+    // A UI-only Read leaves no pixels, so the click captures the window first; that capture is not the agent's image.
+    await f.resources.read(requireComputerAddress(f.window), cwd, ["ui"]);
+    await f.resources.input(requireComputerAddress(f.window), cwd, { label: "click", point: { x: 250, y: 160 }, native: { action: "click" }, web: "" });
+    expect(f.dots).toEqual([{ x: 500, y: 320 }]);
+  });
+
   test("a point outside the viewport's image and space refuse before anything is sent", async () => {
     const f = await fixture();
     await f.overview();

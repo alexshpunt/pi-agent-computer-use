@@ -1030,7 +1030,8 @@ export class ComputerSession {
       const full = [element.label, element.value].filter((item): item is string => typeof item === "string" && item.length > 1024);
       if (full.length && ui.elements[index]) texts.set(ui.elements[index].hint, full.join("\n").slice(0, ELEMENT_TEXT_LIMIT));
     });
-    if (hasImage && typeof state.screenshot_width === "number" && typeof state.screenshot_height === "number") entry.seen = { width: state.screenshot_width, height: state.screenshot_height };
+    // Only an image the agent is shown sets the space of its points; successors and other quiet captures keep it.
+    if (hasImage && !quiet && typeof state.screenshot_width === "number" && typeof state.screenshot_height === "number") entry.seen = { width: state.screenshot_width, height: state.screenshot_height };
     entry.observation = { id, ui, settings, ...(texts.size ? { texts } : {}),
       width: hasImage && typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: hasImage && typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
@@ -1288,8 +1289,7 @@ export class ComputerSession {
 
   /**
    * A full-resolution capture of a window for input in one of its viewports: it becomes the window's current
-   * observation, but the size of the image the agent last saw stays, so points of the window's latest image keep
-   * their meaning. Quiet, like a successor.
+   * observation. Quiet, like a successor, so points of the window's latest image keep their meaning.
    */
   observeFull(ref: string, signal?: AbortSignal, granularity: "image" | "full" = "full"): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -1298,9 +1298,7 @@ export class ComputerSession {
         const entry = await this.current(ref, signal);
         if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window_ref. Discover again.");
         if (!this.allowed(entry)) return this.denied(entry.ref);
-        const seen = entry.seen;
-        try { return await this.capture(entry, signal, undefined, { granularity, maxLongEdge: FULL_RESOLUTION, scale: 1, hints: false }, true); }
-        finally { entry.seen = seen; }
+        return await this.capture(entry, signal, undefined, { granularity, maxLongEdge: FULL_RESOLUTION, scale: 1, hints: false }, true);
       } catch (error) { return this.failed(error, false); }
     });
   }

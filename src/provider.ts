@@ -173,7 +173,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     for (const r of d.visual_regions) lines.push(`${r.kind}${r.text || r.label ? ` "${label(r.text ?? r.label)}"` : ""} | x=${r.x} y=${r.y} w=${r.width} h=${r.height} | center ${Math.round(r.x + r.width / 2)},${Math.round(r.y + r.height / 2)} | confidence ${r.confidence}`);
   }
   if (d.text_lines) {
-    lines.push(`OCR: ${d.text_lines.length} lines; boxes in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`);
+    lines.push(`OCR: ${d.text_lines.length} lines; boxes in ${d.viewport ? "pixels of the viewport's image" : "this observation's overview pixels"}. Recognised text can be wrong; confirm with pixels or UI before acting on it.`);
     for (const line of d.text_lines) lines.push(`"${label(line.text)}" | x=${line.x} y=${line.y} w=${line.width} h=${line.height}`);
   }
   if (d.successor) {
