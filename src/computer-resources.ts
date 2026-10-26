@@ -100,6 +100,8 @@ const SETTLE_MS = 300;
 const STEADY_MS = 1_000;
 /** What an observation shows: a window, or one machine's display (display references are per machine; each has a primary). */
 type ObservationTarget = { window_ref: string; display?: never; machine?: never } | { display: string; machine: string; window_ref?: never };
+/** Whether an observation is a page's DOM snapshot or a native capture of a window or display. */
+const observationKind = (result: ComputerResult) => result.details.dom ? "dom" : "native";
 const sameTarget = (a: ObservationTarget, b: ObservationTarget) => a.window_ref === b.window_ref && a.display === b.display && a.machine === b.machine;
 /** Where a request runs: the session that issued its reference, with that session's machine and sandbox. */
 interface Owner { session: ComputerSession; machine: string; sandbox?: string }
@@ -550,16 +552,18 @@ export class ComputerResources {
     if (!entry) throw new ComputerRequestError("Observation reference expired. Read a new window/display overview.");
     return entry;
   }
-  private retireWindow(ref: string): void {
+  /** Forget a window's observations: all of them, or only its DOM snapshots or only its native captures, which a Read of the other kind keeps. */
+  private retireWindow(ref: string, kind?: "dom" | "native"): void {
     for (const [id, entry] of this.windowStates) if (entry.window_ref === ref) this.windowStates.delete(id);
-    for (const [id, entry] of this.snapshots) if (entry.target.window_ref === ref) this.snapshots.delete(id);
+    for (const [id, entry] of this.snapshots) if (entry.target.window_ref === ref && (!kind || observationKind(entry.result) === kind)) this.snapshots.delete(id);
   }
   private remember(target: ObservationTarget, result: ComputerResult): ComputerResult {
     const id = result.details.observation_id ?? result.details.agent_image?.image_id;
     // A delivered DOM action carries the page's next snapshot, which becomes the current observation.
     const observed = result.details.status === "observed" || result.details.status === "delivered" && result.details.dom !== undefined;
     if (!observed || typeof id !== "string") return result;
-    for (const [old, entry] of this.snapshots) if (sameTarget(entry.target, target)) this.snapshots.delete(old);
+    // A window keeps one DOM snapshot and one native capture: a new one replaces only the earlier one of its kind.
+    for (const [old, entry] of this.snapshots) if (sameTarget(entry.target, target) && observationKind(entry.result) === observationKind(result)) this.snapshots.delete(old);
     this.snapshots.set(id, { target, result });
     if (target.window_ref !== undefined && result.details.ui) {
       this.lastUi.delete(target.window_ref);
@@ -733,8 +737,8 @@ export class ComputerResources {
     }
     if (view.kind === "frames") throw new ComputerRequestError("Frame selection needs a sequence address.");
     if (address.kind === "window") {
-      // Fresh window Read retires both provider handles before any native acquisition.
-      this.retireWindow(address.ref);
+      // A fresh window Read retires the earlier observation of its kind; a DOM snapshot and a native capture coexist.
+      this.retireWindow(address.ref, view.kind === "dom" ? "dom" : view.kind === "state" ? undefined : "native");
       if (view.kind === "state") {
         const result = await session.observeWindowState(address.ref, signal);
         if (result.details.status === "observed" && result.details.window_state_id) {
@@ -766,7 +770,7 @@ export class ComputerResources {
         return session.webImage(ref, address.ref, view.operation, { ref: view.hint }, signal);
       }
       if (view.kind === "dom" && Object.keys(view.options).length) {
-        this.retireWindow(ref);
+        this.retireWindow(ref, "dom");
         return this.remember({ window_ref: ref }, await session.observeDom(ref, view.options, signal));
       }
       if (view.kind === "overview" && view.capture.granularity === "image" && Object.keys(view.capture).length === 1)

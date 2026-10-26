@@ -975,7 +975,8 @@ export class ComputerSession {
   }
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}, quiet = false): Promise<ComputerResult> {
     validateUiCapture(options);
-    entry.dom = undefined; entry.windowState = undefined;
+    // A native capture keeps the page's DOM snapshot: reading changes nothing, so both stay current until input.
+    entry.windowState = undefined;
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
@@ -1111,7 +1112,8 @@ export class ComputerSession {
     return this.queue(async () => {
       const entry = await this.webEntry(ref, signal);
       if (!("ref" in entry)) return entry;
-      entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      // A DOM snapshot keeps the window's native capture: reading changes nothing, so both stay current until input.
+      entry.dom = undefined; entry.windowState = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("snapshot", options, signal));
         return this.result("observed", "Fresh Playwright aria snapshot. Use [ref=...] values as target.ref while this stays the latest snapshot of the window.",
@@ -1704,7 +1706,8 @@ export class ComputerSession {
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
-          entry.observation = undefined; entry.detail = undefined;
+          // Input may change the page, so the window's DOM snapshot retires with its native capture.
+          entry.observation = undefined; entry.detail = undefined; entry.dom = undefined;
           const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
           if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
           const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),

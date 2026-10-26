@@ -66,6 +66,27 @@ test("one action vocabulary drives a native window by locator, ref and point", a
   } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
 });
 
+test("points of a native canvas draw strokes that the receipt shows as changed pixels", async () => {
+  const opened = await live.insert(live.machine, { action: "open", app: "Paint" });
+  expect(opened.details.status, JSON.stringify(opened.content)).toBe("observed");
+  const window = `computer:window/${opened.details.window_ref}`;
+  try {
+    const image = await live.read(window, ["image"]);
+    const size = image.details.state as { screenshot_width: number; screenshot_height: number };
+    const middle = { x: Math.round(size.screenshot_width / 2), y: Math.round(size.screenshot_height * 0.6) };
+    const stroke = await act(window, dragPlan({ window, from: { x: middle.x - 120, y: middle.y }, to: { x: middle.x + 120, y: middle.y + 40 }, via: [{ x: middle.x, y: middle.y - 60 }] }));
+    expect(stroke.result.details.status, stroke.body).toBe("delivered");
+    expect(stroke.body).toMatch(/Pixels changed in \d+ area/);
+    const line = await act(window, timelinePlan({ window, events: [{ at_ms: 0, type: "move", x: middle.x - 100, y: middle.y + 80 }, { at_ms: 20, type: "button_down" },
+      { at_ms: 60, type: "move", x: middle.x, y: middle.y + 100 }, { at_ms: 100, type: "move", x: middle.x + 100, y: middle.y + 80 }, { at_ms: 140, type: "button_up" }] }));
+    expect(line.result.details.status, line.body).toBe("delivered");
+    expect(line.body).toMatch(/Pixels changed in \d+ area/);
+  } finally {
+    // Paint asks about the unsaved drawing, so the window the session opened is ended without saving.
+    await deleteComputer(live.resources, `${window}?force=true`, { path: `${window}?force=true` }, live.cwd);
+  }
+});
+
 test("points of a browser page take clicks, wheel, drags, held keys and a pressure pen through Playwright", async () => {
   const opened = await live.insert(live.machine, { action: "open_browser", url: `${fixture.base}/input` });
   expect(opened.details.status, JSON.stringify(opened.content)).toBe("observed");
@@ -100,8 +121,14 @@ test("the same vocabulary drives a browser page through Playwright by locator an
   const window = `computer:window/${opened.details.window_ref}`;
   try {
     expect((await act(window, typePlan({ window, target: "getByLabel('Name')", text: "Ada" }))).result.details.status).toBe("delivered");
+    // A native Read and a DOM Read of one window keep each other: the browser's own Reload button stays a usable ref.
+    const reload = /button "Reload" \[ref=([0-9a-z]+:[a-z]+)\]/.exec(presentComputerResult(await live.read(window, ["aria"])))![1];
+    expect((await live.read(window, ["dom"])).details.status).toBe("observed");
+    const reloaded = await act(window, clickPlan({ window, target: reload }));
+    expect(reloaded.result.details.status, reloaded.body).toBe("delivered");
+    expect((await act(window, typePlan({ window, target: "getByLabel('Name')", text: "Ada", replace: true }))).result.details.status).toBe("delivered");
     const dom = presentComputerResult(await live.read(window, ["dom"]));
-    const save = /button "Save" \[ref=(e\d+)\]/.exec(dom)![1];
+    const save = /button "Save" \[ref=((?:f\d+)?e\d+)\]/.exec(dom)![1];
     const clicked = await act(window, clickPlan({ window, target: save }));
     expect(clicked.result.details.status, clicked.body).toBe("delivered");
     expect(await holds(window, [{ target: { text: "saved Ada" }, is: "visible" }])).toBe("satisfied");
