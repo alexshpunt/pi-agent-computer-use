@@ -22,6 +22,12 @@ const pages = {
 <p role="status" id="out">idle</p>
 <iframe title="Inner frame" src="/frame" width="300" height="90"></iframe>
 <script>function out(text) { document.querySelector('#out').textContent = text; }</script>`),
+  // Change list witness: a grid of tiles that tick when clicked, a large banner elsewhere and a link to another page.
+  "/checks": page("Checks", `<h1>Checks</h1>
+<div style="display:grid;grid-template-columns:repeat(4,60px);gap:8px;margin:20px">${Array.from({ length: 8 }, (_, i) => `<label style="display:block;width:60px;height:60px;background:#dde"><input type="checkbox" aria-label="Tile ${i + 1}" style="width:20px;height:20px;margin:20px"></label>`).join("")}</div>
+<p id="banner" style="width:600px;height:120px;background:#fff">quiet</p>
+<a href="/">Leave</a>
+<script>document.addEventListener('change', () => { const b = document.querySelector('#banner'); b.style.background = '#fc6'; b.textContent = 'ticked'; });</script>`),
   // Native input witness: every key, button, wheel, pen and pointer-lock movement is journaled with its details.
   "/input": page("Input log", `<h1>Input log</h1>
 <div id="pad" style="position:fixed;inset:80px 0 0 0;background:#eef;touch-action:none"></div>

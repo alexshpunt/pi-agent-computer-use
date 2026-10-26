@@ -589,7 +589,7 @@ async function check({ conditions }: { conditions: UiCondition[] }): Promise<Con
     }
   }));
 }
-async function screenshot({ target, highlight }: { target?: WebTarget; highlight?: boolean }) {
+async function screenshot({ target, highlight, css }: { target?: WebTarget; highlight?: boolean; css?: boolean }) {
   const tab = current(), page = idle(tab);
   let box;
   let png: Buffer;
@@ -600,7 +600,8 @@ async function screenshot({ target, highlight }: { target?: WebTarget; highlight
     box = await element.boundingBox({ timeout: 10_000 });
     if (!box) throw new Error("The element is not visible, so it cannot be highlighted.");
     png = await page.screenshot({ timeout: 10_000, mask: [element], maskColor: "rgba(255, 0, 96, 0.35)" });
-  } else png = await page.screenshot({ timeout: 10_000 });
+  // In CSS pixels a page point of an action is a pixel of the screenshot, so a pixel change list can find it.
+  } else png = await page.screenshot({ timeout: 10_000, ...(css ? { scale: "css" as const } : {}) });
   return { url: page.url(), title: tab.title, png: png.toString("base64"), ...(box ? { box } : {}) };
 }
 

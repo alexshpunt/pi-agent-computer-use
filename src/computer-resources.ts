@@ -12,9 +12,9 @@ import type { ComputerSession, ComputerResult, ComputerMode, Action } from "./se
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { compareCaptures, diffDom, diffIsEmpty, diffUi, type Capture, type StateDiff } from "./successor.ts";
-import { changeCrops, decodeFrame } from "./pixel-diff.ts";
+import { changeCrops, changeOverview, decodeFrame, diffFrames, MOST_CHANGED, type DiffContext } from "./pixel-diff.ts";
 import type { WindowFrame } from "./session.ts";
-import type { UiCaptureOptions, UiElement, UiResource } from "./ui-resources.ts";
+import { webContentTop, type UiCaptureOptions, type UiElement, type UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
 import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, type ParsedSelector } from "./native-locator.ts";
@@ -28,14 +28,49 @@ export function machineGuide(source: string): string[] {
 }
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
-/** A before and an after PNG crop of each of a diff's largest changed areas; records the cropped regions on the diff. */
-async function cropImages(before: WindowFrame, after: WindowFrame, diff: StateDiff): Promise<ComputerResult["content"]> {
-  if (!diff.pixels?.box) return [];
-  const cropped = await changeCrops(before.png, after.png, diff.pixels).catch(() => []);
-  if (!cropped.length) return [];
-  diff.pixels.crops = cropped.map(item => item.region);
-  return cropped.flatMap(item => [{ type: "image" as const, data: item.before.toString("base64"), mimeType: "image/png" },
-    { type: "image" as const, data: item.after.toString("base64"), mimeType: "image/png" }]);
+/**
+ * The images that show a diff's pixel change, recorded on the diff: when most of the window changed, the whole window
+ * after the action; otherwise an overview of the window with the listed areas outlined and numbered, then a before and
+ * an after crop of each of the first areas.
+ */
+async function cropImages(before: Buffer, after: Buffer, diff: StateDiff): Promise<ComputerResult["content"]> {
+  const pixels = diff.pixels;
+  if (!pixels?.box || pixels.size_changed) return [];
+  const image = (png: Buffer) => ({ type: "image" as const, data: png.toString("base64"), mimeType: "image/png" });
+  // A navigation replaces the page even when the old and new pages look alike, so it gets the whole page too.
+  if (pixels.share >= MOST_CHANGED || diff.page?.url) {
+    pixels.full = true;
+    if (diff.page?.url) pixels.navigated = true;
+    return [image(after)];
+  }
+  const [overview, cropped] = await Promise.all([changeOverview(after, pixels).catch(() => undefined), changeCrops(before, after, pixels).catch(() => [])]);
+  if (overview) pixels.overview = true;
+  pixels.crops = cropped.map(item => ({ ...item.region, scale: item.scale }));
+  return [...(overview ? [image(overview)] : []), ...cropped.flatMap(item => [image(item.before), image(item.after)])];
+}
+/** Web content up to this far above its topmost element still counts as page, for the page's own margin. */
+const PAGE_MARGIN = 12;
+/**
+ * What a pixel comparison of a window knows about the action: its input point in the input observation's pixels,
+ * and in a browser window where its web page starts, so changes wholly above it count as browser chrome. A window
+ * whose web content starts in its upper half is treated as a browser; an app with a web view lower down is not.
+ */
+function diffContext(ui: UiResource | undefined, image: { width: number; height: number } | undefined, focus: InputPoint | undefined): DiffContext {
+  const top = webContentTop(ui);
+  const start = top === undefined ? undefined : Math.max(0, top - PAGE_MARGIN);
+  const page = image && start !== undefined && start > 0 && start < image.height / 2 ? { x: 0, y: start, width: image.width, height: image.height - start } : undefined;
+  return { ...(focus ? { focus } : {}), ...(page ? { page } : {}) };
+}
+/**
+ * Where an input command lands in its observation's pixels: the end of a drag, the last pointed event of a timeline,
+ * its point, or the centre of its ref. Undefined for input without a place, such as keys to the focused element.
+ */
+function inputFocus(command: Record<string, unknown>, ui: UiResource | undefined, hint: string | undefined): InputPoint | undefined {
+  const point = (x: unknown, y: unknown) => typeof x === "number" && typeof y === "number" ? { x, y } : undefined;
+  const events = Array.isArray(command.events) ? (command.events as { x?: unknown; y?: unknown }[]).filter(event => point(event.x, event.y)) : [];
+  const box = hint ? ui?.elements.find(element => element.hint === hint)?.bounds.window_image : undefined;
+  return point(command.to_x, command.to_y) ?? (events.length ? point(events.at(-1)!.x, events.at(-1)!.y) : undefined) ?? point(command.x, command.y)
+    ?? (box ? { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) } : undefined);
 }
 function commandObject(value: string): Record<string, unknown> {
   try { return object(JSON.parse(value)); }
@@ -82,6 +117,10 @@ const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "do
  * `frame` holds the window's pixels before the action, when the input observation had them.
  */
 interface FollowUp { successor: boolean; explicit: boolean; frame?: WindowFrame;
+  /** Where the input landed, in the input observation's pixels; the pixel change list puts areas near it first. */
+  focus?: InputPoint;
+  /** A Playwright screenshot of the page before a page action, in CSS pixels, for its pixel change list. */
+  page?: Buffer;
   /** The window's session, resolved before the action: a failed action can make the session forget the window. */
   session?: ComputerSession }
 /** How long a native successor keeps looking for a change before reporting that nothing changed. */
@@ -618,13 +657,14 @@ export class ComputerResources {
     if (view.changes && result.details.status === "observed") {
       const captured = session.windowFrame(windowRef!);
       const latest = frame && captured?.observation_id === result.details.observation_id ? captured : undefined;
-      const diff = compareCaptures({ ui: baseline?.ui, frame: latest ? await decodeFrame(frame!.png) : undefined },
-        { ui: result.details.ui, frame: latest ? await decodeFrame(latest.png) : undefined });
+      const earlier = latest ? await decodeFrame(frame!.png) : undefined;
+      const diff = compareCaptures({ ui: baseline?.ui, frame: earlier }, { ui: result.details.ui, frame: latest ? await decodeFrame(latest.png) : undefined },
+        diffContext(result.details.ui, earlier, undefined));
       if (!diff) return { ...result, details: { ...result.details, changes: { reason: "No earlier observation of this window in this session to compare with, so this is the full observation." } } };
       const since = baseline?.observation_id ?? frame!.observation_id;
       if (diff.pixels && frame!.observation_id !== since) diff.pixels.since = frame!.observation_id;
       // The change list replaces the full overview: only crops of the changed area are shown.
-      const crops = latest ? await cropImages(frame!, latest, diff) : [];
+      const crops = latest ? await cropImages(frame!.png, latest.png, diff) : [];
       return { ...result, content: [...result.content.filter(block => block.type !== "image"), ...crops], details: { ...result.details, changes: { since, diff } } };
     }
     if (view.kind === "state" && result.details.status === "observed") {
@@ -1070,7 +1110,13 @@ export class ComputerResources {
       this.snapshots.delete(address.ref);
       return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), commandObject(value), cwd, signal, { successor: true, explicit: false });
     }
-    const follow = window ? await this.withFrame({ successor: true, explicit: false }, window, address.ref, cwd) : undefined;
+    const focus = inputFocus(commandObject(value), snapshot.result.details.ui, address.hint);
+    let follow = window ? await this.withFrame({ successor: true, explicit: false, ...(focus ? { focus } : {}) }, window, address.ref, cwd) : undefined;
+    // A page action compares Playwright screenshots of the page, taken before and after it.
+    if (follow && window && snapshot.result.details.dom) {
+      const page = await this.pageShot(follow.session!, window, address.ref, signal);
+      if (page) follow = { ...follow, page };
+    }
     const result = await this.act(address, snapshot, value, cwd, signal);
     if (!follow || !window) return result;
     return this.followUp(window, snapshot, result, follow, cwd, signal);
@@ -1110,6 +1156,13 @@ export class ComputerResources {
     return result;
   }
 
+  /** A Playwright screenshot of a browser window's page in CSS pixels, or undefined when it cannot be taken. */
+  private async pageShot(session: ComputerSession, window: string, observation: string, signal?: AbortSignal): Promise<Buffer | undefined> {
+    const shot = await session.webImage(window, observation, "page", undefined, signal, true).catch(() => undefined);
+    const image = shot?.details.status === "observed" ? shot.content.find(block => block.type === "image") : undefined;
+    return image?.type === "image" ? Buffer.from(image.data, "base64") : undefined;
+  }
+
   /** Keep the input observation's own pixels as the baseline of the pixel comparison; they must be taken before the action. */
   private async withFrame(follow: FollowUp, window: string, observation: string | undefined, cwd: string): Promise<FollowUp> {
     if (!follow.successor) return follow;
@@ -1131,11 +1184,19 @@ export class ComputerResources {
     let successor: ComputerResult | undefined, settled: StateDiff | undefined, crops: ComputerResult["content"] = [];
     if (status !== "refused") {
       if (result.details.dom) successor = result;
-      else ({ successor, diff: settled, crops } = await this.settle(window, session, before, follow.frame, signal));
+      else ({ successor, diff: settled, crops } = await this.settle(window, session, before, follow.frame, signal, follow.focus));
     }
     const after = successor?.details;
     const diff = before.result.details.dom && after?.dom ? diffDom(before.result.details.dom, after.dom)
       : settled ?? (before.result.details.ui && after?.ui ? diffUi(before.result.details.ui, after.ui) : undefined);
+    if (diff && follow.page && after?.dom && after.observation_id) {
+      const shot = await this.pageShot(session, window, after.observation_id, signal);
+      if (shot) {
+        const [a, b] = await Promise.all([decodeFrame(follow.page), decodeFrame(shot)]);
+        diff.pixels = { ...diffFrames(a, b, follow.focus ? { focus: follow.focus } : {}), space: "page" };
+        crops = await cropImages(follow.page, shot, diff);
+      }
+    }
     // The successor replaces the action's own observation as the current one; a wait retired the earlier snapshot.
     const details = { ...result.details, ...(after?.observation_id ? { observation_id: after.observation_id, ...(after.dom ? { dom: after.dom } : {}) } : {}),
       successor: after?.observation_id ? { observation_id: after.observation_id, ...(diff ? { diff } : { reason: "The input observation had no comparable UI or DOM." }) }
@@ -1149,11 +1210,12 @@ export class ComputerResources {
    * to STEADY_MS, so the change list shows the settled window rather than a frame in the middle of a repaint.
    * Captures keep the input observation's overview size so their pixels compare with it.
    */
-  private async settle(window: string, session: ComputerSession, before: Snapshot, frame: WindowFrame | undefined, signal?: AbortSignal):
+  private async settle(window: string, session: ComputerSession, before: Snapshot, frame: WindowFrame | undefined, signal?: AbortSignal, focus?: InputPoint):
     Promise<{ successor: ComputerResult; diff?: StateDiff; crops: ComputerResult["content"] }> {
     const started = performance.now();
     let options: UiCaptureOptions = { granularity: "full", ...(frame ? frame.size : {}) };
     const baseline: Capture = { ui: before.result.details.ui, frame: frame ? await decodeFrame(frame.png) : undefined };
+    const context = diffContext(before.result.details.ui, baseline.frame, focus);
     let successor: ComputerResult, diff: StateDiff | undefined, previous: Capture | undefined, latest: WindowFrame | undefined;
     for (let attempt = 0; ; attempt++) {
       this.retireWindow(window);
@@ -1167,7 +1229,7 @@ export class ComputerResources {
       const captured = session.windowFrame(window);
       latest = captured?.observation_id === successor.details.observation_id ? captured : undefined;
       const current: Capture = { ui: successor.details.ui, frame: latest ? await decodeFrame(latest.png) : undefined };
-      diff = compareCaptures(baseline, current);
+      diff = compareCaptures(baseline, current, context);
       if (!diff) break;
       diff.waited_ms = waited;
       if (diffIsEmpty(diff)) {
@@ -1181,7 +1243,7 @@ export class ComputerResources {
       if (waited >= STEADY_MS) { diff.unsettled = true; break; }
       previous = current;
     }
-    return { successor, diff, crops: diff && frame && latest ? await cropImages(frame, latest, diff) : [] };
+    return { successor, diff, crops: diff && frame && latest ? await cropImages(frame.png, latest.png, diff) : [] };
   }
 
   /**
@@ -1252,7 +1314,9 @@ export class ComputerResources {
       window_ref: window, observation_id: observation.details.observation_id };
     // The walk that resolved the target is the state before the action: the change list compares with it.
     const before: Snapshot = { target: { window_ref: window }, result: observation };
-    if (follow) follow = await this.withFrame(follow, window, observation.details.observation_id, cwd);
+    const box = element.bounds.window_image;
+    if (follow) follow = await this.withFrame({ ...follow, ...(box ? { focus: { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) } } : {}) },
+      window, observation.details.observation_id, cwd);
     const finish = (result: ComputerResult) => follow ? this.followUp(window, before, result, follow, cwd, signal) : Promise.resolve(result);
     this.snapshots.delete(observation.details.observation_id!);
     const result = await session.act(nativeCommand as Action, signal);

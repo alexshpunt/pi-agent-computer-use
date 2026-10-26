@@ -35,10 +35,12 @@ test("a Paint stroke reports a box around it with crops, and a click on empty sp
   expect(area.y + area.height).toBeGreaterThanOrEqual(to.y);
   expect(area.width).toBeLessThan(260);
   expect(pixels.share).toBeLessThan(0.05);
-  expect(strokeText).toMatch(/Pixels changed in \d+ areas? .*\n  x=\d+ y=\d+ w=\d+ h=\d+; images 1 and 2 show .* before and after/);
-  const crops = stroke.content.filter(block => block.type === "image") as { data: string }[];
+  // LPT-928: image 1 outlines the numbered areas on the window; the stroke ends at the input point, so it is area 1.
+  expect(strokeText).toMatch(/Pixels changed in \d+ areas? .*image 1 outlines and numbers them on the window:\n  1\. x=\d+ y=\d+ w=\d+ h=\d+ \(at the input point\); images 2 and 3 show .* before and after/);
+  const [overview, ...crops] = stroke.content.filter(block => block.type === "image") as { data: string }[];
   expect(crops.length).toBe(2 * pixels.crops!.length);
   await mkdir(".tmp/lpt915", { recursive: true });
+  await writeFile(".tmp/lpt915/stroke-overview.png", Buffer.from(overview.data, "base64"));
   await Promise.all(crops.map((crop, i) => writeFile(`.tmp/lpt915/stroke-${Math.floor(i / 2) + 1}-${i % 2 ? "after" : "before"}.png`, Buffer.from(crop.data, "base64"))));
 
   // The strip between the ribbon and the canvas does nothing when clicked. Background delivery leaves the real

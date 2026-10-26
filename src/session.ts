@@ -1142,14 +1142,14 @@ export class ComputerSession {
   }
 
   /** Playwright screenshot of the page viewport, one element, or the viewport with that element highlighted. */
-  webImage(ref: string, id: string, kind: "page" | "crop" | "highlight", target?: WebTarget, signal?: AbortSignal): Promise<ComputerResult> {
+  webImage(ref: string, id: string, kind: "page" | "crop" | "highlight", target?: WebTarget, signal?: AbortSignal, css = false): Promise<ComputerResult> {
     return this.queue(async () => {
       const entry = await this.webEntry(ref, signal);
       if (!("ref" in entry)) return entry;
       if (entry.dom?.id !== id) return this.result("refused", "This DOM observation is no longer current. Read the window with dom again.", undefined, this.addressed(entry));
       try {
         const shot = await entry.web!.request<{ url: string; title: string; png: string; box?: unknown }>("screenshot",
-          { ...(target ? { target } : {}), highlight: kind === "highlight" }, signal);
+          { ...(target ? { target } : {}), highlight: kind === "highlight", ...(css ? { css } : {}) }, signal);
         const bytes = Buffer.from(shot.png, "base64");
         if (bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error("Playwright did not return a PNG.");
         return this.result("observed", `Playwright ${kind === "page" ? "page viewport" : kind === "crop" ? "element" : "highlighted viewport"} screenshot. These are page pixels, not native window coordinates; they grant no input.`,

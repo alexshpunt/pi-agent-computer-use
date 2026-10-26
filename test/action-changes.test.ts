@@ -63,9 +63,11 @@ const images = (result: ComputerResult) => result.content.filter((block): block 
 test("an action on an observation with pixels reports the changed area with before and after crops", async () => {
   const f = await fixture(), { at } = await f.read(["full"]);
   const result = await f.resources.perform(at(0), cwd, JSON.stringify({ action: "click" }));
-  expect(result.details.successor?.diff?.pixels).toMatchObject({ box: { x: 20, y: 40, width: 10, height: 10 }, regions: 1, crops: [{ x: 8, y: 28, width: 34, height: 34 }] });
-  expect(presentComputerResult(result)).toMatch(/~ \d+:a Button "Count 0" → "Count 1"\nPixels changed in 1 area \(overview pixels; 0\.06% of the window\):\n  x=20 y=40 w=10 h=10; images 1 and 2 show x=8 y=28 w=34 h=34 before and after\n/);
-  const [before, after] = images(result);
+  expect(result.details.successor?.diff?.pixels).toMatchObject({ box: { x: 20, y: 40, width: 10, height: 10 }, regions: 1, overview: true, crops: [{ x: 8, y: 28, width: 34, height: 34, scale: 4 }] });
+  expect(presentComputerResult(result)).toMatch(/~ \d+:a Button "Count 0" → "Count 1"\nPixels changed in 1 area \(overview pixels; 0\.06% of the window\); image 1 outlines and numbers them on the window:\n  1\. x=20 y=40 w=10 h=10( \(at the input point\))?; images 2 and 3 show x=8 y=28 w=34 h=34 before and after, enlarged 4x\n/);
+  // Image 1 is the window with the area outlined; the crops follow it.
+  const [overview, before, after] = images(result);
+  expect(await sharp(Buffer.from(overview.data, "base64")).metadata()).toMatchObject({ width: expect.any(Number) });
   expect((await sharp(Buffer.from(before.data, "base64")).stats()).channels[0].min).toBe(255);
   expect((await sharp(Buffer.from(after.data, "base64")).stats()).channels[0].min).toBe(0);
 });
@@ -74,7 +76,9 @@ test("pixel input on a canvas reports only its pixel change, and empty space rep
   const f = await fixture(), { observation } = await f.read(["full"]);
   const stroke = await f.resources.perform(observation, cwd, JSON.stringify({ action: "click", x: 300, y: 200 }));
   expect(stroke.details.successor?.diff).toMatchObject({ counts: { changed: 0, added: 0, removed: 0 }, pixels: { box: { x: 297, y: 197, width: 6, height: 6 } } });
-  expect(images(stroke)).toHaveLength(2);
+  // The overview and one before/after pair; the stroke is at the input point, so it is area 1.
+  expect(images(stroke)).toHaveLength(3);
+  expect(stroke.details.successor?.diff?.pixels?.areas[0]).toMatchObject({ at_input: true });
   const next = address(computerSource("observation", stroke.details.successor!.observation_id!));
   const empty = await f.resources.perform(next, cwd, JSON.stringify({ action: "click", x: 300, y: 60 }));
   expect(presentComputerResult(empty)).toMatch(/Nothing changed in the UI or the window's pixels within \d+ ms after the action\./);
@@ -97,9 +101,9 @@ test("a changes Read compares the window's pixels with its previous observation"
   f.paint(200, 150);
   const changes = (await f.resources.read(address(f.window), cwd, ["changes"]))!;
   expect(changes.details.changes?.diff?.pixels?.box).toEqual({ x: 197, y: 147, width: 6, height: 6 });
-  expect(presentComputerResult(changes)).toMatch(/Pixels changed in 1 area .*\n  x=197 y=147 w=6 h=6;/);
-  // Only the two crops, not the full overview.
-  expect(images(changes)).toHaveLength(2);
+  expect(presentComputerResult(changes)).toMatch(/Pixels changed in 1 area .*\n  1\. x=197 y=147 w=6 h=6;/);
+  // The outlined overview and the two crops, not the full-size window.
+  expect(images(changes)).toHaveLength(3);
 });
 
 test("an action reports what it changed by default, and its successor is the current observation", async () => {

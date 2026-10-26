@@ -1,9 +1,15 @@
 import type { UiElement, UiResource } from "./ui-resources.ts";
 import type { WebDom } from "./session.ts";
-import { diffFrames, pixelsChanged, type PixelBox, type PixelDiff, type PixelFrame } from "./pixel-diff.ts";
+import { diffFrames, pixelsChanged, type DiffContext, type PixelBox, type PixelDiff, type PixelFrame } from "./pixel-diff.ts";
 
-/** How a window's overview pixels changed; `crops` are the regions the attached before/after image pairs show, in order. */
-export type PixelReport = PixelDiff & { crops?: PixelBox[]; since?: string };
+/**
+ * How a window's overview pixels changed and what the attached images show: `overview` when the first image outlines
+ * and numbers the listed areas on the window, `crops` the regions of the before/after pairs after it with their
+ * scale, and `full` when most of the window changed and the only image is the whole window after the action.
+ */
+export type PixelReport = PixelDiff & { crops?: (PixelBox & { scale: number })[]; overview?: true; full?: true; navigated?: true; since?: string;
+  /** `page` when the pixels are Playwright screenshots of a browser page in CSS pixels, not window overviews. */
+  space?: "page" };
 
 /** Compact change list between an action's input observation and its successor. Bounded; full successors stay readable. */
 export interface StateDiff {
@@ -138,8 +144,8 @@ export const diffIsEmpty = (diff: StateDiff): boolean =>
 /** One native capture of a window: its UI walk and its decoded overview pixels, either of which may be missing. */
 export interface Capture { ui?: UiResource; frame?: PixelFrame }
 /** Compare two native captures of a window: UI elements when both have UI, pixels when both have pixels. */
-export function compareCaptures(before: Capture, after: Capture): StateDiff | undefined {
-  const pixels = before.frame && after.frame ? diffFrames(before.frame, after.frame) : undefined;
+export function compareCaptures(before: Capture, after: Capture, context: DiffContext = {}): StateDiff | undefined {
+  const pixels = before.frame && after.frame ? diffFrames(before.frame, after.frame, context) : undefined;
   const ui = before.ui && after.ui ? diffUi(before.ui, after.ui) : undefined;
   if (ui) return pixels ? { ...ui, pixels } : ui;
   return pixels ? { kind: "pixels", changed: [], added: [], removed: [], counts: { changed: 0, added: 0, removed: 0 }, pixels } : undefined;

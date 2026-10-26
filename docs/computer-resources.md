@@ -115,12 +115,16 @@ CSS and XPath refuse on native windows. Each action takes fresh UI walks until e
 
 Every action reports what it changed, the way Playwright MCP's incremental snapshots do: `~` changed, `+` added and `-` removed elements, plus URL, title or tab changes, such as `~ 3:a Button "Count 0" → "Count 1"`. Changed and added rows carry the new refs. A locator action compares with the walk that resolved its target; a page action compares Playwright's snapshots before and after.
 
-On a native window, an action on an observation with pixels also compares the window's pixels and lists the changed areas in overview pixels, with before and after crops of the three largest:
+Every action also compares pixels: on a native window the window's overview pixels, on a browser page Playwright screenshots of the page in CSS pixels. Image 1 is a small copy of the window or page with each changed area outlined and numbered as listed. Before and after crops of the first three areas follow it, with small areas enlarged up to 4x:
 
 ```text
-Pixels changed in 3 areas (overview pixels; 0.07% of the window):
-  x=465 y=645 w=203 h=62; images 1 and 2 show x=453 y=633 w=227 h=86 before and after
+Pixels changed in 2 areas (overview pixels; 0.07% of the window); image 1 outlines and numbers them on the window:
+  1. x=465 y=645 w=24 h=24 (at the input point); images 2 and 3 show x=453 y=633 w=48 h=48 before and after, enlarged 4x
+  2. x=120 y=40 w=300 h=60; images 4 and 5 show x=108 y=28 w=324 h=84 before and after
+Browser chrome outside the page also changed (x=0 y=0 w=1280 h=80, 2 areas): tab strip, address bar or loading state; not listed.
 ```
+
+The area at or nearest to the input point comes first, otherwise the largest. In a browser window whose page elements reach UI Automation (Edge does; Chrome often does not), changes above the page, such as a loading tab or the address bar, are summarised in one line. When most of the window or page changed, or a page action navigated to another URL, image 1 is the whole window or page after the action instead of an overview and crops.
 
 This shows a stroke on a canvas or a moved sprite when the UI tree says nothing. Changes under 12 pixels and caret-shaped spots do not count. When the first capture shows no change, it looks again for up to 300 ms, then says `Nothing changed in the UI or the window's pixels within N ms`; check the target before repeating the action. When something changed, it captures until the window settles, for up to 1 second.
 

@@ -142,6 +142,49 @@ test("points of a browser page take clicks, wheel, drags, held keys and a pressu
   } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
 });
 
+// LPT-928: the change at the input comes first, with an outlined overview, and a navigation shows the whole page.
+test("a ticked tile is the first change of a page click and of a native click, and a navigation returns the whole page", async () => {
+  const opened = await live.insert(live.machine, { action: "open_browser", url: `${fixture.base}/checks` });
+  expect(opened.details.status, JSON.stringify(opened.content)).toBe("observed");
+  const window = `computer:window/${opened.details.window_ref}`;
+  try {
+    const measured = await live.resources.browserAction(requireComputerAddress(window), live.cwd,
+      { action: "evaluate", expression: "JSON.stringify(document.querySelectorAll('input')[5].getBoundingClientRect())" });
+    const box = JSON.parse(JSON.parse(/Evaluation result: (.*)$/m.exec(presentComputerResult(measured))![1])) as { x: number; y: number; width: number; height: number };
+    const page = await act(window, clickPlan({ window, x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) }));
+    const pixels = page.result.details.successor?.diff?.pixels;
+    console.log(page.body.split("\n").filter(line => /Pixels|^  \d|Browser chrome|Most of/.test(line)).join("\n"));
+    expect(pixels, page.body).toMatchObject({ space: "page", overview: true });
+    // The banner changed too and is larger; the ticked tile comes first because the click landed on it.
+    expect(pixels!.areas[0]).toMatchObject({ at_input: true });
+    expect(pixels!.areas[0].width).toBeLessThan(80);
+    expect(pixels!.regions).toBeGreaterThan(1);
+    expect(page.result.content.filter(block => block.type === "image").length).toBeGreaterThanOrEqual(3);
+    // A native click on a tile by ref of a window Read compares the window's pixels. Edge reports page elements to
+    // UI Automation (this Chrome does not), so its refs reach the tiles and its page start is known.
+    const edge = await live.insert(live.machine, { action: "open_browser", browser: "msedge", url: `${fixture.base}/checks` });
+    const edgeWindow = `computer:window/${edge.details.window_ref}`;
+    try {
+      // Edge builds the page's accessibility tree a moment after the page loads.
+      let full = await live.read(edgeWindow, ["full"]);
+      for (let i = 0; i < 20 && !full.details.ui?.elements.some(element => element.in_web_content); i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        full = await live.read(edgeWindow, ["full"]);
+      }
+      const tile = full.details.ui?.elements.find(element => element.role === "CheckBox" && element.name === "Tile 7")?.hint;
+      expect(tile, JSON.stringify(full.details.ui?.elements.filter(element => element.in_web_content).map(element => [element.role, element.name]).slice(0, 20))).toBeDefined();
+      const native = await act(edgeWindow, clickPlan({ window: edgeWindow, target: tile, space: "window" }));
+      console.log(native.body.split("\n").filter(line => /Pixels|^  \d|Browser chrome|Most of/.test(line)).join("\n"));
+      expect(native.result.details.successor?.diff?.pixels?.areas[0], native.body).toMatchObject({ at_input: true });
+    } finally { await deleteComputer(live.resources, edgeWindow, { path: edgeWindow }, live.cwd); }
+    await live.read(window, ["dom"]);
+    const left = await act(window, clickPlan({ window, target: "getByRole('link', { name: 'Leave' })" }));
+    console.log(left.body.split("\n").filter(line => /Pixels|^  \d|Browser chrome|Most of/.test(line)).join("\n"));
+    expect(left.result.details.successor?.diff?.pixels, left.body).toMatchObject({ full: true });
+    expect(left.result.content.filter(block => block.type === "image")).toHaveLength(1);
+  } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
+});
+
 test("the same vocabulary drives a browser page through Playwright by locator and page ref", async () => {
   const opened = await live.insert(live.machine, { action: "open_browser", url: `${fixture.base}/wait` });
   expect(opened.details.status, JSON.stringify(opened.content)).toBe("observed");

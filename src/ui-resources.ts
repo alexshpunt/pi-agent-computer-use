@@ -15,6 +15,8 @@ export interface UiElement {
   uia_name?: string; automation_id?: string; class_name?: string; help_text?: string;
   checked?: "on" | "off" | "mixed"; expanded?: boolean; offscreen?: boolean; focused?: boolean;
   password?: boolean; read_only?: boolean; required?: boolean; actionable?: boolean;
+  /** Set on elements of a web page in a browser or an embedded browser view. */
+  in_web_content?: boolean;
   range?: { value: number; min: number; max: number };
   /** Whether the hint label is drawn on the overview; `read_only` marks static text and containers, which get no label. */
   hint_display: "pending" | "shown" | "disabled" | "read_only" | "no_bounds" | "outside_image" | "collision" | "off";
@@ -72,7 +74,7 @@ function structural(e: Record<string, unknown>): Partial<UiElement> {
   for (const [from, to] of [["name", "uia_name"], ["automation_id", "automation_id"], ["class_name", "class_name"], ["help_text", "help_text"]] as const)
     if (typeof e[from] === "string" && e[from]) out[to] = (e[from] as string).slice(0, 1024);
   if (e.checked === "on" || e.checked === "off" || e.checked === "mixed") out.checked = e.checked;
-  for (const key of ["expanded", "offscreen", "focused", "password", "read_only", "required", "actionable"] as const)
+  for (const key of ["expanded", "offscreen", "focused", "password", "read_only", "required", "actionable", "in_web_content"] as const)
     if (typeof e[key] === "boolean") out[key] = e[key] as boolean;
   const range = e.range as { value?: unknown; min?: unknown; max?: unknown } | undefined;
   if (range && [range.value, range.min, range.max].every(Number.isFinite)) out.range = { value: range.value as number, min: range.min as number, max: range.max as number };
@@ -203,4 +205,17 @@ export async function annotateUi(image: Content, resource: UiResource, width: nu
   if (!svg.length) return { image, annotation };
   const marked = await sharp(bytes).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${svg.join("")}</svg>`) }]).png().toBuffer();
   return { image: { type: "image", mimeType: "image/png", data: marked.toString("base64") }, annotation };
+}
+
+/**
+ * Where web page content starts in a window image: the top of its topmost web content element. Browsers report the
+ * page's elements, not always a document with the viewport's bounds. Undefined when the window shows no web content.
+ */
+export function webContentTop(ui: UiResource | undefined): number | undefined {
+  let top: number | undefined;
+  for (const element of ui?.elements ?? []) {
+    const box = element.bounds.window_image;
+    if (element.in_web_content && box && box.width > 0 && box.height > 0 && (top === undefined || box.y < top)) top = box.y;
+  }
+  return top;
 }
