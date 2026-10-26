@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
+import { requireComputerAddress } from "../../src/computer-resources.ts";
 import { connectLive, text } from "./remote.ts";
 
 // LPT-821: an app builds a scene through its own scripting while computer use observes and verifies it.
@@ -30,10 +31,12 @@ test("a Blender scene built by a script is checked through a window Read", async
   let names: string[] = [];
   for (let attempt = 0; attempt < 10 && !["PiCube", "PiSphere", "PiGround"].every(name => names.includes(name)); attempt++) {
     await new Promise(resolve => setTimeout(resolve, 1500));
-    // The outliner sits in the top-right corner; region OCR enlarges it, which small Remote Desktop text needs.
-    const read = await live.read(window, ['capture:{"granularity":"image","maxLongEdge":3840}']);
+    // The outliner sits in the top-right corner; a viewport shows it at the window's own resolution and its OCR
+    // enlarges it, which small Remote Desktop text needs.
+    const read = await live.read(window, ["image"]);
     const { width, height } = (read.details.agent_image as { output: { width: number; height: number } }).output;
-    const corner = await live.read(`computer:observation/${read.details.observation_id}`, [`region:${Math.round(width * 0.7)},0,${Math.round(width * 0.3)},${Math.round(height * 0.4)}`, "ocr"]);
+    await live.resources.view(requireComputerAddress(`${window}/outliner`), live.cwd, { x: Math.round(width * 0.7), y: 0, width: Math.round(width * 0.3), height: Math.round(height * 0.4) });
+    const corner = await live.read(`${window}/outliner`, ["ocr"]);
     names = (corner.details.text_lines ?? []).flatMap(line => line.words.map(word => word.text));
   }
   console.log("outliner words", JSON.stringify(names));

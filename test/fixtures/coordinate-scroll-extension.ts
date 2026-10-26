@@ -135,8 +135,8 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
           { amount: 1 }, { button: "left" }, { modifiers: ["ctrl"] }]) await rejected(first, extra);
         assert((await journal()).filter(row => row.name === "scroll_at").length === sent, "An invalid scroll reached native input");
       } else {
-        // A detail crop is readonly: it grants no input and issues no observation.
-        const cropped = await ok("read", { path: reference(view, "observation"), views: ["region:50,50,100,100"] });
+        // An element crop is readonly: it grants no input and issues no observation.
+        const cropped = await ok("read", { path: reference(view, "observation"), views: [`element:crop,${field(view.details, "hint")}`] });
         assert(cropped.content.some(block => block.type === "image" && block.mimeType === "image/jpeg") && field(cropped.details, "input") === "none" &&
           field(cropped.details, "observation_id") === undefined, "Detail granted input authority");
         await control("capability_off"); await observe(first);

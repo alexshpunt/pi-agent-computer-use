@@ -24,7 +24,7 @@ describe("computer resource addresses", () => {
       "computer:window/window-1?delivery=foreground", "computer:observation/snapshot?delivery=automatic",
       "computer:observation/snapshot?delay_ms=1.5", "computer:observation/snapshot?delay_ms=201",
       "computer:observation/snapshot#e4", "computer:observation/%2Fother", "computer:observation/%00",
-      "computer:windows", "computer:machine/local/files", "computer:window/w-1/apps", "computer:machine/local/windows/x",
+      "computer:windows", "computer:machine/local/files", "computer:window/w-1/pano/x", "computer:window/w-1/Pano", "computer:window/w-1/pano?x=1", "computer:machine/local/windows/x",
     ]) expect(() => parseComputerAddress(source), source).toThrow();
   });
 });

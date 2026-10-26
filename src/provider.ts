@@ -19,8 +19,8 @@ const record = (value: unknown): Record<string, unknown> => value !== null && ty
 const label = (value: unknown) => typeof value === "string" ? value.replace(/[\r\n\t]/g, " ").slice(0, 1024) : "";
 
 /** Agent guidance shared by the IDE plugin and the standalone tools. */
-export const COMPUTER_PATH_HELP = "Read docs:computer for native resources. computer:session, computer:machine/<name> (local, or a configured machine) with its /windows, /apps and /displays, its /display/primary or listed /display/ref, and returned computer:window/ref, observation/id or sequence/id, each running on the machine that issued it; results show short forms such as computer:<machine>/w3qk (o observation, s sequence), and computer:<name> after computer_window name. Read only looks; the computer_* tools act.";
-export const COMPUTER_VIEWS_HELP = "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a browser window opened or attached with computer_open returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns its minimized, maximized, visible and foreground state and bounds without pixels/UI, plus whether the window is hung and its process memory/CPU; computer_window changes them. ocr (alone or with capture options on a window, alone on an observation, or with region:x,y,width,height on an observation) adds Windows OCR lines with boxes in overview pixels; use maxLongEdge 3840 for small text. aria (alone or with ui capture options, on a window) returns its UI as a Playwright aria snapshot with hints as [ref=...]. changes (alone, or with ui, image or full and capture options, on a window) takes a fresh capture and lists only rows changed, added or removed since that window's previous observation, with the new observation's hints, plus changed pixel areas with before/after crops instead of the full image. regions (alone or with image/full options on a window, alone on its observation) lists icons and text areas found by Cua perception with boxes in overview pixels; click a box centre with computer_click at its x,y. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. region:x,y,width,height or element:inspect|scope|highlight|crop|text,hint on an observation; element:text returns one element's full text. frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} / {select:'changed'} on a sequence address from computer_record; add as:'sheet' (one tiled image with index/time labels, optional columns) or as:'max'|'min' (one per-pixel composite), with optional region:{x,y,width,height} in frame pixels and maxLongEdge. Detail/frames are readonly; text offset/limit select UI lines, never image cells.";
+export const COMPUTER_PATH_HELP = "Read docs:computer for native resources. computer:session, computer:machine/<name> (local, or a configured machine) with its /windows, /apps and /displays, its /display/primary or listed /display/ref, and returned computer:window/ref, observation/id or sequence/id, each running on the machine that issued it; results show short forms such as computer:<machine>/w3qk (o observation, s sequence), and computer:<name> after computer_window name. A viewport that computer_view made is its window's address with its name after it, such as computer:game/pano or computer:<machine>/w3qk/pano; Read shows its image at full resolution, ocr adds its text. Read only looks; the computer_* tools act.";
+export const COMPUTER_VIEWS_HELP = "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a browser window opened or attached with computer_open returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns its minimized, maximized, visible and foreground state and bounds without pixels/UI, plus whether the window is hung and its process memory/CPU; computer_window changes them. ocr (alone or with capture options on a window, alone on an observation or a viewport) adds Windows OCR lines with boxes in pixels of that image; use maxLongEdge 3840 or a viewport for small text. aria (alone or with ui capture options, on a window) returns its UI as a Playwright aria snapshot with hints as [ref=...]. changes (alone, or with ui, image or full and capture options, on a window) takes a fresh capture and lists only rows changed, added or removed since that window's previous observation, with the new observation's hints, plus changed pixel areas with before/after crops instead of the full image. regions (alone or with image/full options on a window, alone on its observation) lists icons and text areas found by Cua perception with boxes in overview pixels; click a box centre with computer_click at its x,y. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. element:inspect|scope|highlight|crop|text,hint on a window observation; element:text returns one element's full text. For detail of part of a window, computer_view makes a viewport; region:x,y,width,height applies to display observations only. frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} / {select:'changed'} on a sequence address from computer_record; add as:'sheet' (one tiled image with index/time labels, optional columns) or as:'max'|'min' (one per-pixel composite), with optional region:{x,y,width,height} in frame pixels and maxLongEdge. Detail/frames are readonly; text offset/limit select UI lines, never image cells.";
 export const COMPUTER_SEARCH_HELP = "Search computer:machine/<name>/apps or computer:machine/<name>/windows (local is this machine) for installed-app/permitted-window metadata, or an observation for its collected UI/readonly DOM. Read computer:machine/<name>/displays for monitor metadata. Discovery launches nothing; observation Search performs no new native walk or DOM query. Treat missing matches in a partial projection as unknown.";
 export const COMPUTER_DELETE_HELP = "A computer window address closes that window like its close button (add ?force=true to kill the hung app of a window this session opened); a sandbox, isolated session or machine address releases it; computer:session releases everything computer use started.";
 /** Each Insert command the typed tools replaced, by the tool that does it now. */
@@ -39,7 +39,7 @@ export function computerEditRefusal(tool: "write" | "insert", input: Record<stri
   let action: unknown = tool === "write" ? "type_text" : undefined;
   if (tool === "insert" && typeof input.text === "string") try { action = (JSON.parse(input.text) as { action?: unknown })?.action; } catch { /* no action to map */ }
   const replacement = typeof action === "string" ? REPLACED.find(([pattern]) => pattern.test(action as string))?.[1] : undefined;
-  return `${tool === "write" ? "Write" : "Insert"} does not act on computer resources; nothing was sent. ${replacement ? `Use ${replacement}. ` : ""}Each operation has its own computer_* tool: tool_search loads them with "computer open window", "computer click hover drag scroll", "computer type press select timeline", "computer wait browser" or "computer files clipboard record".`;
+  return `${tool === "write" ? "Write" : "Insert"} does not act on computer resources; nothing was sent. ${replacement ? `Use ${replacement}. ` : ""}Each operation has its own computer_* tool: tool_search loads them with "computer open window", "computer click hover drag scroll", "computer type press select timeline", "computer wait browser", "computer files clipboard record" or "computer view viewport".`;
 }
 
 /** Present native resources without dumping provenance; full receipts remain in structured data. */
@@ -48,6 +48,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
   // Every routed receipt names the machine (and sandbox) it ran on.
   const lines = [`Computer ${d.status} (${d.mode})${d.machine ? ` on ${d.machine}${d.sandbox ? `, sandbox ${d.sandbox}` : ""}` : ""}`];
   if (d.window_ref) lines.push(`Window: ${computerSource("window", d.window_ref)}`);
+  if (d.viewport) lines.push(`Viewport: ${d.viewport.source}; points on it are pixels of its ${d.viewport.image.width}x${d.viewport.image.height} image`);
   if (d.window_state_id && d.status === "observed") {
     const sample = d.window_state_kind === "management" ? record(state.state) : state;
     lines.push(`Window state: minimized=${sample.minimized}, visible=${sample.visible}; foreground=${sample.foreground_at_target}, keyboard_focus=${sample.keyboard_focus_at_target}${d.window_state_kind === "management" ? `; maximized=${sample.maximized}` : ""}`);
@@ -172,7 +173,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     for (const r of d.visual_regions) lines.push(`${r.kind}${r.text || r.label ? ` "${label(r.text ?? r.label)}"` : ""} | x=${r.x} y=${r.y} w=${r.width} h=${r.height} | center ${Math.round(r.x + r.width / 2)},${Math.round(r.y + r.height / 2)} | confidence ${r.confidence}`);
   }
   if (d.text_lines) {
-    lines.push(`OCR: ${d.text_lines.length} lines; boxes in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`);
+    lines.push(`OCR: ${d.text_lines.length} lines; boxes in ${d.viewport ? "pixels of the viewport's image" : "this observation's overview pixels"}. Recognised text can be wrong; confirm with pixels or UI before acting on it.`);
     for (const line of d.text_lines) lines.push(`"${label(line.text)}" | x=${line.x} y=${line.y} w=${line.width} h=${line.height}`);
   }
   if (d.successor) {
@@ -186,6 +187,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     : d.verification ? (d.verification.verdict === "satisfied" ? "Conditions held; refs of this sample are current for input." : "Not verified: neither proof of success nor of failure beyond the listed verdicts. Never replay uncertain input blindly.")
     : d.dom ? "Act on the window with the computer_* input tools, a ref such as e2 as target. Read element:crop|highlight,<ref> or image for page pixels. Refs belong to the latest snapshot."
     : d.window_state_id ? "This Read only looks; computer_window changes the window's state."
+    : d.viewport && d.status === "observed" ? "Act in this viewport with the computer_* input tools at its address; a viewport Read gives no refs."
     : d.status === "observed" ? "Refs of this Read are current for the next input to its window; detail, display and frame Reads give none."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
   const text = lines.join("\n");
@@ -225,7 +227,8 @@ function pixelLines(pixels: PixelReport, uiChanged: boolean): string[] {
   const share = pixels.share * 100, percent = share < 0.1 ? share.toFixed(2) : share.toFixed(1), crops = pixels.crops ?? [];
   const rect = (b: PixelBox) => `x=${b.x} y=${b.y} w=${b.width} h=${b.height}`;
   const chrome = pixels.chrome ? [`Browser chrome outside the page also changed (${rect(pixels.chrome.box)}, ${pixels.chrome.regions} ${pixels.chrome.regions === 1 ? "area" : "areas"}): tab strip, address bar or loading state; not listed.`] : [];
-  const page = pixels.space === "page", whole = page ? "page" : "window", unit = page ? "CSS pixels of the page" : "overview pixels";
+  const page = pixels.space === "page", viewport = pixels.space === "viewport";
+  const whole = page ? "page" : viewport ? "viewport" : "window", unit = page ? "CSS pixels of the page" : viewport ? "pixels of the viewport's image" : "overview pixels";
   if (pixels.full) return [pixels.navigated ? `The page navigated (${percent}% of its pixels changed): image 1 shows the whole page after the action.`
     : `Most of the ${whole} changed${since} (${percent}% of its pixels): image 1 shows the whole ${whole} after the action.`, ...chrome];
   if (!pixels.areas.length) return chrome;
@@ -274,6 +277,8 @@ export interface ComputerReceipt {
   action: string | null;
   source: string;
   window: string | null;
+  /** The viewport a Read showed or an input went to. */
+  viewport?: string;
   /** The sandbox address computer_open started. */
   sandbox?: string;
   /** The new current observation issued by this call, such as a DOM action's next snapshot. */
@@ -316,6 +321,7 @@ export function computerReceipt(source: string, action: string | null, outcome: 
   return {
     outcome: d.status === "listed" ? "observed" : d.status, effect: computerEffect(outcome.result), stage: "target", action, source,
     window: typeof d.window_ref === "string" ? computerSource("window", d.window_ref) : null,
+    ...(d.viewport ? { viewport: d.viewport.source } : {}),
     ...(typeof d.sandbox_ref === "string" ? { sandbox: computerSource("sandbox", d.sandbox_ref) } : {}),
     observation: next ? computerSource("observation", next) : null,
     input_consumed: outcome.inputConsumed, application_effect: "unverified",
@@ -400,7 +406,7 @@ export function deleteComputer(resources: ComputerResources, source: string, inp
 function shortReceipt(resources: ComputerResources, receipt: ComputerReceipt): ComputerReceipt {
   const short = (value: string | null | undefined) => value ? resources.shorten(value) : value;
   return { ...receipt, window: short(receipt.window) ?? null, observation: short(receipt.observation) ?? null,
-    ...(receipt.sandbox ? { sandbox: short(receipt.sandbox)! } : {}), ...(receipt.reason ? { reason: resources.shorten(receipt.reason) } : {}), text: resources.shorten(receipt.text) };
+    ...(receipt.sandbox ? { sandbox: short(receipt.sandbox)! } : {}), ...(receipt.viewport ? { viewport: short(receipt.viewport)! } : {}), ...(receipt.reason ? { reason: resources.shorten(receipt.reason) } : {}), text: resources.shorten(receipt.text) };
 }
 function nativeBlocks(body: string, result: ComputerResult | undefined, uiOnly: boolean): Content[] {
   return [{ type: "text", text: body }, ...(uiOnly || !result ? [] : result.details.selected_frames

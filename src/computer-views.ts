@@ -25,7 +25,7 @@ function keys(value: Record<string, unknown>, allowed: readonly string[]): void 
 }
 
 /** Validate owned views before capturing; text offsets are never image coordinates.
- * `ocr` adds Windows text recognition to a window overview, an observation or a region detail.
+ * `ocr` adds Windows text recognition to a window overview, an observation or a viewport.
  * `changes` reads a window's UI and pixels and lists only what changed since its previous observation.
  * `regions` adds icons and text areas found by Cua perception to a window overview or its current observation.
  * `aria` reads a window's UI as a Playwright aria snapshot whose refs are the observation's hints. */
@@ -50,8 +50,8 @@ export function parseComputerViews(views: readonly string[] = []): ComputerViews
   }
   if (!views.includes("ocr")) return parseView(views);
   const view = parseView(views.filter(view => view !== "ocr"));
-  if (view.kind !== "overview" && view.kind !== "region") throw Error("Use ocr alone or with region:x,y,width,height or capture options; it reads text from pixels.");
-  if (view.kind === "overview" && view.capture.granularity === "ui") throw Error("ocr needs pixels; use image or full granularity.");
+  if (view.kind !== "overview") throw Error("Use ocr alone or with capture options; it reads text from pixels. For the text of one part of a window, Read a viewport of it with ocr.");
+  if (view.capture.granularity === "ui") throw Error("ocr needs pixels; use image or full granularity.");
   return { ...view, ocr: true };
 }
 

@@ -14,7 +14,7 @@ import { notifyWindowObserver, notifyHighlight, type WindowObserver, type Highli
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
 import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
-import { DEFAULT_MAX_LONG_EDGE, nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
+import { DEFAULT_MAX_LONG_EDGE, FULL_RESOLUTION, nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
 import type { DisplayMode } from "./display-mode.ts";
 import { WEBVIEW2_DEBUGGING, type MachineHost, type ProcessHealth, type TextLine } from "./machine-host.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -91,6 +91,8 @@ export interface ComputerResult {
     mode: ComputerMode;
     target?: WindowTarget;
     window_ref?: string;
+    /** The viewport a Read showed or an input acted in: rect in the window's full-resolution pixels, image the size of its image. */
+    viewport?: { source: string; name: string; window_ref: string; rect: { x: number; y: number; width: number; height: number }; image: { width: number; height: number } };
     observation_id?: string;
     /** One-use window-state authority for native restore or management, never ordinary input. */
     window_state_id?: string;
@@ -1028,7 +1030,8 @@ export class ComputerSession {
       const full = [element.label, element.value].filter((item): item is string => typeof item === "string" && item.length > 1024);
       if (full.length && ui.elements[index]) texts.set(ui.elements[index].hint, full.join("\n").slice(0, ELEMENT_TEXT_LIMIT));
     });
-    if (hasImage && typeof state.screenshot_width === "number" && typeof state.screenshot_height === "number") entry.seen = { width: state.screenshot_width, height: state.screenshot_height };
+    // Only an image the agent is shown sets the space of its points; successors and other quiet captures keep it.
+    if (hasImage && !quiet && typeof state.screenshot_width === "number" && typeof state.screenshot_height === "number") entry.seen = { width: state.screenshot_width, height: state.screenshot_height };
     entry.observation = { id, ui, settings, ...(texts.size ? { texts } : {}),
       width: hasImage && typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: hasImage && typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
@@ -1283,6 +1286,51 @@ export class ComputerSession {
 
   /** The window's latest unannotated capture with pixels, the baseline for comparing its pixels; undefined when none is kept. */
   windowFrame(ref: string): WindowFrame | undefined { return this.entries.get(ref)?.frame; }
+
+  /**
+   * A full-resolution capture of a window for input in one of its viewports: it becomes the window's current
+   * observation. Quiet, like a successor, so points of the window's latest image keep their meaning.
+   */
+  observeFull(ref: string, signal?: AbortSignal, granularity: "image" | "full" = "full"): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
+      try {
+        const entry = await this.current(ref, signal);
+        if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        if (!this.allowed(entry)) return this.denied(entry.ref);
+        return await this.capture(entry, signal, undefined, { granularity, maxLongEdge: FULL_RESOLUTION, scale: 1, hints: false }, true);
+      } catch (error) { return this.failed(error, false); }
+    });
+  }
+
+  /**
+   * A window's pixels at full resolution for a viewport, without UI. Only looks: the window's observations, its pixel
+   * baseline and the size of the image the agent last saw stay as they are.
+   */
+  windowPixels(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      if (signal?.aborted) return this.result("refused", "Cancelled before capture.");
+      try {
+        const entry = await this.current(ref, signal);
+        if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        if (!this.allowed(entry)) return this.denied(entry.ref);
+        const native = await this.driver.call("get_window_state", { ...entry.target, include_accessibility_tree: false, max_image_dimension: FULL_RESOLUTION }, signal);
+        if (!this.allowed(entry)) return this.denied(entry.ref);
+        if (signal?.aborted) return this.result("refused", "Cancelled during capture; pixels withheld.");
+        const state = native.structuredContent ?? {};
+        if (native.isError || typeof state.screenshot_error === "string" && state.screenshot_error.trim())
+          return this.result("refused", `Window screenshot unavailable${typeof state.screenshot_error === "string" ? `. Native reason: ${state.screenshot_error.trim().slice(0, 2000)}` : "."}`, undefined, this.addressed(entry, state.virtual_desktop));
+        const images = native.content.filter(block => block.type === "image");
+        const width = state.screenshot_width, height = state.screenshot_height;
+        if (images.length !== 1 || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || (width as number) <= 0 || (height as number) <= 0)
+          throw new Error("Driver returned no window image.");
+        if (!await this.current(entry.ref, signal) || !this.allowed(entry)) return this.result("refused", "Window changed during capture. Discover again.");
+        const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
+        return this.result("observed", `Full-resolution window pixels: ${width}x${height}.`, undefined,
+          { ...this.addressed(entry, state.virtual_desktop), ...(highlight ? { highlight } : {}) }, images);
+      } catch (error) { return this.failed(error, false); }
+    });
+  }
 
   /**
    * A fresh observation without the human frame, for successors: UI-only by default, or with
@@ -1790,10 +1838,12 @@ export class ComputerSession {
    * capture with its size and, until the first input spends them, its UI hints) and the size of its latest image,
    * which is the space of the agent's points.
    */
-  inputView(ref: string): { dom?: string; native?: { id: string; width?: number; height?: number; ui?: UiResource }; seen?: { width: number; height: number } } {
+  inputView(ref: string): { dom?: string; native?: { id: string; width?: number; height?: number; ui?: UiResource; full: boolean }; seen?: { width: number; height: number } } {
     const entry = this.entries.get(ref), observed = entry?.observation;
+    // A full-resolution observation's pixels are the window's own: viewport rectangles apply to them as they are.
+    const full = !!observed && observed.width !== undefined && nativeImageCap(observed.settings) >= FULL_RESOLUTION;
     return { ...(entry?.dom ? { dom: entry.dom.id } : {}),
-      ...(observed ? { native: { id: observed.id, width: observed.width, height: observed.height, ...(observed.ui && !observed.pixelsOnly ? { ui: observed.ui } : {}) } } : {}),
+      ...(observed ? { native: { id: observed.id, width: observed.width, height: observed.height, full, ...(observed.ui && !observed.pixelsOnly ? { ui: observed.ui } : {}) } } : {}),
       ...(entry?.seen ? { seen: { ...entry.seen } } : {}) };
   }
   /** Whether this session issued a still-registered window reference. */

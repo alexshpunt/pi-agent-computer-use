@@ -18,7 +18,8 @@ test("a host whose folder was never used removes nothing on close", async () => 
 
 test("ocr combines only with pixel views", () => {
   expect(parseComputerViews(["ocr"])).toMatchObject({ kind: "overview", ocr: true });
-  expect(parseComputerViews(["region:1,2,30,40", "ocr"])).toMatchObject({ kind: "region", region: { x: 1, y: 2, width: 30, height: 40 }, ocr: true });
+  // The text of one part of a window comes from a viewport Read with ocr.
+  expect(() => parseComputerViews(["region:1,2,30,40", "ocr"])).toThrow(/viewport/);
   expect(parseComputerViews(['capture:{"granularity":"image","maxLongEdge":3840}', "ocr"])).toMatchObject({ kind: "overview", ocr: true });
   expect(() => parseComputerViews(["state", "ocr"])).toThrow();
   expect(() => parseComputerViews(['capture:{"granularity":"ui"}', "ocr"])).toThrow(/pixels/);

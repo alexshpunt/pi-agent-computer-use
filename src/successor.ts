@@ -8,8 +8,11 @@ import { diffFrames, pixelsChanged, type DiffContext, type PixelBox, type PixelD
  * scale, and `full` when most of the window changed and the only image is the whole window after the action.
  */
 export type PixelReport = PixelDiff & { crops?: (PixelBox & { scale: number })[]; overview?: true; full?: true; navigated?: true; since?: string;
-  /** `page` when the pixels are Playwright screenshots of a browser page in CSS pixels, not window overviews. */
-  space?: "page" };
+  /**
+   * `page` when the pixels are Playwright screenshots of a browser page in CSS pixels, `viewport` when they are images of
+   * the viewport the action went to; otherwise window overviews.
+   */
+  space?: "page" | "viewport" };
 
 /** Compact change list between an action's input observation and its successor. Bounded; full successors stay readable. */
 export interface StateDiff {

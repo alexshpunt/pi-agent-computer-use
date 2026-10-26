@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { parseComputerAddress, computerSource, displaySource, ADDRESS_KINDS, type ComputerAddress } from "./computer-address.ts";
+import { parseComputerAddress, computerSource, displaySource, viewportSource, ADDRESS_KINDS, NAME, type ComputerAddress } from "./computer-address.ts";
+import { clipViewport, pngSize, viewportImage, viewportImageSize, viewportPoint, viewportRect, windowPoint, VIEWPORT_CAP, type Viewport } from "./viewport.ts";
+import { FULL_RESOLUTION } from "./cua-image-settings.ts";
+import type { PixelBox } from "./pixel-diff.ts";
 import { ShortAddresses, SHORT_REFERENCE } from "./short-addresses.ts";
 import { parseComputerViews, type ComputerViews } from "./computer-views.ts";
 import { checkedName, type ProcessHealth } from "./machine-host.ts";
@@ -48,6 +51,8 @@ async function cropImages(before: Buffer, after: Buffer, diff: StateDiff): Promi
   pixels.crops = cropped.map(item => ({ ...item.region, scale: item.scale }));
   return [...(overview ? [image(overview)] : []), ...cropped.flatMap(item => [image(item.before), image(item.after)])];
 }
+/** Detail of a rectangle of a window comes from a viewport; a display observation keeps its region view. */
+const WINDOW_REGION = "A window has no region view: make a viewport of that rectangle with computer_view, which shows it at the window's own resolution. Read the viewport, add ocr for its text, and act at points of its image.";
 /** Web content up to this far above its topmost element still counts as page, for the page's own margin. */
 const PAGE_MARGIN = 12;
 /**
@@ -122,7 +127,9 @@ interface FollowUp { successor: boolean; explicit: boolean; frame?: WindowFrame;
   /** A Playwright screenshot of the page before a page action, in CSS pixels, for its pixel change list. */
   page?: Buffer;
   /** The window's session, resolved before the action: a failed action can make the session forget the window. */
-  session?: ComputerSession }
+  session?: ComputerSession;
+  /** The viewport the input went to, in the window's full-resolution pixels: the pixel comparison covers only it. */
+  viewport?: PixelBox }
 /** How long a native successor keeps looking for a change before reporting that nothing changed. */
 const SETTLE_MS = 300;
 /**
@@ -303,8 +310,6 @@ function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ComputerRequestError("Use a JSON command object.");
   return value as Record<string, unknown>;
 }
-/** A window name the agent gives: computer:<name>. */
-const NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 function only(value: Record<string, unknown>, fields: readonly string[]): void {
   if (Object.keys(value).some(key => !fields.includes(key))) throw new ComputerRequestError("Command contains unsupported fields.");
 }
@@ -329,6 +334,8 @@ export class ComputerResources {
   private readonly names = new Map<string, { window_ref: string; title: string }>();
   /** Window titles from the latest window listings, for naming by title and for listing names. */
   private readonly titles = new Map<string, string>();
+  /** Viewports the agent made, by their long address (computer:window/<ref>/<name>). */
+  private readonly viewports = new Map<string, Viewport>();
   /** This machine's session once started; reference checks need it synchronously. */
   private local?: ComputerSession;
 
@@ -390,11 +397,21 @@ export class ComputerResources {
       }
       return requireComputerAddress(computerSource("window", entry.window_ref));
     }
-    if (segments.length === 2 && !ADDRESS_KINDS.has(segments[0]) && SHORT_REFERENCE.test(segments[1])) {
+    // A viewport of a named window: computer:game/pano. Window names never take a machine's name.
+    if (segments.length === 2 && this.names.has(segments[0])) {
+      if (query) throw new ComputerRequestError("A viewport address takes no options.");
+      // Resolving the name refuses a window that has closed.
+      this.address(`computer:${segments[0]}`);
+      if (!NAME.test(segments[1])) throw new ComputerRequestError("A viewport name is 1-32 lowercase letters, digits, - or _ and starts with a letter.");
+      return requireComputerAddress(viewportSource(this.names.get(segments[0])!.window_ref, segments[1]));
+    }
+    // A short window address, or a viewport of one: computer:zinpc/w3qk or computer:zinpc/w3qk/pano.
+    if ((segments.length === 2 || segments.length === 3) && !ADDRESS_KINDS.has(segments[0]) && SHORT_REFERENCE.test(segments[1])) {
       let long: string;
       try { long = this.shorts.resolve(segments[0], segments[1]); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-      return requireComputerAddress(long + query);
+      if (segments.length === 3 && (query || !long.startsWith("computer:window/"))) throw new ComputerRequestError("Only a window address takes a viewport name after it.");
+      return requireComputerAddress(long + (segments.length === 3 ? `/${segments[2]}` : query));
     }
     return requireComputerAddress(source);
   }
@@ -411,7 +428,7 @@ export class ComputerResources {
   }
   /** The owner of a window, display, observation or sequence address. */
   private async routeAddress(cwd: string, address: ComputerAddress, signal?: AbortSignal): Promise<Owner> {
-    if (address.kind === "window") return this.route(cwd, { window_ref: address.ref }, signal);
+    if (address.kind === "window" || address.kind === "viewport") return this.route(cwd, { window_ref: address.ref }, signal);
     if (address.kind === "display") return this.route(cwd, { display: address.ref, machine: address.machine }, signal);
     if (address.kind === "observation") return this.route(cwd, this.snapshot(address.ref).target, signal);
     if (address.kind === "sequence")
@@ -432,7 +449,7 @@ export class ComputerResources {
       case "app": { const app = this.apps.get(address.ref); return app && { machine: app.machine }; }
       case "sandbox": { const sandbox = this.sandboxes.get(address.ref); return sandbox && { machine: sandbox.machine ?? LOCAL_MACHINE, sandbox: sandbox.ref }; }
       case "sequence": return holder(session => session.hasSequence(address.ref));
-      case "window": return holder(session => session.hasWindow(address.ref));
+      case "window": case "viewport": return holder(session => session.hasWindow(address.ref));
       case "observation": {
         const target = this.snapshots.get(address.ref)?.target;
         return !target ? undefined : target.machine !== undefined ? { machine: target.machine } : holder(session => session.hasWindow(target.window_ref!));
@@ -592,12 +609,15 @@ export class ComputerResources {
       // Names whose window closed disappear from the list and stop resolving.
       for (const [name, entry] of this.names) if (!this.holdsWindow(entry.window_ref)) this.names.delete(name);
       const names = [...this.names].map(([name, entry]) => `- computer:${name} → ${computerSource("window", entry.window_ref)}${entry.title ? ` | ${entry.title}` : ""}`);
+      for (const [key, viewport] of this.viewports) if (!this.holdsWindow(viewport.window_ref)) this.viewports.delete(key);
+      const viewports = [...this.viewports.values()].map(viewport => `- ${viewportSource(viewport.window_ref, viewport.name)}: ${viewport.rect.width}x${viewport.rect.height} at ${viewport.rect.x},${viewport.rect.y} in full-resolution window pixels`);
       const windows = [...this.titles].filter(([ref]) => this.holdsWindow(ref) && this.shorts.issued(computerSource("window", ref)))
         .map(([ref, title]) => `- ${computerSource("window", ref)} | ${title}`);
       const sandboxes = [...this.sandboxes.values()].map(sandbox => `- ${computerSource("sandbox", sandbox.ref)} on ${computerSource("machine", sandbox.machine ?? LOCAL_MACHINE)}`);
       return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in .pi/computer-use.json starts on its first use). Every window, display, observation and sequence address belongs to the machine that issued it, and every receipt names that machine:",
         ...machines, ...(sandboxes.length ? ["Sandboxes and isolated sessions:", ...sandboxes] : []),
         ...(names.length ? ["Window names (computer_window name adds one):", ...names] : []),
+        ...(viewports.length ? ["Viewports (computer_view makes, moves and resizes them; Delete removes one):", ...viewports] : []),
         ...(windows.length ? ["Windows listed so far:", ...windows] : []),
         "Delete this address to release every machine, browser, sandbox and session this computer use started; the result lists each part."].join("\n");
     }
@@ -620,13 +640,15 @@ export class ComputerResources {
     return result && this.stamp(place, result);
   }
   private async readAddress(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
+    if (address.kind === "viewport") return this.readViewport(address, cwd, views, signal);
     const view = parseComputerViews(views);
     if (address.kind !== "window" && address.kind !== "observation") {
-      if (view.ocr) throw new ComputerRequestError("ocr reads a window, one of its observations or a region of one.");
+      if (view.ocr) throw new ComputerRequestError("ocr reads a window, one of its observations or a viewport.");
       return this.readNative(address, cwd, views, view, signal);
     }
     const snapshot = address.kind === "observation" ? this.snapshots.get(address.ref) : undefined;
     const windowRef = address.kind === "window" ? address.ref : snapshot?.target.window_ref;
+    if (view.kind === "region" && windowRef !== undefined) throw new ComputerRequestError(WINDOW_REGION);
     if (view.ocr && windowRef === undefined) throw new ComputerRequestError("ocr reads window observations; display observations have no kept overview pixels.");
     if (view.changes && address.kind !== "window") throw new ComputerRequestError("changes reads a window address: it takes a fresh capture and compares it with the window's previous observation.");
     const session = (await this.routeAddress(cwd, address, signal)).session;
@@ -636,11 +658,8 @@ export class ComputerResources {
     if (frame && view.kind === "overview" && view.capture.maxLongEdge === undefined && view.capture.scale === undefined) Object.assign(view.capture, frame.size);
     const target = windowRef === undefined ? undefined : session.windowTarget(windowRef);
     if (view.regions && windowRef === undefined) throw new ComputerRequestError("regions reads a window or one of its observations.");
-    // A region of a stored observation is read from its own pixels: exact boxes, no native call, input authority kept.
-    let result = view.ocr && view.kind === "region" && snapshot && windowRef !== undefined
-      ? await this.recognize(session, snapshot.result, windowRef, view.region, signal)
-      // An observation keeps its own capture: regions parses it without another native read.
-      : view.regions && snapshot ? snapshot.result
+    // An observation keeps its own capture: regions parses it without another native read.
+    let result = view.regions && snapshot ? snapshot.result
       : await this.readNative(address, cwd, views, view, signal);
     // A window whose pixels cannot be captured still lists its UI changes, unless pixels were asked for explicitly.
     if (view.changes && view.kind === "overview" && result && result.details.status !== "observed" && !views?.some(item => item === "full" || item === "image"))
@@ -675,20 +694,20 @@ export class ComputerResources {
       const health = await session.processHealth(target);
       return health && !health.responding ? { ...result, content: [...result.content, { type: "text", text: unresponsive(health) }], details: { ...result.details, process: health } } : result;
     }
-    return view.ocr && view.kind !== "region" && windowRef !== undefined ? this.recognize(session, result, windowRef, undefined, signal) : result;
+    return view.ocr && windowRef !== undefined ? this.recognize(session, result, windowRef, signal) : result;
   }
 
-  /** Add Windows OCR lines of an observation's unannotated overview pixels, or of one region of them. */
-  private async recognize(session: ComputerSession, result: ComputerResult, windowRef: string, region: { x: number; y: number; width: number; height: number } | undefined, signal?: AbortSignal): Promise<ComputerResult> {
+  /** Add Windows OCR lines of an observation's unannotated overview pixels. */
+  private async recognize(session: ComputerSession, result: ComputerResult, windowRef: string, signal?: AbortSignal): Promise<ComputerResult> {
     const id = result.details.observation_id;
     const image = id === undefined ? undefined : session.observationImage(windowRef, id);
     if (!image) throw new ComputerRequestError("This observation's unannotated pixels are no longer kept. Read the window with ocr again.");
     let lines;
-    try { lines = await session.recognizeText(image, region, signal); }
+    try { lines = await session.recognizeText(image, undefined, signal); }
     catch (error) { throw new ComputerRequestError(`Text recognition failed: ${error instanceof Error ? error.message : error}`); }
     const listing = lines.length ? lines.map(line => `- "${line.text}" at ${line.x},${line.y} ${line.width}x${line.height}`).join("\n") : "(no text found)";
-    const header = `Windows OCR${region ? ` of region ${region.x},${region.y} ${region.width}x${region.height}` : ""}: ${lines.length} lines; boxes are in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`;
-    return { ...result, content: [...(region ? [] : result.content), { type: "text", text: `${header}\n${listing}` }], details: { ...result.details, text_lines: lines } };
+    const header = `Windows OCR: ${lines.length} lines; boxes are in this observation's overview pixels. Recognised text can be wrong; confirm with pixels or UI before acting on it.`;
+    return { ...result, content: [...result.content, { type: "text", text: `${header}\n${listing}` }], details: { ...result.details, text_lines: lines } };
   }
 
   private async readNative(address: ComputerAddress, cwd: string, views: readonly string[] | undefined, view: ComputerViews, signal?: AbortSignal): Promise<ComputerResult | undefined> {
@@ -723,7 +742,7 @@ export class ComputerResources {
       if (view.kind === "state") return session.observeWindowState(address.ref, signal);
       this.retireWindow(address.ref, view.kind === "dom" ? "dom" : "native");
       if (view.kind === "dom") return this.remember({ window_ref: address.ref }, await session.observeDom(address.ref, view.options, signal));
-      if (view.kind !== "overview") throw new ComputerRequestError("Read an overview, then apply region to its returned observation address.");
+      if (view.kind !== "overview") throw new ComputerRequestError("Read an overview of the window, then element views on its returned observation address.");
       return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture));
     }
     if (address.kind === "display") {
@@ -763,13 +782,12 @@ export class ComputerResources {
         { operation: view.operation, observation_id: address.ref, hint: view.hint });
     }
     if (view.kind === "region") {
+      if (snapshot.target.window_ref !== undefined) throw new ComputerRequestError(WINDOW_REGION);
       // Retire the provider handle even when detail refuses; never turn detail into an input target.
       this.snapshots.delete(address.ref);
       const imageId = snapshot.result.details.agent_image?.image_id;
       if (typeof imageId !== "string") throw new ComputerRequestError("This observation has no image for detail.");
-      const zoom = { image_id: imageId, ...view.region };
-      return snapshot.target.window_ref !== undefined ? session.observe(snapshot.target.window_ref, signal, undefined, zoom)
-        : session.observeDisplay(snapshot.target.display!, signal, zoom);
+      return session.observeDisplay(snapshot.target.display!, signal, { image_id: imageId, ...view.region });
     }
     const checked = await session.checkObservation(snapshot.target, address.ref, signal);
     if (checked.details.status !== "observed") { this.snapshots.delete(address.ref); return checked; }
@@ -846,7 +864,12 @@ export class ComputerResources {
     if (address.kind === "sandbox") return this.closeSandbox(this.sandbox(address.ref));
     if (address.kind === "machine" && !address.part) return this.closeMachine(address.ref);
     if (address.kind === "session") return this.closeAll();
-    throw new ComputerRequestError("Delete closes a window, a sandbox or isolated session, a machine or computer:session. Observations, sequences, apps and displays need no closing.");
+    if (address.kind === "viewport") {
+      const viewport = this.viewport(address);
+      this.viewports.delete(viewportSource(viewport.window_ref, viewport.name));
+      return { content: [{ type: "text", text: `Removed ${viewportSource(viewport.window_ref, viewport.name)}; its window stays open.` }], details: { status: "closed", mode: this.getMode(), window_ref: viewport.window_ref } };
+    }
+    throw new ComputerRequestError("Delete closes a window, a sandbox or isolated session, a machine or computer:session, or removes a viewport. Observations, sequences, apps and displays need no closing.");
   }
   /** Name a window by its address, so computer:<name> resolves to it until it closes. The receipt names its machine. */
   async name(address: ComputerAddress, cwd: string, name: unknown, signal?: AbortSignal): Promise<ComputerResult> {
@@ -854,6 +877,87 @@ export class ComputerResources {
     const place = this.place(address);
     await this.route(cwd, { window_ref: address.ref }, signal);
     return this.stamp(place, this.nameWindow(name, address.ref));
+  }
+  /** A viewport the agent made; refused when it was never made or its window has closed. */
+  private viewport(address: Extract<ComputerAddress, { kind: "viewport" }>): Viewport {
+    const source = viewportSource(address.ref, address.name);
+    if (!this.holdsWindow(address.ref)) {
+      for (const [key, viewport] of this.viewports) if (viewport.window_ref === address.ref) this.viewports.delete(key);
+      throw new ComputerRequestError(`The window of ${source} has closed or was released. Search its machine's windows again.`);
+    }
+    const viewport = this.viewports.get(source);
+    if (!viewport) throw new ComputerRequestError(`${source} is no viewport yet. Make it with computer_view and x, y, width and height in pixels of the window's latest image.`);
+    return viewport;
+  }
+  /** Full-resolution pixels per pixel of the window's latest image the agent saw, on each axis; 1 before any image. */
+  private imageScale(session: ComputerSession, window: string, full: { width: number; height: number }) {
+    const seen = session.inputView(window).seen;
+    return seen ? { x: full.width / seen.width, y: full.height / seen.height } : { x: 1, y: 1 };
+  }
+  /** The PNG of a full-resolution window capture. */
+  private static pixels(captured: ComputerResult): Buffer | undefined {
+    const image = captured.details.status === "observed" ? captured.content.find(block => block.type === "image") : undefined;
+    return image?.type === "image" ? Buffer.from(image.data, "base64") : undefined;
+  }
+  /** The details that name a viewport in a receipt: its address, its window, its rectangle and the size of its image. */
+  private static viewportDetails(viewport: Viewport, clipped: PixelBox): NonNullable<ComputerResult["details"]["viewport"]> {
+    return { source: viewportSource(viewport.window_ref, viewport.name), name: viewport.name, window_ref: viewport.window_ref, rect: clipped, image: viewportImageSize(clipped) };
+  }
+  /** A viewport's image cut from a full-resolution window capture, with where it lies in the window's latest image. */
+  private async showViewport(viewport: Viewport, clipped: PixelBox, png: Buffer, captured: ComputerResult, scale: { x: number; y: number }, note = ""): Promise<ComputerResult> {
+    const image = await viewportImage(png, clipped), details = ComputerResources.viewportDetails(viewport, clipped), size = details.image;
+    const shown = { x: Math.round(clipped.x / scale.x), y: Math.round(clipped.y / scale.y), width: Math.round(clipped.width / scale.x), height: Math.round(clipped.height / scale.y) };
+    const text = `${details.source} is ${shown.width}x${shown.height} at ${shown.x},${shown.y} of the window's latest image. Its image is ${size.width}x${size.height}` +
+      (size.width === clipped.width ? ", the window's own resolution." : `: ${clipped.width}x${clipped.height} window pixels scaled down to fit ${VIEWPORT_CAP} px.`) +
+      ` Points of the computer_* input tools on ${details.source} are pixels of this image.${note}`;
+    return { content: [{ type: "text", text }, { type: "image", data: image.toString("base64"), mimeType: "image/png" }],
+      details: { ...captured.details, status: "observed", viewport: details } };
+  }
+  /**
+   * Make, move or resize a viewport of a window and show it. The rectangle is in pixels of the window's latest image,
+   * like points of the input tools; fields left out keep the viewport's current ones. The receipt names its machine.
+   */
+  async view(address: ComputerAddress, cwd: string, given: Partial<PixelBox>, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "viewport")
+      throw new ComputerRequestError("computer_view needs a viewport address: computer:<window name>/<viewport name> such as computer:game/pano, or a window address with the viewport name after it such as computer:zinpc/w3qk/pano.");
+    const existing = this.viewports.get(viewportSource(address.ref, address.name));
+    if (existing) this.viewport(address);
+    const place = this.place(address);
+    const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    const captured = await session.windowPixels(address.ref, signal);
+    const png = ComputerResources.pixels(captured);
+    if (!png) return this.stamp(place, captured);
+    const full = await pngSize(png), scale = this.imageScale(session, address.ref, full);
+    let rect: PixelBox;
+    try { rect = viewportRect(given, scale, existing?.rect); }
+    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    const clipped = clipViewport(rect, full);
+    if (!clipped) throw new ComputerRequestError(`That rectangle lies outside the window: its latest image is ${Math.round(full.width / scale.x)}x${Math.round(full.height / scale.y)}.`);
+    const viewport: Viewport = { window_ref: address.ref, name: address.name, rect: clipped };
+    this.viewports.set(viewportSource(address.ref, address.name), viewport);
+    const unseen = session.inputView(address.ref).seen ? "" : " The window had no Read with an image yet, so the rectangle was taken in its full-resolution pixels.";
+    return this.stamp(place, await this.showViewport(viewport, clipped, png, captured, scale, unseen));
+  }
+  /** Read a viewport: its image at full resolution up to VIEWPORT_CAP, and with ocr the text in it. Only looks. */
+  private async readViewport(address: Extract<ComputerAddress, { kind: "viewport" }>, cwd: string, views: readonly string[] | undefined, signal?: AbortSignal): Promise<ComputerResult> {
+    const view = parseComputerViews(views);
+    if (view.kind !== "overview" || view.changes || view.regions || view.aria || view.capture.granularity === "ui" || Object.keys(view.capture).some(key => key !== "granularity"))
+      throw new ComputerRequestError("A viewport Read shows its image; add ocr for the text in it. Read its window's address for other views.");
+    const viewport = this.viewport(address);
+    const session = (await this.routeAddress(cwd, address, signal)).session;
+    const captured = await session.windowPixels(viewport.window_ref, signal);
+    const png = ComputerResources.pixels(captured);
+    if (!png) return captured;
+    const full = await pngSize(png), clipped = clipViewport(viewport.rect, full);
+    if (!clipped) throw new ComputerRequestError(`${viewportSource(viewport.window_ref, viewport.name)} lies outside its window now. Move it with computer_view.`);
+    const result = await this.showViewport(viewport, clipped, png, captured, this.imageScale(session, viewport.window_ref, full));
+    if (!view.ocr) return result;
+    const image = result.content.find(block => block.type === "image")!;
+    let lines;
+    // The whole image as a region: Windows OCR then reads it enlarged, so small text of a small viewport reads too.
+    try { lines = await session.recognizeText(image, { x: 0, y: 0, ...result.details.viewport!.image }, signal); }
+    catch (error) { throw new ComputerRequestError(`Text recognition failed: ${error instanceof Error ? error.message : error}`); }
+    return { ...result, details: { ...result.details, text_lines: lines } };
   }
   /**
    * Move, resize, minimize, maximize, focus or restore a window by its address: a fresh native state sample bounds the
@@ -899,24 +1003,29 @@ export class ComputerResources {
    * window's latest image; without a current one the window is captured first. The receipt names its machine.
    */
   async input(address: ComputerAddress, cwd: string, plan: InputPlan, signal?: AbortSignal): Promise<ComputerResult> {
-    if (address.kind !== "window") throw new ComputerRequestError("Give the window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game.");
+    if (address.kind !== "window" && address.kind !== "viewport")
+      throw new ComputerRequestError("Give the window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game, or a viewport address such as computer:game/pano.");
+    // In a viewport, points are pixels of the viewport's image and its pixels show what the action changed.
+    const viewport = address.kind === "viewport" ? this.viewport(address) : undefined;
+    if (viewport && plan.space !== undefined) throw new ComputerRequestError("space does not apply in a viewport: its points are pixels of the viewport's image.");
     const place = this.place(address);
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
-    let result = await this.inputStep(address.ref, session, plan, cwd, signal);
+    let result = await this.inputStep(address.ref, session, plan, cwd, signal, viewport);
     // A follow-up such as Enter after typing runs only after the first part was delivered.
     if (plan.then && result.details.status === "delivered") {
-      const next = await this.inputStep(address.ref, session, plan.then, cwd, signal);
+      const next = await this.inputStep(address.ref, session, plan.then, cwd, signal, viewport);
       result = { ...next, content: [...result.content, ...next.content] };
     }
     return this.stamp(place, result);
   }
-  private async inputStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+  private async inputStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal, viewport?: Viewport): Promise<ComputerResult> {
     const ref = refKind(plan.target);
     const browser = session.isBrowserWindow(window);
-    if (browser && plan.space !== "window" && ref !== "hint") return this.pageInput(window, session, plan, cwd, signal);
+    // A viewport of a browser window is pixels of the window, like space "window".
+    if (browser && !viewport && plan.space !== "window" && ref !== "hint") return this.pageInput(window, session, plan, cwd, signal);
     if (plan.space !== undefined && !browser) throw new ComputerRequestError("space applies to browser windows only; points on other windows are pixels of the window's latest image.");
     if (ref === "page") throw new ComputerRequestError(`${plan.target} is a page ref from a DOM Read; ${browser ? "omit space: \"window\" to act on the page" : "this window is not a browser page, so use a ref from its latest Read or a Playwright locator"}.`);
-    return this.nativeStep(window, session, plan, cwd, signal);
+    return this.nativeStep(window, session, plan, cwd, signal, viewport);
   }
 
   /** Typed input on the active page of a browser window through Playwright; a current DOM observation gives the change list. */
@@ -940,7 +1049,7 @@ export class ComputerResources {
    * window's current observation, captured first when there is none with the pixels a point needs. A click or scroll
    * on a target goes through UI Automation; when no pattern carries it, which sends nothing, it goes again as real input.
    */
-  private async nativeStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+  private async nativeStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal, viewport?: Viewport): Promise<ComputerResult> {
     if (typeof plan.native === "string") throw new ComputerRequestError(plan.native);
     const command: Record<string, unknown> = structuredClone(plan.native);
     const action = String(command.action);
@@ -963,6 +1072,8 @@ export class ComputerResources {
       delete command.option;
     }
     let result: ComputerResult;
+    // The viewport's part of the window's full-resolution capture, when the action is in a viewport.
+    let box: PixelBox | undefined;
     // What the real-input retry sends: the input observation is spent by then, so its refs become locators or points.
     let retry = (): InputPlan => plan;
     if (refKind(target) === "locator") {
@@ -974,17 +1085,30 @@ export class ComputerResources {
       delete command.timeout_ms;
       const pixels = plan.point !== undefined || plan.end !== undefined || command.unit === "wheel_detents" || action === "timeline";
       if (hint) this.hinted(view, hint);
-      else if (!view.native || pixels && view.native.width === undefined) {
-        const captured = await this.read({ kind: "window", ref: window, source: computerSource("window", window) }, cwd, ["image"], signal);
-        if (!captured || captured.details.status !== "observed") return captured ?? { content: [{ type: "text", text: "The window could not be captured; nothing was sent." }], details: { status: "refused", mode: this.getMode(), window_ref: window }, isError: true };
+      else if (!view.native || pixels && view.native.width === undefined || viewport && !view.native.full) {
+        // A quiet capture: the image the agent saw stays the space of its points. A viewport maps its points into a
+        // full-resolution capture; other points go to a capture the size of the agent's latest image.
+        const seen = view.seen ? Math.max(64, view.seen.width, view.seen.height) : undefined;
+        this.retireWindow(window, "native");
+        const captured = this.remember({ window_ref: window }, await (viewport ? session.observeFull(window, signal)
+          : session.observeQuiet(window, signal, { granularity: "image", ...(seen && seen <= FULL_RESOLUTION ? { maxLongEdge: seen, scale: 1 } : {}) })));
+        if (captured.details.status !== "observed") return captured;
         view = session.inputView(window);
       }
       const native = view.native!;
       if (pixels && native.width === undefined) throw new ComputerRequestError(`${plan.label} at a point needs the window's pixels: Read the window with an image, or give a locator.`);
       // Points are in the latest image the agent saw; the current observation can be a capture of another size.
       const sx = native.width && view.seen ? native.width / view.seen.width : 1, sy = native.height && view.seen ? native.height / view.seen.height : 1;
-      const at = (point: InputPoint) => ({ x: Math.min(native.width! - 1, Math.round(point.x * sx)), y: Math.min(native.height! - 1, Math.round(point.y * sy)) });
-      const seen = (point: InputPoint) => ({ x: point.x / sx, y: point.y / sy });
+      // In a viewport they are pixels of its image instead, mapped into the full-resolution capture.
+      box = viewport && native.full ? clipViewport(viewport.rect, { width: native.width!, height: native.height! }) : undefined;
+      if (viewport && !hint && !box) throw new ComputerRequestError(`${viewportSource(viewport.window_ref, viewport.name)} lies outside its window now. Move it with computer_view.`);
+      const at = (point: InputPoint) => {
+        if (!box) return { x: Math.min(native.width! - 1, Math.round(point.x * sx)), y: Math.min(native.height! - 1, Math.round(point.y * sy)) };
+        const inside = windowPoint(box, point), image = viewportImageSize(box);
+        if (!inside) throw new ComputerRequestError(`${point.x},${point.y} lies outside ${viewportSource(viewport!.window_ref, viewport!.name)}: its image is ${image.width}x${image.height}.`);
+        return inside;
+      };
+      const seen = (point: InputPoint) => box ? viewportPoint(box, point) : { x: point.x / sx, y: point.y / sy };
       const centre = (ref: string) => {
         const box = this.hinted(view, ref).bounds.window_image;
         if (!box || native.width === undefined) throw new ComputerRequestError(`${ref} has no place in the window's image; give a point or a locator.`);
@@ -1000,16 +1124,19 @@ export class ComputerResources {
       } else if (action === "timeline") {
         command.events = (command.events as Record<string, unknown>[]).map(event => typeof event.x === "number" && typeof event.y === "number" ? { ...event, ...at(event as unknown as InputPoint) } : event);
       } else if (plan.point) Object.assign(command, at(plan.point));
-      else if (command.unit === "wheel_detents") Object.assign(command, { x: Math.floor(native.width! / 2), y: Math.floor(native.height! / 2) });
+      else if (command.unit === "wheel_detents") Object.assign(command, box ? { x: Math.floor(box.x + box.width / 2), y: Math.floor(box.y + box.height / 2) } : { x: Math.floor(native.width! / 2), y: Math.floor(native.height! / 2) });
       if (hint && action !== "drag") retry = () => NATIVE_LOCATOR_ACTIONS.includes(LOCATOR_VERBS[action] ?? action) ? { ...plan, target: suggestLocator(this.hinted(view, hint)) }
         : { ...plan, target: undefined, point: seen(centre(hint)) };
       const observation = { kind: "observation" as const, ref: native.id, source: computerSource("observation", native.id), ...(hint && action !== "drag" ? { hint } : {}) };
-      result = await this.performAt(observation, cwd, JSON.stringify(command), signal);
+      result = await this.performAt(observation, cwd, JSON.stringify(command), signal, box);
     }
+    if (viewport) result = { ...result, details: { ...result.details, viewport: ComputerResources.viewportDetails(viewport, box ?? viewport.rect) } };
     const capability = result.details.action_capability;
     if (!structural || result.details.status !== "refused" || capability?.background !== "unavailable") return result;
-    const again = await this.nativeStep(window, session, { ...retry(), real: true }, cwd, signal);
-    return { ...again, content: [{ type: "text", text: `No UI Automation pattern of the target carried this ${plan.label}, so this call used the real pointer.` }, ...again.content] };
+    // A ref acted on a capture without the viewport's pixels; its retry point is in the window's latest image.
+    const again = await this.nativeStep(window, session, { ...retry(), real: true }, cwd, signal, box ? viewport : undefined);
+    return { ...again, content: [{ type: "text", text: `No UI Automation pattern of the target carried this ${plan.label}, so this call used the real pointer.` }, ...again.content],
+      ...(viewport ? { details: { ...again.details, viewport: again.details.viewport ?? result.details.viewport } } : {}) };
   }
 
   /** The element of a ref in the window's current observation. */
@@ -1023,7 +1150,7 @@ export class ComputerResources {
     const place = this.place(address);
     return this.stamp(place, await this.performAt(address, cwd, value, signal));
   }
-  private async performAt(address: ComputerAddress, cwd: string, value: string, signal?: AbortSignal): Promise<ComputerResult> {
+  private async performAt(address: ComputerAddress, cwd: string, value: string, signal?: AbortSignal, viewport?: PixelBox): Promise<ComputerResult> {
     if (address.kind === "sandbox") {
       const sandbox = this.sandbox(address.ref);
       const command = commandObject(value);
@@ -1111,7 +1238,7 @@ export class ComputerResources {
       return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), commandObject(value), cwd, signal, { successor: true, explicit: false });
     }
     const focus = inputFocus(commandObject(value), snapshot.result.details.ui, address.hint);
-    let follow = window ? await this.withFrame({ successor: true, explicit: false, ...(focus ? { focus } : {}) }, window, address.ref, cwd) : undefined;
+    let follow = window ? await this.withFrame({ successor: true, explicit: false, ...(focus ? { focus } : {}), ...(viewport ? { viewport } : {}) }, window, address.ref, cwd) : undefined;
     // A page action compares Playwright screenshots of the page, taken before and after it.
     if (follow && window && snapshot.result.details.dom) {
       const page = await this.pageShot(follow.session!, window, address.ref, signal);
@@ -1184,7 +1311,7 @@ export class ComputerResources {
     let successor: ComputerResult | undefined, settled: StateDiff | undefined, crops: ComputerResult["content"] = [];
     if (status !== "refused") {
       if (result.details.dom) successor = result;
-      else ({ successor, diff: settled, crops } = await this.settle(window, session, before, follow.frame, signal, follow.focus));
+      else ({ successor, diff: settled, crops } = await this.settle(window, session, before, follow.frame, signal, follow.focus, follow.viewport));
     }
     const after = successor?.details;
     const diff = before.result.details.dom && after?.dom ? diffDom(before.result.details.dom, after.dom)
@@ -1210,16 +1337,22 @@ export class ComputerResources {
    * to STEADY_MS, so the change list shows the settled window rather than a frame in the middle of a repaint.
    * Captures keep the input observation's overview size so their pixels compare with it.
    */
-  private async settle(window: string, session: ComputerSession, before: Snapshot, frame: WindowFrame | undefined, signal?: AbortSignal, focus?: InputPoint):
+  private async settle(window: string, session: ComputerSession, before: Snapshot, frame: WindowFrame | undefined, signal?: AbortSignal, focus?: InputPoint, viewport?: PixelBox):
     Promise<{ successor: ComputerResult; diff?: StateDiff; crops: ComputerResult["content"] }> {
     const started = performance.now();
+    // Full-resolution captures continue at full resolution without changing the size of the image the agent saw.
+    const full = !!frame && frame.size.maxLongEdge >= FULL_RESOLUTION;
+    // A viewport compares only its own pixels, cut from full-resolution captures of the window.
+    const scope = full ? viewport : undefined;
+    const cut = async (png: Buffer) => scope ? viewportImage(png, scope).catch(() => undefined) : png;
     let options: UiCaptureOptions = { granularity: "full", ...(frame ? frame.size : {}) };
-    const baseline: Capture = { ui: before.result.details.ui, frame: frame ? await decodeFrame(frame.png) : undefined };
-    const context = diffContext(before.result.details.ui, baseline.frame, focus);
-    let successor: ComputerResult, diff: StateDiff | undefined, previous: Capture | undefined, latest: WindowFrame | undefined;
+    const first = frame ? await cut(frame.png) : undefined;
+    const baseline: Capture = { ui: before.result.details.ui, frame: first ? await decodeFrame(first) : undefined };
+    const context = scope ? focus ? { focus: viewportPoint(scope, focus) } : {} : diffContext(before.result.details.ui, baseline.frame, focus);
+    let successor: ComputerResult, diff: StateDiff | undefined, previous: Capture | undefined, latest: Buffer | undefined;
     for (let attempt = 0; ; attempt++) {
       this.retireWindow(window);
-      successor = this.remember({ window_ref: window }, await session.observeQuiet(window, signal, options));
+      successor = this.remember({ window_ref: window }, await (full && options.granularity !== "ui" ? session.observeFull(window, signal) : session.observeQuiet(window, signal, options)));
       const waited = Math.round(performance.now() - started);
       // A window whose pixels cannot be captured (minimized, or a failed screenshot) still gets its UI compared.
       if (successor.details.status !== "observed" && options.granularity === "full" && !signal?.aborted) {
@@ -1227,8 +1360,8 @@ export class ComputerResources {
       }
       if (successor.details.status !== "observed" || signal?.aborted) break;
       const captured = session.windowFrame(window);
-      latest = captured?.observation_id === successor.details.observation_id ? captured : undefined;
-      const current: Capture = { ui: successor.details.ui, frame: latest ? await decodeFrame(latest.png) : undefined };
+      latest = captured && captured.observation_id === successor.details.observation_id ? await cut(captured.png) : undefined;
+      const current: Capture = { ui: successor.details.ui, frame: latest ? await decodeFrame(latest) : undefined };
       diff = compareCaptures(baseline, current, context);
       if (!diff) break;
       diff.waited_ms = waited;
@@ -1243,7 +1376,8 @@ export class ComputerResources {
       if (waited >= STEADY_MS) { diff.unsettled = true; break; }
       previous = current;
     }
-    return { successor, diff, crops: diff && frame && latest ? await cropImages(frame.png, latest.png, diff) : [] };
+    if (scope && diff?.pixels) diff.pixels.space = "viewport";
+    return { successor, diff, crops: diff && first && latest ? await cropImages(first, latest, diff) : [] };
   }
 
   /**
