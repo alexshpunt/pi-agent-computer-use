@@ -1,6 +1,7 @@
 import { validateUiCapture, type UiCaptureOptions } from "./ui-resources.ts";
 import { SEQUENCE_LIMITS, validateSequence, type SequenceOptions, type FrameSelection } from "./temporal-capture.ts";
 import { validateWebSnapshot, type WebSnapshotOptions } from "./web-browser.ts";
+import { validateRendering, type FrameRendering } from "./contact-sheet.ts";
 
 /** One native Read mode. Details and sampled frames never grant input authority. */
 export type ComputerViews =
@@ -9,7 +10,8 @@ export type ComputerViews =
   | { kind: "overview"; capture: UiCaptureOptions }
   | { kind: "region"; region: { x: number; y: number; width: number; height: number } }
   | { kind: "sequence"; options: SequenceOptions }
-  | { kind: "frames"; selection: FrameSelection }
+  /** Selected frames, one image each, or one sheet or composite image of them. */
+  | { kind: "frames"; selection: FrameSelection; rendering?: FrameRendering }
   | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop" | "text"; hint: string };
 
 function json(value: string): Record<string, unknown> {
@@ -85,6 +87,15 @@ function parseView(views: readonly string[]): ComputerViews {
     }
     if (["all", "first", "last", "endpoints", "changed"].includes(value)) return { kind: "frames", selection: value as FrameSelection };
     const raw = json(value);
+    // Rendering options (as, region, columns, maxLongEdge) go with any selection: select, indexes or from/to.
+    const rendering = validateRendering(raw);
+    for (const key of ["as", "region", "columns", "maxLongEdge"]) delete raw[key];
+    if (rendering && !Object.keys(raw).length) raw.select = "all";
+    if (raw.select !== undefined) {
+      keys(raw, ["select"]);
+      if (!["all", "first", "last", "endpoints", "changed"].includes(raw.select as string)) throw Error("select is all, first, last, endpoints or changed.");
+      return { kind: "frames", selection: raw.select as FrameSelection, ...(rendering ? { rendering } : {}) };
+    }
     const indexes = raw.indexes;
     if (indexes !== undefined) {
       keys(raw, ["indexes"]);
@@ -96,7 +107,7 @@ function parseView(views: readonly string[]): ComputerViews {
         (raw.to as number) < (raw.from as number) || (raw.to as number) >= SEQUENCE_LIMITS.max_frames || (raw.to as number) - (raw.from as number) >= SEQUENCE_LIMITS.selected)
         throw Error(`Use an inclusive frame range within 0..${SEQUENCE_LIMITS.max_frames - 1} of at most ${SEQUENCE_LIMITS.selected} frames.`);
     }
-    return { kind: "frames", selection: raw as FrameSelection };
+    return { kind: "frames", selection: raw as FrameSelection, ...(rendering ? { rendering } : {}) };
   }
   const capture: UiCaptureOptions = {};
   for (const view of views) {

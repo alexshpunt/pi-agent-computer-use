@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./selected-displays.ts";
 import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
+import { renderFrames, type FrameRendering, type RenderedFrames } from "./contact-sheet.ts";
 import type { GuideMark } from "./image-guides.ts";
 import { createUiResource, projectUi, resolveUi, annotateUi, validateUiCapture, type UiResource, type UiRequest, type UiCaptureOptions } from "./ui-resources.ts";
 import { isSemanticAction, semanticReceipt } from "./semantic-actions.ts";
@@ -108,6 +109,8 @@ export interface ComputerResult {
     captured?: { image: boolean; ui: boolean };
     sequence?: ReturnType<typeof sequenceMetadata>;
     selected_frames?: Omit<SequenceFrame, "image">[];
+    /** How a sheet or composite Read placed the selected frames in its one image. */
+    rendered_frames?: Omit<RenderedFrames, "png">;
     /** Outcome of a bounded wait_for/verify; the conditions as requested, in order. */
     verification?: WaitResult & { spec: WaitSpec };
     /** Declared postcondition of an action: verified now, already true before, not reached, or undecidable. */
@@ -631,7 +634,7 @@ export class ComputerSession {
   }
 
   /** Select retained pixels only after rechecking source identity and current access; no native recapture. */
-  sequenceFrames(id: string, selection: FrameSelection, signal?: AbortSignal): Promise<ComputerResult> {
+  sequenceFrames(id: string, selection: FrameSelection, signal?: AbortSignal, rendering?: FrameRendering): Promise<ComputerResult> {
     return this.queue(async () => {
       const sequence = this.sequences.get(id);
       if (!sequence) return this.result("refused", "Sequence is unavailable or evicted. Capture again; resources do not survive reload/close.");
@@ -647,6 +650,22 @@ export class ComputerSession {
         const frames = selectFrames(sequence, selection);
         const metadata = frames.map(({ image: _image, ...frame }) => frame);
         if (signal?.aborted) return this.result("refused", "Cancelled during frame selection; pixels withheld.");
+        if (rendering) {
+          let rendered;
+          try { rendered = await renderFrames(frames, rendering); }
+          catch (error) { return this.result("refused", `Frames not rendered: ${error instanceof Error ? error.message : error}`); }
+          if (signal?.aborted) return this.result("refused", "Cancelled during frame rendering; pixels withheld.");
+          if (!permitted()) return denied();
+          const { png, ...layout } = rendered;
+          const crop = layout.region ? ` of region ${layout.region.x},${layout.region.y} ${layout.region.width}x${layout.region.height}` : "";
+          const summary = rendering.as === "sheet"
+            ? `Contact sheet of ${frames.length} frames${crop}: ${layout.columns}x${layout.rows} tiles of ${layout.tiles[0].width}x${layout.tiles[0].height} in time order, left to right, each under its "#index · time" label; image ${layout.width}x${layout.height}.\n` +
+              layout.tiles.map((tile, i) => `Tile ${i + 1} (row ${Math.floor(i / layout.columns!) + 1}, column ${i % layout.columns! + 1}): frame ${tile.index} at ${tile.timestamp_ms.toFixed(1)} ms`).join("\n")
+            : `Per-pixel ${rendering.as === "max" ? "maximum" : "minimum"} of ${frames.length} frames${crop} (frames ${frames.map(frame => frame.index).join(", ")}); image ${layout.width}x${layout.height}. ` +
+              `${rendering.as === "max" ? "Bright" : "Dark"} detail from any frame shows at once, for example text revealed by a moving light.`;
+          return this.result("observed", `${summary}\nRead only; observe again before input.`, undefined, { selected_frames: metadata, rendered_frames: layout },
+            [{ type: "image", mimeType: "image/png", data: png.toString("base64") }]);
+        }
         // Interleave frame labels with their images so both direct calls and Codemode preserve correspondence.
         const result = this.result("observed", `Selected ${frames.length} read-only sequence frames. Their indexes and measured timestamps label the image order.`, undefined,
           { selected_frames: metadata });

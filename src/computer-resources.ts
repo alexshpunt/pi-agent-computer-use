@@ -613,8 +613,8 @@ export class ComputerResources {
       return session.captureSequence(address.kind === "window" ? { window_ref: address.ref } : { display: address.ref }, view.options, signal);
     }
     if (address.kind === "sequence") {
-      if (view.kind !== "frames") throw new ComputerRequestError("Select sequence images explicitly with frames:first|last|endpoints|changed|all or frames:{\"indexes\":[0]}.");
-      return session.sequenceFrames(address.ref, view.selection, signal);
+      if (view.kind !== "frames") throw new ComputerRequestError("Select sequence images explicitly with frames:first|last|endpoints|changed|all or frames:{\"indexes\":[0]}; add \"as\":\"sheet\" for one tiled image.");
+      return session.sequenceFrames(address.ref, view.selection, signal, view.rendering);
     }
     if (view.kind === "frames") throw new ComputerRequestError("Frame selection needs a sequence address.");
     if (address.kind === "window") {
