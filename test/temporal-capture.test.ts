@@ -15,8 +15,42 @@ test("slow captures skip elapsed slots instead of bursting or inventing timestam
   expect(sequence.frames.map(f => f.timestamp_ms)).toEqual([240, 540, 840, 1140]);
   expect(sequence.skipped_slots).toEqual([1, 2, 4, 5, 7, 8]);
   expect(sequence.sample_span_ms).toBe(900); expect(sequence.actual_fps).toBeCloseTo(1000 / 300);
-  expect(sequence.elapsed_ms).toBe(1140); expect(sequence.payload_bytes).toBe(4);
+  // Four identical frames: the repeats share the first one's image, so its byte counts once.
+  expect(sequence.elapsed_ms).toBe(1140); expect(sequence.payload_bytes).toBe(1);
   expect(sequence.frames.every(f => f.capture_latency_ms === 240)).toBe(true);
+});
+
+test("a repeated frame shares the previous image and adds no bytes; a new one does", async () => {
+  const datas = ["YQ==", "YQ==", "Yg==", "Yg==", "YQ=="];
+  let i = 0;
+  const sequence = await collectSequence({ duration_ms: 1000, fps: 5 }, async () => frame(datas[i++]), undefined, clock());
+  expect(sequence.frames).toHaveLength(5);
+  expect(sequence.frames[1].image).toBe(sequence.frames[0].image);
+  expect(sequence.frames[3].image).toBe(sequence.frames[2].image);
+  expect(sequence.frames[4].image).not.toBe(sequence.frames[0].image);
+  expect(sequence.payload_bytes).toBe(3);
+});
+
+test("a stop request ends a capture as stopped and keeps its frames; the running sequence is visible from the start", async () => {
+  const c = clock(); const stop = new AbortController(); let seen: unknown; let calls = 0;
+  const sequence = await collectSequence({ duration_ms: 10_000, fps: 10, max_frames: 1000, timeout_ms: 20_000 }, async () => {
+    c.advance(10); if (++calls === 3) stop.abort(); return frame(String(calls));
+  }, undefined, c, { limits: { duration_ms: 300_000, fps: 30, max_frames: 3000, timeout_ms: 320_000 }, stop: stop.signal, started: s => { seen = s; } });
+  expect(seen).toBe(sequence);
+  expect(sequence.stop_reason).toBe("stopped");
+  expect(sequence.frames).toHaveLength(2);
+});
+
+test("a running sequence is never evicted from the store; once settled it is", () => {
+  const store = new SequenceStore();
+  const make = (id: string) => ({ sequence_id: id, payload_bytes: 1, frames: [] }) as never as Parameters<SequenceStore["put"]>[0];
+  const running = make("running");
+  store.put(running, true);
+  for (let i = 0; i < 5; i++) store.put(make(`other-${i}`));
+  expect(store.get("running")).toBe(running);
+  store.put(running);
+  for (let i = 5; i < 8; i++) store.put(make(`other-${i}`));
+  expect(store.get("running")).toBeUndefined();
 });
 
 test("cancellation stops sampling and retains only the known completed prefix", async () => {
