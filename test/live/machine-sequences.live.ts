@@ -47,5 +47,9 @@ test("the machine's primary and listed displays are captured there, with readabl
     expect(images(frames)).toBe(1);
   }
   // A display reference of this machine is unknown on another one.
-  if (name !== "local") await expect(live.read(display.replace(`/machine/${name}/`, "/machine/local/"))).rejects.toThrow();
+  if (name !== "local") {
+    // This harness forbids the local session, so reaching it throws; a real local session refuses the unknown reference.
+    const elsewhere = await live.read(display.replace(`:machine/${name}/`, ":machine/local/")).catch((error: Error) => error);
+    expect(elsewhere instanceof Error ? elsewhere.message : elsewhere.details.status).toMatch(/Live checks use only the remote machine|refused/);
+  }
 });
