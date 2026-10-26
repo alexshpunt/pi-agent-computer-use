@@ -7,7 +7,8 @@ import type { MachineHost } from "../src/machine-host.ts";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computerAction, deleteComputer } from "../src/provider.ts";
+import { computerAction, deleteComputer, presentComputerResult } from "../src/provider.ts";
+import sharp from "sharp";
 import { ComputerSession, type ComputerMode, type Driver } from "../src/session.ts";
 
 const cwd = "/synthetic-computer-tools";
@@ -151,7 +152,8 @@ function browserFixture() {
     }),
   };
   const page = vi.fn(async (_kind: string, _action?: unknown) => ({ url: "https://example.com/next", title: "Next", snapshot: "- heading \"Next\" [ref=e1]", tabs: [], events: [] }));
-  const launch = vi.fn<WebLauncher>(async () => ({ browser: { close: vi.fn(async () => {}), page } as unknown as WebBrowser,
+  const browser = { close: vi.fn(async () => {}), page } as unknown as WebBrowser;
+  const launch = vi.fn<WebLauncher>(async () => ({ browser,
     opened: { pid: target.pid, version: "155", url: "https://example.com", title: "Page", via: "cdp" } }));
   const session = new ComputerSession(driver, () => "yolo", undefined, undefined, undefined, launch);
   const resources = new ComputerResources(async () => session, async () => session.close());
@@ -160,7 +162,7 @@ function browserFixture() {
     expect((await session.attachBrowser(ref)).details.status).toBe("delivered");
     return at(`computer:window/${ref}`);
   };
-  return { resources, page, window };
+  return { resources, page, window, browser };
 }
 
 test("computer_browser runs a page action on the window and returns the page's next snapshot", async () => {
@@ -177,6 +179,26 @@ test("computer_browser runs a page action on the window and returns the page's n
   await expect(f.resources.browserAction(at("computer:machine/local"), cwd, { action: "reload" })).rejects.toThrow("computer_browser needs the window address");
   // Refused requests never reach Playwright.
   expect(f.page).toHaveBeenCalledTimes(1);
+});
+
+// LPT-928: a page action shows its visual change too, from Playwright screenshots of the page before and after it.
+test("a page action compares page screenshots and puts the change at its point first", async () => {
+  const f = browserFixture();
+  const white = await sharp({ create: { width: 400, height: 300, channels: 3, background: "white" } }).png().toBuffer();
+  const marked = await sharp(white).composite([{ input: { create: { width: 20, height: 20, channels: 3, background: "black" } }, left: 90, top: 140 }]).png().toBuffer();
+  const shots = [white, marked];
+  (f.browser as unknown as { request: unknown }).request = vi.fn(async (kind: string, args: { css?: boolean }) => {
+    expect(kind).toBe("screenshot");
+    expect(args.css).toBe(true);
+    return { url: "https://example.com/next", title: "Next", png: (shots.shift() ?? marked).toString("base64") };
+  });
+  const window = await f.window();
+  // The first action makes a page snapshot current; the next one is compared with it.
+  await f.resources.input(window, cwd, clickPlan({ window: "x", target: "e1" }));
+  const clicked = await f.resources.input(window, cwd, clickPlan({ window: "x", x: 100, y: 150 }));
+  expect(clicked.details.successor?.diff?.pixels).toMatchObject({ space: "page", overview: true, areas: [{ x: 90, y: 140, width: 20, height: 20, at_input: true }] });
+  expect(presentComputerResult(clicked)).toMatch(/Pixels changed in 1 area \(CSS pixels of the page; [\d.]+% of the page\); image 1 outlines and numbers them on the page:\n  1\. x=90 y=140 w=20 h=20 \(at the input point\); images 2 and 3 show/);
+  expect(clicked.content.filter(block => block.type === "image")).toHaveLength(3);
 });
 
 test("typed input on a browser window goes to Playwright with page refs and locators", async () => {

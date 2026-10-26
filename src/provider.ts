@@ -225,11 +225,12 @@ function pixelLines(pixels: PixelReport, uiChanged: boolean): string[] {
   const share = pixels.share * 100, percent = share < 0.1 ? share.toFixed(2) : share.toFixed(1), crops = pixels.crops ?? [];
   const rect = (b: PixelBox) => `x=${b.x} y=${b.y} w=${b.width} h=${b.height}`;
   const chrome = pixels.chrome ? [`Browser chrome outside the page also changed (${rect(pixels.chrome.box)}, ${pixels.chrome.regions} ${pixels.chrome.regions === 1 ? "area" : "areas"}): tab strip, address bar or loading state; not listed.`] : [];
-  if (pixels.full) return [`Most of the window changed${since} (${percent}% of its overview pixels): image 1 shows the whole window after the action.`, ...chrome];
+  const page = pixels.space === "page", whole = page ? "page" : "window", unit = page ? "CSS pixels of the page" : "overview pixels";
+  if (pixels.full) return [`Most of the ${whole} changed${since} (${percent}% of its pixels): image 1 shows the whole ${whole} after the action.`, ...chrome];
   if (!pixels.areas.length) return chrome;
   // The overview, when attached, is image 1 and numbers the areas as listed; each crop pair follows it.
   const first = pixels.overview ? 2 : 1;
-  const lines = [`Pixels changed${since} in ${pixels.regions} ${pixels.regions === 1 ? "area" : "areas"} (overview pixels; ${percent}% of the window)${pixels.overview ? "; image 1 outlines and numbers them on the window" : ""}:`,
+  const lines = [`Pixels changed${since} in ${pixels.regions} ${pixels.regions === 1 ? "area" : "areas"} (${unit}; ${percent}% of the ${whole})${pixels.overview ? `; image 1 outlines and numbers them on the ${whole}` : ""}:`,
     ...pixels.areas.map((area, i) => {
       const crop = crops[i], zoom = crop && crop.scale > 1 ? `, enlarged ${crop.scale}x` : "";
       return `  ${i + 1}. ${rect(area)}${area.at_input ? " (at the input point)" : ""}${crop ? `; images ${first + 2 * i} and ${first + 2 * i + 1} show ${rect(crop)} before and after${zoom}` : ""}`;

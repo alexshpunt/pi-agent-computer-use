@@ -7,7 +7,9 @@ import { diffFrames, pixelsChanged, type DiffContext, type PixelBox, type PixelD
  * and numbers the listed areas on the window, `crops` the regions of the before/after pairs after it with their
  * scale, and `full` when most of the window changed and the only image is the whole window after the action.
  */
-export type PixelReport = PixelDiff & { crops?: (PixelBox & { scale: number })[]; overview?: true; full?: true; since?: string };
+export type PixelReport = PixelDiff & { crops?: (PixelBox & { scale: number })[]; overview?: true; full?: true; since?: string;
+  /** `page` when the pixels are Playwright screenshots of a browser page in CSS pixels, not window overviews. */
+  space?: "page" };
 
 /** Compact change list between an action's input observation and its successor. Bounded; full successors stay readable. */
 export interface StateDiff {

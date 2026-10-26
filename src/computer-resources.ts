@@ -12,7 +12,7 @@ import type { ComputerSession, ComputerResult, ComputerMode, Action } from "./se
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { compareCaptures, diffDom, diffIsEmpty, diffUi, type Capture, type StateDiff } from "./successor.ts";
-import { changeCrops, changeOverview, decodeFrame, MOST_CHANGED, type DiffContext } from "./pixel-diff.ts";
+import { changeCrops, changeOverview, decodeFrame, diffFrames, MOST_CHANGED, type DiffContext } from "./pixel-diff.ts";
 import type { WindowFrame } from "./session.ts";
 import { webContentBox, type UiCaptureOptions, type UiElement, type UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
@@ -33,15 +33,15 @@ export class ComputerRequestError extends Error {}
  * after the action; otherwise an overview of the window with the listed areas outlined and numbered, then a before and
  * an after crop of each of the first areas.
  */
-async function cropImages(before: WindowFrame, after: WindowFrame, diff: StateDiff): Promise<ComputerResult["content"]> {
+async function cropImages(before: Buffer, after: Buffer, diff: StateDiff): Promise<ComputerResult["content"]> {
   const pixels = diff.pixels;
   if (!pixels?.box || pixels.size_changed) return [];
   const image = (png: Buffer) => ({ type: "image" as const, data: png.toString("base64"), mimeType: "image/png" });
   if (pixels.share >= MOST_CHANGED) {
     pixels.full = true;
-    return [image(after.png)];
+    return [image(after)];
   }
-  const [overview, cropped] = await Promise.all([changeOverview(after.png, pixels).catch(() => undefined), changeCrops(before.png, after.png, pixels).catch(() => [])]);
+  const [overview, cropped] = await Promise.all([changeOverview(after, pixels).catch(() => undefined), changeCrops(before, after, pixels).catch(() => [])]);
   if (overview) pixels.overview = true;
   pixels.crops = cropped.map(item => ({ ...item.region, scale: item.scale }));
   return [...(overview ? [image(overview)] : []), ...cropped.flatMap(item => [image(item.before), image(item.after)])];
@@ -114,6 +114,8 @@ const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "do
 interface FollowUp { successor: boolean; explicit: boolean; frame?: WindowFrame;
   /** Where the input landed, in the input observation's pixels; the pixel change list puts areas near it first. */
   focus?: InputPoint;
+  /** A Playwright screenshot of the page before a page action, in CSS pixels, for its pixel change list. */
+  page?: Buffer;
   /** The window's session, resolved before the action: a failed action can make the session forget the window. */
   session?: ComputerSession }
 /** How long a native successor keeps looking for a change before reporting that nothing changed. */
@@ -657,7 +659,7 @@ export class ComputerResources {
       const since = baseline?.observation_id ?? frame!.observation_id;
       if (diff.pixels && frame!.observation_id !== since) diff.pixels.since = frame!.observation_id;
       // The change list replaces the full overview: only crops of the changed area are shown.
-      const crops = latest ? await cropImages(frame!, latest, diff) : [];
+      const crops = latest ? await cropImages(frame!.png, latest.png, diff) : [];
       return { ...result, content: [...result.content.filter(block => block.type !== "image"), ...crops], details: { ...result.details, changes: { since, diff } } };
     }
     if (view.kind === "state" && result.details.status === "observed") {
@@ -1104,7 +1106,12 @@ export class ComputerResources {
       return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), commandObject(value), cwd, signal, { successor: true, explicit: false });
     }
     const focus = inputFocus(commandObject(value), snapshot.result.details.ui, address.hint);
-    const follow = window ? await this.withFrame({ successor: true, explicit: false, ...(focus ? { focus } : {}) }, window, address.ref, cwd) : undefined;
+    let follow = window ? await this.withFrame({ successor: true, explicit: false, ...(focus ? { focus } : {}) }, window, address.ref, cwd) : undefined;
+    // A page action compares Playwright screenshots of the page, taken before and after it.
+    if (follow && window && snapshot.result.details.dom) {
+      const page = await this.pageShot(follow.session!, window, address.ref, signal);
+      if (page) follow = { ...follow, page };
+    }
     const result = await this.act(address, snapshot, value, cwd, signal);
     if (!follow || !window) return result;
     return this.followUp(window, snapshot, result, follow, cwd, signal);
@@ -1144,6 +1151,13 @@ export class ComputerResources {
     return result;
   }
 
+  /** A Playwright screenshot of a browser window's page in CSS pixels, or undefined when it cannot be taken. */
+  private async pageShot(session: ComputerSession, window: string, observation: string, signal?: AbortSignal): Promise<Buffer | undefined> {
+    const shot = await session.webImage(window, observation, "page", undefined, signal, true).catch(() => undefined);
+    const image = shot?.details.status === "observed" ? shot.content.find(block => block.type === "image") : undefined;
+    return image?.type === "image" ? Buffer.from(image.data, "base64") : undefined;
+  }
+
   /** Keep the input observation's own pixels as the baseline of the pixel comparison; they must be taken before the action. */
   private async withFrame(follow: FollowUp, window: string, observation: string | undefined, cwd: string): Promise<FollowUp> {
     if (!follow.successor) return follow;
@@ -1170,6 +1184,14 @@ export class ComputerResources {
     const after = successor?.details;
     const diff = before.result.details.dom && after?.dom ? diffDom(before.result.details.dom, after.dom)
       : settled ?? (before.result.details.ui && after?.ui ? diffUi(before.result.details.ui, after.ui) : undefined);
+    if (diff && follow.page && after?.dom && after.observation_id) {
+      const shot = await this.pageShot(session, window, after.observation_id, signal);
+      if (shot) {
+        const [a, b] = await Promise.all([decodeFrame(follow.page), decodeFrame(shot)]);
+        diff.pixels = { ...diffFrames(a, b, follow.focus ? { focus: follow.focus } : {}), space: "page" };
+        crops = await cropImages(follow.page, shot, diff);
+      }
+    }
     // The successor replaces the action's own observation as the current one; a wait retired the earlier snapshot.
     const details = { ...result.details, ...(after?.observation_id ? { observation_id: after.observation_id, ...(after.dom ? { dom: after.dom } : {}) } : {}),
       successor: after?.observation_id ? { observation_id: after.observation_id, ...(diff ? { diff } : { reason: "The input observation had no comparable UI or DOM." }) }
@@ -1216,7 +1238,7 @@ export class ComputerResources {
       if (waited >= STEADY_MS) { diff.unsettled = true; break; }
       previous = current;
     }
-    return { successor, diff, crops: diff && frame && latest ? await cropImages(frame, latest, diff) : [] };
+    return { successor, diff, crops: diff && frame && latest ? await cropImages(frame.png, latest.png, diff) : [] };
   }
 
   /**
