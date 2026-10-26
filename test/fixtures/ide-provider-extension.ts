@@ -159,7 +159,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("insert", { path: observation, text: "not JSON" });
         await denied("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80, window_ref: second }) });
         await denied("insert", { path: first, text: JSON.stringify({ action: "click", x: 100, y: 80 }) });
-        await denied("write", { path: "computer:display/primary", content: "not input authority" });
+        await denied("write", { path: "computer:machine/local/display/primary", content: "not input authority" });
         assert((await inputs()).length === 0, "Invalid/Safe/display requests sent native input");
         view = await ok("read", { path: first }); observation = reference(view, "observation");
         await control("partial");

@@ -21,7 +21,7 @@ const detail = await tools.computer_read({path:opened.observation,views:[region]
 text(body(detail)); image(detail);
 const stale = await insert(opened.observation,{action:"click",element_token:"close"});
 if (stale.outcome !== "refused" || stale.effect !== "not-applied") throw Error("Old overview still armed");
-const overview = await tools.computer_read({path:"computer:display/primary"});
+const overview = await tools.computer_read({path:"computer:machine/local/display/primary"});
 const crop = await tools.computer_read({path:observation(overview),views:[region]});
 text(body(crop)); image(crop);
 let nested = "admitted";

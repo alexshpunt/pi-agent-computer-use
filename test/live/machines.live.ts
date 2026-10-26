@@ -22,7 +22,7 @@ test("a machine's apps open there, and closing the machine reports each released
   expect(closed.details.status, text(closed)).toBe("closed");
   expect(text(closed)).toMatch(new RegExp(`^${live.machine}: `, "m"));
   // Its references are gone, and the next use starts the machine again.
-  // No started machine claims the old window; it falls to the local session, which this harness forbids.
+  // No started machine claims the old window; checking whether the local session holds it is forbidden by this harness.
   await expect(live.read(window, ["state"])).rejects.toThrow(/Live checks use only the remote machine/);
   expect(addresses(await live.read(live.displays), "display").length).toBeGreaterThan(0);
 });

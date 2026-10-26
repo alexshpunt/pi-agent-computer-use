@@ -12,7 +12,7 @@ test("real Pi stores a sequence without images and forwards only explicitly sele
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath,
     args: [path.resolve("test/fixtures/detail-driver.mjs"), log] }));
   const capture = `${SCRIPT_HELPERS}
-const result=await tools.computer_read({path:"computer:display/primary",views:['sequence:{"duration_ms":3000,"fps":2,"max_frames":3}']});
+const result=await tools.computer_read({path:"computer:machine/local/display/primary",views:['sequence:{"duration_ms":3000,"fps":2,"max_frames":3}']});
 if(typeof result!=="string")throw Error("Capture unexpectedly forwarded frames");
 store("temporal",address(result,"sequence","Sequence"));text(result.match(/^Frames: .*$/m)[0]);`;
   const select = `const result=await tools.computer_read({path:load("temporal"),views:['frames:{"indexes":[0,2]}']});

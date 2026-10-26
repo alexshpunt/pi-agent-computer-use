@@ -162,7 +162,7 @@ test.each(["safe", "closed", "reused"] as const)("%s after reading refuses direc
 });
 
 test("display resources and their observations never grant Write or Insert authority", async () => {
-  const f = await fixture(), display = address("computer:display/primary");
+  const f = await fixture(), display = address("computer:machine/local/display/primary");
   const result = await f.resources.read(display, cwd);
   expect(result?.details.status).toBe("observed");
   const observed = address(computerSource("observation", result!.details.agent_image!.image_id as string));
@@ -240,7 +240,7 @@ test("an address delivery preference does not block semantic actions", async () 
 });
 
 test("a display overview accepts a size for that Read only", async () => {
-  const f = await fixture(), display = address("computer:display/primary");
+  const f = await fixture(), display = address("computer:machine/local/display/primary");
   await f.resources.read(display, cwd, ['capture:{"maxLongEdge":320}']);
   expect(f.captures().at(-1)).toEqual(["get_desktop_state", { max_image_dimension: 320 }, undefined]);
   await f.resources.read(display, cwd);

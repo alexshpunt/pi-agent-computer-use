@@ -22,7 +22,7 @@ A native topology token covers monitor identity, physical bounds, work area and 
 
 Selected source metadata reports `selected_display` or `selected_display_region`, display-local image/crop coordinates and host-global native bounds separately. Only exact native display reads report monitor membership. Window membership remains unknown; proximity to a monitor is not evidence.
 
-`computer:display/primary` keeps the existing primary-read route. It does not select an enumerated monitor by a permanent identity. Temporal sequences accept only windows or the primary display; selected-monitor sequences are outside this change.
+`computer:machine/<name>/display/primary` keeps the primary-read route of that machine. It does not select an enumerated monitor by a permanent identity. A listed display's address is `computer:machine/<name>/display/<ref>`; its reference is unknown on any other machine. Temporal sequences accept windows, a machine's primary display and its listed displays.
 
 Safe denies discovery, overview and detail. Revoked or cancelled reads withhold metadata/pixels. Paint freshness remains unverified. No selected-display input, window relocation, virtual-desktop management or concurrent-agent arbitration is added.
 
