@@ -1,4 +1,6 @@
 import { afterAll, expect, test } from "vitest";
+import { requireComputerAddress } from "../../src/computer-resources.ts";
+import { pressPlan, typePlan } from "../../src/computer-tools.ts";
 import { addresses, connectLive, text } from "./remote.ts";
 
 const live = await connectLive();
@@ -21,19 +23,17 @@ test("a display overview takes a per-Read size", async () => {
   expect(small.details.agent_image).toMatchObject({ output: { width: 320 } });
 });
 
-test("set_value on a delivery-preference address reaches the slider", async () => {
+test("computer_type replace with foreground reaches the slider through accessibility", async () => {
   const opened = await live.insert(live.machine, { action: "open", app: "Paint" });
   const window = `computer:window/${opened.details.window_ref}`;
   try {
     const view = await live.read(window, ["ui"]);
     const size = view.details.ui!.elements.find(element => element.role === "Slider" && element.name === "Size")!;
-    const done = await live.insert(`computer:observation/${view.details.observation_id}?hint=${encodeURIComponent(size.hint)}&delivery=foreground`,
-      { action: "set_value", text: "20" });
+    const done = await live.resources.input(requireComputerAddress(window), live.cwd, typePlan({ window, target: size.hint, text: "20", replace: true, foreground: true }));
     // Paint's Size slider is read-only through UIA, so the driver itself answers; the adapter no longer refuses first.
     expect(text(done)).not.toMatch(/accessibility only/);
     expect(done.details.state).toMatchObject({ route: "accessibility", native_message: "semantic_element_read_only" });
   } finally {
-    const view = await live.read(window, ["ui"]);
-    await live.insert(`computer:observation/${view.details.observation_id}`, { action: "hotkey", keys: ["alt", "f4"], delivery_mode: "foreground" });
+    await live.resources.input(requireComputerAddress(window), live.cwd, pressPlan({ window, key: "alt+F4", foreground: true }));
   }
 });

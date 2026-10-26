@@ -1,3 +1,4 @@
+import { isSemanticAction } from "../../src/semantic-actions.ts";
 import { computerSource, displaySource } from "../../src/computer-address.ts";
 import type { ComputerAddress } from "../../src/computer-address.ts";
 import { ComputerResources, requireComputerAddress } from "../../src/computer-resources.ts";
@@ -33,7 +34,7 @@ export async function connectLive(cwd = process.cwd()) {
   const runner = name === "local" ? localRunner(config.interop) : sshRunner((await machineConfig(cwd, name)).ssh);
   /**
    * One engine command, as the computer_* tools send it: `?hint=` and `?delivery=` on an observation become its ref and
-   * delivery_mode, close goes to Delete and kill to Delete with ?force=true, as the tools do.
+   * delivery_mode (semantic actions never take one), close goes to Delete and kill to Delete with ?force=true, as the tools do.
    */
   const engine = (path: string, command: Record<string, unknown>, signal?: AbortSignal) => {
     const [base, query] = path.split("?");
@@ -41,7 +42,7 @@ export async function connectLive(cwd = process.cwd()) {
     if (command.action === "kill") return resources.delete(`${base}?force=true`, cwd, signal);
     const options = new URLSearchParams(query ?? "");
     const address = { ...at(base), ...(options.get("hint") ? { hint: options.get("hint")! } : {}) } as ComputerAddress;
-    const delivery = options.get("delivery");
+    const delivery = isSemanticAction(String(command.action)) ? null : options.get("delivery");
     return resources.perform(address, cwd, JSON.stringify(delivery ? { ...command, delivery_mode: delivery } : command), signal);
   };
   return {
