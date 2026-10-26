@@ -46,5 +46,17 @@ Every frame reports source geometry and whether it changed from the previous fra
 
 Choose `all`, `first`, `last`, `endpoints`, `changed`, `{indexes:[0,2]}` or inclusive `{from:1,to:3}`. Indexes refer to captured frames, not sampling slots. Selection keeps temporal order. `changed` compares exact image bytes and geometry; it does not claim semantic relevance. Codemode receives an array of frame metadata and image blocks, suitable for explicit forwarding or further processing. Do not store whole image arrays in Codemode storage.
 
+## One image of many frames
+
+Add `as` to a JSON selection to get one image instead of one per frame:
+
+| View | Returns |
+| --- | --- |
+| `frames:{"as":"sheet"}` | A contact sheet of all frames (at most 40): tiles in time order, left to right, each under a `#index · time` label. The text lists each tile's row, column, frame and time. |
+| `frames:{"select":"changed","as":"sheet","columns":4}` | The same for another selection (`select`, `indexes` or `from`/`to`) with a fixed column count (1..10). |
+| `frames:{"as":"max"}` or `"min"` | The per-pixel maximum or minimum of the selected frames: bright (or dark) detail from any frame appears at once, for example text revealed by a moving light. Frames must have one size. |
+
+`region:{x,y,width,height}` crops every frame first, in the sequence's frame pixels (the overview size it was captured at); it is clipped to the frames and refused when it misses them. A sheet's long edge is 1600 px by default; tiles shrink together to fit, keeping their aspect ratio. `maxLongEdge` (64..4096) changes that limit, for example 16 tiles of a 640 px region in 4 columns at full size need 2560. A composite keeps the frames' size up to `maxLongEdge`. The image is read-only and grants no input.
+
 The existing debug viewer keeps its three ordinary boundary cards. A temporal dropdown also lists up to 40 sequence image blocks in the latest application-boundary request and lets the human inspect their exact bytes. Selection alone is not forwarding. Byte matching can be ambiguous when screenshots are identical; the viewer lists every retained possible source instead of inventing a timestamp. Asset eviction is visible. Final wire delivery remains unconfirmed.
 
