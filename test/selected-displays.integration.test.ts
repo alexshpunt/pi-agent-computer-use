@@ -13,7 +13,7 @@ for (const mode of ["yolo", "safe"] as const) {
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath,
       args: [path.resolve("test/fixtures/selected-display-driver.mjs"), log] }));
     const discover = `const r=await tools.computer_read({path:"computer:machine/local/displays"});
-const rows=r.split("\\n").filter(line=>line.startsWith("computer:display/"));
+const rows=r.split("\\n").filter(line=>line.startsWith("computer:machine/local/display/"));
 if(rows.length!==2)throw Error("Native discovery failed");
 const row=rows.find(line=>JSON.parse(line.slice(line.lastIndexOf(" | ")+3)).bounds.x<0);
 store("monitor",row.split(" | ")[0]);text(row);`;
@@ -33,10 +33,10 @@ image(r);text("cropped");`;
         extensions: [path.resolve(`test/fixtures/selected-display-${mode === "safe" ? "safe-" : ""}extension.ts`)], isolateUserResources: true,
         tools: ["codemode", "computer_read", "computer_insert"], conversation: [
           assistantMessage([toolCall({ id: "discovery", name: mode === "safe" ? "computer_read" : "codemode", arguments: mode === "safe" ? { path: "computer:machine/local/displays" } : { code: discover } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "overview", name: mode === "safe" ? "computer_read" : "codemode", arguments: mode === "safe" ? { path: "computer:display/d-unowned" } : { code: observe } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "overview", name: mode === "safe" ? "computer_read" : "codemode", arguments: mode === "safe" ? { path: "computer:machine/local/display/d-unowned" } : { code: observe } })], { stopReason: "toolUse" }),
           ...(mode === "yolo" ? [assistantMessage([toolCall({ id: "crop", name: "codemode", arguments: { code: crop } })], { stopReason: "toolUse" })] : []),
           assistantMessage([toolCall({ id: "input", name: mode === "safe" ? "computer_insert" : "codemode", arguments: mode === "safe"
-            ? { path: "computer:display/d-unowned", text: '{"action":"click","x":1,"y":1}' }
+            ? { path: "computer:machine/local/display/d-unowned", text: '{"action":"click","x":1,"y":1}' }
             : { code: 'const r=await tools.computer_insert({path:load("monitor"),text:JSON.stringify({action:"click",x:1,y:1})});text(r.outcome+": "+r.reason);' } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
           assistantMessage([text("Read-only monitor selection checked.")]),

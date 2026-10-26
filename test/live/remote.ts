@@ -1,4 +1,4 @@
-import { computerSource } from "../../src/computer-address.ts";
+import { computerSource, displaySource } from "../../src/computer-address.ts";
 import type { ComputerAddress } from "../../src/computer-address.ts";
 import { ComputerResources, requireComputerAddress } from "../../src/computer-resources.ts";
 import { CuaImageSettings } from "../../src/cua-image-settings.ts";
@@ -136,5 +136,5 @@ export const text = (result: ComputerResult) => result.content.filter(block => b
 export function addresses(result: ComputerResult, kind: "window" | "display"): string[] {
   const rows = (result.details.state?.[kind === "window" ? "windows" : "displays"] ?? []) as Record<string, unknown>[];
   return rows.map(row => row[kind === "window" ? "window_ref" : "display_ref"]).filter((ref): ref is string => typeof ref === "string")
-    .map(ref => computerSource(kind, ref));
+    .map(ref => kind === "window" ? computerSource(kind, ref) : displaySource(result.details.machine ?? "local", ref));
 }

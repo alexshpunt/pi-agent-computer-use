@@ -79,6 +79,10 @@ export interface ComputerResult {
   content: Content[];
   details: {
     status: "listed" | "observed" | "delivered" | "refused" | "unknown" | "closed";
+    /** The machine the request ran on, by its address name; set by the computer resources for every routed request. */
+    machine?: string;
+    /** The sandbox or isolated session on that machine the request ran in. */
+    sandbox?: string;
     /** The sandbox an open_sandbox command started. */
     sandbox_ref?: string;
     mode: ComputerMode;
@@ -567,16 +571,20 @@ export class ComputerSession {
     return this.queue(async () => {
       try {
         validateSequence(options);
-        if ((target.window_ref !== undefined) === (target.display !== undefined) || (target.display !== undefined && target.display !== "primary"))
-          return this.result("refused", "Choose exactly one window_ref or display: primary.");
+        if ((target.window_ref !== undefined) === (target.display !== undefined)) return this.result("refused", "Choose exactly one window or display.");
         const entry = target.window_ref ? this.entries.get(target.window_ref) : undefined;
-        const permitted = () => entry ? this.allowed(entry) : target.display === "primary" && this.getMode() === "yolo";
+        // primary is the machine's main display; any other display is one its displays listing issued.
+        const display = target.display !== undefined && target.display !== "primary" ? this.displayEntries.get(target.display) : undefined;
+        if (target.display !== undefined && target.display !== "primary" && (!this.driver.selectedDisplays || !display))
+          return this.result("refused", "Unknown or unavailable display reference. Read the machine's displays again; no primary fallback.");
+        const permitted = () => entry ? this.allowed(entry) : target.display !== undefined && this.getMode() === "yolo";
         const denied = () => { this.sequences.clear(); return this.result("refused", "Sequence source access denied. Safe permits session-owned windows only; retained pixels withheld."); };
         if (!permitted()) return denied();
         const settings = { ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
           ...(options.scale !== undefined ? { scale: options.scale } : {}) };
         const cap = nativeImageCap(settings);
         if (entry) { entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined; }
+        else if (display) display.detail = undefined;
         else this.displayOverview = undefined;
         let first = true;
         const sequence = await collectSequence(options, async active => {
@@ -584,22 +592,21 @@ export class ComputerSession {
           if (entry && !await this.current(entry.ref, active)) throw new SequenceStop("target_lost");
           if (!permitted()) throw new SequenceStop("access_revoked");
           const nativeStarted = performance.now();
-          const native = await this.driver.call(entry ? "get_window_state" : "get_desktop_state", entry
-            ? { ...entry.target, include_accessibility_tree: false, max_image_dimension: cap }
-            : { max_image_dimension: cap }, active);
+          const native = entry ? await this.driver.call("get_window_state", { ...entry.target, include_accessibility_tree: false, max_image_dimension: cap }, active)
+            : await this.readDisplay(display, cap, active);
           const native_completed_at = performance.now();
           if (!permitted()) throw new SequenceStop("access_revoked");
           active.throwIfAborted();
           const state = native.structuredContent;
           if (native.isError || !state || state.status === "refused" || state.effect === "refused") throw new SequenceStop("capture_failed");
-          if (!entry && (state.display !== "primary" || state.platform !== "windows")) throw new SequenceStop("capture_failed");
+          if (!entry && !this.displayStateMatches(state, display)) throw new SequenceStop("capture_failed");
           if (entry && ((state.pid !== undefined && state.pid !== entry.target.pid) ||
             (state.window_id !== undefined && state.window_id !== entry.target.window_id))) throw new SequenceStop("target_lost");
           const images = native.content.filter((block): block is SequenceFrame["image"] => block.type === "image");
           const context = this.overview(state, "sequence-frame", !entry, images);
           if (!context || Math.max(context.width, context.height) > cap || images[0].data.length > 16 * 1024 * 1024)
             throw new SequenceStop("capture_failed");
-          let source = this.source(entry ? "window" : "display", state, entry
+          let source = display ? selectedDisplaySource(state, this.sessionId, display.ref) : this.source(entry ? "window" : "display", state, entry
             ? { session_id: this.sessionId, window_ref: entry.ref, ...entry.target }
             : { session_id: this.sessionId, display_id: "primary" });
           source.semantic_scope = "none"; source.capabilities = { read: true, input: "none", detail: "unsupported" };
@@ -838,7 +845,9 @@ export class ComputerSession {
         const state = native.structuredContent;
         if (native.isError || state?.status === "refused" || state?.effect === "refused") {
           if (entry) this.displayEntries.delete(entry.ref);
-          return this.result("refused", "CUA refused exact-display capture. Discover again; no fallback.");
+          // The native reason, such as a locked PC, tells the agent whether discovering again can help.
+          const reason = native.content.filter(c => c.type === "text").map(c => c.text).join(" ").slice(0, 600);
+          return this.result("refused", `CUA refused exact-display capture${reason ? `: ${reason}` : "."} No fallback.`);
         }
         const images = native.content.filter(block => block.type === "image" && block.mimeType === "image/png");
         if (!this.displayStateMatches(state, entry) || images.length !== 1 ||
@@ -1715,6 +1724,8 @@ export class ComputerSession {
   hasWindow(ref: string): boolean { return this.entries.has(ref); }
   /** Whether this session issued a still-registered display reference. */
   hasDisplay(ref: string): boolean { return this.displayEntries.has(ref); }
+  /** Whether this session captured the sequence and still retains it. */
+  hasSequence(id: string): boolean { return this.sequences.get(id) !== undefined; }
 
   /** Close session-opened browsers (deleting their profiles), detach from attached ones and release the native runtime. Other windows/files are not closed or saved. */
   close(): Promise<ComputerResult> {

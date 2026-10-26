@@ -7,7 +7,7 @@ import { DEFAULT_MAX_LONG_EDGE } from "../src/cua-image-settings.ts";
 import { nestedCalls, SCRIPT_HELPERS } from "./fixtures/standalone-computer.ts";
 
 const yoloRead = `${SCRIPT_HELPERS}
-const view = await tools.computer_read({path:"computer:display/primary"});
+const view = await tools.computer_read({path:"computer:machine/local/display/primary"});
 text(body(view)); image(view);
 const input = await insert(observation(view),{action:"click",x:0,y:0});
 text("observation input: " + input.outcome + " / " + input.effect);`;
@@ -28,10 +28,10 @@ for (const mode of ["yolo", "safe"] as const) {
         tools: ["codemode", "computer_read", "computer_insert"],
         conversation: [
           assistantMessage([toolCall({ id: "read", name: mode === "safe" ? "computer_read" : "codemode", arguments: mode === "safe"
-            ? { path: "computer:display/primary" } : { code: yoloRead } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "mixed", name: "computer_read", arguments: { path: "computer:display/primary", views: ["ui"] } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "promote", name: "computer_read", arguments: { path: "computer:display/primary", mode: "yolo" } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "display-input", name: "computer_insert", arguments: { path: "computer:display/primary", text: '{"action":"click","x":0,"y":0}' } })], { stopReason: "toolUse" }),
+            ? { path: "computer:machine/local/display/primary" } : { code: yoloRead } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "mixed", name: "computer_read", arguments: { path: "computer:machine/local/display/primary", views: ["ui"] } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "promote", name: "computer_read", arguments: { path: "computer:machine/local/display/primary", mode: "yolo" } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "display-input", name: "computer_insert", arguments: { path: "computer:machine/local/display/primary", text: '{"action":"click","x":0,"y":0}' } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
           assistantMessage([text("Read-only display source checked.")]),
         ],

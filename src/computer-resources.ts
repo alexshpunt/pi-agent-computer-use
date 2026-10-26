@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { parseComputerAddress, computerSource, type ComputerAddress } from "./computer-address.ts";
+import { parseComputerAddress, computerSource, displaySource, type ComputerAddress } from "./computer-address.ts";
 import { parseComputerViews, type ComputerViews } from "./computer-views.ts";
 import { checkedName, type ProcessHealth } from "./machine-host.ts";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -24,7 +24,7 @@ import { SETUP_PARTS, SetupError, runSetup, type SetupPart } from "./setup.ts";
 export const LOCAL_MACHINE = "local";
 /** How to use a machine address: the same on every machine. */
 export function machineGuide(source: string): string[] {
-  return [`Search ${source}/windows for its windows and ${source}/apps for its installed apps; Read ${source}/displays for its displays (Insert resize into a display address to change its resolution).`,
+  return [`Search ${source}/windows for its windows and ${source}/apps for its installed apps; Read ${source}/displays for its displays and ${source}/display/primary for its main display (Insert resize into a display address to change its resolution).`,
     `Insert open, open_browser, open_sandbox, open_session, webview2_debugging, put, get, files, clipboard_read, clipboard_write, record_start, record_stop, audio_record or close into ${source}.`];
 }
 /** A rejected request whose validation completed before native dispatch. */
@@ -66,7 +66,13 @@ const SETTLE_MS = 300;
  * follow each other without a pause: each takes about 35 ms, so an animation still differs between them.
  */
 const STEADY_MS = 1_000;
-type ObservationTarget = { window_ref: string; display?: never } | { display: string; window_ref?: never };
+/** What an observation shows: a window, or one machine's display (display references are per machine; each has a primary). */
+type ObservationTarget = { window_ref: string; display?: never; machine?: never } | { display: string; machine: string; window_ref?: never };
+const sameTarget = (a: ObservationTarget, b: ObservationTarget) => a.window_ref === b.window_ref && a.display === b.display && a.machine === b.machine;
+/** Where a request runs: the session that issued its reference, with that session's machine and sandbox. */
+interface Owner { session: ComputerSession; machine: string; sandbox?: string }
+/** The machine and sandbox a receipt names. */
+type Place = { machine: string; sandbox?: string };
 interface Snapshot { target: ObservationTarget; result: ComputerResult }
 /** A running sandbox with its own guest session. */
 export interface OpenedSandbox {
@@ -273,17 +279,69 @@ export class ComputerResources {
     private readonly closeSession: () => Promise<ComputerResult>, private readonly openSandbox?: SandboxFactory,
     private readonly startMachine?: MachineFactory, private readonly getMode: () => ComputerMode = () => "yolo") {}
 
-  /** The session that issued a window or display reference: a sandbox's or another machine's, otherwise this host's. */
-  private async sessionFor(cwd: string, target?: ObservationTarget | { window_ref?: string; display?: string }): Promise<ComputerSession> {
-    for (const environment of [...this.sandboxes.values(), ...this.machines.values()])
-      if (target?.window_ref ? environment.session.hasWindow(target.window_ref) : target?.display && environment.session.hasDisplay(target.display)) return environment.session;
-    return this.getSession(cwd);
+  /**
+   * The session that issued a reference, with its machine. Nothing falls back to this machine: a reference that no
+   * session of this computer use holds is refused before anything is sent.
+   */
+  private async owner(cwd: string, holds: (session: ComputerSession) => boolean, unknown: string): Promise<Owner> {
+    for (const sandbox of this.sandboxes.values())
+      if (holds(sandbox.session)) return { session: sandbox.session, machine: sandbox.machine ?? LOCAL_MACHINE, sandbox: sandbox.ref };
+    for (const [machine, opened] of this.machines) if (holds(opened.session)) return { session: opened.session, machine };
+    const local = await this.getSession(cwd);
+    if (holds(local)) return { session: local, machine: LOCAL_MACHINE };
+    throw new ComputerRequestError(`${unknown} No machine or sandbox of this computer use holds it, so nothing was sent.`);
   }
-  private windowOf(address: ComputerAddress): { window_ref?: string; display?: string } | undefined {
-    return address.kind === "window" ? { window_ref: address.ref }
-      : address.kind === "display" ? { display: address.ref }
-      : address.kind === "window-state" ? { window_ref: this.windowStates.get(address.ref)?.window_ref }
-      : address.kind === "observation" ? this.snapshots.get(address.ref)?.target : undefined;
+  /** The owner of a window, or of one machine's display. */
+  private async route(cwd: string, target: ObservationTarget, signal?: AbortSignal): Promise<Owner> {
+    if (target.window_ref !== undefined)
+      return this.owner(cwd, session => session.hasWindow(target.window_ref), "Unknown or closed window reference. Search computer:machine/<name>/windows again.");
+    // That machine's session refuses a display reference it did not list, after its own mode check, without native work.
+    return { session: await this.machineSession(cwd, target.machine, signal), machine: target.machine };
+  }
+  /** The owner of a window, display, window state, observation or sequence address. */
+  private async routeAddress(cwd: string, address: ComputerAddress, signal?: AbortSignal): Promise<Owner> {
+    if (address.kind === "window") return this.route(cwd, { window_ref: address.ref }, signal);
+    if (address.kind === "display") return this.route(cwd, { display: address.ref, machine: address.machine }, signal);
+    if (address.kind === "window-state") {
+      const state = this.windowStates.get(address.ref);
+      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
+      return this.route(cwd, { window_ref: state.window_ref }, signal);
+    }
+    if (address.kind === "observation") return this.route(cwd, this.snapshot(address.ref).target, signal);
+    if (address.kind === "sequence")
+      return this.owner(cwd, session => session.hasSequence(address.ref), "Sequence is unavailable or evicted. Capture again; sequences do not survive reload or close.");
+    throw new ComputerRequestError("This address names no window, display, observation or sequence.");
+  }
+  /** The machine and sandbox an address runs on, found without starting anything; none for the whole session. */
+  private place(address: ComputerAddress): Place | undefined {
+    const holder = (holds: (session: ComputerSession) => boolean): Place => {
+      for (const sandbox of this.sandboxes.values()) if (holds(sandbox.session)) return { machine: sandbox.machine ?? LOCAL_MACHINE, sandbox: sandbox.ref };
+      for (const [machine, opened] of this.machines) if (holds(opened.session)) return { machine };
+      return { machine: LOCAL_MACHINE };
+    };
+    switch (address.kind) {
+      case "session": return undefined;
+      case "machine": return { machine: address.ref };
+      case "display": return { machine: address.machine };
+      case "app": { const app = this.apps.get(address.ref); return app && { machine: app.machine }; }
+      case "sandbox": { const sandbox = this.sandboxes.get(address.ref); return sandbox && { machine: sandbox.machine ?? LOCAL_MACHINE, sandbox: sandbox.ref }; }
+      case "sequence": return holder(session => session.hasSequence(address.ref));
+      case "window": return holder(session => session.hasWindow(address.ref));
+      case "window-state": { const state = this.windowStates.get(address.ref); return state && holder(session => session.hasWindow(state.window_ref)); }
+      case "observation": {
+        const target = this.snapshots.get(address.ref)?.target;
+        return !target ? undefined : target.machine !== undefined ? { machine: target.machine } : holder(session => session.hasWindow(target.window_ref!));
+      }
+    }
+  }
+  /** Name the machine (and sandbox) a request ran on in its receipt. */
+  private stamp(place: Place | undefined, result: ComputerResult): ComputerResult {
+    return place && result.details.machine === undefined
+      ? { ...result, details: { ...result.details, machine: place.machine, ...(place.sandbox ? { sandbox: place.sandbox } : {}) } } : result;
+  }
+  /** The session of a window, or of one machine's display. */
+  private async sessionFor(cwd: string, target: ObservationTarget, signal?: AbortSignal): Promise<ComputerSession> {
+    return (await this.route(cwd, target, signal)).session;
   }
   /** A configured remote machine, started on its first use. */
   private async machine(cwd: string, name: string, signal?: AbortSignal): Promise<OpenedMachine> {
@@ -302,10 +360,10 @@ export class ComputerResources {
   private async machineSession(cwd: string, name: string, signal?: AbortSignal): Promise<ComputerSession> {
     return name === LOCAL_MACHINE ? this.getSession(cwd) : (await this.machine(cwd, name, signal)).session;
   }
-  /** Forget a released session's observations and window states. */
-  private forget(session: ComputerSession): void {
+  /** Forget a released session's observations and window states, and the display observations of its machine. */
+  private forget(session: ComputerSession, machine?: string): void {
     for (const [id, entry] of this.snapshots)
-      if (entry.target.window_ref ? session.hasWindow(entry.target.window_ref) : session.hasDisplay(entry.target.display!)) this.snapshots.delete(id);
+      if (entry.target.window_ref !== undefined ? session.hasWindow(entry.target.window_ref) : entry.target.machine === machine) this.snapshots.delete(id);
     for (const [id, entry] of this.windowStates) if (session.hasWindow(entry.window_ref)) this.windowStates.delete(id);
   }
   /**
@@ -318,23 +376,23 @@ export class ComputerResources {
       error => [computerSource("sandbox", sandbox.ref), failure(error, this.getMode())] as const)));
     let own: ComputerResult;
     if (name === LOCAL_MACHINE) {
-      for (const [id, entry] of this.snapshots) if (!this.remoteOwner(entry.target)) this.snapshots.delete(id);
-      for (const [id, entry] of this.windowStates) if (!this.remoteOwner({ window_ref: entry.window_ref })) this.windowStates.delete(id);
+      for (const [id, entry] of this.snapshots)
+        if (entry.target.window_ref !== undefined ? !this.remoteWindow(entry.target.window_ref) : entry.target.machine === LOCAL_MACHINE) this.snapshots.delete(id);
+      for (const [id, entry] of this.windowStates) if (!this.remoteWindow(entry.window_ref)) this.windowStates.delete(id);
       own = await this.closeSession().catch(error => failure(error, this.getMode()));
     } else {
       const machine = this.machines.get(name);
       if (!machine) return report(this.getMode(), [], `${computerSource("machine", name)} was not started.`);
       this.machines.delete(name);
-      this.forget(machine.session);
+      this.forget(machine.session, name);
       own = await machine.close().catch(error => failure(error, this.getMode()));
     }
     for (const [ref, app] of this.apps) if (app.machine === name) this.apps.delete(ref);
     return report(this.getMode(), [...parts, [computerSource("machine", name), own]]);
   }
-  /** Whether a remote machine or a sandbox issued this window or display reference. */
-  private remoteOwner(target: { window_ref?: string; display?: string }): boolean {
-    return [...this.sandboxes.values(), ...this.machines.values()].some(environment =>
-      target.window_ref ? environment.session.hasWindow(target.window_ref) : target.display !== undefined && environment.session.hasDisplay(target.display));
+  /** Whether a remote machine or a sandbox issued this window reference. */
+  private remoteWindow(ref: string): boolean {
+    return [...this.sandboxes.values(), ...this.machines.values()].some(environment => environment.session.hasWindow(ref));
   }
   /** Run one launch so session close and Pi shutdown can wait for it; a launch cancelled after success is undone. */
   private async launch<T extends { close(): Promise<unknown> }>(start: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -393,8 +451,7 @@ export class ComputerResources {
     // A delivered DOM action carries the page's next snapshot, which becomes the current observation.
     const observed = result.details.status === "observed" || result.details.status === "delivered" && result.details.dom !== undefined;
     if (!observed || typeof id !== "string") return result;
-    for (const [old, entry] of this.snapshots)
-      if (entry.target.window_ref === target.window_ref && entry.target.display === target.display) this.snapshots.delete(old);
+    for (const [old, entry] of this.snapshots) if (sameTarget(entry.target, target)) this.snapshots.delete(old);
     this.snapshots.set(id, { target, result });
     if (target.window_ref !== undefined && result.details.ui) {
       this.lastUi.delete(target.window_ref);
@@ -422,7 +479,7 @@ export class ComputerResources {
     if (address.kind === "observation") {
       const snapshot = this.snapshot(address.ref);
       const source = snapshot.target.window_ref !== undefined ? computerSource("window", snapshot.target.window_ref)
-        : computerSource("display", snapshot.target.display!);
+        : displaySource(snapshot.target.machine!, snapshot.target.display!);
       return `# Computer observation\nSource: ${source}\nObservation: ${computerSource("observation", address.ref)}\n` +
         (snapshot.result.details.dom ? "Playwright DOM snapshot. Insert one JSON action with a target (aria ref or locator); Read element:crop|highlight,<ref> or image for page pixels. Search filters this snapshot. Write and native input are unavailable here."
           : snapshot.target.window_ref !== undefined ? "Input needs this still-current observation. Insert sends JSON commands; Write sends literal text."
@@ -437,25 +494,30 @@ export class ComputerResources {
     if (address.kind === "session") {
       const machines = [LOCAL_MACHINE, ...this.machines.keys()].map(name => `- ${computerSource("machine", name)}`);
       const sandboxes = [...this.sandboxes.values()].map(sandbox => `- ${computerSource("sandbox", sandbox.ref)} on ${computerSource("machine", sandbox.machine ?? LOCAL_MACHINE)}`);
-      return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in .pi/computer-use.json starts on its first use):",
+      return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in .pi/computer-use.json starts on its first use). Every window, display, observation and sequence address belongs to the machine that issued it, and every receipt names that machine:",
         ...machines, ...(sandboxes.length ? ["Sandboxes and isolated sessions:", ...sandboxes] : []),
         "Insert {\"action\":\"close\"} here to release every machine, browser, sandbox and session this computer use started; the result lists each part."].join("\n");
     }
     return `# Computer resource\nSource: ${address.source}\nUse Read for native observation, Search for discovery, and Insert for explicit commands. No native capture occurred during descriptor resolution.`;
   }
 
-  /** Acquire a requested native projection, or inspect one explicitly issued observation. */
+  /** Acquire a requested native projection, or inspect one explicitly issued observation; the receipt names its machine. */
   async read(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
+    const place = this.place(address);
+    const result = await this.readAddress(address, cwd, views, signal);
+    return result && this.stamp(place, result);
+  }
+  private async readAddress(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
     const view = parseComputerViews(views);
     if (address.kind !== "window" && address.kind !== "observation") {
       if (view.ocr) throw new ComputerRequestError("ocr reads a window, one of its observations or a region of one.");
       return this.readNative(address, cwd, views, view, signal);
     }
-    const session = await this.sessionFor(cwd, this.windowOf(address));
     const snapshot = address.kind === "observation" ? this.snapshots.get(address.ref) : undefined;
     const windowRef = address.kind === "window" ? address.ref : snapshot?.target.window_ref;
     if (view.ocr && windowRef === undefined) throw new ComputerRequestError("ocr reads window observations; display observations have no kept overview pixels.");
     if (view.changes && address.kind !== "window") throw new ComputerRequestError("changes reads a window address: it takes a fresh capture and compares it with the window's previous observation.");
+    const session = (await this.routeAddress(cwd, address, signal)).session;
     const baseline = view.changes && windowRef !== undefined ? this.lastUi.get(windowRef) : undefined;
     // The pixel baseline is the window's latest capture with pixels; the fresh capture keeps its overview size.
     const frame = view.changes && windowRef !== undefined && view.kind === "overview" && view.capture.granularity !== "ui" ? session.windowFrame(windowRef) : undefined;
@@ -528,7 +590,8 @@ export class ComputerResources {
       if (address.kind === "sandbox") this.sandbox(address.ref);
       return undefined;
     }
-    const session = await this.sessionFor(cwd, this.windowOf(address));
+    const owner = await this.routeAddress(cwd, address, signal);
+    const session = owner.session;
     if (address.kind === "window-state") {
       if (views?.length) throw new ComputerRequestError("Cached window state has no capture or UI views. Read the window with state view for a fresh state.");
       const state = this.windowStates.get(address.ref);
@@ -542,12 +605,12 @@ export class ComputerResources {
     }
     if (view.kind === "sequence") {
       if (address.kind !== "window" && address.kind !== "display") throw new ComputerRequestError("Capture a sequence from a window/display address, not an observation.");
-      if ([...this.sandboxes.values()].some(sandbox => sandbox.session === session)) throw new ComputerRequestError("Temporal capture is not available for sandbox windows.");
-      const target = address.kind === "window" ? { window_ref: address.ref } : { display: address.ref };
+      if (owner.sandbox) throw new ComputerRequestError("Temporal capture is not available for sandbox windows.");
+      const target: ObservationTarget = address.kind === "display" ? { display: address.ref, machine: address.machine } : { window_ref: address.ref };
       if (target.window_ref) for (const [id, entry] of this.windowStates)
         if (entry.window_ref === target.window_ref) this.windowStates.delete(id);
-      for (const [id, entry] of this.snapshots) if (entry.target.window_ref === target.window_ref && entry.target.display === target.display) this.snapshots.delete(id);
-      return session.captureSequence(target, view.options, signal);
+      for (const [id, entry] of this.snapshots) if (sameTarget(entry.target, target)) this.snapshots.delete(id);
+      return session.captureSequence(address.kind === "window" ? { window_ref: address.ref } : { display: address.ref }, view.options, signal);
     }
     if (address.kind === "sequence") {
       if (view.kind !== "frames") throw new ComputerRequestError("Select sequence images explicitly with frames:first|last|endpoints|changed|all or frames:{\"indexes\":[0]}.");
@@ -573,7 +636,7 @@ export class ComputerResources {
       if (view.kind !== "overview" || Object.keys(view.capture).some(key => key !== "maxLongEdge" && key !== "scale"))
         throw new ComputerRequestError("A display overview accepts only capture:{\"maxLongEdge\":...,\"scale\":...}; use its observation for region detail.");
       const { maxLongEdge, scale } = view.capture;
-      return this.remember({ display: address.ref }, await session.observeDisplay(address.ref, signal, undefined,
+      return this.remember({ display: address.ref, machine: address.machine }, await session.observeDisplay(address.ref, signal, undefined,
         { ...(maxLongEdge !== undefined ? { maxLongEdge } : {}), ...(scale !== undefined ? { scale } : {}) }));
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Use an existing supported computer resource.");
@@ -626,8 +689,12 @@ export class ComputerResources {
     return snapshot.result;
   }
 
-  /** Search permitted discovery metadata or the current collected UI without another native walk. */
+  /** Search permitted discovery metadata or the current collected UI without another native walk; the receipt names its machine. */
   async search(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
+    const place = this.place(address);
+    return this.stamp(place, await this.searchAddress(address, cwd, query, limit, signal));
+  }
+  private async searchAddress(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind === "sandbox") return this.sandbox(address.ref).session.windows(signal, query);
     if (address.kind === "machine") {
       if (address.part !== "windows" && address.part !== "apps")
@@ -640,8 +707,8 @@ export class ComputerResources {
       return Array.isArray(apps) ? { ...listed, details: { ...listed.details, state: { ...listed.details.state,
         apps: apps.map(app => ({ ...app, app_ref: this.appRef(address.ref, String((app as { app_id: unknown }).app_id)) })) } } } : listed;
     }
-    const session = await this.sessionFor(cwd, this.windowOf(address));
     if (address.kind !== "observation") throw new ComputerRequestError("Search computer:machine/<name>/windows, computer:machine/<name>/apps, a sandbox address or a returned observation address.");
+    const session = (await this.routeAddress(cwd, address, signal)).session;
     if (address.hint || address.delivery || address.delayMs !== undefined) throw new ComputerRequestError("Input options do not select a Search scope.");
     const snapshot = this.snapshot(address.ref);
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display images have no native UI search scope.");
@@ -650,8 +717,12 @@ export class ComputerResources {
       { operation: "search", observation_id: address.ref, query, ...(limit !== undefined ? { limit } : {}) });
   }
 
-  /** Dispatch exactly one literal Write or JSON Insert against its address-bound target. */
+  /** Dispatch exactly one literal Write or JSON Insert against its address-bound target; the receipt names its machine. */
   async perform(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
+    const place = this.place(address);
+    return this.stamp(place, await this.performAt(address, cwd, value, tool, signal));
+  }
+  private async performAt(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind === "window-state") {
       if (tool !== "insert") throw new ComputerRequestError("Window state grants native control through Insert, never literal Write.");
       const command = commandObject(value);
@@ -729,12 +800,12 @@ export class ComputerResources {
       let mode;
       try { mode = displayMode(command); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-      const session = await this.sessionFor(cwd, { display: address.ref });
+      const session = await this.sessionFor(cwd, { display: address.ref, machine: address.machine }, signal);
       // Window and display coordinates from before the change no longer hold. Collect them now:
-      // a successful change also retires the display references used to recognize them.
-      const stale = [...this.snapshots].filter(([, entry]) => entry.target.window_ref ? session.hasWindow(entry.target.window_ref) : session.hasDisplay(entry.target.display!)).map(([id]) => id);
+      // a successful change also retires the window references used to recognize them.
+      const stale = [...this.snapshots].filter(([, entry]) => entry.target.window_ref !== undefined ? session.hasWindow(entry.target.window_ref) : entry.target.machine === address.machine).map(([id]) => id);
       const result = await session.resizeDisplay(address.ref, mode, signal);
-      if (result.details.status !== "refused") { for (const id of stale) this.snapshots.delete(id); this.forget(session); }
+      if (result.details.status !== "refused") { for (const id of stale) this.snapshots.delete(id); this.forget(session, address.machine); }
       return result;
     }
     if (address.kind === "window" && tool === "insert") {

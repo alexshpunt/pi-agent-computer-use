@@ -2,13 +2,13 @@
 
 See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-A `sequence` Read captures one authorized Windows window or the primary display. Browser windows use the same native path. It does not encode video, raise a window, walk its accessibility tree or grant input authority.
+A `sequence` Read captures one authorized Windows window, or a machine's primary or listed display, on the machine that issued its address. Browser windows use the same native path. It does not encode video, raise a window, walk its accessibility tree or grant input authority.
 
 ## Capture, then select
 
 Capture returns metadata only and sends no image. Capture and selection are separate decisions: read the timestamps, count and stop reason before choosing frames from the returned sequence.
 
-Capture the primary display instead of a window for a read-only display sequence in YOLO. Safe denies display and unowned window captures. Stored frame selection checks current access and the window's lifetime again. Revocation withholds metadata and pixels. A closed or recreated window cannot return its retained frames.
+Capture a display (`computer:machine/<name>/display/primary` or one listed by its `displays`) instead of a window for a read-only display sequence in YOLO. Frames are selected through the returned `computer:sequence/...` address, which runs on the machine that captured them. Safe denies display and unowned window captures. Stored frame selection checks current access and the window's lifetime again. Revocation withholds metadata and pixels. A closed or recreated window cannot return its retained frames.
 
 ## Bounds and settings
 

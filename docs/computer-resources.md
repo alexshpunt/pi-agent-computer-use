@@ -13,11 +13,14 @@ The current desktop scope is Windows, with Pi running on it directly or in its W
 
 Every machine is addressed the same way: `computer:machine/local` is this one, and `computer:machine/<name>` is another Windows machine configured under `machines` (see [Work on another machine](#work-on-another-machine)). A machine starts on its first use; nothing needs connecting. Read `computer:session` for the machines, sandboxes and sessions started so far.
 
+No address falls back to this machine. Window, window-state, observation and sequence addresses belong to the machine (or sandbox) that issued them, and every Read, Search and Insert on them runs there. Display addresses name their machine. An address that no machine of this session issued, or that was released, is refused with the reason before anything is sent. Every receipt names its machine in its first line, for example `Computer observed (yolo) on lab`.
+
 | Address | Use |
 | --- | --- |
 | `computer:machine/<name>/windows` | Search its windows |
 | `computer:machine/<name>/apps` | Search its installed apps |
 | `computer:machine/<name>/displays` | Read its displays |
+| `computer:machine/<name>/display/primary` | Read its main display; other displays come from `displays` as `computer:machine/<name>/display/<ref>` |
 | `computer:machine/<name>` | Insert commands: `open`, `open_browser`, `open_sandbox`, `open_session`, `webview2_debugging`, file, clipboard, recording and `close` |
 
 Search with a name/title substring, or `regex:<pattern>` for a case-insensitive regular expression; sandbox addresses take the same queries. Results include the available native process metadata and addressable app/window resources; an app address opens that app on the machine that listed it. Discovery launches nothing. Display discovery takes no text predicate.
@@ -28,7 +31,7 @@ Insert into a machine address with `text` containing `{"action":"open","app":"Ex
 
 Apps with their own scripting (Blender, for example) can build content while computer use checks the result: `put` the script into the session folder, open the app with the script's returned path in `args` (`--factory-startup --python <path>` for Blender), then Read the window with `ocr` and `state`.
 
-Read a returned `computer:window/...` for its native accessibility structure and small overview PNG. Read `computer:display/primary`, or a returned display address, for readonly display pixels; add `capture:{"maxLongEdge":320}` for another size. Successful overviews issue `computer:observation/...` addresses. References are session-local and disappear on close/reload.
+Read a returned `computer:window/...` for its native accessibility structure and small overview PNG. Read `computer:machine/<name>/display/primary`, or a display address returned by that machine's `displays`, for readonly display pixels; add `capture:{"maxLongEdge":320}` for another size. Successful overviews issue `computer:observation/...` addresses. References are session-local and disappear on close/reload.
 
 Read views:
 
@@ -206,7 +209,7 @@ Use `computer:machine/<name>` with the configured name, for example `computer:ma
 | --- | --- |
 | Search `computer:machine/lab/windows` | That machine's windows, as `computer:window/...` addresses |
 | Search `computer:machine/lab/apps` | Its installed apps, as `computer:app/...` addresses that open there |
-| Read `computer:machine/lab/displays` | Its displays, as `computer:display/...` addresses; Insert `resize` into one to change its resolution |
+| Read `computer:machine/lab/displays` | Its displays, as `computer:machine/lab/display/...` addresses; Insert `resize` into one to change its resolution |
 | Insert `{"action":"open","app":"notepad"}` into `computer:machine/lab` | Start an app there and return its window |
 | Insert `{"action":"open_browser"}` | Launch an owned browser there (optional `browser`, `url`) |
 | Insert `{"action":"open_sandbox"}` | Start a Windows Sandbox on that machine (with `import`/`export` folders of that machine) |
