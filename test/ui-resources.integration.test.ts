@@ -12,13 +12,11 @@ test("real Pi Codemode refines full resources locally and dispatches only a curr
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({
     command: process.execPath, args: [path.resolve("test/fixtures/ui-resources-driver.mjs"), log],
   }));
-  // Any refused input spends its observation, so each refusal check acts on a fresh overview.
   const code = `${SCRIPT_HELPERS}
 const listed = await windows();
 const [win, otherWin] = [...listed.matchAll(/computer:[\\w-]+\\/w\\d+[a-z]{2}/g)].map(match => match[0]);
 const read = views => tools.computer_read({path:win,...(views?{views}:{})});
-// Only local refinement is under test here: clicks skip the default successor, so every native capture is a read.
-const click = async (view,hint) => (await insert(observation(view),{action:"click",hint,successor:false})).outcome;
+const click = async (window,target) => (await tools.computer_click({window,target})).outcome;
 const first = await read(['capture:{"max_elements":200,"max_depth":15,"guides":{"grid":true,"action":true}}']);
 if (!/UI: collected=200, complete=false/.test(body(first))) throw Error("Lost full resource");
 const candidates = await tools.computer_search({path:observation(first),query:"Save",limit:2});
@@ -28,17 +26,16 @@ const inspect = await tools.computer_read({path:observation(first),views:["eleme
 if (typeof inspect !== "string" || hints(inspect)[0] !== uiHint) throw Error("Inspection rebound target");
 const marked = await tools.computer_read({path:observation(first),views:["element:highlight,"+uiHint]});
 if (typeof marked === "string") throw Error("Missing selected image");
-if ((await click(first, disabledHint)) !== "refused") throw Error("Disabled input admitted");
+if ((await click(win, disabledHint)) !== "refused") throw Error("Disabled input admitted");
 const current = await read();
 const other = await tools.computer_read({path:otherWin});
-if ((await click(current, hints(other)[1])) !== "refused") throw Error("Foreign hint admitted");
+if ((await click(win, hints(other)[1])) !== "refused") throw Error("Foreign hint admitted");
 let latest = await read(['capture:{"max_elements":3,"hints":false}']);
-if ((await click(latest, uiHint)) !== "refused") throw Error("Old alias rebound");
+if ((await click(win, uiHint)) !== "refused") throw Error("Old alias rebound");
 latest = await read(['capture:{"max_elements":3,"hints":false}']);
-const target = observation(latest);
-const delivered = await insert(target,{action:"click",hint:hints(latest)[1],successor:false});
-if (delivered.outcome !== "delivered") throw Error("Current hint not dispatched");
-if ((await insert(target,{action:"click",hint:hints(latest)[1],successor:false})).outcome !== "refused") throw Error("Consumed hint replayed");
+const delivered = await tools.computer_click({window:win,target:hints(latest)[1]});
+if (delivered.outcome !== "delivered") throw Error("Current hint not dispatched: " + delivered.text);
+if ((await click(win, hints(latest)[1])) !== "refused") throw Error("Spent ref replayed");
 text("UI resource guards passed: 200 collected, 199 search matches, one native click");`;
   try {
     const result = await new PiIntegrationTest({
@@ -64,10 +61,12 @@ text("UI resource guards passed: 200 collected, 199 search matches, one native c
     expect(inspect.computer.agent_image).toBeUndefined();
     expect(inspect.computer.ui.elements[0].element_token).toBe(search.computer.ui.elements[0].element_token);
     expect(marked.computer.agent_image.annotation.selected_hint).toBe(search.computer.ui.elements[0].hint);
-    const delivered = nested.filter(call => call.name === "computer_insert" && call.computer.status === "delivered");
+    const delivered = nested.filter(call => call.name === "computer_click" && call.computer.status === "delivered");
     expect(delivered.map(call => call.computer.state.path)).toEqual(["ax"]);
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
-    expect(calls.filter(c => c.name === "get_window_state")).toHaveLength(5);
+    // Five Reads ground the one click; the captures after it show what the click changed.
+    const click = calls.findIndex(c => c.name === "click");
+    expect(calls.slice(0, click).filter(c => c.name === "get_window_state")).toHaveLength(5);
     expect(calls.filter(c => c.name === "click").map(c => c.arguments.element_token)).toEqual(["s5:1"]);
     expect(calls.some(c => ["bring_to_front", "scroll", "zoom"].includes(c.name))).toBe(false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
