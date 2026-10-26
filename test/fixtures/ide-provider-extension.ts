@@ -113,8 +113,8 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       let observation = reference(view, "observation");
       if (scenario === "workflow") {
         const nativeBeforeDetail = (await captures()).length;
-        const detail = await ok("read", { path: observation, views: ["region:80,60,40,20"] });
-        assert(detail.content.some(block => block.type === "image" && block.mimeType === "image/jpeg"), "Rectangular Read did not return native detail");
+        const detail = await ok("read", { path: observation, views: [`element:crop,${hintOf(view)}`] });
+        assert(detail.content.some(block => block.type === "image" && block.mimeType === "image/jpeg"), "Element crop did not return native detail");
         assert((await captures()).length === nativeBeforeDetail, "Detail silently created a new grounding overview");
         await refused("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80 }) }, "computer_click");
         view = await ok("read", { path: first });

@@ -52,7 +52,7 @@ test("without Pi Agent IDE, tool_search finds the deferred computer tools and th
   // tool_search loads the best matches of each query, at most 8 by default, so the guide names one query per cluster.
   // A query lists only tools it newly loads; together the guide's cluster queries load every computer tool.
   const loaded = ["find", "open", "more", "files", "input", "keys"].map(id => getToolResultText(result, id)).join("\n");
-  for (const tool of ["computer_search", "computer_delete", "computer_open", "computer_window", "computer_display",
+  for (const tool of ["computer_search", "computer_delete", "computer_open", "computer_window", "computer_view", "computer_display",
     "computer_wait", "computer_browser", "computer_files", "computer_clipboard", "computer_record", "computer_click", "computer_hover", "computer_drag",
     "computer_scroll", "computer_type", "computer_press", "computer_select", "computer_timeline"]) expect(loaded).toContain(`- ${tool}:`);
   // Input goes to a window address and refuses anything else before native work.
@@ -104,7 +104,7 @@ test("with Pi Agent IDE, computer use extends Read, Search and Delete, refuses W
     const loaded = ["find", "open", "more", "files", "input", "keys"].map(id => getToolResultText(result, id)).join("\n");
     expect(loaded).not.toContain("computer_read");
     expect(loaded).not.toContain("computer_delete");
-    for (const tool of ["computer_open", "computer_window", "computer_display", "computer_wait", "computer_browser", "computer_files", "computer_clipboard", "computer_record",
+    for (const tool of ["computer_open", "computer_window", "computer_view", "computer_display", "computer_wait", "computer_browser", "computer_files", "computer_clipboard", "computer_record",
       "computer_click", "computer_hover", "computer_drag", "computer_scroll", "computer_type", "computer_press", "computer_select", "computer_timeline"]) expect(loaded).toContain(`- ${tool}:`);
     for (const id of ["session", "close", "delete"])
       expect(getToolExecution(result, id).isError, getToolResultText(result, id)).toBe(false);
