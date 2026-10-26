@@ -61,7 +61,7 @@ From there the agent can:
 - search the tree of an observation without capturing again;
 - inspect, scope or highlight one element, or read its full text;
 - ask for only the `image`, only the `ui`, or both (`full`);
-- see what each action changed: the UI rows, and for canvases the changed pixel areas with before/after crops;
+- see what each action changed: the UI rows, and a small picture of the window or page with the changed areas outlined and numbered, the one at the input first, plus enlarged before/after crops of them;
 - read only what changed since the last read with `changes`;
 - run `ocr` on canvases and games, or `regions` for icons and text areas found by Cua perception;
 - zoom into part of the latest overview, or crop one element at full resolution;
