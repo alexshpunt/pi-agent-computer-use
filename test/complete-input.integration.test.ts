@@ -5,7 +5,7 @@ import { assistantMessage, getToolExecution, getToolExecutions, getToolResultTex
 import { expect, test } from "vitest";
 import { nestedCalls, SCRIPT_HELPERS } from "./fixtures/standalone-computer.ts";
 
-test("real Pi sends keys, chords and drags in the background and keeps partial and refused outcomes apart", async () => {
+test("real Pi sends keys, chords and drags as real input and keeps partial and refused outcomes apart", async () => {
   await mkdir(".tmp/cua-gestures", { recursive: true });
   const cwd = await mkdtemp(path.resolve(".tmp/cua-gestures/pi-contract-")); const log = path.join(cwd, "calls.jsonl");
   await mkdir(path.join(cwd, ".pi"));
@@ -23,8 +23,8 @@ if (drag.outcome !== "delivered") throw Error("Drag refused: " + drag.text);
 const partial = await press("escape");
 if (partial.outcome !== "unknown" || partial.effect !== "unknown") throw Error("Partial key reported as " + partial.outcome);
 text(partial.text);
-const refused = await press("delete", {foreground:false});
-if (refused.outcome !== "refused" || refused.effect !== "not-applied") throw Error("Background refusal reported as " + refused.outcome);
+const refused = await press("delete");
+if (refused.outcome !== "refused" || refused.effect !== "not-applied") throw Error("Native refusal reported as " + refused.outcome);
 text(refused.text);
 text("Complete sequence guards passed");`;
   try {
@@ -53,7 +53,8 @@ text("Complete sequence guards passed");`;
     expect(input.map(c => c.name)).toEqual(["press_key", "hotkey", "drag", "press_key", "press_key"]);
     expect(input.map(c => c.arguments.key ?? c.arguments.keys)).toEqual(["a", ["shift", "b"], undefined, "escape", "delete"]);
     expect(input.map(c => c.arguments.target)).toEqual(Array(5).fill({ kind: "window", pid: 42, window_id: 91 }));
-    expect(input.every(c => c.arguments.delivery_mode === "background")).toBe(true);
+    // Keys and drags are real input: every one goes in the foreground, and a refused key is not retried.
+    expect(input.every(c => c.arguments.delivery_mode === "foreground")).toBe(true);
     expect(calls.some(c => c.name === "bring_to_front")).toBe(false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

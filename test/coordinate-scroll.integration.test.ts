@@ -8,7 +8,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const fixture = (name: string) => path.join(root, "test/fixtures", name);
 
 // Pattern: real-Pi extensions example and the ordinary IDE computer-provider scenarios.
-// Contract: computer_scroll preserves capture authority and structured uncertain prefixes; IDE Insert refuses.
+// Contract: computer_scroll at a point is real input that preserves capture authority and structured uncertain prefixes; IDE Insert refuses.
 async function scenario(testName: string, scenario: "receipts" | "authority", providerFirst: boolean) {
   const consumer = IDE_EXTENSION, provider = fixture("coordinate-scroll-extension.ts");
   await mkdir(path.join(root, ".tmp/lpt-730"), { recursive: true });
@@ -45,12 +45,12 @@ const native = (x: number, y: number, delta_x: number, delta_y: number, delivery
 
 test.each([false, true])("ordinary IDE scroll preserves capture-bound deltas and uncertain prefixes (providerFirst=%s)", async providerFirst => {
   const actions = inputCalls(await scenario("coordinate-scroll-receipts", "receipts", providerFirst));
-  expect(actions.map(call => call.name)).toEqual(Array(10).fill("scroll_at"));
+  // Every scroll at a point is real input in the foreground.
+  expect(actions.map(call => call.name)).toEqual(Array(7).fill("scroll_at"));
   expect(actions.map(call => call.arguments)).toEqual([
-    native(100, 80, 0, 2, "background"), native(100, 80, -2, 3, "background"), native(100, 80, -2, 3), native(120, 90, 1, 0),
-    ...Array.from({ length: 5 }, () => native(130, 100, 1, 1)), native(130, 100, 1, 1, "background"),
+    native(100, 80, -2, 3), native(120, 90, 1, 0), ...Array.from({ length: 5 }, () => native(130, 100, 1, 1)),
   ]);
-  // The refusal spent its capture, so the foreground retry captures the window again: every scroll has its own capture.
+  // Every scroll binds to its own capture.
   expect(new Set(actions.map(call => call.arguments.capture_id)).size).toBe(actions.length);
 }, 120_000);
 

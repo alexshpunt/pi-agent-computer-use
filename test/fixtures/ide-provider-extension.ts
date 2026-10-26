@@ -121,7 +121,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const hint = hintOf(view), literal = '  {"looks":"like JSON"}\n"quoted text"\n  ';
         await refused("write", { path: reference(view, "observation"), content: literal }, "computer_type");
         const nativeBeforeType = (await journal()).length;
-        await ok("computer_type", { window: first, target: hint, text: literal, delay_ms: 0, foreground: true });
+        await ok("computer_type", { window: first, target: hint, text: literal, delay_ms: 0 });
         assert(!await capturedBeforeInput(nativeBeforeType), "computer_type refreshed native capture");
         const written = (await inputs()).at(-1);
         assert(written?.name === "type_text" && written.arguments.text === literal && written.arguments.delay_ms === 0, "Literal typing normalized text, added a command or lost delay");
