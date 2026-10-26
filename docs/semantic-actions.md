@@ -2,13 +2,13 @@
 
 See [the resource guide](computer-resources.md) for the current addresses, views and commands.
 
-An Insert action accepts explicit `invoke`, `select` and `set_value` intents with a current hint or element token. The bundled runtime supports them; an older runtime selected by override refuses before dispatch. Ordinary `click` keeps its existing native action ladder.
+The driver takes explicit `invoke`, `select` and `set_value` intents with a current element token. On a native window, `computer_type` with `replace` sends `set_value`, and `computer_select` without `values` sends `select` to its target; both take a ref of the latest Read or a locator. No tool sends `invoke`: `computer_click` keeps the native click ladder. The bundled runtime supports these intents; an older runtime selected by override refuses before dispatch.
 
 - `invoke` calls the control's UIA Invoke pattern.
 - `select` calls UIA SelectionItem.Select, not Ctrl+A or a pointer click.
 - `set_value` takes `text` (up to 2000 characters) and calls Value.SetValue, or RangeValue.SetValue when Value is unavailable before the call. An empty string is allowed for a text value.
 
-These actions accept no pixels, modifiers or foreground delivery. They are single actions, not sequence steps. UI-only observations are enough; pixel visibility is not a semantic prerequisite. A disabled control still refuses. Safe access, current observation, exact window lifetime and cancellation checks remain in force.
+These actions accept no pixels, modifiers or foreground delivery. UI-only observations are enough; pixel visibility is not a semantic prerequisite. A disabled control still refuses. Safe access, current observation, exact window lifetime and cancellation checks remain in force.
 
 The native tool admits one exact snapshot target and one UIA pattern. It has no mouse/key dispatch or foreground retry. Missing patterns, disabled/read-only controls and invalid range values refuse before the application call. Provider failure after a call starts is unknown; never repeat it blindly. Dispatch consumes the overview even on failure.
 

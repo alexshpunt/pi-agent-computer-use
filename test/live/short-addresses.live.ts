@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "vitest";
-import { performComputer, readComputer } from "../../src/provider.ts";
+import { computerAction, readComputer } from "../../src/provider.ts";
+import { clickPlan } from "../../src/computer-tools.ts";
 import { connectLive, nativeForm, openWindow, WINDOWS_POWERSHELL_PATH } from "./remote.ts";
 
 // LPT-932: on a configured machine, results show short addresses with the machine, and a named window is used by name.
@@ -10,12 +11,15 @@ const read = async (source: string, views?: string[]) => {
   const result = await readComputer(live.resources, source, live.cwd, { views }, false);
   return result.content[0].type === "text" ? result.content[0].text : "";
 };
-const insert = (source: string, command: unknown) => performComputer(live.resources, "insert", source, { path: source, text: JSON.stringify(command) }, live.cwd);
+// What computer_window name and computer_click return: the summary and the script receipt.
+const nameWindow = (source: string, as: string) => computerAction(live.resources, source, "name", () => live.resources.address(source), address => live.resources.name(address, live.cwd, as));
+const click = (source: string, target: string) => computerAction(live.resources, source, "click", () => live.resources.address(source),
+  address => live.resources.input(address, live.cwd, clickPlan({ window: source, target })));
 
 test("a window is read and acted on by its short address and by a name, and the name ends with the window", async () => {
   const title = `pi-short-${Date.now()}`;
   const long = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title), title);
-  const named = await insert(live.machine, { action: "name", as: "form", title });
+  const named = await nameWindow(long, "form");
   expect(named.script.outcome, named.summary).toBe("delivered");
   const short = named.script.window as string;
   expect(short).toMatch(new RegExp(`^computer:${name}/w\\d+[a-z]{2}$`));
@@ -23,7 +27,7 @@ test("a window is read and acted on by its short address and by a name, and the 
   expect(view).toMatch(new RegExp(`^Computer observed \\(yolo\\) on ${name}\\nWindow: ${short}\\nObservation: computer:${name}/o\\d+[a-z]{2}$`, "m"));
   expect(view).not.toMatch(/computer:(window|observation)\/[wd0-9a-f-]{8}/);
   // Act by name: a locator click on the form's counter button.
-  const clicked = await insert("computer:form", { action: "click", target: "getByRole('button', { name: 'Count 0' })" });
+  const clicked = await click("computer:form", "getByRole('button', { name: 'Count 0' })");
   expect(clicked.script.outcome, clicked.summary).toBe("delivered");
   expect(await read("computer:form", ["ui"])).toContain("Count 1");
   expect(await read("computer:session")).toMatch(new RegExp(`computer:form → ${short} \\| ${title}`));
@@ -32,7 +36,7 @@ test("a window is read and acted on by its short address and by a name, and the 
   await live.closeWindow((state.details.target as { window_id: number }).window_id);
   for (let i = 0; i < 20 && ((await live.search(live.windows, title)).details.state?.windows as unknown[] | undefined)?.length; i++) await new Promise(resolve => setTimeout(resolve, 500));
   await live.search(live.windows, "");
-  const gone = await insert("computer:form", { action: "click", target: "getByRole('button')" });
+  const gone = await click("computer:form", "getByRole('button')");
   expect(gone.script.outcome).toBe("refused");
   expect(gone.summary).toMatch(/No window is named form/);
 });

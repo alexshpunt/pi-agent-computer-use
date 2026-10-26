@@ -8,7 +8,7 @@ import { expect, test } from "vitest";
 
 type Action = { metadata: { semanticAction: Record<string, unknown> } };
 const action = (details: unknown) => (details as Action).metadata.semanticAction;
-const open = (id: string) => toolCall({ id, name: "computer_insert", arguments: { path: "computer:machine/local", text: '{"action":"open","app":"Notepad"}' } });
+const open = (id: string) => toolCall({ id, name: "computer_open", arguments: { at: "computer:machine/local", app: "Notepad" } });
 
 test("standalone Pi opens two windows with first observations, rejects invented refs, and releases MCP", async () => {
   await mkdir(".tmp", { recursive: true });
@@ -22,18 +22,18 @@ test("standalone Pi opens two windows with first observations, rejects invented 
     const result = await new PiIntegrationTest({
       testName: "standalone-new-window-and-refusal", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/fake-extension.ts")],
-      tools: ["computer_insert", "computer_write"], isolateUserResources: true,
+      tools: ["computer_open", "computer_type", "computer_delete"], isolateUserResources: true,
       conversation: [
         assistantMessage([open("first")], { stopReason: "toolUse" }),
         assistantMessage([open("second")], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "stale", name: "computer_write", arguments: {
-          path: "computer:observation/not-an-observation", content: "Do not dispatch",
+        assistantMessage([toolCall({ id: "stale", name: "computer_type", arguments: {
+          window: "computer:window/not-a-window", text: "Do not dispatch",
         } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("The standalone contract was exercised.")]),
       ],
-    }).run("Open two new test windows with first observations, refuse an invented write reference, and release runtime.");
-    expect(getToolCallNames(result)).toEqual(["computer_insert", "computer_insert", "computer_write", "computer_insert"]);
+    }).run("Open two new test windows with first observations, refuse an invented window reference, and release runtime.");
+    expect(getToolCallNames(result)).toEqual(["computer_open", "computer_open", "computer_type", "computer_delete"]);
     const first = action(getToolExecutionDetails(getToolExecution(result, "first")));
     const second = action(getToolExecutionDetails(getToolExecution(result, "second")));
     expect(first).toMatchObject({ status: "observed", opened: true, mode: "yolo", observation_id: expect.any(String),
@@ -44,12 +44,12 @@ test("standalone Pi opens two windows with first observations, rejects invented 
     expect(getToolResultText(result, "first")).toMatch(/^Window: computer:local\/w1[a-z]{2}\nObservation: computer:local\/o1[a-z]{2}$/m);
     expect(getToolExecution(result, "first").isError).toBe(false);
     expect(getToolExecution(result, "stale").isError).toBe(true);
-    expect(getToolResultText(result, "stale")).toContain("Observation reference expired");
+    expect(getToolResultText(result, "stale")).toContain("Unknown or closed window reference");
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
     expect(calls.filter(call => call.name === "launch_app")).toHaveLength(2);
     expect(calls.filter(call => call.name === "get_window_state")).toHaveLength(2);
     expect(calls.filter(call => call.name === "type_text")).toHaveLength(0);
     expect(calls).toContainEqual({ event: "stdin-eof" });
-    expect(result.tuiRenderedOutput).toContain("computer_insert");
+    expect(result.tuiRenderedOutput).toContain("computer_open");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

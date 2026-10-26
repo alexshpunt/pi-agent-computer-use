@@ -11,7 +11,6 @@ import { basename, dirname, resolve } from "node:path";
 import type { ComputerSession, ComputerResult, ComputerMode, Action } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
-import { combine, evaluateNative, type WaitSpec } from "./ui-conditions.ts";
 import { compareCaptures, diffDom, diffIsEmpty, diffUi, type Capture, type StateDiff } from "./successor.ts";
 import { changeCrops, decodeFrame } from "./pixel-diff.ts";
 import type { WindowFrame } from "./session.ts";
@@ -19,14 +18,13 @@ import type { UiCaptureOptions, UiElement, UiResource } from "./ui-resources.ts"
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
 import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, type ParsedSelector } from "./native-locator.ts";
-import { SETUP_PARTS, SetupError, runSetup, type SetupPart } from "./setup.ts";
 
 /** The machine this extension runs on, by its address name. */
 export const LOCAL_MACHINE = "local";
 /** How to use a machine address: the same on every machine. */
 export function machineGuide(source: string): string[] {
-  return [`Search ${source}/windows for its windows and ${source}/apps for its installed apps; Read ${source}/displays for its displays and ${source}/display/primary for its main display (Insert resize into a display address to change its resolution).`,
-    `Insert open, open_browser, open_sandbox, open_session, webview2_debugging, put, get, files, clipboard_read, clipboard_write, record_start, record_stop, audio_record, name (a window by its title) or close into ${source}.`];
+  return [`Search ${source}/windows for its windows and ${source}/apps for its installed apps; Read ${source}/displays for its displays and ${source}/display/primary for its main display (computer_display changes its resolution).`,
+    `Give ${source} to computer_open, computer_files, computer_clipboard and computer_record; Delete it to release it.`];
 }
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -44,10 +42,6 @@ function commandObject(value: string): Record<string, unknown> {
   catch { throw new ComputerRequestError("Use one valid JSON command object."); }
 }
 
-/** Steps of one mixed batch; each native step after the first walks the UI again, so batches stay shorter than sequences. */
-const BATCH_STEPS = 200;
-/** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
-const NATIVE_BATCH_ACTIONS = ["click", "double_click", "right_click", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value"];
 /** Native actions that take a Playwright locator or JSON target. */
 const NATIVE_LOCATOR_ACTIONS = ["click", "double_click", "right_click", "hover", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value", "check", "uncheck"];
 /** A point in pixels of a window's latest image, or in CSS pixels of a browser page. */
@@ -84,11 +78,10 @@ export function refKind(target: unknown): "hint" | "page" | "locator" | undefine
 /** Playwright verbs with a different native name. */
 const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "double_click" };
 /**
- * What follows an action: its optional postcondition, and the successor with its change list. The successor is on
- * by default; `explicit` means the agent asked for it (`successor: true` or `expect`), which also overrides the
- * defaults that skip it. `frame` holds the window's pixels before the action, when the input observation had them.
+ * What follows an action: the successor with its change list. `explicit` overrides the defaults that skip it.
+ * `frame` holds the window's pixels before the action, when the input observation had them.
  */
-interface FollowUp { expect?: WaitSpec; successor: boolean; explicit: boolean; preexisting?: boolean; frame?: WindowFrame;
+interface FollowUp { successor: boolean; explicit: boolean; frame?: WindowFrame;
   /** The window's session, resolved before the action: a failed action can make the session forget the window. */
   session?: ComputerSession }
 /** How long a native successor keeps looking for a change before reporting that nothing changed. */
@@ -266,30 +259,6 @@ async function fileCommand(session: ComputerSession, command: Record<string, unk
     throw new ComputerRequestError(`File ${command.action} failed: ${error instanceof Error ? error.message : error}`);
   }
 }
-/** Install an optional part on a machine, or prepare another one from this machine; the user must have allowed it. */
-async function setupCommand(command: Record<string, unknown>, machine: string | undefined, cwd: string, mode: ComputerMode, signal?: AbortSignal): Promise<ComputerResult> {
-  only(command, ["action", "part", "ssh", "name", "code", "argv"]);
-  const part = command.part;
-  if (typeof part !== "string" || !SETUP_PARTS.some(item => item.name === part))
-    throw new ComputerRequestError(`setup needs part: one of ${SETUP_PARTS.map(item => item.name).join(", ")}. Install only after the user explicitly allowed that part on that machine.`);
-  const strings: Record<string, string> = {};
-  for (const key of ["ssh", "name", "code", "argv"]) {
-    if (command[key] === undefined) continue;
-    if (typeof command[key] !== "string" || !command[key]) throw new ComputerRequestError(`setup ${key} must be a non-empty string.`);
-    strings[key] = command[key] as string;
-  }
-  if (part === "machine" && machine) throw new ComputerRequestError("Prepare another machine from computer:machine/local.");
-  if (part !== "machine" && (strings.ssh || strings.name)) throw new ComputerRequestError("ssh and name belong to setup part machine.");
-  if (part !== "vscode-bridge" && (strings.code || strings.argv)) throw new ComputerRequestError("code and argv belong to setup part vscode-bridge.");
-  try {
-    const text = await runSetup({ part: part as SetupPart, ...(machine ? { machine } : {}), ...strings }, cwd, { ...(signal ? { signal } : {}) });
-    return { content: [{ type: "text", text }], details: { status: "delivered", mode, state: { operation: "setup", part, machine: machine ?? LOCAL_MACHINE } } };
-  } catch (error) {
-    if (error instanceof SetupError) throw new ComputerRequestError(error.message);
-    return { content: [{ type: "text", text: `Setup of ${part} failed: ${error instanceof Error ? error.message : error}` }],
-      details: { status: "refused", mode, state: { operation: "setup", part, machine: machine ?? LOCAL_MACHINE } }, isError: true };
-  }
-}
 const unresponsive = (health: ProcessHealth) => `The app ${health.name} (pid ${health.pid}) is not responding; it uses ${health.memory_mb} MB memory. Capture and input cannot recover a hung app: wait and read again, or close it.`;
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ComputerRequestError("Use a JSON command object.");
@@ -297,10 +266,6 @@ function object(value: unknown): Record<string, unknown> {
 }
 /** A window name the agent gives: computer:<name>. */
 const NAME = /^[a-z][a-z0-9_-]{0,31}$/;
-/** Whether an Insert text is a name command, checked before the address's other commands. */
-function nameCommand(value: string): boolean {
-  try { return (JSON.parse(value) as { action?: unknown })?.action === "name"; } catch { return false; }
-}
 function only(value: Record<string, unknown>, fields: readonly string[]): void {
   if (Object.keys(value).some(key => !fields.includes(key))) throw new ComputerRequestError("Command contains unsupported fields.");
 }
@@ -308,7 +273,6 @@ function only(value: Record<string, unknown>, fields: readonly string[]): void {
 /** Addressable projections of one ComputerSession. Cached descriptors never acquire native pixels. */
 export class ComputerResources {
   private readonly snapshots = new Map<string, Snapshot>();
-  private readonly windowStates = new Map<string, { window_ref: string; result: ComputerResult }>();
   /** Each window's latest observed UI, the baseline of its next `changes` Read. Outlives the observation's input authority. */
   private readonly lastUi = new Map<string, { observation_id: string; ui: UiResource }>();
   /** Installed apps by opaque reference, each with the machine that listed it. */
@@ -380,9 +344,9 @@ export class ComputerResources {
     const base = at < 0 ? source : source.slice(0, at), query = at < 0 ? "" : source.slice(at);
     const segments = base.slice(9).split("/");
     if (segments.length === 1 && !ADDRESS_KINDS.has(segments[0]) && NAME.test(segments[0])) {
-      if (query) throw new ComputerRequestError("A window name takes no options. Read it for an observation and put options on that observation's address.");
+      if (query) throw new ComputerRequestError("A window name takes no options.");
       const entry = this.names.get(segments[0]);
-      if (!entry) throw new ComputerRequestError(`No window is named ${segments[0]}. Insert {"action":"name","as":"${segments[0]}"} into a window address first; Read computer:session for the current names.`);
+      if (!entry) throw new ComputerRequestError(`No window is named ${segments[0]}. Name a window with computer_window name first; Read computer:session for the current names.`);
       if (!this.holdsWindow(entry.window_ref)) {
         this.names.delete(segments[0]);
         throw new ComputerRequestError(`computer:${segments[0]} named a window that has closed or was released${entry.title ? ` (${entry.title})` : ""}. Search the machine's windows again and name the new one.`);
@@ -408,15 +372,10 @@ export class ComputerResources {
     // That machine's session refuses a display reference it did not list, after its own mode check, without native work.
     return { session: await this.machineSession(cwd, target.machine, signal), machine: target.machine };
   }
-  /** The owner of a window, display, window state, observation or sequence address. */
+  /** The owner of a window, display, observation or sequence address. */
   private async routeAddress(cwd: string, address: ComputerAddress, signal?: AbortSignal): Promise<Owner> {
     if (address.kind === "window") return this.route(cwd, { window_ref: address.ref }, signal);
     if (address.kind === "display") return this.route(cwd, { display: address.ref, machine: address.machine }, signal);
-    if (address.kind === "window-state") {
-      const state = this.windowStates.get(address.ref);
-      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
-      return this.route(cwd, { window_ref: state.window_ref }, signal);
-    }
     if (address.kind === "observation") return this.route(cwd, this.snapshot(address.ref).target, signal);
     if (address.kind === "sequence")
       return this.owner(cwd, session => session.hasSequence(address.ref), "Sequence is unavailable or evicted. Capture again; sequences do not survive reload or close.");
@@ -437,7 +396,6 @@ export class ComputerResources {
       case "sandbox": { const sandbox = this.sandboxes.get(address.ref); return sandbox && { machine: sandbox.machine ?? LOCAL_MACHINE, sandbox: sandbox.ref }; }
       case "sequence": return holder(session => session.hasSequence(address.ref));
       case "window": return holder(session => session.hasWindow(address.ref));
-      case "window-state": { const state = this.windowStates.get(address.ref); return state && holder(session => session.hasWindow(state.window_ref)); }
       case "observation": {
         const target = this.snapshots.get(address.ref)?.target;
         return !target ? undefined : target.machine !== undefined ? { machine: target.machine } : holder(session => session.hasWindow(target.window_ref!));
@@ -470,11 +428,10 @@ export class ComputerResources {
   private async machineSession(cwd: string, name: string, signal?: AbortSignal): Promise<ComputerSession> {
     return name === LOCAL_MACHINE ? (this.local = await this.getSession(cwd)) : (await this.machine(cwd, name, signal)).session;
   }
-  /** Forget a released session's observations and window states, and the display observations of its machine. */
+  /** Forget a released session's observations, and the display observations of its machine. */
   private forget(session: ComputerSession, machine?: string): void {
     for (const [id, entry] of this.snapshots)
       if (entry.target.window_ref !== undefined ? session.hasWindow(entry.target.window_ref) : entry.target.machine === machine) this.snapshots.delete(id);
-    for (const [id, entry] of this.windowStates) if (session.hasWindow(entry.window_ref)) this.windowStates.delete(id);
   }
   /**
    * Release one machine: its sandboxes and sessions, then its own session with its browsers and file folder. The
@@ -488,7 +445,6 @@ export class ComputerResources {
     if (name === LOCAL_MACHINE) {
       for (const [id, entry] of this.snapshots)
         if (entry.target.window_ref !== undefined ? !this.remoteWindow(entry.target.window_ref) : entry.target.machine === LOCAL_MACHINE) this.snapshots.delete(id);
-      for (const [id, entry] of this.windowStates) if (!this.remoteWindow(entry.window_ref)) this.windowStates.delete(id);
       own = await this.closeSession().catch(error => failure(error, this.getMode()));
     } else {
       const machine = this.machines.get(name);
@@ -542,7 +498,6 @@ export class ComputerResources {
     const names = [...new Set([...this.machines.keys(), ...[...this.sandboxes.values()].map(sandbox => sandbox.machine ?? LOCAL_MACHINE)])].filter(name => name !== LOCAL_MACHINE);
     const results = await Promise.all([...names.map(name => this.closeMachine(name)), this.closeMachine(LOCAL_MACHINE)]);
     this.snapshots.clear();
-    this.windowStates.clear();
     this.apps.clear();
     return report(this.getMode(), results.map(result => [undefined, result]), "Computer use released. Application documents were not closed or saved.");
   }
@@ -554,7 +509,6 @@ export class ComputerResources {
   }
   /** Forget a window's observations: all of them, or only its DOM snapshots or only its native captures, which a Read of the other kind keeps. */
   private retireWindow(ref: string, kind?: "dom" | "native"): void {
-    for (const [id, entry] of this.windowStates) if (entry.window_ref === ref) this.windowStates.delete(id);
     for (const [id, entry] of this.snapshots) if (entry.target.window_ref === ref && (!kind || observationKind(entry.result) === kind)) this.snapshots.delete(id);
   }
   private remember(target: ObservationTarget, result: ComputerResult): ComputerResult {
@@ -575,26 +529,19 @@ export class ComputerResources {
     return result;
   }
 
-  /** Whether an observation or window-state address still grants its one-use authority. Other addresses grant none. */
+  /** Whether an observation address is still current for input. Other addresses grant none. */
   grantsAuthority(address: ComputerAddress): boolean {
-    return address.kind === "observation" ? this.snapshots.has(address.ref)
-      : address.kind === "window-state" ? this.windowStates.has(address.ref) : false;
+    return address.kind === "observation" && this.snapshots.has(address.ref);
   }
   /** Resolve an editor's readonly descriptor without native acquisition or target refresh. */
   descriptor(address: ComputerAddress): string {
-    if (address.kind === "window-state") {
-      const state = this.windowStates.get(address.ref);
-      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
-      const operations = state.result.details.window_state_kind === "management" ? "move/resize/minimize/maximize/focus or restore" : "restore";
-      return `# Computer window state\nWindow: ${computerSource("window", state.window_ref)}\nState: ${address.source}\nInsert one ${operations} command consumes this state. No capture, typing or pointer authority. No native query occurred during descriptor resolution.`;
-    }
     if (address.kind === "observation") {
       const snapshot = this.snapshot(address.ref);
       const source = snapshot.target.window_ref !== undefined ? computerSource("window", snapshot.target.window_ref)
         : displaySource(snapshot.target.machine!, snapshot.target.display!);
       return `# Computer observation\nSource: ${source}\nObservation: ${computerSource("observation", address.ref)}\n` +
-        (snapshot.result.details.dom ? "Playwright DOM snapshot. Insert one JSON action with a target (aria ref or locator); Read element:crop|highlight,<ref> or image for page pixels. Search filters this snapshot. Write and native input are unavailable here."
-          : snapshot.target.window_ref !== undefined ? "Input needs this still-current observation. Insert sends JSON commands; Write sends literal text."
+        (snapshot.result.details.dom ? "Playwright DOM snapshot. Its refs are targets for the computer_* input tools on its window; Read element:crop|highlight,<ref> or image for page pixels. Search filters this snapshot."
+          : snapshot.target.window_ref !== undefined ? "Its refs are targets for the computer_* input tools on its window until input spends them."
           : "Display observation is readonly and grants no input authority.");
     }
     if (address.kind === "sandbox") return this.sandbox(address.ref).describe(address.source);
@@ -613,15 +560,24 @@ export class ComputerResources {
       const sandboxes = [...this.sandboxes.values()].map(sandbox => `- ${computerSource("sandbox", sandbox.ref)} on ${computerSource("machine", sandbox.machine ?? LOCAL_MACHINE)}`);
       return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in .pi/computer-use.json starts on its first use). Every window, display, observation and sequence address belongs to the machine that issued it, and every receipt names that machine:",
         ...machines, ...(sandboxes.length ? ["Sandboxes and isolated sessions:", ...sandboxes] : []),
-        ...(names.length ? ["Window names (Insert {\"action\":\"name\",\"as\":\"<name>\"} into a window address to add one):", ...names] : []),
+        ...(names.length ? ["Window names (computer_window name adds one):", ...names] : []),
         ...(windows.length ? ["Windows listed so far:", ...windows] : []),
-        "Insert {\"action\":\"close\"} here to release every machine, browser, sandbox and session this computer use started; the result lists each part."].join("\n");
+        "Delete this address to release every machine, browser, sandbox and session this computer use started; the result lists each part."].join("\n");
     }
-    return `# Computer resource\nSource: ${address.source}\nUse Read for native observation, Search for discovery, and Insert for explicit commands. No native capture occurred during descriptor resolution.`;
+    return `# Computer resource\nSource: ${address.source}\nUse Read to look, Search to discover, and the computer_* tools to act. No native capture occurred during descriptor resolution.`;
   }
 
   /** Acquire a requested native projection, or inspect one explicitly issued observation; the receipt names its machine. */
   async read(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
+    if (parseComputerViews(views).kind === "sequence") throw new ComputerRequestError("Read only looks; capture frames over time with computer_record action sequence.");
+    return this.look(address, cwd, views, signal);
+  }
+  /** Capture frames of a window or display over time for computer_record; the sequence address then takes frame Reads. */
+  sequence(address: ComputerAddress, cwd: string, views: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
+    if (parseComputerViews(views).kind !== "sequence") throw new ComputerRequestError("computer_record sequence takes sequence options only.");
+    return this.look(address, cwd, views, signal);
+  }
+  private async look(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
     const place = this.place(address);
     const result = await this.readAddress(address, cwd, views, signal);
     return result && this.stamp(place, result);
@@ -711,23 +667,10 @@ export class ComputerResources {
     }
     const owner = await this.routeAddress(cwd, address, signal);
     const session = owner.session;
-    if (address.kind === "window-state") {
-      if (views?.length) throw new ComputerRequestError("Cached window state has no capture or UI views. Read the window with state view for a fresh state.");
-      const state = this.windowStates.get(address.ref);
-      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
-      const checked = await session.checkWindowState(state.window_ref, address.ref, signal);
-      if (checked.details.status !== "observed") { this.windowStates.delete(address.ref); return checked; }
-      return { ...state.result, content: state.result.content.map(block => block.type === "text"
-        ? { ...block, text: block.text.replace(/^.*?(?=\n|$)/,
-          "Cached native window state. No new metadata sample or renewed one-use authority. Insert consumes this state once.") }
-        : block) };
-    }
     if (view.kind === "sequence") {
       if (address.kind !== "window" && address.kind !== "display") throw new ComputerRequestError("Capture a sequence from a window/display address, not an observation.");
       if (owner.sandbox) throw new ComputerRequestError("Temporal capture is not available for sandbox windows.");
       const target: ObservationTarget = address.kind === "display" ? { display: address.ref, machine: address.machine } : { window_ref: address.ref };
-      if (target.window_ref) for (const [id, entry] of this.windowStates)
-        if (entry.window_ref === target.window_ref) this.windowStates.delete(id);
       for (const [id, entry] of this.snapshots) if (sameTarget(entry.target, target)) this.snapshots.delete(id);
       return session.captureSequence(address.kind === "window" ? { window_ref: address.ref } : { display: address.ref }, view.options, signal);
     }
@@ -738,15 +681,9 @@ export class ComputerResources {
     if (view.kind === "frames") throw new ComputerRequestError("Frame selection needs a sequence address.");
     if (address.kind === "window") {
       // A fresh window Read retires the earlier observation of its kind; a DOM snapshot and a native capture coexist.
-      this.retireWindow(address.ref, view.kind === "dom" ? "dom" : view.kind === "state" ? undefined : "native");
-      if (view.kind === "state") {
-        const result = await session.observeWindowState(address.ref, signal);
-        if (result.details.status === "observed" && result.details.window_state_id) {
-          this.windowStates.set(result.details.window_state_id, { window_ref: address.ref, result });
-          while (this.windowStates.size > 64) this.windowStates.delete(this.windowStates.keys().next().value!);
-        }
-        return result;
-      }
+      // A state Read only looks and keeps the window's observations; computer_window samples its own state for each change.
+      if (view.kind === "state") return session.observeWindowState(address.ref, signal);
+      this.retireWindow(address.ref, view.kind === "dom" ? "dom" : "native");
       if (view.kind === "dom") return this.remember({ window_ref: address.ref }, await session.observeDom(address.ref, view.options, signal));
       if (view.kind !== "overview") throw new ComputerRequestError("Read an overview, then apply region to its returned observation address.");
       return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture));
@@ -760,8 +697,6 @@ export class ComputerResources {
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Use an existing supported computer resource.");
     const snapshot = this.snapshot(address.ref);
-    if (address.hint || address.delivery || address.delayMs !== undefined)
-      throw new ComputerRequestError("Hint/delivery/delay address options are for input, not Read.");
     if (snapshot.result.details.dom) {
       const ref = snapshot.target.window_ref;
       if (!ref) throw new ComputerRequestError("Readonly DOM requires a window source.");
@@ -847,7 +782,6 @@ export class ComputerResources {
     }
     if (address.kind !== "observation") throw new ComputerRequestError("Search computer:machine/<name>/windows, computer:machine/<name>/apps, a sandbox address or a returned observation address.");
     const session = (await this.routeAddress(cwd, address, signal)).session;
-    if (address.hint || address.delivery || address.delayMs !== undefined) throw new ComputerRequestError("Input options do not select a Search scope.");
     const snapshot = this.snapshot(address.ref);
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display images have no native UI search scope.");
     if (snapshot.result.details.dom) return session.searchDom(snapshot.target.window_ref, address.ref, query, limit, signal);
@@ -875,6 +809,13 @@ export class ComputerResources {
     if (address.kind === "machine" && !address.part) return this.closeMachine(address.ref);
     if (address.kind === "session") return this.closeAll();
     throw new ComputerRequestError("Delete closes a window, a sandbox or isolated session, a machine or computer:session. Observations, sequences, apps and displays need no closing.");
+  }
+  /** Name a window by its address, so computer:<name> resolves to it until it closes. The receipt names its machine. */
+  async name(address: ComputerAddress, cwd: string, name: unknown, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "window") throw new ComputerRequestError("computer_window needs a window address from Search, Read or a name.");
+    const place = this.place(address);
+    await this.route(cwd, { window_ref: address.ref }, signal);
+    return this.stamp(place, this.nameWindow(name, address.ref));
   }
   /**
    * Move, resize, minimize, maximize, focus or restore a window by its address: a fresh native state sample bounds the
@@ -950,7 +891,7 @@ export class ComputerResources {
     try { action = validateWebAction(command); }
     catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
     const dom = session.inputView(window).dom;
-    if (dom && this.snapshots.has(dom)) return this.performAt({ kind: "observation", ref: dom, source: computerSource("observation", dom) }, cwd, JSON.stringify(command), "insert", signal);
+    if (dom && this.snapshots.has(dom)) return this.performAt({ kind: "observation", ref: dom, source: computerSource("observation", dom) }, cwd, JSON.stringify(command), signal);
     this.retireWindow(window);
     const result = await session.actPage(window, action, signal);
     return result.details.dom ? this.remember({ window_ref: window }, result) : result;
@@ -983,7 +924,7 @@ export class ComputerResources {
     let retry = (): InputPlan => plan;
     if (refKind(target) === "locator") {
       if (plan.end) throw new ComputerRequestError(`${plan.label} takes refs of the window's latest Read or points, not locators.`);
-      result = await this.performAt({ kind: "window", ref: window, source: computerSource("window", window) }, cwd, JSON.stringify({ ...command, target }), "insert", signal);
+      result = await this.performAt({ kind: "window", ref: window, source: computerSource("window", window) }, cwd, JSON.stringify({ ...command, target }), signal);
     } else {
       const hint = refKind(target) === "hint" ? target as string : undefined;
       // Only a locator waits for its element; refs and points act on the current observation at once.
@@ -1020,7 +961,7 @@ export class ComputerResources {
       if (hint && action !== "drag") retry = () => NATIVE_LOCATOR_ACTIONS.includes(LOCATOR_VERBS[action] ?? action) ? { ...plan, target: suggestLocator(this.hinted(view, hint)) }
         : { ...plan, target: undefined, point: seen(centre(hint)) };
       const observation = { kind: "observation" as const, ref: native.id, source: computerSource("observation", native.id), ...(hint && action !== "drag" ? { hint } : {}) };
-      result = await this.performAt(observation, cwd, JSON.stringify(command), "insert", signal);
+      result = await this.performAt(observation, cwd, JSON.stringify(command), signal);
     }
     const capability = result.details.action_capability;
     if (foreground || plan.foreground === false || result.details.status !== "refused" || capability?.background !== "unavailable") return result;
@@ -1035,62 +976,23 @@ export class ComputerResources {
     if (!element) throw new ComputerRequestError(`${hint} is not a ref of this window's latest Read, or input since then spent it: Read the window again, or give a Playwright locator.`);
     return element;
   }
-  /** Dispatch exactly one literal Write or JSON Insert against its address-bound target; the receipt names its machine. */
-  async perform(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
+  /** Dispatch exactly one JSON command of a computer_* tool against its address-bound target; the receipt names its machine. */
+  async perform(address: ComputerAddress, cwd: string, value: string, signal?: AbortSignal): Promise<ComputerResult> {
     const place = this.place(address);
-    return this.stamp(place, await this.performAt(address, cwd, value, tool, signal));
+    return this.stamp(place, await this.performAt(address, cwd, value, signal));
   }
-  private async performAt(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
-    if (tool === "insert" && (address.kind === "window" || address.kind === "machine" && !address.part) && nameCommand(value)) {
-      const command = commandObject(value);
-      if (address.kind === "window") {
-        only(command, ["action", "as"]);
-        await this.route(cwd, { window_ref: address.ref }, signal);
-        return this.nameWindow(command.as, address.ref);
-      }
-      only(command, ["action", "as", "title"]);
-      if (typeof command.title !== "string" || !command.title) throw new ComputerRequestError("Name a window of a machine by its title: {\"action\":\"name\",\"as\":\"game\",\"title\":\"<text or regex:...>\"}, or Insert the name command into the window's address.");
-      const listed = await this.search(requireComputerAddress(computerSource("machine", address.ref, "windows")), cwd, command.title, undefined, signal);
-      const rows = ((listed.details.state?.windows ?? []) as { window_ref?: string; title?: string }[]).filter(row => typeof row.window_ref === "string");
-      if (rows.length !== 1) {
-        const candidates = rows.slice(0, 20).map(row => `- ${computerSource("window", row.window_ref!)} | ${row.title ?? ""}`);
-        throw new ComputerRequestError(rows.length ? `${rows.length} windows match ${JSON.stringify(command.title)}; name one by its address or a narrower title:\n${candidates.join("\n")}`
-          : `No window of ${computerSource("machine", address.ref)} matches ${JSON.stringify(command.title)}.`);
-      }
-      return this.nameWindow(command.as, rows[0].window_ref!);
-    }
-    if (address.kind === "window-state") {
-      if (tool !== "insert") throw new ComputerRequestError("Window state grants native control through Insert, never literal Write.");
-      const command = commandObject(value);
-      let management: WindowManagementCommand | undefined;
-      if (command.action === "restore") only(command, ["action"]);
-      else {
-        try { management = parseWindowManagement(command); }
-        catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-      }
-      const state = this.windowStates.get(address.ref);
-      if (!state) throw new ComputerRequestError("Window state reference expired. Read the window with state view again.");
-      this.windowStates.delete(address.ref);
-      const session = await this.sessionFor(cwd, { window_ref: state.window_ref });
-      return management ? session.manageWindow(state.window_ref, address.ref, management, signal)
-        : session.restoreWindow(state.window_ref, address.ref, signal);
-    }
+  private async performAt(address: ComputerAddress, cwd: string, value: string, signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind === "sandbox") {
       const sandbox = this.sandbox(address.ref);
-      if (tool !== "insert") throw new ComputerRequestError("A sandbox address accepts Insert open or close, not literal Write.");
       const command = commandObject(value);
-      if (command.action === "close") { only(command, ["action"]); return this.closeSandbox(sandbox); }
-      if (command.action !== "open") throw new ComputerRequestError("A sandbox address accepts {\"action\":\"open\",\"app\":\"...\"} or {\"action\":\"close\"}.");
+      if (command.action !== "open") throw new ComputerRequestError("A sandbox address opens apps.");
       const result = await sandbox.session.open(openTarget(command, "in the sandbox"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
     if (address.kind === "machine") {
-      if (tool !== "insert" || address.part) throw new ComputerRequestError(`Insert commands into ${computerSource("machine", address.ref)}, not literal Write or its windows, apps or displays.`);
+      if (address.part) throw new ComputerRequestError(`Give ${computerSource("machine", address.ref)} itself, not its windows, apps or displays.`);
       const command = commandObject(value);
-      if (command.action === "close") { only(command, ["action"]); return this.closeMachine(address.ref); }
       const remote = address.ref === LOCAL_MACHINE ? undefined : address.ref;
-      // Setup prepares a machine, so it must not start that machine's driver first.
-      if (command.action === "setup") return setupCommand(command, remote, cwd, this.getMode(), signal);
       if (command.action === "open_sandbox" || command.action === "open_session") {
         // A remote machine starts before its sandbox, so an unknown name refuses first.
         if (remote) await this.machine(cwd, remote, signal);
@@ -1112,24 +1014,18 @@ export class ComputerResources {
         return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
       }
       if (command.action !== "open")
-        throw new ComputerRequestError(`A machine address accepts open, open_browser, open_sandbox, open_session, webview2_debugging, setup, ${FILE_ACTIONS.join(", ")} or close.`);
+        throw new ComputerRequestError(`A machine address accepts open, open_browser, open_sandbox, open_session, webview2_debugging or ${FILE_ACTIONS.join(", ")}.`);
       const result = await session.open(openTarget(command, "on that machine"), signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
-    if (tool === "insert" && address.kind === "session") {
-      const command = commandObject(value);
-      if (command.action !== "close") throw new ComputerRequestError("computer:session accepts only close. Insert machine commands into computer:machine/local or computer:machine/<name>.");
-      only(command, ["action"]);
-      return this.closeAll();
-    }
-    if (tool === "insert" && address.kind === "app") {
+    if (address.kind === "app") {
       only(commandObject(value), ["action"]);
       const app = this.apps.get(address.ref);
       if (!app) throw new ComputerRequestError("App reference expired. Search computer:machine/<name>/apps again.");
       const result = await (await this.machineSession(cwd, app.machine, signal)).open(app.id, signal);
       return result.details.window_ref ? this.remember({ window_ref: result.details.window_ref }, result) : result;
     }
-    if (address.kind === "display" && tool === "insert") {
+    if (address.kind === "display") {
       const command = commandObject(value);
       if (command.action !== "resize") throw new ComputerRequestError("A display address accepts only resize. Read it for pixels.");
       only(command, ["action", "width", "height"]);
@@ -1144,26 +1040,19 @@ export class ComputerResources {
       if (result.details.status !== "refused") { for (const id of stale) this.snapshots.delete(id); this.forget(session, address.machine); }
       return result;
     }
-    if (address.kind === "window" && tool === "insert") {
+    if (address.kind === "window") {
       const command = commandObject(value);
       const session = await this.sessionFor(cwd, { window_ref: address.ref });
-      if (command.action === "kill") {
-        only(command, ["action"]);
-        this.retireWindow(address.ref);
-        return session.killOwned(address.ref, signal);
-      }
       if (command.action === "attach_browser") {
         only(command, ["action"]);
         return session.attachBrowser(address.ref, signal);
       }
       if (command.target !== undefined && command.action !== "wait_for" && command.action !== "verify") {
-        if (session.isBrowserWindow(address.ref)) throw new ComputerRequestError("For a browser window, Read it with dom and Insert the action into that DOM observation; Playwright resolves the target there.");
-        const follow = await this.followUpSpec(address.ref, command, cwd);
-        delete command.expect; delete command.successor;
-        return this.locatorAction(address.ref, session, command, cwd, signal, follow);
+        if (session.isBrowserWindow(address.ref)) throw new ComputerRequestError("A browser window's locators resolve in its page through Playwright.");
+        return this.locatorAction(address.ref, session, command, cwd, signal, { successor: true, explicit: false });
       }
       if (command.action !== "wait_for" && command.action !== "verify")
-        throw new ComputerRequestError("A window address accepts an action with a target (a Playwright locator such as getByRole(\"button\", { name: \"Save\" })), wait_for, verify, attach_browser or kill. Other input needs the observation address returned by a fresh window Read.");
+        throw new ComputerRequestError("A window address accepts an action with a target (a Playwright locator such as getByRole(\"button\", { name: \"Save\" })), wait_for, verify or attach_browser.");
       let spec;
       try { spec = session.waitSpec(address.ref, command); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
@@ -1174,42 +1063,22 @@ export class ComputerResources {
     if (address.kind !== "observation") throw new ComputerRequestError("Input needs the observation address returned by a fresh window Read.");
     const snapshot = this.snapshot(address.ref);
     const window = snapshot.target.window_ref;
-    let input = value;
-    let follow: FollowUp | undefined;
-    if (tool === "insert" && window) {
-      const command = commandObject(value);
-      follow = await this.withFrame(await this.followUpSpec(window, command, cwd), window, address.ref, cwd);
-      // Was the postcondition already true before anything is sent? Browsers sample now; native uses the input walk.
-      if (follow.expect) {
-        const session = await this.sessionFor(cwd, { window_ref: window });
-        const earlier = snapshot.result.details.dom ? await session.webCheck(window, follow.expect.conditions, signal)
-          : snapshot.result.details.ui ? evaluateNative(snapshot.result.details.ui, follow.expect.conditions) : undefined;
-        follow.preexisting = earlier !== undefined && combine(earlier) === "satisfied";
-      }
-      if ("expect" in command || "successor" in command) {
-        delete command.expect; delete command.successor;
-        input = JSON.stringify(command);
-      }
-      if (command.action === "batch") {
-        const result = await this.batch(address, snapshot, command, cwd, signal);
-        return this.followUp(window, snapshot, result, follow, cwd, signal);
-      }
-      if (command.target !== undefined && !snapshot.result.details.dom) {
-        if (address.hint !== undefined) throw new ComputerRequestError("Choose the address hint or a JSON target, not both.");
-        this.snapshots.delete(address.ref);
-        return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), command, cwd, signal, follow);
-      }
-    } else if (tool === "write" && window) follow = await this.withFrame({ successor: true, explicit: false }, window, address.ref, cwd);
-    const result = await this.act(address, snapshot, input, tool, cwd, signal);
+    if (window && commandObject(value).target !== undefined && !snapshot.result.details.dom) {
+      if (address.hint !== undefined) throw new ComputerRequestError("Choose the ref or a locator target, not both.");
+      this.snapshots.delete(address.ref);
+      return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), commandObject(value), cwd, signal, { successor: true, explicit: false });
+    }
+    const follow = window ? await this.withFrame({ successor: true, explicit: false }, window, address.ref, cwd) : undefined;
+    const result = await this.act(address, snapshot, value, cwd, signal);
     if (!follow || !window) return result;
     return this.followUp(window, snapshot, result, follow, cwd, signal);
   }
 
   /** Dispatch one action against its observation: Playwright for DOM observations, CUA otherwise. */
-  private async act(address: Extract<ComputerAddress, { kind: "observation" }>, snapshot: Snapshot, value: string, tool: "write" | "insert", cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+  private async act(address: Extract<ComputerAddress, { kind: "observation" }>, snapshot: Snapshot, value: string, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
     if (snapshot.result.details.dom) {
-      if (tool !== "insert" || address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined || !snapshot.target.window_ref)
-        throw new ComputerRequestError("A DOM observation accepts one Insert JSON action with a target, not Write or address options.");
+      if (address.hint !== undefined || !snapshot.target.window_ref)
+        throw new ComputerRequestError("A page action takes its target in the command, not a native ref.");
       let command;
       try { command = validateWebAction(commandObject(value)); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
@@ -1218,23 +1087,12 @@ export class ComputerResources {
       return result.details.dom ? this.remember({ window_ref: snapshot.target.window_ref }, result) : result;
     }
     if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations are readonly; choose a window overview for input.");
-    let command: Record<string, unknown>;
-    if (tool === "write") {
-      command = { action: "type_text", text: value, ...(address.delayMs !== undefined ? { delay_ms: address.delayMs } : {}) };
-    } else {
-      if (address.delayMs !== undefined) throw new ComputerRequestError("delay_ms in the resource address is only for literal Write.");
-      command = commandObject(value);
-      if ("window_ref" in command || "observation_id" in command) throw new ComputerRequestError("The resource address binds the window and observation; omit identity fields from JSON.");
-    }
+    const command = commandObject(value);
+    if ("window_ref" in command || "observation_id" in command) throw new ComputerRequestError("The window and observation come from the address; omit identity fields.");
     if (address.hint !== undefined) {
       if ("hint" in command || "element_token" in command || "x" in command || "y" in command)
         throw new ComputerRequestError("Choose the address hint or a JSON target, not both.");
       command.hint = address.hint;
-    }
-    // The address delivery is a preference for pointer and keyboard input. Semantic actions always use accessibility.
-    if (address.delivery !== undefined && !isSemanticAction(String(command.action))) {
-      if ("delivery_mode" in command) throw new ComputerRequestError("Choose delivery in the address or JSON, not both.");
-      command.delivery_mode = address.delivery;
     }
     const action = { ...command, window_ref: snapshot.target.window_ref, observation_id: address.ref } as Action;
     const session = await this.sessionFor(cwd, snapshot.target);
@@ -1258,23 +1116,7 @@ export class ComputerResources {
     return { ...follow, session, ...(frame && frame.observation_id === observation ? { frame } : {}) };
   }
 
-  /** Validate an action's optional `expect` postcondition and `successor` request before anything is dispatched. */
-  private async followUpSpec(window: string, command: Record<string, unknown>, cwd: string): Promise<FollowUp> {
-    if (command.successor !== undefined && typeof command.successor !== "boolean") throw new ComputerRequestError("successor must be boolean.");
-    let expect: WaitSpec | undefined;
-    if (command.expect !== undefined) {
-      const raw = command.expect;
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ComputerRequestError("expect must be an object with conditions and optional timeout_ms, interval_ms and stable.");
-      try { expect = (await this.sessionFor(cwd, { window_ref: window })).waitSpec(window, { ...raw as Record<string, unknown>, action: "wait_for" }); }
-      catch (error) { throw new ComputerRequestError(`expect: ${error instanceof Error ? error.message : String(error)}`); }
-    }
-    return { ...(expect ? { expect } : {}), successor: command.successor !== false || expect !== undefined, explicit: command.successor === true || expect !== undefined };
-  }
-
-  /**
-   * After an action, wait for its declared postcondition and attach the successor observation with a compact
-   * diff from the action's input observation. A refused or unknown action never yields a verified postcondition.
-   */
+  /** After an action, attach the successor observation with a compact diff from the action's input observation. */
   private async followUp(window: string, before: Snapshot, result: ComputerResult, follow: FollowUp, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
     const status = result.details.status;
     if (!follow.successor) return result;
@@ -1284,22 +1126,8 @@ export class ComputerResources {
     // A cancelled call returns its receipt without capturing again.
     if (signal?.aborted) return result;
     const session = follow.session ?? await this.sessionFor(cwd, { window_ref: window });
-    const preexisting = follow.preexisting === true;
     let successor: ComputerResult | undefined, settled: StateDiff | undefined, crops: ComputerResult["content"] = [];
-    let postcondition: ComputerResult["details"]["postcondition"];
-    if (follow.expect && status !== "refused") {
-      // Unknown delivery is sampled once for information, but never reported as verified.
-      const spec = status === "unknown" ? { ...follow.expect, timeout_ms: 0, stable: 1 } : follow.expect;
-      this.retireWindow(window);
-      successor = this.remember({ window_ref: window }, await session.waitFor(window, spec, signal));
-      const verification = successor.details.verification;
-      const verdict = verification?.verdict ?? "unknown";
-      postcondition = { status: status === "unknown" ? "unknown" : verdict === "satisfied" ? (preexisting ? "preexisting" : "verified") : verdict === "unsatisfied" ? "failed" : "unknown",
-        ...(status === "unknown" ? { reason: "The action outcome is unknown, so its postcondition cannot be attributed to it." } : {}),
-        ...(verification ? { verification } : {}) };
-    } else if (follow.expect) {
-      postcondition = { status: preexisting ? "preexisting" : "failed", reason: "The action was refused; nothing was sent." };
-    } else if (status !== "refused") {
+    if (status !== "refused") {
       if (result.details.dom) successor = result;
       else ({ successor, diff: settled, crops } = await this.settle(window, session, before, follow.frame, signal));
     }
@@ -1308,7 +1136,6 @@ export class ComputerResources {
       : settled ?? (before.result.details.ui && after?.ui ? diffUi(before.result.details.ui, after.ui) : undefined);
     // The successor replaces the action's own observation as the current one; a wait retired the earlier snapshot.
     const details = { ...result.details, ...(after?.observation_id ? { observation_id: after.observation_id, ...(after.dom ? { dom: after.dom } : {}) } : {}),
-      ...(postcondition ? { postcondition } : {}),
       successor: after?.observation_id ? { observation_id: after.observation_id, ...(diff ? { diff } : { reason: "The input observation had no comparable UI or DOM." }) }
         : { reason: status === "refused" ? "The action was refused; the input observation is unchanged but consumed." : "No successor observation could be taken." } };
     return { ...result, content: [...result.content, ...crops], details };
@@ -1423,7 +1250,6 @@ export class ComputerResources {
       window_ref: window, observation_id: observation.details.observation_id };
     // The walk that resolved the target is the state before the action: the change list compares with it.
     const before: Snapshot = { target: { window_ref: window }, result: observation };
-    if (follow?.expect && observation.details.ui) follow.preexisting = combine(evaluateNative(observation.details.ui, follow.expect.conditions)) === "satisfied";
     if (follow) follow = await this.withFrame(follow, window, observation.details.observation_id, cwd);
     const finish = (result: ComputerResult) => follow ? this.followUp(window, before, result, follow, cwd, signal) : Promise.resolve(result);
     this.snapshots.delete(observation.details.observation_id!);
@@ -1437,117 +1263,6 @@ export class ComputerResources {
       : done("unknown", `${prefix.text} The click was delivered, but the element is ${state === null ? "no longer readable" : state === "mixed" ? "mixed" : state ? "checked" : "unchecked"} afterwards. Read the window before deciding; do not replay blindly.`));
   }
 
-  /**
-   * Run up to 16 known steps in one call and stop at the first step that is not delivered or satisfied.
-   * Browser steps are Playwright actions and conditions. Native steps resolve `target` (a Playwright locator or
-   * JSON target) in fresh UI walks with auto-waiting; only the first step may use a hint or pixels of the current observation.
-   */
-  private async batch(address: Extract<ComputerAddress, { kind: "observation" }>, snapshot: Snapshot, command: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
-    only(command, ["action", "steps"]);
-    const window = snapshot.target.window_ref!;
-    if (address.hint !== undefined || address.delivery !== undefined || address.delayMs !== undefined) throw new ComputerRequestError("A batch takes its targets and delivery from its steps, not the address.");
-    if (!Array.isArray(command.steps) || command.steps.length < 1 || command.steps.length > BATCH_STEPS) throw new ComputerRequestError(`batch needs steps: 1..${BATCH_STEPS} step objects.`);
-    const session = await this.sessionFor(cwd, { window_ref: window });
-    const browser = snapshot.result.details.dom !== undefined;
-    type Step = { kind: "wait"; spec: WaitSpec; action: string } | { kind: "dom"; action: WebAction } | { kind: "native"; command: Record<string, unknown>; target?: ParsedSelector; describe?: string; timeout?: number };
-    const steps: Step[] = command.steps.map((raw, index): Step => {
-      const step = object(raw);
-      const label = `steps[${index}]`;
-      try {
-        if (step.action === "wait_for" || step.action === "verify") return { kind: "wait", spec: session.waitSpec(window, step), action: String(step.action) };
-        if (browser) return { kind: "dom", action: validateWebAction(step) };
-        if (typeof step.action === "string" && LOCATOR_VERBS[step.action]) step.action = LOCATOR_VERBS[step.action];
-        if (!NATIVE_BATCH_ACTIONS.includes(String(step.action))) throw Error(`action must be one of ${NATIVE_BATCH_ACTIONS.join(", ")}, wait_for or verify.`);
-        if (["window_ref", "observation_id", "sequence"].some(key => key in step)) throw Error("identity fields and nested sequences are not allowed.");
-        const pinned = ["hint", "element_token", "x", "y"].some(key => key in step);
-        if (pinned && index > 0) throw Error("only the first step may use a hint, token or pixels; later steps use a target (a Playwright locator or JSON target).");
-        let target: ParsedSelector | undefined;
-        if (step.target !== undefined) {
-          if (pinned) throw Error("choose target or a hint/pixel target, not both.");
-          target = nativeSelector(step.target);
-        }
-        const timeout = step.timeout_ms;
-        if (timeout !== undefined && (!Number.isSafeInteger(timeout) || (timeout as number) < 0 || (timeout as number) > 60_000)) throw Error("timeout_ms must be an integer 0..60000.");
-        const { target: raw, timeout_ms: _timeout, ...nativeStep } = step;
-        return { kind: "native", command: nativeStep, ...(target ? { target, describe: typeof raw === "string" ? raw : JSON.stringify(raw), timeout: (timeout as number | undefined) ?? 5_000 } : {}) };
-      } catch (error) { throw new ComputerRequestError(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
-    });
-    this.snapshots.delete(address.ref);
-    const started = performance.now();
-    const rows: NonNullable<ComputerResult["details"]["batch"]>["steps"] = [];
-    // `issued` holds the latest result whose observation is still current; a native action consumes it.
-    let issued: ComputerResult | undefined, observation = address.ref, last: ComputerResult = snapshot.result, stop = "";
-    // The state the latest action started from, so the next walk or page snapshot can say what that action changed.
-    let previousUi = snapshot.result.details.ui, previousDom = snapshot.result.details.dom, pendingRow: (typeof rows)[number] | undefined;
-    const count = (diff: StateDiff) => diff.counts;
-    const seen = (ui: UiResource | undefined) => {
-      if (pendingRow && previousUi && ui) pendingRow.changes = count(diffUi(previousUi, ui));
-      pendingRow = undefined;
-    };
-    for (const [index, step] of steps.entries()) {
-      if (signal?.aborted) { stop = "Cancelled before the next step."; break; }
-      if (step.kind === "wait") {
-        this.retireWindow(window);
-        last = this.remember({ window_ref: window }, await session.waitFor(window, step.spec, signal));
-        seen(last.details.ui);
-        issued = last.details.observation_id ? last : undefined;
-        const verdict = last.details.verification?.verdict ?? "unknown";
-        rows.push({ index, action: step.action, outcome: last.details.status, verdict });
-        observation = last.details.observation_id ?? observation;
-        if (last.details.status !== "observed" || verdict !== "satisfied") { stop = `Condition ${verdict} at step ${index}.`; break; }
-        continue;
-      }
-      if (step.kind === "dom") {
-        last = await session.actDom(window, observation, step.action, signal);
-        issued = undefined;
-        if (last.details.dom) { this.remember({ window_ref: window }, last); observation = last.details.observation_id!; issued = last; }
-      } else {
-        let element: string | undefined;
-        if (index > 0 || step.target) {
-          // Never reuse a stale observation: a target resolves in fresh UI walks; other steps take one fresh walk.
-          if (step.target) {
-            const action = String(step.command.action), pointer = ["click", "double_click", "right_click"].includes(action);
-            const resolved = await this.resolveNative(window, session, step.target, { timeout_ms: step.timeout!, enabled: true, stable: pointer, visible: pointer, describe: step.describe! }, signal);
-            if ("refused" in resolved) {
-              if (resolved.observation) last = resolved.observation;
-              rows.push({ index, action, outcome: "refused", reason: resolved.refused.slice(0, 600) });
-              stop = `Target not resolved at step ${index}; nothing was sent for it.`; break;
-            }
-            issued = resolved.observation; observation = resolved.observation.details.observation_id!;
-            element = resolved.element.element_token;
-            seen(resolved.observation.details.ui); previousUi = resolved.observation.details.ui;
-          } else {
-            this.retireWindow(window);
-            const fresh = this.remember({ window_ref: window }, await session.observeQuiet(window, signal));
-            if (fresh.details.status !== "observed" || !fresh.details.ui) { last = fresh; rows.push({ index, action: String(step.command.action), outcome: "refused", reason: "No current UI sample." }); stop = `No current UI before step ${index}.`; break; }
-            issued = fresh; observation = fresh.details.observation_id!;
-            seen(fresh.details.ui); previousUi = fresh.details.ui;
-          }
-        }
-        this.snapshots.delete(observation);
-        issued = undefined;
-        last = await session.act({ ...step.command, ...(element ? { element_token: element } : {}), window_ref: window, observation_id: observation } as Action, signal);
-      }
-      const outcome = last.details.status;
-      const row: (typeof rows)[number] = { index, action: step.kind === "dom" ? step.action.action : String(step.command.action), outcome,
-        ...(outcome !== "delivered" ? { reason: computerResultText(last).split("\n{", 1)[0].slice(0, 300) } : {}) };
-      // A page action returns its next snapshot; a native action's effect shows in the next walk.
-      if (step.kind === "dom") { if (previousDom && last.details.dom) row.changes = count(diffDom(previousDom, last.details.dom)); previousDom = last.details.dom ?? previousDom; }
-      else if (outcome === "delivered") pendingRow = row;
-      rows.push(row);
-      if (outcome !== "delivered") { stop = `Step ${index} ${outcome}; later steps were not sent.`; break; }
-    }
-    const completed = rows.filter(row => row.outcome === "delivered" || row.verdict === "satisfied").length;
-    const failed = rows.at(-1)?.outcome;
-    // A stop at a condition leaves every sent action delivered; computerEffect marks a refusal after delivered steps as unknown.
-    const status: ComputerResult["details"]["status"] = failed === "unknown" || failed === "refused" ? failed : "delivered";
-    const message = `Batch ${stop ? "stopped" : "completed"}: ${completed}/${steps.length} steps in ${Math.round(performance.now() - started)} ms. ${stop || "Every action was delivered and every condition held."} Never replay completed or uncertain steps.`;
-    // The current observation is whatever the last step left: a successor snapshot or verification sample.
-    const base = issued ? issued.details : { ...last.details, dom: undefined, ui: undefined, observation_id: undefined, verification: undefined };
-    const details = { ...base, status, ...(last.details.window_ref ? { window_ref: last.details.window_ref } : {}),
-      batch: { total: steps.length, completed, stop_reason: stop, elapsed_ms: Math.round(performance.now() - started), steps: rows } };
-    return { content: [{ type: "text", text: message }], details, ...(status === "delivered" ? {} : { isError: true }) };
-  }
 }
 
 /** Parse a tool-owned path without allowing an unknown computer URI to fall through to files. */

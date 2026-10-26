@@ -19,7 +19,9 @@ if (opened.outcome !== "observed" || !opened.observation) throw Error("Open retu
 const region = "region:100,80,100,80";
 const detail = await tools.computer_read({path:opened.observation,views:[region]});
 text(body(detail)); image(detail);
-const stale = await insert(opened.observation,{action:"click",element_token:"close"});
+const ref = hints(opened)[0];
+if (!ref) throw Error("Open listed no refs: " + body(opened));
+const stale = await tools.computer_click({window:opened.window,target:ref});
 if (stale.outcome !== "refused" || stale.effect !== "not-applied") throw Error("Old overview still armed");
 const overview = await tools.computer_read({path:"computer:machine/local/display/primary"});
 const crop = await tools.computer_read({path:observation(overview),views:[region]});
@@ -32,10 +34,10 @@ text("Read-only detail guards passed");`;
     const result = await new PiIntegrationTest({
       testName: "native-detail", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"],
+      tools: ["codemode", "computer_delete"],
       conversation: [
         assistantMessage([toolCall({ id: "detail", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Read details only. Never dispatch input from the old overview or publish intermediate full-display pixels.");

@@ -8,6 +8,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 // Deterministic MCP input receipts, not evidence of native application behavior.
 const log = process.argv[2];
 const captureDrag = process.argv[3] === "capture-drag";
+let resize = false;
 const semantic = process.argv[3] === "semantic";
 let capture; let captureCount = 0;
 const image = await sharp({ create: { width: 500, height: 350, channels: 3, background: "white" } }).png().toBuffer();
@@ -21,7 +22,10 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
   if (name === "fixture_identity") state = { identity: "owned-lifetime" };
   else if (name === "list_apps") state = { apps: [{ name: "Notepad", launch_path: "fixture-notepad" }] };
   else if (name === "launch_app") { windows.push({ pid: 42, window_id: 91, app_name: "Notepad", bounds: { x: 10, y: 20, width: 1000, height: 700 } }); state = { pid: 42 }; }
-  else if (name === "list_windows") state = { windows };
+  else if (name === "list_windows") {
+    if (resize) { windows[0].bounds.width = 1200; resize = false; }
+    state = { windows };
+  }
   else if (name === "get_window_state") {
     state = { window_bounds: windows[0].bounds, screenshot_width: 500, screenshot_height: 350, capture_id: "once",
       elements: [{ element_token: "field", role: "textbox", label: "Field", actions: ["type_text"] }] }; pixels = args.include_screenshot === false ? undefined : image;
@@ -54,7 +58,8 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
       : { route: "synthetic_events", delivery: { mode: args.delivery_mode } }),
   };
   else throw Error("Unexpected dispatch " + name);
-  if (captureDrag && name === "press_key" && args.key === "r") windows[0].bounds.width = 1200;
+  // The window grows outside the agent's input: the next window listing after "r" applies it, after every capture of the press.
+  if (captureDrag && name === "press_key" && args.key === "r") resize = true;
   return { structuredContent: state, content: [{ type: "text", text: JSON.stringify(state) },
     ...(pixels ? [{ type: "image", data: pixels.toString("base64"), mimeType: "image/png" }] : [])] };
 });

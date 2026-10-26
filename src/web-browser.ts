@@ -283,7 +283,7 @@ const tabId = (value: unknown): string => {
   if (typeof value !== "string" || !/^t\d{1,6}$/.test(value)) throw Error("tab must be a tab id such as t2 from the tab list.");
   return value;
 };
-/** Validate one Insert command on a DOM observation before anything reaches the browser. */
+/** Validate one page action before anything reaches the browser. */
 export function validateWebAction(value: unknown): WebAction {
   const command = record(value, "DOM action");
   const name = command.action as WebAction["action"];

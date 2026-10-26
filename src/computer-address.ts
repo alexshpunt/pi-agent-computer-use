@@ -5,12 +5,13 @@ export type ComputerAddress =
   | { kind: "session"; source: string }
   /** A machine by its name: `local` for this one, otherwise a name under `machines` in .pi/computer-use.json. */
   | { kind: "machine"; source: string; ref: string; part?: MachinePart }
-  | { kind: "app" | "window" | "sequence" | "window-state" | "sandbox"; source: string; ref: string }
+  | { kind: "app" | "window" | "sequence" | "sandbox"; source: string; ref: string }
   /** A display of one machine: `primary`, or a reference listed by that machine's displays. */
   | { kind: "display"; source: string; machine: string; ref: string }
-  | { kind: "observation"; source: string; ref: string; hint?: string; delivery?: "background" | "foreground"; delayMs?: number };
+  /** `hint` names one element of the observation for an internal input step; parsed addresses never carry it. */
+  | { kind: "observation"; source: string; ref: string; hint?: string };
 
-const references = new Set(["app", "window", "observation", "sequence", "window-state", "sandbox", "machine"]);
+const references = new Set(["app", "window", "observation", "sequence", "sandbox", "machine"]);
 /** Words a long address starts with; machine names and window names never take them. */
 export const ADDRESS_KINDS: ReadonlySet<string> = new Set([...references, "session", "display"]);
 const parts = new Set(["windows", "apps", "displays"]);
@@ -42,27 +43,13 @@ export function parseComputerAddress(source: string): ComputerAddress | undefine
   const machinePart = kind === "machine" && segments.length === 3 ? segments[2] : undefined;
   if (!references.has(kind) || (segments.length !== 2 && !(machinePart && parts.has(machinePart)))) return invalid();
   const ref = reference(segments[1]);
-  if (kind !== "observation") {
-    if (query !== undefined) return invalid();
-    if (kind === "machine") return { kind, ref, source, ...(machinePart ? { part: machinePart as MachinePart } : {}) };
-    return { kind: kind as "app" | "window" | "sequence" | "window-state" | "sandbox", ref, source };
-  }
-  const result: Extract<ComputerAddress, { kind: "observation" }> = { kind, ref, source };
-  const params = new URLSearchParams(query);
-  const seen = new Set<string>();
-  for (const [key, value] of params) {
-    if (seen.has(key)) return invalid();
-    seen.add(key);
-    if (key === "hint" && /^[a-z0-9]+:[a-z]+$/.test(value)) result.hint = value;
-    else if (key === "delivery" && (value === "background" || value === "foreground")) result.delivery = value;
-    else if (key === "delay_ms" && /^(0|[1-9][0-9]*)$/.test(value) && Number(value) <= 200) result.delayMs = Number(value);
-    else return invalid();
-  }
-  return result;
+  if (query !== undefined) return invalid();
+  if (kind === "machine") return { kind, ref, source, ...(machinePart ? { part: machinePart as MachinePart } : {}) };
+  return { kind: kind as "app" | "window" | "observation" | "sequence" | "sandbox", ref, source };
 }
 
 /** Build a computer address from an opaque session-issued reference, or a machine's address from its name. */
-export function computerSource(kind: "app" | "window" | "observation" | "sequence" | "window-state" | "sandbox" | "machine", ref: string, part?: MachinePart): string {
+export function computerSource(kind: "app" | "window" | "observation" | "sequence" | "sandbox" | "machine", ref: string, part?: MachinePart): string {
   const source = `computer:${kind}/${encodeURIComponent(ref)}${part ? `/${part}` : ""}`;
   parseComputerAddress(source);
   return source;

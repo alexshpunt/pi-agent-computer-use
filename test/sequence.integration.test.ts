@@ -12,9 +12,9 @@ test("real Pi stores a sequence without images and forwards only explicitly sele
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath,
     args: [path.resolve("test/fixtures/detail-driver.mjs"), log] }));
   const capture = `${SCRIPT_HELPERS}
-const result=await tools.computer_read({path:"computer:machine/local/display/primary",views:['sequence:{"duration_ms":3000,"fps":2,"max_frames":3}']});
-if(typeof result!=="string")throw Error("Capture unexpectedly forwarded frames");
-store("temporal",address(result,"sequence","Sequence"));text(result.match(/^Frames: .*$/m)[0]);`;
+const result=await tools.computer_record({at:"computer:machine/local/display/primary",action:"sequence",duration_ms:3000,fps:2,max_frames:3});
+if(result.outcome!=="observed")throw Error("Capture failed: "+result.text);
+store("temporal",address(result,"sequence","Sequence"));text(result.text.match(/^Frames: .*$/m)[0]);`;
   const select = `const result=await tools.computer_read({path:load("temporal"),views:['frames:{"indexes":[0,2]}']});
 if(result.type!=="images"||result.images.length!==2)throw Error("Selection failed");
 if(!/Selected frames: 0, 2; readonly, input=none/.test(result.note))throw Error("Frames ground input");
@@ -23,10 +23,10 @@ text("Only selected temporal frames forwarded");`;
   try {
     const result = await new PiIntegrationTest({ testName: "temporal-sequence", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"], conversation: [
+      tools: ["codemode", "computer_delete"], conversation: [
         assistantMessage([toolCall({ id: "capture", name: "codemode", arguments: { code: capture } })], { stopReason: "toolUse" }),
         assistantMessage([toolCall({ id: "select", name: "codemode", arguments: { code: select } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Capture a bounded temporal resource, then forward exactly frames zero and two, without input.");

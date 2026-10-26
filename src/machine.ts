@@ -76,7 +76,7 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; ret
 export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; retainRaw?: (image: Content) => void }): MachineFactory {
   return async (cwd, name, signal) => {
     const machine = await machineConfig(cwd, name);
-    const refresh = `setup part machine (user: /computer-setup machine ${machine.ssh} ${name}; agent, after asking: Insert {"action":"setup","part":"machine","ssh":"${machine.ssh}","name":"${name}"} into computer:machine/local)`;
+    const refresh = `setup part machine (user: /computer-setup machine ${machine.ssh} ${name})`;
     const runner = sshRunner(machine.ssh);
     const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh });
     try { await waitForGuestDriver(driver, signal, 30_000); }

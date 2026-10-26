@@ -9,7 +9,7 @@ import { nestedCalls, SCRIPT_HELPERS } from "./fixtures/standalone-computer.ts";
 const yoloRead = `${SCRIPT_HELPERS}
 const view = await tools.computer_read({path:"computer:machine/local/display/primary"});
 text(body(view)); image(view);
-const input = await insert(observation(view),{action:"click",x:0,y:0});
+const input = await tools.computer_click({window:observation(view),x:0,y:0});
 text("observation input: " + input.outcome + " / " + input.effect);`;
 
 for (const mode of ["yolo", "safe"] as const) {
@@ -25,14 +25,14 @@ for (const mode of ["yolo", "safe"] as const) {
       const result = await new PiIntegrationTest({
         testName: `primary-display-${mode}`, artifactsDir: testArtifactsDir(import.meta.filename), cwd,
         extensions: [path.resolve(`test/fixtures/${mode === "safe" ? "safe" : "display"}-extension.ts`)], isolateUserResources: true,
-        tools: ["codemode", "computer_read", "computer_insert"],
+        tools: ["codemode", "computer_read", "computer_click", "computer_delete"],
         conversation: [
           assistantMessage([toolCall({ id: "read", name: mode === "safe" ? "computer_read" : "codemode", arguments: mode === "safe"
             ? { path: "computer:machine/local/display/primary" } : { code: yoloRead } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "mixed", name: "computer_read", arguments: { path: "computer:machine/local/display/primary", views: ["ui"] } })], { stopReason: "toolUse" }),
           assistantMessage([toolCall({ id: "promote", name: "computer_read", arguments: { path: "computer:machine/local/display/primary", mode: "yolo" } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "display-input", name: "computer_insert", arguments: { path: "computer:machine/local/display/primary", text: '{"action":"click","x":0,"y":0}' } })], { stopReason: "toolUse" }),
-          assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "display-input", name: "computer_click", arguments: { window: "computer:machine/local/display/primary", x: 0, y: 0 } })], { stopReason: "toolUse" }),
+          assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
           assistantMessage([text("Read-only display source checked.")]),
         ],
       }).run("Observe the primary display only when permitted. Never change mode or use display pixels as window input.");

@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { requireComputerAddress, ComputerResources, refKind } from "../src/computer-resources.ts";
+import { computerEditRefusal } from "../src/provider.ts";
 import { clickPlan, clipboardCommand, dragPlan, filesCommand, hoverPlan, openCommand, pressPlan, recordCommand, scrollPlan, selectPlan, timelinePlan, typePlan, waitCommand, windowCommand } from "../src/computer-tools.ts";
 import type { WebBrowser, WebLauncher } from "../src/web-browser.ts";
 import type { MachineHost } from "../src/machine-host.ts";
@@ -21,6 +22,8 @@ test("computer_open opens one thing, chosen by its fields and the address", () =
   expect(openCommand(machine, { at: "", browser: "msedge", profile: "agent" })).toEqual({ action: "open_browser", browser: "msedge", profile: "agent" });
   expect(openCommand(machine, { at: "", sandbox: { export: "C:\\out" } })).toEqual({ action: "open_sandbox", export: "C:\\out" });
   expect(openCommand(machine, { at: "", isolated_session: true })).toEqual({ action: "open_session" });
+  expect(openCommand(machine, { at: "", webview2_debugging: { app: "ms-teams.exe", enabled: true } })).toEqual({ action: "webview2_debugging", app: "ms-teams.exe", enabled: true });
+  expect(() => openCommand(machine, { at: "", path: "C:\\app.exe", webview2_debugging: { app: "app.exe", enabled: true } })).toThrow("path and webview2_debugging");
   expect(openCommand(at("computer:app/a1"), { at: "" })).toEqual({ action: "open" });
   expect(openCommand(at("computer:window/w1"), { at: "" })).toEqual({ action: "attach_browser" });
   expect(openCommand(at("computer:sandbox/s1"), { at: "", app: "Notepad" })).toEqual({ action: "open", app: "Notepad" });
@@ -37,7 +40,10 @@ test("computer_window takes exactly the fields of its action", () => {
   expect(windowCommand({ window: "w", action: "resize", width: 800, height: 600 })).toEqual({ action: "resize", width: 800, height: 600, unit: "windows_desktop_pixels" });
   expect(windowCommand({ window: "w", action: "restore" })).toEqual({ action: "restore" });
   expect(() => windowCommand({ window: "w", action: "move", x: 1 })).toThrow("move needs x and y and nothing else.");
-  expect(() => windowCommand({ window: "w", action: "focus", width: 1 })).toThrow("focus takes no coordinates or size.");
+  expect(() => windowCommand({ window: "w", action: "focus", width: 1 })).toThrow("focus takes no coordinates, size or name.");
+  expect(windowCommand({ window: "w", action: "name", as: "game" })).toEqual({ action: "name", as: "game" });
+  expect(() => windowCommand({ window: "w", action: "name" })).toThrow("name needs as and nothing else.");
+  expect(() => windowCommand({ window: "w", action: "move", x: 1, y: 2, as: "game" })).toThrow("move needs x and y and nothing else.");
 });
 
 test("computer_wait maps to wait_for or a single verify sample", () => {
@@ -267,7 +273,7 @@ test("computer_record video_stop says where it fetched the video in the summary 
   const resources = new ComputerResources(async () => session, async () => session.close());
   const workspace = await mkdtemp(join(tmpdir(), "pi-record-"));
   const run = (command: Record<string, unknown>) => computerAction(resources, "computer:machine/local", String(command.action), () => at("computer:machine/local"),
-    address => resources.perform(address, workspace, JSON.stringify(command), "insert"));
+    address => resources.perform(address, workspace, JSON.stringify(command)));
   try {
     expect((await run({ action: "record_start", seconds: 30 })).summary).toContain("Stop it earlier with computer_record video_stop");
     const stopped = await run({ action: "record_stop", to: "out/run.mp4" });
@@ -279,4 +285,14 @@ test("computer_record video_stop says where it fetched the video in the summary 
     await session.close();
     await rm(workspace, { recursive: true, force: true });
   }
+});
+test("Write and Insert on a computer address refuse and name the tool that does the operation now", () => {
+  expect(computerEditRefusal("write", { path: "computer:observation/o1", content: "hi" })).toMatch(/^Write does not act on computer resources; nothing was sent\. Use computer_type\./);
+  for (const [action, tool] of [["click", "computer_click"], ["fill", "computer_type"], ["hotkey", "computer_press"], ["menu", "computer_select"],
+    ["open_browser", "computer_open"], ["restore", "computer_window"], ["verify", "computer_wait"], ["navigate", "computer_browser"],
+    ["put", "computer_files"], ["clipboard_read", "computer_clipboard"], ["record_start", "computer_record"], ["kill", "Delete"],
+    ["setup", "/computer-setup"], ["batch", "Codemode"], ["hold", "computer_press with hold_ms"], ["drag", "computer_drag"]])
+    expect(computerEditRefusal("insert", { path: "computer:machine/local", text: JSON.stringify({ action }) })).toContain(`Use ${tool}`);
+  // Unknown or unreadable commands still learn where the tools are.
+  expect(computerEditRefusal("insert", { path: "computer:session", text: "not json" })).toMatch(/^Insert does not act on computer resources; nothing was sent\. Each operation has its own computer_\* tool: tool_search/);
 });

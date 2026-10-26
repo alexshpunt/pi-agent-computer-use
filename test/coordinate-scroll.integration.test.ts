@@ -8,7 +8,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const fixture = (name: string) => path.join(root, "test/fixtures", name);
 
 // Pattern: real-Pi extensions example and the ordinary IDE computer-provider scenarios.
-// Contract: actual IDE Insert preserves capture authority and structured uncertain prefixes.
+// Contract: computer_scroll preserves capture authority and structured uncertain prefixes; IDE Insert refuses.
 async function scenario(testName: string, scenario: "receipts" | "authority", providerFirst: boolean) {
   const consumer = IDE_EXTENSION, provider = fixture("coordinate-scroll-extension.ts");
   await mkdir(path.join(root, ".tmp/lpt-730"), { recursive: true });
@@ -21,7 +21,7 @@ async function scenario(testName: string, scenario: "receipts" | "authority", pr
       artifactsDir: testArtifactsDir(import.meta.filename), cwd, rawMode: false,
       extensions: providerFirst ? [provider, consumer] : [consumer, provider],
       isolateUserResources: true, piCommand: PI_COMMAND, timeoutMs: 90_000,
-      tools: ["read", "search", "insert", "verify_coordinate_scroll"],
+      tools: ["read", "search", "insert", "delete", "verify_coordinate_scroll"],
       conversation: [assistantMessage([toolCall({ id: "scroll", name: "verify_coordinate_scroll", arguments: { scenario } })], { stopReason: "toolUse" }),
         assistantMessage([text("Finished the synthetic coordinate-scroll fixture.")])],
     }).run("Exercise ordinary IDE coordinate scroll against synthetic MCP windows only. Never operate a real desktop or replay unknown input.");
@@ -45,11 +45,12 @@ const native = (x: number, y: number, delta_x: number, delta_y: number, delivery
 
 test.each([false, true])("ordinary IDE scroll preserves capture-bound deltas and uncertain prefixes (providerFirst=%s)", async providerFirst => {
   const actions = inputCalls(await scenario("coordinate-scroll-receipts", "receipts", providerFirst));
-  expect(actions.map(call => call.name)).toEqual(Array(9).fill("scroll_at"));
+  expect(actions.map(call => call.name)).toEqual(Array(10).fill("scroll_at"));
   expect(actions.map(call => call.arguments)).toEqual([
-    native(100, 80, 0, 2, "background"), native(100, 80, -2, 3), native(120, 90, 1, 0),
+    native(100, 80, 0, 2, "background"), native(100, 80, -2, 3, "background"), native(100, 80, -2, 3), native(120, 90, 1, 0),
     ...Array.from({ length: 5 }, () => native(130, 100, 1, 1)), native(130, 100, 1, 1, "background"),
   ]);
+  // The refusal spent its capture, so the foreground retry captures the window again: every scroll has its own capture.
   expect(new Set(actions.map(call => call.arguments.capture_id)).size).toBe(actions.length);
 }, 120_000);
 

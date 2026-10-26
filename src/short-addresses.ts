@@ -1,13 +1,13 @@
 import { randomInt } from "node:crypto";
 
 /** Address kinds that get a short form, by their one-letter prefix. Displays are a machine's listed displays. */
-const LETTERS = { window: "w", observation: "o", sequence: "s", "window-state": "t", app: "a", sandbox: "b", display: "d" } as const;
+const LETTERS = { window: "w", observation: "o", sequence: "s", app: "a", sandbox: "b", display: "d" } as const;
 export type ShortKind = keyof typeof LETTERS;
 const KINDS = Object.fromEntries(Object.entries(LETTERS).map(([kind, letter]) => [letter, kind])) as Record<string, ShortKind>;
 /** `<letter><number><run tag>`, for example w3qk. */
 export const SHORT_REFERENCE = /^([wostabd])([1-9][0-9]{0,6})([a-z]{2})$/;
 /** Long addresses this layer shortens in presented text: references, and a machine's listed displays. */
-const LONG = /computer:(window|observation|sequence|window-state|app|sandbox)\/([A-Za-z0-9_-]{1,160})|computer:machine\/([a-z0-9][a-z0-9_-]{0,63})\/display\/(d-[A-Za-z0-9_-]{1,158})/g;
+const LONG = /computer:(window|observation|sequence|app|sandbox)\/([A-Za-z0-9_-]{1,160})|computer:machine\/([a-z0-9][a-z0-9_-]{0,63})\/display\/(d-[A-Za-z0-9_-]{1,158})/g;
 
 /**
  * Short, session-local aliases of long computer addresses: `computer:<machine>/<letter><n><tag>`, numbered per

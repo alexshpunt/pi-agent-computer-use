@@ -118,7 +118,7 @@ async function routing() {
   const close = vi.fn(async () => {});
   const sandbox: OpenedSandbox = { ref: "sb-test", session: guest, describe: source => `# Windows Sandbox\nAddress: ${source}`, close };
   const resources = new ComputerResources(async () => host, async () => host.close(), async () => sandbox);
-  const opened = await resources.perform(address("computer:machine/local"), cwd, JSON.stringify({ action: "open_sandbox" }), "insert");
+  const opened = await resources.perform(address("computer:machine/local"), cwd, JSON.stringify({ action: "open_sandbox" }));
   return { hostDriver, guestDriver, resources, opened, close, sandboxSource: computerSource("sandbox", "sb-test") };
 }
 
@@ -130,7 +130,7 @@ test("guest windows are found, read and operated only through the sandbox's own 
   expect(row.source_identity.domain).toBe("windows-sandbox");
   const view = await f.resources.read(address(computerSource("window", row.window_ref)), cwd, ["ui"]);
   expect(view?.details.status).toBe("observed");
-  await f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, "hello", "write");
+  await f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, JSON.stringify({ action: "type_text", text: "hello" }));
   const names = (driver: Driver) => vi.mocked(driver.call).mock.calls.map(([name]) => name);
   // The Write's successor walks the window again; repeated walks are collapsed here.
   expect(names(f.guestDriver).filter((name, i, all) => name !== "get_window_state" || all[i - 1] !== "get_window_state")).toEqual(["list_windows", "get_window_state", "type_text", "get_window_state"]);
@@ -143,16 +143,16 @@ test("destroying a sandbox retires its address and guest references", async () =
   const listed = await f.resources.search(address(f.sandboxSource), cwd, "window");
   const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
   const view = await f.resources.read(address(computerSource("window", ref)), cwd, ["ui"]);
-  const closed = await f.resources.perform(address(f.sandboxSource), cwd, JSON.stringify({ action: "close" }), "insert");
+  const closed = await f.resources.delete(f.sandboxSource, cwd);
   expect(closed.details).toMatchObject({ status: "closed", sandbox_ref: "sb-test" });
   expect(f.close).toHaveBeenCalledOnce();
   expect(() => f.resources.descriptor(address(f.sandboxSource))).toThrow(/expired/);
-  await expect(f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, "late", "write")).rejects.toThrow(/expired/);
+  await expect(f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, JSON.stringify({ action: "type_text", text: "late" }))).rejects.toThrow(/expired/);
 });
 
 test("closing the computer session destroys its sandboxes", async () => {
   const f = await routing();
-  await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert");
+  await f.resources.delete("computer:session", cwd);
   expect(f.close).toHaveBeenCalledOnce();
   expect(() => f.resources.descriptor(address(f.sandboxSource))).toThrow(/expired/);
 });

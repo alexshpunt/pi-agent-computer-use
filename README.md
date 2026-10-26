@@ -33,18 +33,18 @@ Pi Agent Computer Use gives the [Pi coding agent](https://pi.dev/) one interface
 | -------------------------------------- | --------------------------------------------------------------------------- |
 | Find windows, apps and displays        | Search or Read `computer:machine/local/windows`, `/apps` and `/displays`     |
 | See a window                           | Read `computer:window/...` for its UI tree, short element hints and a screenshot |
-| Act on what it saw                     | Write text or Insert one JSON action into the returned observation          |
+| Act on what it saw                     | `computer_click`, `computer_type` and the other input tools on the window, by ref, locator or point |
 | Work in web pages                      | Playwright snapshots and actions in browsers it opens or attaches to        |
-| Check the result                       | `wait_for`, `verify`, change lists and fresh Reads                          |
+| Check the result                       | `computer_wait`, change lists and fresh Reads                          |
 | Work away from your desktop            | Windows Sandbox, isolated agent sessions and other machines over SSH        |
 
 Native capture and input come from our fork of [Cua Driver](https://github.com/trycua/cua), [alexshpunt/cua](https://github.com/alexshpunt/cua). It adds the Windows features computer use needs and upstream doesn't have yet: held brush paths, key holds, input timelines with pen pressure, window management, strict UI Automation actions, pausing while you use the mouse and more. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists them all. [Playwright](https://playwright.dev/) handles web pages.
 
 ### With Pi Agent IDE or without it
 
-If you have [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide), computer use plugs into its `read`, `search`, `write` and `insert` tools. The agent then uses the same tools for files and windows, and the results show up in the IDE's tool panels.
+Every action has its own tool with typed fields: `computer_open`, `computer_click`, `computer_type`, `computer_wait`, `computer_browser` and so on. They stay out of the tool list until the agent looks for them with `tool_search`, so a session that never touches the computer pays nothing for them.
 
-Without the IDE, computer use adds its own `computer_read`, `computer_search`, `computer_write` and `computer_insert` tools. They stay out of the tool list until the agent looks for them with `tool_search`, and after that it calls them directly. Both modes take the same addresses and commands, return the same results and work from Codemode scripts. Each Pi session picks the mode itself, so you don't configure anything.
+If you have [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide), looking goes through its `read`, `search` and `delete` tools, so the agent uses the same tools for files and windows, and the results show up in the IDE's tool panels. Without the IDE, computer use adds `computer_read`, `computer_search` and `computer_delete` instead. Both modes take the same addresses, return the same results and work from Codemode scripts. Each Pi session picks the mode itself, so you don't configure anything.
 
 ### YOLO and Safe mode
 
@@ -65,25 +65,24 @@ From there the agent can:
 - read only what changed since the last read with `changes`;
 - run `ocr` on canvases and games, or `regions` for icons and text areas found by Cua perception;
 - zoom into part of the latest overview, or crop one element at full resolution;
-- capture a short `sequence` of frames to watch an animation or a progress bar, then pick the frames it needs;
+- record a short sequence of frames with `computer_record` to watch an animation or a progress bar, then pick the frames it needs;
 - read a window's `state` to see whether the app is hung and how much memory it uses.
 
 ### Input
 
-Input goes to the window the agent observed. It can:
+Input goes to a window by its address and targets an element by a ref from the latest read, a Playwright locator, or a point. It can:
 
 - type literal text, press keys and chords, and hold several keys at once;
 - click, double-click, right-click, hover and scroll by wheel detents;
 - drag in straight lines or draw continuous brush strokes through many points;
 - run a timeline of timed key, button, mouse and pen events, with raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
-- send up to 2000 known keyboard, click and stroke steps in one call, which is enough for a whole drawing;
 - invoke, select or set values through UI Automation, and open menu items by their labels.
 
 Input starts in the background where Windows allows it, so your own pointer and focus stay put. Foreground input is a separate step the agent has to ask for, and it pauses whenever you touch the keyboard or mouse.
 
 ### Results and checks
 
-Every action returns a receipt. `delivered` means it went through, `refused` means nothing was sent, and `unknown` means it may have reached the app, so the agent reads again before doing anything else instead of repeating it. Each action also says what it changed in the window, or that nothing changed, so the agent sees the effect without reading the window again. Add `"expect"` to an action to check a condition afterwards. `wait_for` and `verify` check UI conditions, and `batch` runs a short chain that stops at the first failure. In Codemode the receipts are plain objects, so a script branches on `outcome` without parsing text.
+Every action returns a receipt. `delivered` means it went through, `refused` means nothing was sent, and `unknown` means it may have reached the app, so the agent reads again before doing anything else instead of repeating it. Each action also says what it changed in the window, or that nothing changed, so the agent sees the effect without reading the window again. `computer_wait` waits for UI conditions or checks them once. In Codemode the receipts are plain objects, so a script chains actions and branches on `outcome` without parsing text.
 
 ### Browsers and apps built on them
 
@@ -137,7 +136,7 @@ To try it for one session without changing your settings:
 pi -e npm:pi-agent-computer-use
 ```
 
-The package carries the Windows Cua Driver runtime, so there's nothing else to download. An install from GitHub downloads the same pinned runtime once on first use. If you want the shared Read/Search/Write/Insert tools, install [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide) too:
+The package carries the Windows Cua Driver runtime, so there's nothing else to download. An install from GitHub downloads the same pinned runtime once on first use. If you want the shared Read, Search and Delete tools, install [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide) too:
 
 ```bash
 pi install npm:pi-agent-ide

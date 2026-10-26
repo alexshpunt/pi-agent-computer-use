@@ -19,7 +19,7 @@ if(typeof before==="string")throw Error("Missing first image");
 let failure="admitted";
 try{await tools.computer_read({path:win});}catch(error){failure=String(error.message);}
 if(failure==="admitted")throw Error("Failed capture returned a result");
-const replay=await insert(observation(before),{action:"click",x:20,y:20});
+const replay=await tools.computer_click({window:win,x:20,y:20});
 if(replay.outcome!=="refused")throw Error("Failed capture retained old input");
 const ui=await tools.computer_read({path:win,views:["ui"]});
 if(typeof ui!=="string"||!/^Observation: /m.test(ui))throw Error("UI-only inherited failed pixels");
@@ -29,10 +29,10 @@ text("Minimized screenshot refused with native cause; old input refused; UI-only
     const result = await new PiIntegrationTest({
       testName: "window-capture-failure", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       extensions: [path.resolve("test/fixtures/display-extension.ts")], isolateUserResources: true,
-      tools: ["codemode", "computer_insert"],
+      tools: ["codemode", "computer_delete"],
       conversation: [
         assistantMessage([toolCall({ id: "capture", name: "codemode", arguments: { code } })], { stopReason: "toolUse" }),
-        assistantMessage([toolCall({ id: "close", name: "computer_insert", arguments: { path: "computer:session", text: '{"action":"close"}' } })], { stopReason: "toolUse" }),
+        assistantMessage([toolCall({ id: "close", name: "computer_delete", arguments: { path: "computer:session" } })], { stopReason: "toolUse" }),
         assistantMessage([text("Done")]),
       ],
     }).run("Observe the capture failure without activating or restoring any window.");
@@ -47,7 +47,8 @@ text("Minimized screenshot refused with native cause; old input refused; UI-only
     expect(ui.computer.agent_image).toBeUndefined();
     expect(ui.computer.state.screenshot_error).toBeUndefined();
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
-    expect(calls.filter(c => c.name === "get_window_state")).toHaveLength(3);
+    // The click first tried to capture the pixels its point needs; that capture failed too, so nothing was sent.
+    expect(calls.filter(c => c.name === "get_window_state")).toHaveLength(4);
     expect(calls.every(c => ["fixture_identity", "list_windows", "get_window_state"].includes(c.name))).toBe(true);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

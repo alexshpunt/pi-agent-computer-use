@@ -42,11 +42,10 @@ async function fixture() {
     const result = await resources.read(window, "/fixture", ["state"]);
     expect(result?.details.status).toBe("observed");
     expect(result?.content.some(block => block.type === "image")).toBe(false);
-    const source = computerSource("window-state", result!.details.window_state_id!);
-    return { result: result!, address: requireComputerAddress(source), source };
+    return result!;
   };
-  const restore = (address: ReturnType<typeof requireComputerAddress>, signal?: AbortSignal) =>
-    resources.perform(address, "/fixture", '{"action":"restore"}', "insert", signal);
+  // computer_window restore: a fresh state sample bounds exactly one restore.
+  const restore = (signal?: AbortSignal) => resources.manageWindow(window, "/fixture", { action: "restore" }, signal);
   return { driver, session, resources, window, calls, restores, read, restore,
     setLife(value: string | undefined) { life = value; }, setMode(value: ComputerMode) { mode = value; },
     setCapability(value: boolean) { capability = value; }, afterStatus(value: () => void) { afterStatus = value; },
@@ -54,62 +53,45 @@ async function fixture() {
     outcome(value: Record<string, unknown>, isError = false) { receipt = value; error = isError; } };
 }
 
-test("fresh metadata-only Read authorizes one exact restore without acquiring pixels or UI", async () => {
-  const f = await fixture(), view = await f.read();
-  const before = f.calls().length;
-  expect(f.resources.descriptor(view.address)).toContain("restore");
-  expect(f.calls()).toHaveLength(before);
-  const result = await f.restore(view.address);
+test("restore samples the window's state and restores exactly that window without pixels or UI", async () => {
+  const f = await fixture();
+  const result = await f.restore();
   expect(result.details.status).toBe("delivered");
   expect(f.restores()).toEqual([["restore_window", { pid: 42, window_id: 91, state_id: "native-1" }, undefined]]);
   expect(f.calls().filter(([name]) => name === "get_window_state")).toHaveLength(0);
-  await expect(f.restore(view.address)).rejects.toThrow(/expired|retired/i);
-  expect(f.restores()).toHaveLength(1);
+  // Each restore samples its own state; nothing from an earlier call is reused.
+  expect((await f.restore()).details.status).toBe("delivered");
+  expect(f.restores().at(-1)).toEqual(["restore_window", { pid: 42, window_id: 91, state_id: "native-2" }, undefined]);
 });
 
-test("window state is not literal, pixel, token, sequence or caller-supplied identity authority", async () => {
-  const f = await fixture(), view = await f.read();
-  for (const [tool, value] of [["write", "hello"], ["insert", '{"action":"click","x":1,"y":1}'],
-    ["insert", '{"action":"restore","window_id":92}'], ["insert", '{"action":"restore","state_id":"other"}'],
-    ["insert", '{"action":"restore","delivery_mode":"foreground"}'], ["insert", '{"action":"sequence","sequence":[]}']] as const)
-    await expect(f.resources.perform(view.address, "/fixture", value, tool)).rejects.toThrow();
-  expect(f.restores()).toHaveLength(0);
-  expect(f.calls().filter(([name]) => name === "get_window_status")).toHaveLength(1);
-});
-
-test("fresh window parts retire old state, and state Read retires old UI authority", async () => {
-  const f = await fixture(), first = await f.read(), next = await f.read();
-  await expect(f.restore(first.address)).rejects.toThrow(/expired|retired/i);
+test("a state Read only looks: it hands out no state address and keeps the window's observations", async () => {
+  const f = await fixture();
   const ui = await f.resources.read(f.window, "/fixture", ["ui"]);
-  await expect(f.restore(next.address)).rejects.toThrow(/expired|retired/i);
+  const view = await f.read();
+  expect(view.content.map(block => block.type === "text" ? block.text : "").join("\n")).not.toMatch(/window-state|Insert/);
   const observation = requireComputerAddress(computerSource("observation", ui!.details.observation_id!));
-  await f.read();
-  await expect(f.resources.perform(observation, "/fixture", "text", "write")).rejects.toThrow(/expired|retired/i);
+  expect((await f.resources.read(observation, "/fixture", ["ui"]))?.details.status).toBe("observed");
+  expect(() => requireComputerAddress(`computer:window-state/${view.details.window_state_id}`)).toThrow();
   expect(f.restores()).toHaveLength(0);
 });
 
-test.each(["safe", "closed", "reused"] as const)("%s state cannot dispatch or silently refresh restoration", async change => {
-  const f = await fixture(), view = await f.read();
+test.each(["safe", "closed", "reused"] as const)("%s window cannot be restored", async change => {
+  const f = await fixture();
   if (change === "safe") f.setMode("safe"); else f.setLife(change === "closed" ? undefined : "new-life");
-  expect((await f.restore(view.address)).details.status).toBe("refused");
+  expect((await f.restore()).details.status).toBe("refused");
   expect(f.restores()).toHaveLength(0);
-  expect(f.calls().filter(([name]) => name === "get_window_status")).toHaveLength(1);
-  await expect(f.restore(view.address)).rejects.toThrow(/expired|retired/i);
 });
 
-test("a window reused during status acquisition grants no state reference", async () => {
+test("a window reused during status acquisition is not restored", async () => {
   const f = await fixture(); f.afterStatus(() => f.setLife("replacement-life"));
-  const result = await f.resources.read(f.window, "/fixture", ["state"]);
-  expect(result?.details.status).toBe("refused");
-  expect(result?.details.window_state_id).toBeUndefined();
+  expect((await f.restore()).details.status).toBe("refused");
   expect(f.restores()).toHaveLength(0);
 });
 
-test("cancellation before dispatch consumes the explicit command without native restore", async () => {
-  const f = await fixture(), view = await f.read(), controller = new AbortController(); controller.abort();
-  expect((await f.restore(view.address, controller.signal)).details.status).toBe("refused");
+test("cancellation before dispatch sends no native restore", async () => {
+  const f = await fixture(), controller = new AbortController(); controller.abort();
+  expect((await f.restore(controller.signal)).details.status).toBe("refused");
   expect(f.restores()).toHaveLength(0);
-  await expect(f.restore(view.address)).rejects.toThrow(/expired|retired/i);
 });
 
 test.each([
@@ -117,48 +99,25 @@ test.each([
   { restore_requested: true, restored: false, activation_attempted: false, activation_succeeded: false,
     foreground_at_target: null, effect: "unknown", code: "cancelled" },
 ])("partial restore/cancellation keeps unknown effects and never replays", async receipt => {
-  const f = await fixture(), view = await f.read(); f.outcome(receipt, true);
-  const result = await f.restore(view.address);
+  const f = await fixture(); f.outcome(receipt, true);
+  const result = await f.restore();
   expect(result.details.status).toBe("unknown");
   expect(result.details.state).toMatchObject({ restore_attempted: true, ...receipt });
-  await expect(f.restore(view.address)).rejects.toThrow(/expired|retired/i);
   expect(f.restores()).toHaveLength(1);
 });
 
 test.each([{ window_id: 92 }, { state_id: "wrong-state" }, { foreground_at_target: null },
   { visible: false }, { activation_succeeded: false }, { route: "assisted" }, { effect: "unverifiable" }])(
   "malformed success never disguises incomplete restoration", async receipt => {
-    const f = await fixture(), view = await f.read(); f.outcome(receipt);
-    expect((await f.restore(view.address)).details.status).toBe("unknown");
+    const f = await fixture(); f.outcome(receipt);
+    expect((await f.restore()).details.status).toBe("unknown");
     expect(f.restores()).toHaveLength(1);
   });
 
-test("cached state Read does not reacquire or renew restore authority", async () => {
-  const f = await fixture(), view = await f.read();
-  const cached = await f.resources.read(view.address, "/fixture");
-  expect(cached?.details).toEqual(view.result.details);
-  const cachedText = cached?.content.find(block => block.type === "text");
-  const freshText = view.result.content.find(block => block.type === "text");
-  expect(cachedText?.type === "text" && cachedText.text).toMatch(/^Cached native window state\./);
-  expect(cachedText?.type === "text" && cachedText.text.slice(cachedText.text.indexOf("\n")))
-    .toBe(freshText?.type === "text" && freshText.text.slice(freshText.text.indexOf("\n")));
-  expect(f.calls().filter(([name]) => name === "get_window_status")).toHaveLength(1);
-  await f.restore(view.address);
-  await expect(f.resources.read(view.address, "/fixture")).rejects.toThrow(/expired|retired/i);
-});
-
-test.each(["safe", "reused"] as const)("cached %s state is withheld without reacquisition", async change => {
-  const f = await fixture(), view = await f.read();
-  if (change === "safe") f.setMode("safe"); else f.setLife("replacement-life");
-  expect((await f.resources.read(view.address, "/fixture"))?.details.status).toBe("refused");
-  expect(f.calls().filter(([name]) => name === "get_window_status")).toHaveLength(1);
-  await expect(f.restore(view.address)).rejects.toThrow(/expired|retired/i);
-});
-
 test("post-dispatch reuse preserves delivered native prefix as unknown", async () => {
-  const f = await fixture(), view = await f.read();
+  const f = await fixture();
   f.afterRestore(() => f.setLife("replacement-life"));
-  const result = await f.restore(view.address);
+  const result = await f.restore();
   expect(result.details.status).toBe("unknown");
   expect(result.details.state).toMatchObject({ restore_requested: true, restored: true, activation_succeeded: true });
   expect(f.restores()).toHaveLength(1);

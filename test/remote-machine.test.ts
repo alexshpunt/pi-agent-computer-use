@@ -91,13 +91,13 @@ test("a machine starts on first use; its windows, apps and displays come only fr
   const listed = await f.resources.search(address(`${f.machineSource}/windows`), cwd, "window");
   const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
   const view = await f.resources.read(address(computerSource("window", ref)), cwd, ["ui"]);
-  await f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, "hello", "write");
+  await f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, JSON.stringify({ action: "type_text", text: "hello" }));
   const displays = await f.resources.read(address(`${f.machineSource}/displays`), cwd);
   expect((displays!.details.state!.displays as { display_id: string }[]).map(display => display.display_id)).toEqual(["D20"]);
   // An app address opens the app on the machine that listed it.
   const apps = await f.resources.search(address(`${f.machineSource}/apps`), cwd, "App");
   const app = (apps.details.state!.apps as { app_ref: string }[])[0].app_ref;
-  await f.resources.perform(address(computerSource("app", app)), cwd, JSON.stringify({ action: "open" }), "insert");
+  await f.resources.perform(address(computerSource("app", app)), cwd, JSON.stringify({ action: "open" }));
   // The Write's successor walks the window again; repeated walks are collapsed here.
   expect(f.names(f.remoteDriver).filter((name, i, all) => name !== "get_window_state" || all[i - 1] !== "get_window_state")).toEqual(["list_windows", "get_window_state", "type_text", "get_window_state", "list_displays", "list_apps", "list_apps", "list_windows", "launch_app"]);
   expect(f.names(f.hostDriver)).toEqual([]);
@@ -111,17 +111,17 @@ test("an unknown machine refuses, and closing a machine releases it, its referen
   const listed = await f.resources.search(address(`${f.machineSource}/windows`), cwd, "window");
   const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
   const view = await f.resources.read(address(computerSource("window", ref)), cwd, ["ui"]);
-  const sandbox = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "open_sandbox" }), "insert");
+  const sandbox = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "open_sandbox" }));
   expect(sandbox.details.sandbox_ref).toBe("sb-1");
   expect(f.openSandbox.mock.calls[0][3]).toBe("lab");
-  const closed = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "close" }), "insert");
+  const closed = await f.resources.delete(f.machineSource, cwd);
   // The report names each released part.
   expect(closed.details.status).toBe("closed");
   expect(closed.content[0]).toMatchObject({ text: expect.stringMatching(/computer:sandbox\/sb-1: Sandbox[^\n]*destroyed[\s\S]*computer:machine\/lab: /) });
   expect(f.sandboxClose).toHaveBeenCalledOnce();
   expect(f.machineClose).toHaveBeenCalledOnce();
   expect(() => f.resources.descriptor(address(computerSource("sandbox", "sb-1")))).toThrow(/expired/);
-  await expect(f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, "late", "write")).rejects.toThrow(/expired/);
+  await expect(f.resources.perform(address(computerSource("observation", view!.details.observation_id!)), cwd, JSON.stringify({ action: "type_text", text: "late" }))).rejects.toThrow(/expired/);
   // A stale remote window address never reaches this host's desktop.
   await expect(f.resources.read(address(computerSource("window", ref)), cwd, ["ui"])).rejects.toThrow(/Unknown or closed window reference[\s\S]*nothing was sent/);
   expect(f.names(f.hostDriver)).toEqual([]);
@@ -131,7 +131,7 @@ test("closing the computer session releases every machine, the local one include
   const f = await fixture();
   await f.resources.search(address(`${f.machineSource}/windows`), cwd, "");
   await f.resources.search(address("computer:machine/local/windows"), cwd, "");
-  const closed = await f.resources.perform(address("computer:session"), cwd, JSON.stringify({ action: "close" }), "insert");
+  const closed = await f.resources.delete("computer:session", cwd);
   expect(f.machineClose).toHaveBeenCalledOnce();
   expect(closed.details.status).toBe("closed");
   // What the model sees: a session's own close result carries a JSON projection that must not hide later parts.
@@ -155,7 +155,7 @@ test("window sequences and their frames run on the machine that captured them", 
   const listed = await f.resources.search(address(`${f.machineSource}/windows`), cwd, "window");
   expect(listed.details.machine).toBe("lab");
   const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
-  const captured = await f.resources.read(address(computerSource("window", ref)), cwd, ['sequence:{"duration_ms":1}']);
+  const captured = await f.resources.sequence(address(computerSource("window", ref)), cwd, ['sequence:{"duration_ms":1}']);
   expect(captured?.details).toMatchObject({ status: "observed", machine: "lab" });
   const sequence = address(computerSource("sequence", captured!.details.sequence!.sequence_id));
   const frames = await f.resources.read(sequence, cwd, ["frames:endpoints"]);
@@ -172,13 +172,13 @@ test("a machine's primary and listed displays are read and captured on that mach
   expect(overview?.details).toMatchObject({ status: "observed", machine: "lab" });
   // The display observation keeps its machine.
   expect(f.resources.descriptor(address(computerSource("observation", overview!.details.agent_image!.image_id as string)))).toContain(`Source: ${displaySource("lab", "primary")}`);
-  const sequence = await f.resources.read(primary, cwd, ['sequence:{"duration_ms":1}']);
+  const sequence = await f.resources.sequence(primary, cwd, ['sequence:{"duration_ms":1}']);
   expect(sequence?.details).toMatchObject({ status: "observed", machine: "lab" });
   const listed = await f.resources.read(address(`${f.machineSource}/displays`), cwd);
   const ref = (listed!.details.state!.displays as { display_ref: string }[])[0].display_ref;
   // The listing shows each display with its machine's address.
   expect(presentComputerResult(listed!)).toContain(displaySource("lab", ref));
-  const selected = await f.resources.read(address(displaySource("lab", ref)), cwd, ['sequence:{"duration_ms":1}']);
+  const selected = await f.resources.sequence(address(displaySource("lab", ref)), cwd, ['sequence:{"duration_ms":1}']);
   expect(selected?.details).toMatchObject({ status: "observed", machine: "lab" });
   const frames = await f.resources.read(address(computerSource("sequence", selected!.details.sequence!.sequence_id)), cwd, ["frames:last"]);
   expect(frames?.details.status).toBe("observed");
