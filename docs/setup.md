@@ -26,7 +26,7 @@ Switching cannot undo input already dispatched under YOLO. Pending work checks t
 
 ## Windows and input
 
-Computer use works through `computer:` addresses: the ordinary Pi Agent IDE Read, Search, Write and Insert tools, or `computer_read`, `computer_search`, `computer_write` and `computer_insert` without IDE. Without Pi Agent IDE, or with an IDE whose plugin API version does not match, those tools are deferred and `tool_search` is turned on.
+Computer use works through `computer:` addresses: the ordinary Pi Agent IDE Read, Search and Delete tools, or `computer_read`, `computer_search` and `computer_delete` without IDE, plus a `computer_*` tool for each action. The `computer_*` tools are deferred, and `tool_search` is turned on.
 
 Opening means a **new window**, not an existing window or new tab. Apps differ: some are single-instance or create several startup windows. If the result is `unknown`, discover what actually appeared before deciding. Never blindly relaunch. A new window is not necessarily an empty document: applications can restore prior state. Read tree and pixels before editing.
 
