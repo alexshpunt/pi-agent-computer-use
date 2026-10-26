@@ -61,13 +61,13 @@ export interface InputPlan {
   native: Record<string, unknown> | string;
   /** The Playwright action without its target, or why browser pages cannot run it. */
   web: Record<string, unknown> | string;
-  /** true sends native input in the foreground at once; false never leaves the background. */
-  foreground?: boolean;
+  /** Internal: send real input, after UI Automation could not carry the action on its target. */
+  real?: boolean;
   /** Runs after this one is delivered, such as Enter after typing. */
   then?: InputPlan;
 }
-/** Native input that moves the real pointer, so it always goes in the foreground. */
-const FOREGROUND_ONLY = ["hover", "move", "timeline"];
+/** Native actions a target carries through UI Automation: a click runs the element's Invoke, Toggle, SelectionItem or ExpandCollapse pattern, a scroll its scroll pattern. */
+const STRUCTURAL = ["click", "check", "uncheck", "scroll"];
 /** Native actions that only a locator target runs; a ref of the latest Read becomes the locator of its element. */
 const LOCATOR_ONLY = ["check", "uncheck"];
 /** What a target string is: a native ref of a window Read (1:a), a page ref of a DOM Read (e12, f1e3), or a Playwright locator. */
@@ -284,8 +284,6 @@ export class ComputerResources {
   private readonly starting = new Map<string, Promise<OpenedMachine>>();
   /** Sandbox launches and machine starts still in progress; a cancelled one finishes its own cleanup before it settles. */
   private readonly opening = new Set<Promise<unknown>>();
-  /** Windows that refused background input once; typed input to them goes in the foreground. */
-  private readonly foreground = new Set<string>();
   /** Short aliases of this run's long addresses (computer:zinpc/w3qk). */
   private readonly shorts = new ShortAddresses();
   /** Window names the agent gave, with the window's title when it was named. */
@@ -899,17 +897,19 @@ export class ComputerResources {
 
   /**
    * Typed input on a native window: a locator resolves in fresh UI walks, a ref of the latest Read and points use the
-   * window's current observation, captured first when there is none with the pixels a point needs. A background
-   * refusal, which sends nothing, is retried at once in the foreground, and the window keeps foreground delivery.
+   * window's current observation, captured first when there is none with the pixels a point needs. A click or scroll
+   * on a target goes through UI Automation; when no pattern carries it, which sends nothing, it goes again as real input.
    */
   private async nativeStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
     if (typeof plan.native === "string") throw new ComputerRequestError(plan.native);
     const command: Record<string, unknown> = structuredClone(plan.native);
     const action = String(command.action);
-    const pointerOnly = FOREGROUND_ONLY.includes(action);
-    if (pointerOnly && plan.foreground === false) throw new ComputerRequestError(`${plan.label} on a native window moves the real pointer, so it needs the foreground.`);
-    const foreground = plan.foreground ?? (pointerOnly || this.foreground.has(window));
-    if (foreground && !isSemanticAction(action)) command.delivery_mode = "foreground";
+    // What the agent sees structurally is pressed structurally: a click or scroll on a target goes through UI Automation
+    // alone, and the driver refuses before sending anything when no pattern carries it. Points, keys, drags and timelines
+    // are real input; semantic actions and menus are UI Automation calls of their own.
+    const structural = !plan.real && plan.target !== undefined && plan.point === undefined && STRUCTURAL.includes(action) && command.unit === undefined && command.modifiers === undefined;
+    if (structural) command.uia_only = true;
+    else if (!isSemanticAction(action) && action !== "menu") command.delivery_mode = "foreground";
     let target = plan.target;
     let view = session.inputView(window);
     // The registry decides whether an observation still grounds input: a detail Read, a sequence or the registry's
@@ -923,7 +923,7 @@ export class ComputerResources {
       delete command.option;
     }
     let result: ComputerResult;
-    // What a foreground retry sends: the input observation is spent by then, so its refs become locators or points.
+    // What the real-input retry sends: the input observation is spent by then, so its refs become locators or points.
     let retry = (): InputPlan => plan;
     if (refKind(target) === "locator") {
       if (plan.end) throw new ComputerRequestError(`${plan.label} takes refs of the window's latest Read or points, not locators.`);
@@ -967,10 +967,9 @@ export class ComputerResources {
       result = await this.performAt(observation, cwd, JSON.stringify(command), signal);
     }
     const capability = result.details.action_capability;
-    if (foreground || plan.foreground === false || result.details.status !== "refused" || capability?.background !== "unavailable") return result;
-    this.foreground.add(window);
-    const again = await this.nativeStep(window, session, { ...retry(), foreground: true }, cwd, signal);
-    return { ...again, content: [{ type: "text", text: `The window refused background input (${capability.code}), so this call sent it in the foreground; later input to this window goes in the foreground.` }, ...again.content] };
+    if (!structural || result.details.status !== "refused" || capability?.background !== "unavailable") return result;
+    const again = await this.nativeStep(window, session, { ...retry(), real: true }, cwd, signal);
+    return { ...again, content: [{ type: "text", text: `No UI Automation pattern of the target carried this ${plan.label}, so this call used the real pointer.` }, ...again.content] };
   }
 
   /** The element of a ref in the window's current observation. */

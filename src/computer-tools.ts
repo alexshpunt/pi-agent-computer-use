@@ -255,10 +255,9 @@ export function recordCommand(params: Static<typeof recordParameters>): { comman
 }
 
 const inputWindow = Type.String({ description: "Window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game." });
-const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest Read (1:a in a window Read, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }).` }));
-const coordinate = (axis: string) => Type.Optional(Type.Number({ minimum: 0, description: `${axis} of a point instead of target: pixels of the window's latest image, or CSS pixels of a browser page.` }));
+const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest Read (1:a in a window Read, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }). On native windows a target is pressed through UI Automation in the background when it supports that, otherwise with the real pointer.` }));
+const coordinate = (axis: string) => Type.Optional(Type.Number({ minimum: 0, description: `${axis} of a point instead of target: pixels of the window's latest image, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front.` }));
 const pointSpace = Type.Optional(Type.Union([Type.Literal("page"), Type.Literal("window")], { description: "Browser windows: page (default) takes refs, locators and CSS points of the page; window takes refs and points of a window Read, such as the browser's own toolbar." }));
-const foregroundField = Type.Optional(Type.Boolean({ description: "Native windows: true sends input in the foreground at once (it activates the window and moves the real pointer); false never leaves the background. By default input starts in the background and moves to the foreground when the window refuses it." }));
 const modifiersField = Type.Optional(Type.Array(Type.Union([Type.Literal("ctrl"), Type.Literal("shift"), Type.Literal("alt"), Type.Literal("win")]), { maxItems: 4, description: "Keys held during the action." }));
 const locatorTimeout = Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "How long a locator target may take to match one ready element, default 5000." }));
 const PAGE_MODIFIERS: Record<string, string> = { ctrl: "Control", shift: "Shift", alt: "Alt", win: "Meta" };
@@ -273,8 +272,7 @@ function aim(params: Endpoint, label: string, required: boolean): Pick<InputPlan
   return { ...(params.target !== undefined ? { target: params.target } : {}), ...(point ? { point } : {}) };
 }
 /** Fields every input plan shares. */
-const shared = (params: { space?: "page" | "window"; foreground?: boolean }) =>
-  ({ ...(params.space ? { space: params.space } : {}), ...(params.foreground !== undefined ? { foreground: params.foreground } : {}) });
+const shared = (params: { space?: "page" | "window" }) => ({ ...(params.space ? { space: params.space } : {}) });
 const timeout = (params: { timeout_ms?: number }) => params.timeout_ms !== undefined ? { timeout_ms: params.timeout_ms } : {};
 const pageModifiers = (modifiers?: string[]) => modifiers?.length ? { modifiers: modifiers.map(key => PAGE_MODIFIERS[key]) } : {};
 /** A Playwright key name for a key the native tools also take, such as ctrl, return, up or f5. */
@@ -297,7 +295,7 @@ const clickParameters = Type.Object({
   window: inputWindow, target: inputTarget("The element to click"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
   button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")], { description: "Mouse button, default left." })),
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 3, description: "Clicks: 2 is a double click, 3 a triple click (browser pages). Default 1." })),
-  modifiers: modifiersField, timeout_ms: locatorTimeout, foreground: foregroundField,
+  modifiers: modifiersField, timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
 
 /** What computer_click sends to a native window and to a browser page. */
@@ -338,7 +336,7 @@ const dragParameters = Type.Object({
     { minItems: 1, maxItems: 254, description: "Points the pointer passes through on the way, in order, for a path rather than a straight line; left button only." })),
   duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: "How long the move takes, default 500." })),
   button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")], { description: "Button held during the drag, default left." })),
-  modifiers: modifiersField, foreground: foregroundField,
+  modifiers: modifiersField,
 }, { additionalProperties: false });
 
 /** What computer_drag sends: a native drag, or a page timeline that presses, moves and releases. */
@@ -359,7 +357,7 @@ const scrollParameters = Type.Object({
   window: inputWindow, target: inputTarget("The element to scroll; omit for the middle of the window or page"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
   delta_x: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches to the right (negative: left)." })),
   delta_y: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches down (negative: up). One notch scrolls about 100 CSS pixels in a browser; apps decide their own distance." })),
-  timeout_ms: locatorTimeout, foreground: foregroundField,
+  timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
 
 /** What computer_scroll sends: wheel notches at a point, or an accessibility scroll of a native element target. */
@@ -376,12 +374,12 @@ export function scrollPlan(params: Static<typeof scrollParameters>): InputPlan {
 }
 
 const typeParameters = Type.Object({
-  window: inputWindow, text: Type.String({ maxLength: 20000, description: "Text to type, as is: newlines and quotes stay text. Native windows take up to 2000 characters." }),
+  window: inputWindow, text: Type.String({ maxLength: 20000, description: "Text to type, as is: newlines and quotes stay text. Native windows take up to 2000 characters and get real key presses, so the window comes to the front; replace sets the value through UI Automation instead." }),
   target: inputTarget("The field to type into; omit for the focused element"), space: pointSpace,
   replace: Type.Optional(Type.Boolean({ description: "Replace the field's whole value instead of typing at the caret; needs target." })),
   submit: Type.Optional(Type.Boolean({ description: "Press Enter after the text." })),
   delay_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 200, description: "Native windows: pause between characters." })),
-  timeout_ms: locatorTimeout, foreground: foregroundField,
+  timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
 
 /** What computer_type sends, with Enter as a second step when submit is set. */
@@ -396,10 +394,9 @@ export function typePlan(params: Static<typeof typeParameters>): InputPlan {
 }
 
 const pressParameters = Type.Object({
-  window: inputWindow, key: Type.String({ maxLength: 64, description: "A key with optional modifiers joined by +, such as Enter, ctrl+s, shift+Tab, F5, ArrowDown or a." }),
+  window: inputWindow, key: Type.String({ maxLength: 64, description: "A key with optional modifiers joined by +, such as Enter, ctrl+s, shift+Tab, F5, ArrowDown or a. Native windows get real key presses, so the window comes to the front." }),
   target: inputTarget("The element to focus first; omit for the focused element"), space: pointSpace,
   hold_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: hold the keys down this long, for apps and games that read held keys." })),
-  foreground: foregroundField,
 }, { additionalProperties: false });
 const PAGE_KEYS: Record<string, string> = { enter: "Enter", return: "Enter", esc: "Escape", escape: "Escape", tab: "Tab", space: "Space", backspace: "Backspace", delete: "Delete", del: "Delete",
   up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown", pgup: "PageUp", pgdn: "PageDown" };

@@ -201,7 +201,7 @@ function validateTimeline(events: unknown, point: (x: unknown, y: unknown) => vo
 
 /** Translate supported fields only. Coordinates stay in the original overview's local image domain.
  * captureBoundDrag enables straight-drag binding only for a separately qualified native runtime. */
-export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string, captureBoundDrag = false): { name: string; args: Record<string, unknown> } {
+export function nativeInput(command: InputCommand, target: { pid: number; window_id: number }, delivery: string, captureId?: string, captureBoundDrag = false, uiaOnly = false): { name: string; args: Record<string, unknown> } {
   if (isCoordinateScroll(command)) return { name: "scroll_at", args: {
     ...target, capture_id: captureId, x: command.x, y: command.y,
     delta_x: command.delta_x ?? 0, delta_y: command.delta_y ?? 0, unit: command.unit, delivery_mode: delivery,
@@ -221,6 +221,11 @@ export function nativeInput(command: InputCommand, target: { pid: number; window
     if (value !== undefined) args[key === "modifiers" ? command.action === "key" ? "modifiers" : "modifier" : key] = value;
   }
   if (command.action === "select_all") args.keys = ["ctrl", "a"];
+  // UI Automation only: an element click or scroll that no pattern carries is refused by the driver, never posted.
+  if (uiaOnly) {
+    if (args.element_token === undefined || !["click", "scroll"].includes(name)) throw new Error("uia_only takes a click or scroll on an element token.");
+    args.uia_only = true;
+  }
   if (captureId && ((command.action === "click" && command.x !== undefined) || (captureBoundDrag && command.action === "drag" && command.via === undefined))) args.capture_id = captureId;
   return { name, args };
 }
