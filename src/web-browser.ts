@@ -27,9 +27,13 @@ export interface WebSnapshotOptions {
 export interface WebAction {
   action: "click" | "hover" | "fill" | "type" | "press" | "check" | "uncheck" | "select" | "focus" | "scroll" | "wait" | "wait_load"
     | "navigate" | "back" | "forward" | "reload" | "new_tab" | "switch_tab" | "close_tab" | "dialog"
-    | "upload" | "wait_download" | "cancel_download" | "evaluate";
+    | "upload" | "wait_download" | "cancel_download" | "evaluate" | "timeline";
   target?: WebTarget;
   button?: "left" | "right" | "middle"; click_count?: number;
+  /** Timed mouse, keyboard, wheel and pen events at CSS points of the page, for timeline. */
+  events?: WebTimelineEvent[];
+  /** Keys held during a click or hover. */
+  modifiers?: ("Alt" | "Control" | "Meta" | "Shift")[];
   text?: string; key?: string; values?: string[];
   delta_x?: number; delta_y?: number;
   /** Element state for wait; load state for wait_load. */
@@ -47,6 +51,81 @@ export interface WebAction {
   download?: string;
   /** JavaScript expression evaluated in the active tab, or a function called with the target element. */
   expression?: string;
+}
+/**
+ * One event of a page timeline, at_ms after its start. Points are CSS pixels of the page; a move can go to the centre
+ * of a target instead. Keys use Playwright names such as Control, Enter or a; wheel deltas are CSS pixels.
+ */
+export interface WebTimelineEvent {
+  at_ms: number;
+  type: "key_down" | "key_up" | "button_down" | "button_up" | "move" | "wheel" | "pen_down" | "pen_move" | "pen_up";
+  key?: string; button?: "left" | "right" | "middle";
+  /** button_down and button_up: which click of a multiple click this is, so the page sees double and triple clicks. */
+  click_count?: number;
+  x?: number; y?: number; target?: WebTarget;
+  /** move: intermediate mouse moves on the way, for a smooth path. */
+  steps?: number;
+  dx?: number; dy?: number;
+  pressure?: number; tilt_x?: number; tilt_y?: number;
+}
+/** Longest page timeline, in time and events. */
+const WEB_TIMELINE_MS = 120_000, WEB_TIMELINE_EVENTS = 5000;
+const TIMELINE_FIELDS: Record<WebTimelineEvent["type"], string[]> = {
+  key_down: ["key"], key_up: ["key"], button_down: ["button", "click_count"], button_up: ["button", "click_count"],
+  move: ["x", "y", "target", "steps"], wheel: ["dx", "dy"],
+  pen_down: ["x", "y", "pressure", "tilt_x", "tilt_y"], pen_move: ["x", "y", "pressure", "tilt_x", "tilt_y"], pen_up: ["x", "y", "pressure", "tilt_x", "tilt_y"],
+};
+/** Check a page timeline completely before any input: order, fields, points and balanced presses. */
+export function validateWebTimeline(value: unknown): WebTimelineEvent[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > WEB_TIMELINE_EVENTS) throw Error(`timeline needs 1..${WEB_TIMELINE_EVENTS} events.`);
+  const keys = new Set<string>(), buttons = new Set<string>();
+  let last = 0, pen = false;
+  const events = value.map((raw, index) => {
+    const event = record(raw, `events[${index}]`) as unknown as WebTimelineEvent;
+    const fields = TIMELINE_FIELDS[event.type];
+    if (!fields) throw Error(`events[${index}] needs a type: ${Object.keys(TIMELINE_FIELDS).join(", ")}.`);
+    only(event as unknown as Record<string, unknown>, ["at_ms", "type", ...fields], `A ${event.type} event`);
+    event.at_ms = integer(event.at_ms, last, WEB_TIMELINE_MS, "at_ms");
+    last = event.at_ms;
+    const point = (required: boolean) => {
+      if (event.target !== undefined) { event.target = validateWebTarget(event.target); if (event.x !== undefined || event.y !== undefined) throw Error("A move goes to a target or a point, not both."); return; }
+      if (event.x === undefined && event.y === undefined && !required) return;
+      for (const axis of ["x", "y"] as const) if (typeof event[axis] !== "number" || !Number.isFinite(event[axis]) || event[axis]! < 0 || event[axis]! > 100_000) throw Error(`${event.type} needs x and y in CSS pixels.`);
+    };
+    switch (event.type) {
+      case "key_down": case "key_up": {
+        const key = text(event.key, "key", 64);
+        if (event.type === "key_down" ? keys.has(key) : !keys.has(key)) throw Error(`Key ${key} is ${event.type === "key_down" ? "already down" : "not down"}.`);
+        event.type === "key_down" ? keys.add(key) : keys.delete(key);
+        break;
+      }
+      case "button_down": case "button_up": {
+        const button = event.button ?? "left";
+        if (!["left", "right", "middle"].includes(button)) throw Error("button must be left, right or middle.");
+        if (event.click_count !== undefined) event.click_count = integer(event.click_count, 1, 3, "click_count");
+        if (event.type === "button_down" ? buttons.has(button) : !buttons.has(button)) throw Error(`Button ${button} is ${event.type === "button_down" ? "already down" : "not down"}.`);
+        event.type === "button_down" ? buttons.add(button) : buttons.delete(button);
+        break;
+      }
+      case "move":
+        if (event.target === undefined) point(true); else point(false);
+        if (event.steps !== undefined) event.steps = integer(event.steps, 1, 200, "steps");
+        break;
+      case "wheel":
+        for (const axis of ["dx", "dy"] as const) if (event[axis] !== undefined && (typeof event[axis] !== "number" || !Number.isFinite(event[axis]) || Math.abs(event[axis]!) > 20_000)) throw Error(`${axis} must be CSS pixels within ±20000.`);
+        if (!event.dx && !event.dy) throw Error("wheel needs dx or dy.");
+        break;
+      default:
+        point(true);
+        if (event.pressure !== undefined && !(typeof event.pressure === "number" && event.pressure >= 0 && event.pressure <= 1)) throw Error("Pen pressure must be 0..1.");
+        for (const tilt of [event.tilt_x, event.tilt_y]) if (tilt !== undefined && !(Number.isInteger(tilt) && tilt >= -90 && tilt <= 90)) throw Error("Pen tilt must be an integer -90..90.");
+        if (event.type === "pen_down" ? pen : event.type === "pen_up" && !pen) throw Error(`The pen is ${pen ? "already" : "not"} down.`);
+        if (event.type === "pen_down") pen = true; else if (event.type === "pen_up") pen = false;
+    }
+    return event;
+  });
+  if (keys.size || buttons.size || pen) throw Error(`The timeline leaves ${[...keys, ...buttons, ...(pen ? ["the pen"] : [])].join(", ")} down; release everything it presses.`);
+  return events;
 }
 /** One retained console message, uncaught page error or failed network event. `seq` increases across the browser's lifetime. */
 export interface WebLogEntry {
@@ -174,10 +253,10 @@ export function validateWebSnapshot(value: unknown = {}): WebSnapshotOptions {
 }
 
 const ACTIONS: Record<WebAction["action"], { fields: readonly string[]; target: "required" | "optional" | "none" }> = {
-  click: { fields: ["button", "click_count"], target: "required" },
-  hover: { fields: [], target: "required" },
+  click: { fields: ["button", "click_count", "modifiers"], target: "required" },
+  hover: { fields: ["modifiers"], target: "required" },
   fill: { fields: ["text"], target: "required" },
-  type: { fields: ["text"], target: "required" },
+  type: { fields: ["text"], target: "optional" },
   press: { fields: ["key"], target: "optional" },
   check: { fields: [], target: "required" },
   uncheck: { fields: [], target: "required" },
@@ -198,6 +277,7 @@ const ACTIONS: Record<WebAction["action"], { fields: readonly string[]; target: 
   wait_download: { fields: ["download"], target: "none" },
   cancel_download: { fields: ["download"], target: "none" },
   evaluate: { fields: ["expression"], target: "optional" },
+  timeline: { fields: ["events"], target: "none" },
 };
 const tabId = (value: unknown): string => {
   if (typeof value !== "string" || !/^t\d{1,6}$/.test(value)) throw Error("tab must be a tab id such as t2 from the tab list.");
@@ -219,6 +299,11 @@ export function validateWebAction(value: unknown): WebAction {
     action.button = command.button as WebAction["button"];
   }
   if (command.click_count !== undefined) action.click_count = integer(command.click_count, 1, 3, "click_count");
+  if (command.modifiers !== undefined) {
+    if (!Array.isArray(command.modifiers) || command.modifiers.length > 4 || new Set(command.modifiers).size !== command.modifiers.length || command.modifiers.some(key => !["Alt", "Control", "Meta", "Shift"].includes(key as string)))
+      throw Error("modifiers must be unique Alt, Control, Meta or Shift.");
+    action.modifiers = command.modifiers as WebAction["modifiers"];
+  }
   if (name === "fill" || name === "type") {
     if (typeof command.text !== "string" || command.text.length > 20_000) throw Error(`${name} needs text of at most 20000 characters.`);
     action.text = command.text;
@@ -271,6 +356,7 @@ export function validateWebAction(value: unknown): WebAction {
     }
   }
   if (name === "evaluate") action.expression = text(command.expression, "expression", 20_000);
+  if (name === "timeline") action.events = validateWebTimeline(command.events);
   if ((name === "wait_download" || name === "cancel_download") && command.download !== undefined) {
     if (typeof command.download !== "string" || !/^d\d{1,6}$/.test(command.download)) throw Error("download must be an id such as d1 from the download list.");
     action.download = command.download;

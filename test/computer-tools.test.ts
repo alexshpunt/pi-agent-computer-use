@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
-import { requireComputerAddress, ComputerResources } from "../src/computer-resources.ts";
-import { clipboardCommand, filesCommand, openCommand, recordCommand, waitCommand, windowCommand } from "../src/computer-tools.ts";
+import { requireComputerAddress, ComputerResources, refKind } from "../src/computer-resources.ts";
+import { clickPlan, clipboardCommand, dragPlan, filesCommand, hoverPlan, openCommand, pressPlan, recordCommand, scrollPlan, selectPlan, timelinePlan, typePlan, waitCommand, windowCommand } from "../src/computer-tools.ts";
 import type { WebBrowser, WebLauncher } from "../src/web-browser.ts";
 import type { MachineHost } from "../src/machine-host.ts";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -80,6 +80,61 @@ test("computer_record maps video and audio to machine commands and sequence to t
   expect(() => recordCommand({ at: "m", action: "video_stop", seconds: 3 })).toThrow("video_stop takes no seconds.");
 });
 
+test("input tools build one plan for native windows and one for browser pages", () => {
+  const w = "computer:w";
+  expect(refKind("1:a")).toBe("hint");
+  expect(refKind("2b:ac")).toBe("hint");
+  expect(refKind("e12")).toBe("page");
+  expect(refKind("f1e3")).toBe("page");
+  expect(refKind("getByRole('button', { name: 'Save' })")).toBe("locator");
+  expect(clickPlan({ window: w, target: "1:a" })).toEqual({ label: "click", target: "1:a", native: { action: "click" }, web: { action: "click" } });
+  expect(clickPlan({ window: w, x: 10, y: 20, count: 2, modifiers: ["ctrl"] })).toMatchObject({ label: "click", point: { x: 10, y: 20 },
+    native: { action: "double_click", modifiers: ["ctrl"] }, web: { action: "timeline" } });
+  expect(clickPlan({ window: w, target: "e1", count: 2, modifiers: ["ctrl"] }).web).toEqual({ action: "click", click_count: 2, modifiers: ["Control"] });
+  expect(clickPlan({ window: w, target: "e1", button: "right" }).native).toEqual({ action: "right_click" });
+  expect(clickPlan({ window: w, target: "e1", count: 3 }).native).toBe("A triple click works on browser pages only.");
+  expect(() => clickPlan({ window: w })).toThrow("click needs a target or a point (x and y).");
+  expect(() => clickPlan({ window: w, x: 1 })).toThrow("click needs both x and y for a point.");
+  expect(() => clickPlan({ window: w, x: 1, y: 2, target: "1:a" })).toThrow("click takes a target or a point, not both.");
+  expect(hoverPlan({ window: w, target: "1:a" }).native).toEqual({ action: "hover", dwell_ms: 300 });
+  expect(dragPlan({ window: w, from: { target: "1:a" }, to: { x: 5, y: 6 }, via: [{ x: 3, y: 4 }] })).toMatchObject({ target: "1:a", end: { point: { x: 5, y: 6 } }, native: { action: "drag", via: [{ x: 3, y: 4 }] } });
+  expect(scrollPlan({ window: w, delta_y: -2 })).toMatchObject({ native: { action: "scroll", delta_y: -2, unit: "wheel_detents" }, web: { action: "scroll", delta_y: -200 } });
+  expect(scrollPlan({ window: w, target: "1:a", delta_x: 3 }).native).toEqual({ action: "scroll", direction: "right", amount: 3 });
+  expect(() => scrollPlan({ window: w })).toThrow("scroll needs delta_x or delta_y.");
+  const typed = typePlan({ window: w, target: "1:a", text: "Ada", replace: true, submit: true });
+  expect(typed).toMatchObject({ native: { action: "set_value", text: "Ada" }, web: { action: "fill", text: "Ada" },
+    then: { target: "1:a", native: { action: "key", key: "return" }, web: { action: "press", key: "Enter" } } });
+  expect(() => typePlan({ window: w, text: "x", replace: true })).toThrow("replace needs the field as target.");
+  expect(pressPlan({ window: w, key: "ctrl+shift+Tab" })).toMatchObject({ native: { action: "hotkey", keys: ["ctrl", "shift", "tab"] }, web: { action: "press", key: "Control+Shift+Tab" } });
+  expect(pressPlan({ window: w, key: "Enter" }).native).toEqual({ action: "key", key: "enter" });
+  expect(pressPlan({ window: w, key: "w", hold_ms: 500 }).native).toEqual({ action: "hold", keys: ["w"], duration_ms: 500 });
+  expect(pressPlan({ window: w, key: "f5" }).web).toEqual({ action: "press", key: "F5" });
+  expect(() => pressPlan({ window: w, key: "hyper+a" })).toThrow("Modifiers are ctrl, shift, alt and win.");
+  expect(selectPlan({ window: w, target: "e3", values: ["Red"] })).toMatchObject({ native: { action: "select", option: "Red" }, web: { action: "select", values: ["Red"] } });
+  expect(selectPlan({ window: w, target: "1:a", checked: false })).toMatchObject({ native: { action: "uncheck" }, web: { action: "uncheck" } });
+  expect(selectPlan({ window: w, menu: ["File", "Save"] })).toMatchObject({ native: { action: "menu", path: ["File", "Save"] } });
+  expect(() => selectPlan({ window: w, target: "1:a", checked: true, values: ["a"] })).toThrow("select takes one of values, checked or menu");
+  const keyed = timelinePlan({ window: w, events: [{ at_ms: 0, type: "key_down", key: "ctrl" }, { at_ms: 5, type: "wheel", dy: 2 }, { at_ms: 9, type: "key_up", key: "ctrl" }] });
+  expect(keyed.native).toMatchObject({ action: "timeline", events: [{ key: "ctrl" }, { dy: 2 }, { key: "ctrl" }] });
+  expect(keyed.web).toEqual({ action: "timeline", events: [{ at_ms: 0, type: "key_down", key: "Control" }, { at_ms: 5, type: "wheel", dy: 200 }, { at_ms: 9, type: "key_up", key: "Control" }] });
+  expect(pressPlan({ window: w, key: "shift+up", hold_ms: 300 }).web).toEqual({ action: "timeline", events: [
+    { at_ms: 0, type: "key_down", key: "Shift" }, { at_ms: 0, type: "key_down", key: "ArrowUp" }, { at_ms: 300, type: "key_up", key: "ArrowUp" }, { at_ms: 300, type: "key_up", key: "Shift" }] });
+  expect(dragPlan({ window: w, from: { target: "e2" }, to: { x: 50, y: 60 }, duration_ms: 200 }).web).toEqual({ action: "timeline", events: [
+    { at_ms: 0, type: "move", target: { ref: "e2" } }, { at_ms: 0, type: "button_down", button: "left" },
+    { at_ms: 200, type: "move", x: 50, y: 60, steps: 13 }, { at_ms: 200, type: "button_up", button: "left" }] });
+  expect(scrollPlan({ window: w, x: 4, y: 5, delta_y: 1 }).web).toEqual({ action: "timeline", events: [{ at_ms: 0, type: "move", x: 4, y: 5 }, { at_ms: 0, type: "wheel", dy: 100 }] });
+});
+
+test("typed input refuses mismatched targets before anything reaches the machine", async () => {
+  const f = fixture("closed");
+  const window = at(`computer:window/${await f.window()}`);
+  await expect(f.resources.input(at("computer:machine/local"), cwd, clickPlan({ window: "x", target: "1:a" }))).rejects.toThrow("Give the window address");
+  await expect(f.resources.input(window, cwd, clickPlan({ window: "x", target: "e4" }))).rejects.toThrow("e4 is a page ref from a DOM Read; this window is not a browser page");
+  await expect(f.resources.input(window, cwd, clickPlan({ window: "x", x: 1, y: 2, space: "page" }))).rejects.toThrow("space applies to browser windows only");
+  await expect(f.resources.input(window, cwd, clickPlan({ window: "x", target: "9:z" }))).rejects.toThrow("9:z is not a ref of this window's latest Read");
+  await expect(f.resources.input(window, cwd, { ...hoverPlan({ window: "x", target: "getByText('a')" }), foreground: false })).rejects.toThrow("hover on a native window moves the real pointer");
+});
+
 /** A Chrome window (pid 4100) attached to a fake Playwright worker that records page actions. */
 function browserFixture() {
   const target = { pid: 4100, window_id: 77, title: "Page - Google Chrome", app_name: "chrome.exe" };
@@ -117,6 +172,30 @@ test("computer_browser runs a page action on the window and returns the page's n
   await expect(f.resources.browserAction(at("computer:machine/local"), cwd, { action: "reload" })).rejects.toThrow("computer_browser needs the window address");
   // Refused requests never reach Playwright.
   expect(f.page).toHaveBeenCalledTimes(1);
+});
+
+test("typed input on a browser window goes to Playwright with page refs and locators", async () => {
+  const f = browserFixture();
+  const window = await f.window();
+  const clicked = await f.resources.input(window, cwd, clickPlan({ window: "x", target: "e1", modifiers: ["shift"] }));
+  expect(clicked.details).toMatchObject({ status: "delivered", machine: "local" });
+  expect(f.page).toHaveBeenLastCalledWith("act", { action: "click", target: { ref: "e1" }, modifiers: ["Shift"] }, undefined);
+  // The snapshot of the first action is the window's current observation, so the next one compares with it.
+  await f.resources.input(window, cwd, typePlan({ window: "x", target: "getByLabel('Name')", text: "Ada", submit: true }));
+  expect(f.page.mock.calls.slice(-2).map(call => call[1])).toEqual([
+    { action: "type", text: "Ada", target: { locator: "internal:label=\"Name\"i" } },
+    { action: "press", key: "Enter", target: { locator: "internal:label=\"Name\"i" } }]);
+  // A point of a page is a timeline in CSS pixels, with the click numbered like Playwright's mouse.click.
+  await f.resources.input(window, cwd, clickPlan({ window: "x", x: 5, y: 6, count: 2, modifiers: ["ctrl"] }));
+  expect(f.page.mock.calls.at(-1)![1]).toEqual({ action: "timeline", events: [
+    { at_ms: 0, type: "key_down", key: "Control" }, { at_ms: 0, type: "move", x: 5, y: 6 },
+    { at_ms: 0, type: "button_down", button: "left", click_count: 1 }, { at_ms: 0, type: "button_up", button: "left", click_count: 1 },
+    { at_ms: 0, type: "button_down", button: "left", click_count: 2 }, { at_ms: 0, type: "button_up", button: "left", click_count: 2 },
+    { at_ms: 0, type: "key_up", key: "Control" }] });
+  await expect(f.resources.input(window, cwd, timelinePlan({ window: "x", events: [{ at_ms: 0, type: "move_relative", dx: 5, dy: 0 }] }))).rejects.toThrow("move_relative needs native input");
+  await expect(f.resources.input(window, cwd, timelinePlan({ window: "x", events: [{ at_ms: 0, type: "key_down", key: "a" }] }))).rejects.toThrow("The timeline leaves a down");
+  await expect(f.resources.input(window, cwd, selectPlan({ window: "x", menu: ["File"] }))).rejects.toThrow("menu works on native windows");
+  expect(f.page).toHaveBeenCalledTimes(4);
 });
 
 /** One window (pid 10, id 7) a session can list and observe; the host decides how a close request ends. */

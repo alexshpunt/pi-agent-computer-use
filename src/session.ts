@@ -146,7 +146,10 @@ interface Observation { texts?: Map<string, string>; id: string; tokens: Set<str
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
 /** The unannotated pixels of a window's latest capture with pixels, kept as the baseline of its next pixel comparison. */
 export interface WindowFrame { observation_id: string; png: Buffer; size: { maxLongEdge: number; scale: number } }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation; windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark; frame?: WindowFrame }
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation;
+  /** Size of the window's latest image capture: points of typed input are in its pixels. Outlives the observation. */
+  seen?: { width: number; height: number };
+  windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark; frame?: WindowFrame }
 interface App { name: string; launch_path?: string; bundle_id?: string; kind?: string }
 /** A discovery query: `regex:<pattern>` is a case-insensitive regular expression, anything else a case-insensitive substring. */
 export function textMatcher(query?: string): (text: string) => boolean {
@@ -972,7 +975,8 @@ export class ComputerSession {
   }
   private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}, quiet = false): Promise<ComputerResult> {
     validateUiCapture(options);
-    entry.dom = undefined; entry.windowState = undefined;
+    // A native capture keeps the page's DOM snapshot: reading changes nothing, so both stay current until input.
+    entry.windowState = undefined;
     const granularity = options.granularity ?? "full";
     const hasUi = granularity !== "image"; const hasImage = granularity !== "ui";
     if (!hasUi && query !== undefined) return this.result("refused", "Image-only observation cannot query UI labels.");
@@ -1029,6 +1033,7 @@ export class ComputerSession {
       const full = [element.label, element.value].filter((item): item is string => typeof item === "string" && item.length > 1024);
       if (full.length && ui.elements[index]) texts.set(ui.elements[index].hint, full.join("\n").slice(0, ELEMENT_TEXT_LIMIT));
     });
+    if (hasImage && typeof state.screenshot_width === "number" && typeof state.screenshot_height === "number") entry.seen = { width: state.screenshot_width, height: state.screenshot_height };
     entry.observation = { id, ui, settings, ...(texts.size ? { texts } : {}),
       width: hasImage && typeof state.screenshot_width === "number" ? state.screenshot_width : undefined,
       height: hasImage && typeof state.screenshot_height === "number" ? state.screenshot_height : undefined,
@@ -1107,7 +1112,8 @@ export class ComputerSession {
     return this.queue(async () => {
       const entry = await this.webEntry(ref, signal);
       if (!("ref" in entry)) return entry;
-      entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      // A DOM snapshot keeps the window's native capture: reading changes nothing, so both stay current until input.
+      entry.dom = undefined; entry.windowState = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("snapshot", options, signal));
         return this.result("observed", "Fresh Playwright aria snapshot. Use [ref=...] values as target.ref while this stays the latest snapshot of the window.",
@@ -1700,7 +1706,8 @@ export class ComputerSession {
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
-          entry.observation = undefined; entry.detail = undefined;
+          // Input may change the page, so the window's DOM snapshot retires with its native capture.
+          entry.observation = undefined; entry.detail = undefined; entry.dom = undefined;
           const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
           if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
           const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
@@ -1790,6 +1797,17 @@ export class ComputerSession {
   }
   /** Whether a window still holds this observation for input. */
   holdsObservation(windowRef: string, id: string): boolean { return this.entries.get(windowRef)?.observation?.id === id; }
+  /**
+   * What typed input can use in a window now: its current observation (a DOM snapshot of a browser page, or a native
+   * capture with its size and, until the first input spends them, its UI hints) and the size of its latest image,
+   * which is the space of the agent's points.
+   */
+  inputView(ref: string): { dom?: string; native?: { id: string; width?: number; height?: number; ui?: UiResource }; seen?: { width: number; height: number } } {
+    const entry = this.entries.get(ref), observed = entry?.observation;
+    return { ...(entry?.dom ? { dom: entry.dom.id } : {}),
+      ...(observed ? { native: { id: observed.id, width: observed.width, height: observed.height, ...(observed.ui && !observed.pixelsOnly ? { ui: observed.ui } : {}) } } : {}),
+      ...(entry?.seen ? { seen: { ...entry.seen } } : {}) };
+  }
   /** Whether this session issued a still-registered window reference. */
   hasWindow(ref: string): boolean { return this.entries.has(ref); }
   /** Whether this session issued a still-registered display reference. */

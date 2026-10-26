@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, firefox, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
 import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-line.ts";
-import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget } from "./web-browser.ts";
+import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget, WebTimelineEvent } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 import { ariaTreeFromYaml, matchesAriaTemplate } from "./aria-match.ts";
 
@@ -366,6 +366,61 @@ async function snapshot({ target, boxes, depth, log: wantLog }: WebSnapshotOptio
   return { url: page.url(), title: tab.title, snapshot: text === "dialog" ? "" : text, ...(dialog ? { dialog } : {}), ...base() };
 }
 
+/**
+ * Play a page timeline with Playwright's mouse and keyboard, and a pen through CDP: each event waits for its at_ms.
+ * Whatever is still held when it ends or fails is released, so no key, button or pen stays down.
+ */
+async function play(page: Page, events: WebTimelineEvent[], timeout: number): Promise<void> {
+  const keys = new Set<string>(), buttons = new Set<"left" | "right" | "middle">();
+  let cdp: Awaited<ReturnType<BrowserContext["newCDPSession"]>> | undefined, pen: { x: number; y: number } | undefined;
+  const started = performance.now();
+  let penDown = false;
+  const penEvent = async (type: "mousePressed" | "mouseMoved" | "mouseReleased", event: WebTimelineEvent) => {
+    if (!cdp) {
+      try { cdp = await page.context().newCDPSession(page); }
+      catch { throw new Error("Pen input needs a Chromium browser such as Chrome or Edge. Nothing more was sent."); }
+    }
+    pen = { x: event.x ?? pen?.x ?? 0, y: event.y ?? pen?.y ?? 0 };
+    // A pen in contact presses the left button with its pressure; a hovering pen moves with no button.
+    const touching = type === "mousePressed" || type === "mouseMoved" && penDown;
+    await cdp.send("Input.dispatchMouseEvent", { type, ...pen, button: type === "mouseMoved" && !penDown ? "none" : "left", buttons: touching ? 1 : 0,
+      clickCount: type === "mouseMoved" ? 0 : 1, pointerType: "pen", force: touching ? event.pressure ?? 0.5 : 0, tiltX: event.tilt_x ?? 0, tiltY: event.tilt_y ?? 0 });
+  };
+  try {
+    for (const event of events) {
+      const wait = started + event.at_ms - performance.now();
+      if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+      switch (event.type) {
+        case "key_down": await page.keyboard.down(event.key!); keys.add(event.key!); break;
+        case "key_up": await page.keyboard.up(event.key!); keys.delete(event.key!); break;
+        case "button_down": await page.mouse.down({ button: event.button ?? "left", clickCount: event.click_count }); buttons.add(event.button ?? "left"); break;
+        case "button_up": await page.mouse.up({ button: event.button ?? "left", clickCount: event.click_count }); buttons.delete(event.button ?? "left"); break;
+        case "move": {
+          let { x, y } = event as { x: number; y: number };
+          if (event.target) {
+            const element = locate(page, event.target);
+            await element.scrollIntoViewIfNeeded({ timeout });
+            const box = await element.boundingBox({ timeout });
+            if (!box) throw new Error("The target has no place on the page. Nothing more was sent.");
+            x = box.x + box.width / 2; y = box.y + box.height / 2;
+          }
+          await page.mouse.move(x, y, { steps: event.steps });
+          break;
+        }
+        case "wheel": await page.mouse.wheel(event.dx ?? 0, event.dy ?? 0); break;
+        case "pen_down": await penEvent("mousePressed", event); penDown = true; break;
+        case "pen_move": await penEvent("mouseMoved", event); break;
+        case "pen_up": await penEvent("mouseReleased", event); penDown = false; break;
+      }
+    }
+  } finally {
+    for (const button of buttons) await page.mouse.up({ button }).catch(() => {});
+    for (const key of [...keys].reverse()) await page.keyboard.up(key).catch(() => {});
+    if (penDown && cdp && pen) await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...pen, button: "left", buttons: 0, clickCount: 1, pointerType: "pen" }).catch(() => {});
+    await cdp?.detach().catch(() => {});
+  }
+}
+
 async function act(action: WebAction) {
   const timeout = action.timeout_ms ?? (["navigate", "back", "forward", "reload", "new_tab", "wait_load", "wait_download", "upload", "evaluate"].includes(action.action) ? 30_000 : 5_000);
   switch (action.action) {
@@ -449,10 +504,10 @@ async function act(action: WebAction) {
   const target = action.target && locate(page, action.target);
   const run = async (): Promise<unknown> => {
     switch (action.action) {
-      case "click": return target!.click({ button: action.button, clickCount: action.click_count, timeout });
-      case "hover": return target!.hover({ timeout });
+      case "click": return target!.click({ button: action.button, clickCount: action.click_count, modifiers: action.modifiers, timeout });
+      case "hover": return target!.hover({ modifiers: action.modifiers, timeout });
       case "fill": return target!.fill(action.text!, { timeout });
-      case "type": return target!.pressSequentially(action.text!, { timeout });
+      case "type": return target ? target.pressSequentially(action.text!, { timeout }) : page.keyboard.type(action.text!);
       case "press": return target ? target.press(action.key!, { timeout }) : page.keyboard.press(action.key!);
       case "check": return target!.check({ timeout });
       case "uncheck": return target!.uncheck({ timeout });
@@ -471,6 +526,7 @@ async function act(action: WebAction) {
         return response;
       }
       case "reload": return page.reload({ waitUntil: "domcontentloaded", timeout });
+      case "timeline": return play(page, action.events!, timeout);
       case "upload": {
         if (!action.chooser) return target!.setInputFiles(action.files!, { timeout });
         // Intercepting the chooser keeps the native file dialog closed; the page receives the files as if picked there.
