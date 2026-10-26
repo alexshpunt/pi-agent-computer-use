@@ -33,8 +33,8 @@ const hintOf = (result: Result) => {
 export default async function fixture(pi: ExtensionAPI): Promise<void> {
   const source = process.env.PI_COMPUTER_PROVIDER_SOURCE ?? path.resolve(import.meta.dirname, "../..");
   const load = (name: string) => import(pathToFileURL(path.join(source, "src", name)).href);
-  const [{ registerComputerProvider }, { loadComputerConfig }, { McpDriver }, { ComputerSession }] =
-    await Promise.all([load("provider.ts"), load("config.ts"), load("driver.ts"), load("session.ts")]);
+  const [{ registerComputerProvider }, { loadComputerConfig }, { McpDriver }, { ComputerSession }, { registerComputerTools }] =
+    await Promise.all([load("provider.ts"), load("config.ts"), load("driver.ts"), load("session.ts"), load("computer-tools.ts")]);
   const Driver = McpDriver as typeof import("../../src/driver.ts").McpDriver;
   class FixtureDriver extends Driver {
     get platform() { return "windows" as const; }
@@ -56,7 +56,8 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
   const close = async (): Promise<ComputerResult> => session ? session.close() : {
     content: [{ type: "text", text: "No fixture runtime is running." }], details: { status: "closed", mode },
   };
-  await registerComputerProvider(pi, getSession, close);
+  const provider = await registerComputerProvider(pi, getSession, close);
+  registerComputerTools(pi, provider.resources);
   pi.registerTool({
     name: "verify_ide_computer", label: "Verify IDE computer fixture",
     description: "Exercise ordinary IDE tools against a synthetic native peer; never operate a desktop.",
@@ -92,11 +93,18 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         if (operation === "safe") mode = "safe";
         else await driver!.call("fixture_control", { operation }, signal);
       };
-      const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: JSON.stringify({ action: "open", app: "Notepad" }) }), "window");
-      assert(!pi.getAllTools().some(tool => /^computer_/.test(tool.name)), "Provider exposed duplicate ordinary computer_* tools");
+      const open = async () => reference(await ok("computer_open", { at: "computer:machine/local", app: "Notepad" }), "window");
+      // Write and Insert never act on computer resources: they refuse, name the typed tool and send nothing.
+      const refused = async (name: "write" | "insert", args: Record<string, unknown>, tool: string) => {
+        const before = (await inputs()).length, result = await denied(name, args);
+        assert(textOf(result).includes(`Use ${tool}`), `${name} refusal did not name ${tool}: ${textOf(result)}`);
+        assert((await inputs()).length === before, `${name} sent native input`);
+        return result;
+      };
+      assert(!pi.getAllTools().some(tool => /^computer_(read|search|delete)$/.test(tool.name)), "Provider exposed duplicate ordinary computer tools");
       const apps = await ok("search", { path: "computer:machine/local/apps", query: "Notepad" });
       assert(textOf(apps).includes("Notepad"), "Installed-app Search lost the native app");
-      const first = reference(await ok("insert", { path: reference(apps, "app"), text: JSON.stringify({ action: "open" }) }), "window"), second = await open();
+      const first = reference(await ok("computer_open", { at: reference(apps, "app") }), "window"), second = await open();
       const found = await ok("search", { path: "computer:machine/local/windows", query: "Owned fixture" });
       assert(textOf(found).includes(first) && textOf(found).includes(second), "Window Search lost exact resources");
       let view = await ok("read", { path: first });
@@ -108,21 +116,19 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const detail = await ok("read", { path: observation, views: ["region:80,60,40,20"] });
         assert(detail.content.some(block => block.type === "image" && block.mimeType === "image/jpeg"), "Rectangular Read did not return native detail");
         assert((await captures()).length === nativeBeforeDetail, "Detail silently created a new grounding overview");
-        const beforeDenied = (await inputs()).length;
-        await denied("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80 }) });
-        assert((await inputs()).length === beforeDenied, "Consumed detail observation dispatched input");
-        view = await ok("read", { path: first }); observation = reference(view, "observation");
+        await refused("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80 }) }, "computer_click");
+        view = await ok("read", { path: first });
         const hint = hintOf(view), literal = '  {"looks":"like JSON"}\n"quoted text"\n  ';
-        const nativeBeforeWrite = (await journal()).length;
-        await ok("write", { path: `${observation}?hint=${encodeURIComponent(hint)}&delivery=foreground&delay_ms=0`, content: literal });
-        assert(!await capturedBeforeInput(nativeBeforeWrite), "Write resolution refreshed native capture");
+        await refused("write", { path: reference(view, "observation"), content: literal }, "computer_type");
+        const nativeBeforeType = (await journal()).length;
+        await ok("computer_type", { window: first, target: hint, text: literal, delay_ms: 0, foreground: true });
+        assert(!await capturedBeforeInput(nativeBeforeType), "computer_type refreshed native capture");
         const written = (await inputs()).at(-1);
-        assert(written?.name === "type_text" && written.arguments.text === literal && written.arguments.delay_ms === 0, "Literal Write normalized text, added a command or lost delay");
-        await denied("write", { path: observation, content: "replay" });
-        view = await ok("read", { path: first }); observation = reference(view, "observation");
-        const nativeBeforeInsert = (await journal()).length;
-        await ok("insert", { path: observation, text: JSON.stringify({ action: "click", hint: hintOf(view) }) });
-        assert(!await capturedBeforeInput(nativeBeforeInsert), "Insert resolution refreshed native capture");
+        assert(written?.name === "type_text" && written.arguments.text === literal && written.arguments.delay_ms === 0, "Literal typing normalized text, added a command or lost delay");
+        view = await ok("read", { path: first });
+        const nativeBeforeClick = (await journal()).length;
+        await ok("computer_click", { window: first, target: hintOf(view) });
+        assert(!await capturedBeforeInput(nativeBeforeClick), "computer_click refreshed native capture");
         const uiOnly = await ok("read", { path: first, views: ["ui"] });
         assert(!uiOnly.content.some(block => block.type === "image"), "UI text view included an image");
         assert(textOf(uiOnly).includes("Fixture text field") && textOf(uiOnly).includes("Fixture button"), "UI text view lost observed structure");
@@ -137,13 +143,16 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert(Array.isArray(blocks) && blocks.some(block => block.type === "text" && block.text.includes("Last collected control")), "Native canonical Read data silently truncated the collected UI");
         assert(textOf(large).includes("Presentation truncated") || textOf(large).includes("Last collected control"), "UI presentation lost rows without a truncation notice");
         await control("success");
-        const temporal = await ok("read", { path: first, views: ['sequence:{"duration_ms":200,"fps":10,"max_frames":2}'] });
+        // Read only looks: frames over time come from computer_record.
+        const looked = await denied("read", { path: first, views: ['sequence:{"duration_ms":200,"fps":10,"max_frames":2}'] });
+        assert(textOf(looked).includes("computer_record"), `Read sequence refusal named no tool: ${textOf(looked)}`);
+        const temporal = await ok("computer_record", { at: first, action: "sequence", duration_ms: 200, fps: 10, max_frames: 2 });
         assert(!temporal.content.some(block => block.type === "image"), "Sequence capture implicitly forwarded frames");
         const sequence = reference(temporal, "sequence"), beforeFrames = (await captures()).length;
         const frames = await ok("read", { path: sequence, views: ["frames:endpoints"] });
         assert(frames.content.filter(block => block.type === "image").length === 2 && textOf(frames).includes("frame 0") && textOf(frames).includes("frame 1"), "Frame Read lost native image labels");
         assert((await captures()).length === beforeFrames, "Frame selection recaptured the desktop");
-        await denied("insert", { path: sequence, text: JSON.stringify({ action: "click", x: 100, y: 80 }) });
+        await refused("insert", { path: sequence, text: JSON.stringify({ action: "click", x: 100, y: 80 }) }, "computer_click");
         await ok("write", { path: "local.txt", content: "Local source stays local\n" });
         await ok("insert", { path: "local.txt", anchor: "Local source stays local", text: "Second local line" });
         const local = await ok("read", { path: "local.txt" });
@@ -151,36 +160,30 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       } else {
         const listed = await ok("search", { path: "computer:machine/local/windows", query: "Unowned fixture" });
         const external = reference(listed, "window");
-        const externalView = await ok("read", { path: external });
+        await ok("read", { path: external });
         await control("safe");
-        const safeRefusal = await denied("write", { path: reference(externalView, "observation"), content: "Safe must refuse this text" });
-        assert(textOf(safeRefusal).includes("Safe mode allows only windows opened by this session"), "Ordinary tool refusal hid the native policy reason");
-        assert(!textOf(safeRefusal).includes("no file was written"), "Semantic Write was misrepresented as a filesystem operation");
+        const safeRefusal = await denied("computer_type", { window: external, text: "Safe must refuse this text" });
+        assert(textOf(safeRefusal).includes("Safe mode allows only windows opened by this session"), "Typed tool refusal hid the native policy reason");
         view = await ok("read", { path: first }); observation = reference(view, "observation");
-        await denied("insert", { path: observation, text: "not JSON" });
-        await denied("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80, window_ref: second }) });
-        await denied("insert", { path: first, text: JSON.stringify({ action: "click", x: 100, y: 80 }) });
-        await denied("write", { path: "computer:machine/local/display/primary", content: "not input authority" });
+        assert(textOf(await denied("insert", { path: first, text: "not JSON" })).includes("Insert does not act on computer resources; nothing was sent."), "Insert refusal changed");
+        await denied("computer_click", { window: observation, x: 100, y: 80 });
+        await denied("computer_type", { window: "computer:machine/local/display/primary", text: "not input authority" });
         assert((await inputs()).length === 0, "Invalid/Safe/display requests sent native input");
-        view = await ok("read", { path: first }); observation = reference(view, "observation");
         await control("partial");
         const beforePartial = (await journal()).length;
-        const partial = await denied("insert", { path: observation, text: JSON.stringify({ action: "sequence", sequence: [
-          { action: "type_text", x: 100, y: 80, text: "interrupted prefix" }, { action: "type_text", text: "must not run" },
-        ] }) });
+        const partial = await denied("computer_type", { window: first, target: hintOf(view), text: "interrupted prefix" });
         assert(/unknown|partial|uncertain|interrupted/i.test(textOf(partial)), "Interrupted result lost its uncertainty");
         assert(!await capturedBeforeInput(beforePartial), "Interrupted action resolution refreshed native capture");
-        await denied("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80 }) });
-        assert((await inputs()).length === 1 && (await inputs())[0].name === "type_text" && (await inputs())[0].arguments.text === "interrupted prefix", "Interrupted prefix was replayed or later sequence input was sent");
-        view = await ok("read", { path: first }); observation = reference(view, "observation");
+        assert((await inputs()).length === 1 && (await inputs())[0].name === "type_text" && (await inputs())[0].arguments.text === "interrupted prefix", "Interrupted input was sent more than once");
+        await ok("read", { path: first });
         await control("close_first");
-        await denied("insert", { path: observation, text: JSON.stringify({ action: "click", x: 100, y: 80 }) });
-        view = await ok("read", { path: second }); observation = reference(view, "observation");
+        await denied("computer_click", { window: first, x: 100, y: 80 });
+        await ok("read", { path: second });
         await control("recycle_second");
-        await denied("write", { path: observation, content: "reused native handle" });
+        await denied("computer_type", { window: second, text: "reused native handle" });
         assert((await inputs()).length === 1, "Closed/reused target received native input");
       }
-      await ok("insert", { path: "computer:session", text: JSON.stringify({ action: "close" }) });
+      await ok("delete", { path: "computer:session" });
       return { content: [{ type: "text" as const, text: `IDE computer ${scenario} contract passed` },
         ...(image ? [{ type: "image" as const, data: image.data!, mimeType: image.mimeType! }] : [])],
         details: { scenario, nativeInputs: await inputs(), nativeCaptures: (await captures()).length,

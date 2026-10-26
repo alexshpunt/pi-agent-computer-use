@@ -10,10 +10,10 @@ const driver = path.join(root, "test/fixtures/ide-provider-driver.mjs");
 const inputNames = ["type_text", "click", "press_key", "hotkey"];
 
 // Pattern: real-Pi extensions example and Linear/GitHub public-provider loading tests.
-// Contract: actual umbrella tools preserve native capture identity, literal input and no replay.
+// Contract: the IDE tools read and the computer_* tools act; they preserve native capture identity and literal input, and Write/Insert refuse.
 // IDE is this feature's consumer, not an unrelated latest/clean checkout gate.
 test.each([false, true])(
-  "ordinary IDE computer tools preserve literal text, native images and scopes (providerFirst=%s)",
+  "IDE Read and the computer_* tools preserve literal text, native images and scopes (providerFirst=%s)",
   async (providerFirst) => {
     await runScenario(providerFirst, "workflow");
   },
@@ -21,7 +21,7 @@ test.each([false, true])(
 );
 
 test.each([false, true])(
-  "ordinary IDE computer tools refuse stale, unauthorized and interrupted input (providerFirst=%s)",
+  "the computer_* tools refuse unauthorized, closed and interrupted input in the IDE (providerFirst=%s)",
   async (providerFirst) => {
     await runScenario(providerFirst, "admission");
   },
@@ -40,7 +40,7 @@ async function runScenario(providerFirst: boolean, scenario: "workflow" | "admis
       artifactsDir: testArtifactsDir(import.meta.filename), cwd, isolateUserResources: true, rawMode: false,
       piCommand: PI_COMMAND,
       extensions: providerFirst ? [fixture, extension] : [extension, fixture],
-      tools: ["read", "search", "write", "insert", "verify_ide_computer"],
+      tools: ["read", "search", "write", "insert", "delete", "verify_ide_computer"],
       timeoutMs: 90_000,
       conversation: [assistantMessage([toolCall({ id: "computer-proof", name: "verify_ide_computer", arguments: { scenario } })], { stopReason: "toolUse" }),
         assistantMessage([text("Finished the synthetic IDE computer fixture.")])],

@@ -406,7 +406,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
 ): Promise<{ readonly resources: ComputerResources; readonly guide: string; readonly attached: () => boolean }> {
   const accepted = new Set<string>();
   const guide = await readFile(new URL("../docs/computer-resources.md", import.meta.url), "utf8");
-  connectAgentDocumentation(pi, [{ id: "computer", description: "Native computer resources, readonly vision and observation-bound input through ordinary IDE tools",
+  connectAgentDocumentation(pi, [{ id: "computer", description: "Native computer resources: look with Read and Search, act with the computer_* tools",
     markdown: guide,
     triggers: ["read", "search"].map(tool => ({ tool, resourcePrefixes: ["computer:"] })) }]);
   const resources = new ComputerResources(getSession, closeSession, openSandbox, connectMachine, getMode);
