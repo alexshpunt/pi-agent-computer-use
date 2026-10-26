@@ -32,7 +32,7 @@ const REPLACED: [RegExp, string][] = [
   [/^(move|resize|minimize|maximize|focus|restore|name)$/, "computer_window (resize of a display: computer_display)"], [/^(wait_for|verify)$/, "computer_wait"],
   [/^(navigate|back|forward|reload|wait_load|new_tab|switch_tab|close_tab|dialog|upload|wait_download|cancel_download|evaluate)$/, "computer_browser"],
   [/^(put|get|files)$/, "computer_files"], [/^clipboard_/, "computer_clipboard"], [/^(record_start|record_stop|audio_record)$/, "computer_record"],
-  [/^(close|kill)$/, "Delete (kill: Delete with ?force=true)"], [/^setup$/, "/computer-setup, which only the user runs (ask them)"], [/^batch$/, "a Codemode script"],
+  [/^(close|kill)$/, "Delete (kill: Delete with ?force=true)"], [/^setup$/, "/computer-setup, which only the user runs (ask them)"], [/^batch$/, "Codemode: a script that calls the computer_* tools in order"],
 ];
 /** Why Write or Insert refuses a computer address, naming the tool that does what it was sent. */
 export function computerEditRefusal(tool: "write" | "insert", input: Record<string, unknown>): string {
