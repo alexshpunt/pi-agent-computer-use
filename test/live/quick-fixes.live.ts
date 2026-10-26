@@ -45,8 +45,11 @@ test("a point click after a refused region Read captures the window again", asyn
   try {
     const view = await live.read(window, ["image"]);
     await live.read(`computer:observation/${view.details.observation_id}`, ["region:5000,5000,10,10"]).catch(() => undefined);
-    const clicked = await live.resources.input(requireComputerAddress(window), live.cwd, clickPlan({ window, x: 60, y: 20 }));
-    expect(clicked.details.status, text(clicked)).toBe("delivered");
+    const clicked = await live.resources.input(requireComputerAddress(window), live.cwd, clickPlan({ window, x: 200, y: 250 }));
+    // The click is real input; right after an app starts, Windows can still hand the foreground back to another window,
+    // and the driver then answers unknown. What this checks is that the spent observation no longer refuses the click.
+    expect(clicked.details.status, text(clicked)).not.toBe("refused");
+    expect(text(clicked)).not.toMatch(/expired/);
   } finally {
     await live.resources.delete(`${window}?force=true`, live.cwd);
   }
