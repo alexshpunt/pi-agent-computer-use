@@ -1,3 +1,4 @@
+import { addressPattern } from "./addresses.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,7 +10,7 @@ interface Result { isError?: boolean; content: { type: string; text?: string; da
 const textOf = (result: Result) => result.content.filter(block => block.type === "text").map(block => block.text).join("\n");
 const assert = (condition: unknown, message: string): void => { if (!condition) throw Error(message); };
 const reference = (result: Result, kind: "app" | "window" | "observation" | "sequence") => {
-  const match = textOf(result).match(new RegExp(`computer:${kind}/[a-zA-Z0-9-]+`));
+  const match = textOf(result).match(addressPattern(kind));
   if (!match) throw Error(`No ${kind} resource in real tool result: ${textOf(result)}`);
   return match[0].split("?")[0];
 };

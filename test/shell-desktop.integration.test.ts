@@ -16,7 +16,7 @@ for (const mode of ["yolo", "safe"] as const) {
       args: [path.resolve("test/fixtures/shell-desktop-driver.mjs"), log] }));
     const discover = `${SCRIPT_HELPERS}
 const listed=await windows();
-const refs=[...listed.matchAll(/computer:window\\/[\\w-]+/g)].map(match=>match[0]);
+const refs=[...listed.matchAll(/computer:[\\w-]+\\/w\\d+[a-z]{2}/g)].map(match=>match[0]);
 if(refs.length!==2)throw Error("Both windows missing");
 store("ref",refs[0]);text(listed);`;
     const observe = `const r=await tools.computer_read({path:load("ref"),views:['capture:{"hints":false}']});

@@ -1,7 +1,7 @@
 import { Type, type JsonValue } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { requireComputerAddress, type ComputerResources } from "./computer-resources.ts";
+import type { ComputerResources } from "./computer-resources.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
 import {
@@ -68,8 +68,8 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     renderCall: args => new Text(`computer_search ${plain(args.path)} ${plain(JSON.stringify(args.query))}`, 0, 0),
     async execute(_id, params, signal, _update, ctx) {
-      const result = await resources.search(requireComputerAddress(params.path), ctx.cwd, params.query, params.limit, signal);
-      return { content: [{ type: "text", text: presentComputerResult(result) }], details: result.details, ...(result.isError ? { isError: true } : {}) };
+      const result = await resources.search(resources.address(params.path), ctx.cwd, params.query, params.limit, signal);
+      return { content: [{ type: "text", text: resources.shorten(presentComputerResult(result)) }], details: result.details, ...(result.isError ? { isError: true } : {}) };
     },
   });
   // Codemode scripts receive the receipt object for every outcome, so they branch on outcome without try/catch.

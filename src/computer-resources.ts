@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { parseComputerAddress, computerSource, displaySource, type ComputerAddress } from "./computer-address.ts";
+import { parseComputerAddress, computerSource, displaySource, ADDRESS_KINDS, type ComputerAddress } from "./computer-address.ts";
+import { ShortAddresses, SHORT_REFERENCE } from "./short-addresses.ts";
 import { parseComputerViews, type ComputerViews } from "./computer-views.ts";
 import { checkedName, type ProcessHealth } from "./machine-host.ts";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -25,7 +26,7 @@ export const LOCAL_MACHINE = "local";
 /** How to use a machine address: the same on every machine. */
 export function machineGuide(source: string): string[] {
   return [`Search ${source}/windows for its windows and ${source}/apps for its installed apps; Read ${source}/displays for its displays and ${source}/display/primary for its main display (Insert resize into a display address to change its resolution).`,
-    `Insert open, open_browser, open_sandbox, open_session, webview2_debugging, put, get, files, clipboard_read, clipboard_write, record_start, record_stop, audio_record or close into ${source}.`];
+    `Insert open, open_browser, open_sandbox, open_session, webview2_debugging, put, get, files, clipboard_read, clipboard_write, record_start, record_stop, audio_record, name (a window by its title) or close into ${source}.`];
 }
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
@@ -249,6 +250,12 @@ function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ComputerRequestError("Use a JSON command object.");
   return value as Record<string, unknown>;
 }
+/** A window name the agent gives: computer:<name>. */
+const NAME = /^[a-z][a-z0-9_-]{0,31}$/;
+/** Whether an Insert text is a name command, checked before the address's other commands. */
+function nameCommand(value: string): boolean {
+  try { return (JSON.parse(value) as { action?: unknown })?.action === "name"; } catch { return false; }
+}
 function only(value: Record<string, unknown>, fields: readonly string[]): void {
   if (Object.keys(value).some(key => !fields.includes(key))) throw new ComputerRequestError("Command contains unsupported fields.");
 }
@@ -268,6 +275,14 @@ export class ComputerResources {
   private readonly starting = new Map<string, Promise<OpenedMachine>>();
   /** Sandbox launches and machine starts still in progress; a cancelled one finishes its own cleanup before it settles. */
   private readonly opening = new Set<Promise<unknown>>();
+  /** Short aliases of this run's long addresses (computer:zinpc/w3qk). */
+  private readonly shorts = new ShortAddresses();
+  /** Window names the agent gave, with the window's title when it was named. */
+  private readonly names = new Map<string, { window_ref: string; title: string }>();
+  /** Window titles from the latest window listings, for naming by title and for listing names. */
+  private readonly titles = new Map<string, string>();
+  /** This machine's session once started; reference checks need it synchronously. */
+  private local?: ComputerSession;
 
   /** Give an installed app of one machine an opaque reference; paths themselves are not session references. */
   private appRef(machine: string, id: string): string {
@@ -287,9 +302,57 @@ export class ComputerResources {
     for (const sandbox of this.sandboxes.values())
       if (holds(sandbox.session)) return { session: sandbox.session, machine: sandbox.machine ?? LOCAL_MACHINE, sandbox: sandbox.ref };
     for (const [machine, opened] of this.machines) if (holds(opened.session)) return { session: opened.session, machine };
-    const local = await this.getSession(cwd);
+    const local = this.local = await this.getSession(cwd);
     if (holds(local)) return { session: local, machine: LOCAL_MACHINE };
     throw new ComputerRequestError(`${unknown} No machine or sandbox of this computer use holds it, so nothing was sent.`);
+  }
+  /** Whether any started session of this computer use still holds a window reference. */
+  private holdsWindow(ref: string): boolean {
+    return [...this.sandboxes.values(), ...this.machines.values()].some(environment => environment.session.hasWindow(ref)) || !!this.local?.hasWindow(ref);
+  }
+  /** Give a window a name; one name per window, and a name of a live window is not taken over. */
+  private nameWindow(name: unknown, ref: string): ComputerResult {
+    if (typeof name !== "string" || !NAME.test(name) || ADDRESS_KINDS.has(name) || name === LOCAL_MACHINE || this.machines.has(name))
+      throw new ComputerRequestError("as is a name of 1-32 lowercase letters, digits, - or _ that starts with a letter and is not an address word (session, window, machine, ...) or a machine name.");
+    const held = this.names.get(name);
+    if (held && held.window_ref !== ref && this.holdsWindow(held.window_ref))
+      throw new ComputerRequestError(`computer:${name} already names ${computerSource("window", held.window_ref)}${held.title ? ` (${held.title})` : ""}. Choose another name.`);
+    for (const [other, entry] of this.names) if (entry.window_ref === ref) this.names.delete(other);
+    const title = this.titles.get(ref) ?? "";
+    this.names.set(name, { window_ref: ref, title });
+    return { content: [{ type: "text", text: `computer:${name} now names ${computerSource("window", ref)}${title ? ` (${title})` : ""}. Use it wherever this window's address goes; it stops resolving when the window closes.` }],
+      details: { status: "delivered", mode: this.getMode(), window_ref: ref } };
+  }
+  /**
+   * Parse an address the agent sent: a long one, a short alias issued in this run (computer:zinpc/w3qk, with the
+   * observation options of the long form), or a window name (computer:game). Stale aliases and names refuse.
+   */
+  address(source: string): ComputerAddress {
+    if (!source.startsWith("computer:")) return requireComputerAddress(source);
+    const at = source.indexOf("?");
+    const base = at < 0 ? source : source.slice(0, at), query = at < 0 ? "" : source.slice(at);
+    const segments = base.slice(9).split("/");
+    if (segments.length === 1 && !ADDRESS_KINDS.has(segments[0]) && NAME.test(segments[0])) {
+      if (query) throw new ComputerRequestError("A window name takes no options. Read it for an observation and put options on that observation's address.");
+      const entry = this.names.get(segments[0]);
+      if (!entry) throw new ComputerRequestError(`No window is named ${segments[0]}. Insert {"action":"name","as":"${segments[0]}"} into a window address first; Read computer:session for the current names.`);
+      if (!this.holdsWindow(entry.window_ref)) {
+        this.names.delete(segments[0]);
+        throw new ComputerRequestError(`computer:${segments[0]} named a window that has closed or was released${entry.title ? ` (${entry.title})` : ""}. Search the machine's windows again and name the new one.`);
+      }
+      return requireComputerAddress(computerSource("window", entry.window_ref));
+    }
+    if (segments.length === 2 && !ADDRESS_KINDS.has(segments[0]) && SHORT_REFERENCE.test(segments[1])) {
+      let long: string;
+      try { long = this.shorts.resolve(segments[0], segments[1]); }
+      catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+      return requireComputerAddress(long + query);
+    }
+    return requireComputerAddress(source);
+  }
+  /** Replace the long addresses in text shown to the agent with this run's short aliases. */
+  shorten(text: string): string {
+    return this.shorts.shorten(text, (kind, ref) => this.place(requireComputerAddress(computerSource(kind, ref)))?.machine);
   }
   /** The owner of a window, or of one machine's display. */
   private async route(cwd: string, target: ObservationTarget, signal?: AbortSignal): Promise<Owner> {
@@ -358,7 +421,7 @@ export class ComputerResources {
   }
   /** The session of a machine by name: this one's, or a remote one's started on first use. */
   private async machineSession(cwd: string, name: string, signal?: AbortSignal): Promise<ComputerSession> {
-    return name === LOCAL_MACHINE ? this.getSession(cwd) : (await this.machine(cwd, name, signal)).session;
+    return name === LOCAL_MACHINE ? (this.local = await this.getSession(cwd)) : (await this.machine(cwd, name, signal)).session;
   }
   /** Forget a released session's observations and window states, and the display observations of its machine. */
   private forget(session: ComputerSession, machine?: string): void {
@@ -493,9 +556,16 @@ export class ComputerResources {
     }
     if (address.kind === "session") {
       const machines = [LOCAL_MACHINE, ...this.machines.keys()].map(name => `- ${computerSource("machine", name)}`);
+      // Names whose window closed disappear from the list and stop resolving.
+      for (const [name, entry] of this.names) if (!this.holdsWindow(entry.window_ref)) this.names.delete(name);
+      const names = [...this.names].map(([name, entry]) => `- computer:${name} → ${computerSource("window", entry.window_ref)}${entry.title ? ` | ${entry.title}` : ""}`);
+      const windows = [...this.titles].filter(([ref]) => this.holdsWindow(ref) && this.shorts.issued(computerSource("window", ref)))
+        .map(([ref, title]) => `- ${computerSource("window", ref)} | ${title}`);
       const sandboxes = [...this.sandboxes.values()].map(sandbox => `- ${computerSource("sandbox", sandbox.ref)} on ${computerSource("machine", sandbox.machine ?? LOCAL_MACHINE)}`);
       return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in .pi/computer-use.json starts on its first use). Every window, display, observation and sequence address belongs to the machine that issued it, and every receipt names that machine:",
         ...machines, ...(sandboxes.length ? ["Sandboxes and isolated sessions:", ...sandboxes] : []),
+        ...(names.length ? ["Window names (Insert {\"action\":\"name\",\"as\":\"<name>\"} into a window address to add one):", ...names] : []),
+        ...(windows.length ? ["Windows listed so far:", ...windows] : []),
         "Insert {\"action\":\"close\"} here to release every machine, browser, sandbox and session this computer use started; the result lists each part."].join("\n");
     }
     return `# Computer resource\nSource: ${address.source}\nUse Read for native observation, Search for discovery, and Insert for explicit commands. No native capture occurred during descriptor resolution.`;
@@ -691,6 +761,25 @@ export class ComputerResources {
 
   /** Search permitted discovery metadata or the current collected UI without another native walk; the receipt names its machine. */
   async search(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
+    const result = await this.searchAt(address, cwd, query, limit, signal);
+    const windows = result.details.state?.windows;
+    if (Array.isArray(windows)) {
+      const listed = new Set<string>();
+      for (const row of windows as { window_ref?: unknown; title?: unknown; name?: unknown }[])
+        if (typeof row.window_ref === "string") { listed.add(row.window_ref); this.titles.set(row.window_ref, String(row.title ?? row.name ?? "")); }
+      // A full listing shows every open window of that machine or sandbox: windows missing from it have closed,
+      // and their names and titles go. The native session keeps such references until a capture finds them gone.
+      const where = this.place(address);
+      const same = (ref: string) => { const other = this.place(requireComputerAddress(computerSource("window", ref))); return other?.machine === where?.machine && other?.sandbox === where?.sandbox; };
+      if (!query && result.details.status === "listed" && where) {
+        for (const ref of this.titles.keys()) if (!listed.has(ref) && same(ref)) this.titles.delete(ref);
+        for (const [name, entry] of this.names) if (!listed.has(entry.window_ref) && same(entry.window_ref)) this.names.delete(name);
+      }
+    }
+    while (this.titles.size > 512) this.titles.delete(this.titles.keys().next().value!);
+    return result;
+  }
+  private async searchAt(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
     const place = this.place(address);
     return this.stamp(place, await this.searchAddress(address, cwd, query, limit, signal));
   }
@@ -723,6 +812,24 @@ export class ComputerResources {
     return this.stamp(place, await this.performAt(address, cwd, value, tool, signal));
   }
   private async performAt(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
+    if (tool === "insert" && (address.kind === "window" || address.kind === "machine" && !address.part) && nameCommand(value)) {
+      const command = commandObject(value);
+      if (address.kind === "window") {
+        only(command, ["action", "as"]);
+        await this.route(cwd, { window_ref: address.ref }, signal);
+        return this.nameWindow(command.as, address.ref);
+      }
+      only(command, ["action", "as", "title"]);
+      if (typeof command.title !== "string" || !command.title) throw new ComputerRequestError("Name a window of a machine by its title: {\"action\":\"name\",\"as\":\"game\",\"title\":\"<text or regex:...>\"}, or Insert the name command into the window's address.");
+      const listed = await this.search(requireComputerAddress(computerSource("machine", address.ref, "windows")), cwd, command.title, undefined, signal);
+      const rows = ((listed.details.state?.windows ?? []) as { window_ref?: string; title?: string }[]).filter(row => typeof row.window_ref === "string");
+      if (rows.length !== 1) {
+        const candidates = rows.slice(0, 20).map(row => `- ${computerSource("window", row.window_ref!)} | ${row.title ?? ""}`);
+        throw new ComputerRequestError(rows.length ? `${rows.length} windows match ${JSON.stringify(command.title)}; name one by its address or a narrower title:\n${candidates.join("\n")}`
+          : `No window of ${computerSource("machine", address.ref)} matches ${JSON.stringify(command.title)}.`);
+      }
+      return this.nameWindow(command.as, rows[0].window_ref!);
+    }
     if (address.kind === "window-state") {
       if (tool !== "insert") throw new ComputerRequestError("Window state grants native control through Insert, never literal Write.");
       const command = commandObject(value);

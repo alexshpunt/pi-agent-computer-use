@@ -1,3 +1,4 @@
+import { addressPattern } from "./addresses.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,7 +16,7 @@ function find(value: unknown, key: string): unknown {
   return undefined;
 }
 function reference(result: Result, kind: "window" | "window-state" | "observation"): string {
-  const found = body(result).match(new RegExp(`computer:${kind}/[a-zA-Z0-9-]+`));
+  const found = body(result).match(addressPattern(kind));
   assert(found, `No ${kind} resource in native tool receipt: ${body(result)}`);
   return found[0];
 }

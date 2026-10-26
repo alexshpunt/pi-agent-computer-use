@@ -15,6 +15,19 @@ Every machine is addressed the same way: `computer:machine/local` is this one, a
 
 No address falls back to this machine. Window, window-state, observation and sequence addresses belong to the machine (or sandbox) that issued them, and every Read, Search and Insert on them runs there. Display addresses name their machine. An address that no machine of this session issued, or that was released, is refused with the reason before anything is sent. Every receipt names its machine in its first line, for example `Computer observed (yolo) on lab`.
 
+### Short addresses and names
+
+Results show addresses in a short form: `computer:<machine>/<letter><number><tag>`, for example `computer:lab/w3qk` for a window, `o` for an observation, `s` for a sequence, `t` for a window state, `a` for an app, `b` for a sandbox and `d` for a listed display. Numbers count per machine and kind. The two-letter tag is drawn once per Pi run: an address kept from an earlier run is refused instead of reaching whatever window got the same number. Observation options go on the short form too (`computer:lab/o7qk?hint=1:a&delivery=foreground`). The long forms (`computer:window/w-...`) keep working and stay in structured details.
+
+Give a window a name and use it wherever the window's address goes:
+
+| Insert | Into | Effect |
+| --- | --- | --- |
+| `{"action":"name","as":"game"}` | a window address | `computer:game` now names that window |
+| `{"action":"name","as":"game","title":"Chrome"}` | a machine address | Names the one window whose title matches (text or `regex:`); several matches refuse with the candidates |
+
+A name is 1-32 lowercase letters, digits, `-` or `_`, starts with a letter, and is not an address word or a machine name. One window has one name; naming it again replaces the name, and a live window's name is not taken over. A name resolves only to its window: it is refused once the window has closed (a full window listing of its machine notices that) or its machine was released. Read `computer:session` for the current names and the windows listed so far.
+
 | Address | Use |
 | --- | --- |
 | `computer:machine/<name>/windows` | Search its windows |

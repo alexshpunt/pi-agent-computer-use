@@ -40,8 +40,8 @@ test("standalone Pi opens two windows with first observations, rejects invented 
       target: { pid: 42, window_id: 101 }, state: { elements: [{ element_token: "s1:0" }] } });
     expect(second).toMatchObject({ status: "observed", target: { pid: 42, window_id: 102 } });
     expect(second.window_ref).not.toBe(first.window_ref);
-    expect(getToolResultText(result, "first")).toContain(`computer:window/${first.window_ref}`);
-    expect(getToolResultText(result, "first")).toContain(`computer:observation/${first.observation_id}`);
+    // The text shows this run's short addresses (LPT-932); the long references stay in the details.
+    expect(getToolResultText(result, "first")).toMatch(/^Window: computer:local\/w1[a-z]{2}\nObservation: computer:local\/o1[a-z]{2}$/m);
     expect(getToolExecution(result, "first").isError).toBe(false);
     expect(getToolExecution(result, "stale").isError).toBe(true);
     expect(getToolResultText(result, "stale")).toContain("Observation reference expired");
