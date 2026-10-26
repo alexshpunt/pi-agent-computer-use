@@ -127,6 +127,8 @@ function openTarget(command: Record<string, unknown>, where: string): string | {
   if (!Array.isArray(args) || args.length > 32 || args.some(arg => typeof arg !== "string" || arg.length > 8192)) throw new ComputerRequestError("args must be up to 32 strings.");
   return { path: command.path, args: args as string[], ...(command.debugging ? { debugging: true } : {}) };
 }
+/** The Delete option that kills the process of a hung window the session opened instead of asking it to close. */
+export const FORCE = "?force=true";
 const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop", "audio_record"];
 /** Speech in a WAV file as text, with faster-whisper run through uv on the agent's own machine. */
 async function transcribe(wav: string): Promise<{ text: string; language: string; segments: { start: number; end: number; text: string }[] }> {
@@ -806,6 +808,49 @@ export class ComputerResources {
       { operation: "search", observation_id: address.ref, query, ...(limit !== undefined ? { limit } : {}) });
   }
 
+  /**
+   * Close what an address names: a window (like its close button; `?force=true` kills the hung process of a window
+   * this session opened), a sandbox or isolated session, a machine, or computer:session. The receipt names its machine.
+   */
+  async delete(source: string, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+    const force = source.endsWith(FORCE);
+    const address = this.address(force ? source.slice(0, -FORCE.length) : source);
+    if (force && address.kind !== "window") throw new ComputerRequestError("?force=true applies to window addresses only.");
+    return this.stamp(this.place(address), await this.deleteAt(address, cwd, force, signal));
+  }
+  private async deleteAt(address: ComputerAddress, cwd: string, force: boolean, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind === "window") {
+      const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+      this.retireWindow(address.ref);
+      return force ? session.killOwned(address.ref, signal) : session.closeWindow(address.ref, signal);
+    }
+    if (address.kind === "sandbox") return this.closeSandbox(this.sandbox(address.ref));
+    if (address.kind === "machine" && !address.part) return this.closeMachine(address.ref);
+    if (address.kind === "session") return this.closeAll();
+    throw new ComputerRequestError("Delete closes a window, a sandbox or isolated session, a machine or computer:session. Observations, sequences, apps and displays need no closing.");
+  }
+  /**
+   * Move, resize, minimize, maximize, focus or restore a window by its address: a fresh native state sample bounds the
+   * one command, so no window-state address is handed out.
+   */
+  async manageWindow(address: ComputerAddress, cwd: string, command: Record<string, unknown>, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "window") throw new ComputerRequestError("computer_window needs a window address from Search, Read or a name.");
+    let management: WindowManagementCommand | undefined;
+    if (command.action !== "restore") {
+      try { management = parseWindowManagement(command); }
+      catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    }
+    const place = this.place(address);
+    const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    this.retireWindow(address.ref);
+    const state = await session.observeWindowState(address.ref, signal);
+    const id = state.details.window_state_id;
+    if (state.details.status !== "observed" || !id) return this.stamp(place, state);
+    if (management && state.details.window_state_kind !== "management")
+      return this.stamp(place, { ...state, content: [{ type: "text", text: "This native runtime can only restore and activate windows, not move, resize, minimize, maximize or focus them." }],
+        details: { ...state.details, status: "refused" } });
+    return this.stamp(place, management ? await session.manageWindow(address.ref, id, management, signal) : await session.restoreWindow(address.ref, id, signal));
+  }
   /** Dispatch exactly one literal Write or JSON Insert against its address-bound target; the receipt names its machine. */
   async perform(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {
     const place = this.place(address);
@@ -1323,7 +1368,10 @@ export class ComputerResources {
 
 /** Parse a tool-owned path without allowing an unknown computer URI to fall through to files. */
 export function requireComputerAddress(source: string): ComputerAddress {
-  const address = parseComputerAddress(source);
+  let address;
+  // A malformed address is a refused request: nothing was sent anywhere.
+  try { address = parseComputerAddress(source); }
+  catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
   if (!address) throw new ComputerRequestError("Not a computer resource.");
   return address;
 }

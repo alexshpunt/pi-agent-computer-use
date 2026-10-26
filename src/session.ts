@@ -1330,6 +1330,38 @@ export class ComputerSession {
   }
 
   /**
+   * Ask a window to close, like its close button: a browser this session opened closes with its disposable profile,
+   * an attached one is detached first, other windows get WM_CLOSE. The app may keep the window open, for example to
+   * ask about unsaved work; the result says whether it closed.
+   */
+  closeWindow(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        const known = this.entries.get(ref);
+        if (known && !this.allowed(known)) return this.denied(ref);
+        const entry = await this.current(ref, signal);
+        if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
+        if (!this.allowed(entry)) return this.denied(ref);
+        if (signal?.aborted) return this.result("refused", "Cancelled before closing the window.");
+        const key = `${entry.target.pid}:${entry.target.window_id}`, browser = this.browsers.get(key);
+        if (browser) {
+          this.browsers.delete(key);
+          entry.web = undefined; entry.dom = undefined;
+          await browser.close().catch(() => undefined);
+        }
+        if (!this.host) {
+          if (browser) { this.entries.delete(ref); return this.result("delivered", "The browser this session opened was closed.", undefined, this.addressed(entry)); }
+          return this.result("refused", "Closing windows needs the machine's own Windows host, which this environment lacks. Click the window's close button, or Delete it with ?force=true when this session opened it.", undefined, this.addressed(entry));
+        }
+        const outcome = await this.host.closeWindow(entry.target.pid, entry.target.window_id, 5000);
+        if (outcome === "refused") return this.result("refused", "Windows refused the close request; the window may belong to an elevated app. Click its close button instead.", undefined, this.addressed(entry));
+        if (outcome === "open") return this.result("delivered", "Close was requested, but the window is still open after 5 s; it may be asking about unsaved work. Read it to see what it shows.", { closed: false }, this.addressed(entry));
+        this.entries.delete(ref);
+        return this.result("closed", "The window closed; its address expired.", { closed: true }, this.addressed(entry));
+      } catch (error) { return this.failed(error, true); }
+    });
+  }
+  /**
    * Force-close the process of a window this session opened, when every window of that process is session-owned.
    * Unsaved work in it is lost; a process that also shows other windows is never killed.
    */

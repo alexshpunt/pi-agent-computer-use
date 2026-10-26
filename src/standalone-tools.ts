@@ -4,6 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import type { ComputerResources } from "./computer-resources.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { computerReadRenderer } from "./computer-read-renderer.ts";
+import { actionResult, computerNamespace, receiptSchema, registerComputerDelete } from "./computer-tools.ts";
 import {
   COMPUTER_INPUT_HELP, COMPUTER_PATH_HELP, COMPUTER_SEARCH_HELP, COMPUTER_VIEWS_HELP,
   performComputer, presentComputerResult, readComputer,
@@ -14,15 +15,11 @@ const image = Type.Object({ type: Type.Literal("image"), data: Type.String(), mi
 const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
 /**
- * Offer computer use without Pi Agent IDE: the same computer: resources through four deferred tools that
- * tool_search finds. Tools stay off the model's tool list until a search loads them.
+ * Offer computer use without Pi Agent IDE: the same computer: resources through deferred computer_read, computer_search,
+ * computer_write, computer_insert and computer_delete tools that tool_search finds. Tools stay off the model's tool list until a search loads them.
  */
 export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerResources, guide: string): void {
-  const namespace = {
-    name: "computer",
-    description: "Read and operate Windows app windows, displays and browser pages through computer: addresses",
-    instructions: guide,
-  };
+  const namespace = computerNamespace(guide);
   pi.registerTool({
     name: "computer_read", label: "Computer read", exposure: "deferred", namespace,
     description: `Use computer_read to discover machines, see app windows, displays and browser pages, and get the observations that ground input. Read ${GUIDE} first for addresses, views and commands.`,
@@ -72,8 +69,6 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
       return { content: [{ type: "text", text: resources.shorten(presentComputerResult(result)) }], details: result.details, ...(result.isError ? { isError: true } : {}) };
     },
   });
-  // Codemode scripts receive the receipt object for every outcome, so they branch on outcome without try/catch.
-  const receiptSchema = Type.Object({ outcome: Type.String(), effect: Type.String() }, { additionalProperties: true });
   for (const tool of ["write", "insert"] as const) {
     const field = tool === "write" ? "content" : "text";
     const renderer = computerActionRenderer(tool);
@@ -94,16 +89,9 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
       renderResult: renderer.renderResult,
       async execute(_id, params, signal, _update, ctx) {
         const input = params as Record<string, unknown>;
-        const action = await performComputer(resources, tool, String(input.path), input, ctx.cwd, signal);
-        // The receipt is plain data with a few untyped native fields; a JSON copy gives scripts exactly that.
-        const receipt: JsonValue = JSON.parse(JSON.stringify(action.script));
-        return { content: [{ type: "text", text: action.summary }, ...("images" in action ? action.images ?? [] : [])], details: { results: [], metadata: { semanticAction: action.data } },
-          structuredContent: receipt, ...(action.data.ok ? {} : { isError: true }) };
+        return actionResult(await performComputer(resources, tool, String(input.path), input, ctx.cwd, signal));
       },
     });
   }
-  // Deferred tools are reachable only through tool_search, which Pi registers inactive.
-  const active = pi.getActiveTools();
-  if (!active.includes("tool_search") && pi.getAllTools().some(tool => tool.name === "tool_search"))
-    pi.setActiveTools([...active, "tool_search"]);
+  registerComputerDelete(pi, resources, guide);
 }

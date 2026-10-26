@@ -29,8 +29,8 @@ function semantic(result: Result): Record<string, unknown> {
 export default async function fixture(pi: ExtensionAPI): Promise<void> {
   const source = process.env.PI_WINDOW_MANAGEMENT_PROVIDER_SOURCE ?? path.resolve(import.meta.dirname, "../..");
   const load = (name: string) => import(pathToFileURL(path.join(source, "src", name)).href);
-  const [{ registerComputerProvider }, { loadComputerConfig }, { McpDriver }, { ComputerSession }] =
-    await Promise.all([load("provider.ts"), load("config.ts"), load("driver.ts"), load("session.ts")]);
+  const [{ registerComputerProvider }, { loadComputerConfig }, { McpDriver }, { ComputerSession }, { registerComputerTools }] =
+    await Promise.all([load("provider.ts"), load("config.ts"), load("driver.ts"), load("session.ts"), load("computer-tools.ts")]);
   const Base = McpDriver as typeof import("../../src/driver.ts").McpDriver;
   let management = true, restoration = true, mode: ComputerMode = "yolo";
   let session: ComputerSession | undefined, driver: FixtureDriver | undefined, log: string | undefined;
@@ -58,11 +58,12 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
   const close = async (): Promise<ComputerResult> => session ? session.close() : {
     content: [{ type: "text", text: "No synthetic runtime is running." }], details: { status: "closed", mode },
   };
-  await registerComputerProvider(pi, getSession, close);
+  const provider = await registerComputerProvider(pi, getSession, close);
+  registerComputerTools(pi, provider.resources, provider.guide);
   pi.registerTool({
     name: "verify_window_management", label: "Verify one-use window management",
     description: "Exercise real IDE state and management with synthetic MCP receipts only.",
-    parameters: Type.Object({ scenario: Type.Union([Type.Literal("workflow"), Type.Literal("admission"), Type.Literal("receipts"), Type.Literal("restore")]) }),
+    parameters: Type.Object({ scenario: Type.Union([Type.Literal("workflow"), Type.Literal("admission"), Type.Literal("receipts"), Type.Literal("restore"), Type.Literal("typed")]) }),
     async execute(_id, { scenario }, signal, _update, ctx) {
       const call = async (name: string, args: Record<string, unknown>, callSignal = signal): Promise<Result> => {
         try { const result = await ctx.executeTool(name, args, { signal: callSignal }); return { ...result.result, isError: result.isError } as Result; }
@@ -90,7 +91,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       const insert = (state: string, command: Record<string, unknown>) => call("insert", { path: state, text: JSON.stringify(command) });
       const move = { action: "move", x: -20, y: 120, unit: "windows_desktop_pixels" };
       const open = async () => reference(await ok("insert", { path: "computer:machine/local", text: '{"action":"open","app":"Notepad"}' }), "window");
-      assert(!pi.getAllTools().some(tool => /^computer_/.test(tool.name)), "Separate computer tools leaked into the IDE provider");
+      assert(!pi.getAllTools().some(tool => /^computer_(read|search|write|insert)$/.test(tool.name)), "Standalone computer tools leaked into the IDE provider");
       const first = await open(), second = await open();
       const listed = await ok("search", { path: "computer:machine/local/windows", query: "Owned management fixture" });
       assert(body(listed).includes(first) && body(listed).includes(second), "Search lost exact-source references");
@@ -167,6 +168,31 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
           "Post-dispatch reuse became success or discarded completed prefix");
         await denied("insert", { path: state, text: JSON.stringify(move) });
         assert(await count("manage_window") === 1, "Post-dispatch reuse was replayed");
+      } else if (scenario === "typed") {
+        // computer_window samples its own one-use state: no window-state address, and invalid fields never reach native code.
+        const window = (args: Record<string, unknown>, target = first) => call("computer_window", { window: target, ...args });
+        for (const bad of [{ action: "move", x: 1 }, { action: "maximize", x: 1 }, { action: "resize", width: 10 }, { action: "restore", y: 2 }]) {
+          const result = await window(bad);
+          assert(result.isError, `computer_window accepted ${JSON.stringify(bad)}: ${body(result)}`);
+        }
+        await denied("computer_window", { window: state, action: "focus" });
+        assert(await count("manage_window") === 0, "Invalid computer_window calls reached native management");
+        const moved = await window({ action: "move", x: -20, y: 120 });
+        assert(!moved.isError && semantic(moved).effect === "applied" && body(moved).includes("on local"), `computer_window move failed: ${body(moved)}`);
+        await control("reset");
+        const resized = await window({ action: "resize", width: 180, height: 120 });
+        assert(!resized.isError && semantic(resized).effect === "applied", `computer_window resize failed: ${body(resized)}`);
+        await control("reset");
+        assert(!(await window({ action: "maximize" })).isError, "computer_window maximize failed");
+        await control("reset"); await control("minimized");
+        const restored = await window({ action: "restore" });
+        assert(!restored.isError && find(restored, "restore_requested") === true, `computer_window restore failed: ${body(restored)}`);
+        await control("reset");
+        const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned management fixture" }), "window");
+        mode = "safe";
+        const refused = await window({ action: "focus" }, external);
+        assert(refused.isError && semantic(refused).effect === "not-applied", `Safe mode let computer_window manage a foreign window: ${body(refused)}`);
+        mode = "yolo";
       } else if (scenario === "receipts") {
         for (const operation of ["refused", "partial", "final_cancel", "wrong_state", "wrong_window", "wrong_operation", "wrong_route",
           "missing_focus", "missing_prefix", "missing_receipt", "wrong_request", "wrong_before", "constrained", "changed_source", "contradictory_foreground"]) {

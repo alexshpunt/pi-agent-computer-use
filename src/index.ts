@@ -9,6 +9,7 @@ import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
 import { registerStandaloneTools } from "./standalone-tools.ts";
+import { registerComputerTools } from "./computer-tools.ts";
 import { WebBrowser } from "./web-browser.ts";
 import { localRunner } from "./runner.ts";
 import { MachineHost } from "./machine-host.ts";
@@ -54,11 +55,16 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     return result;
   }, openSandbox, connectMachine, getMode);
   // Every extension has loaded by session_start, so an IDE that accepts the provider has done so by now.
-  let standalone = false;
+  let registered = false;
   pi.on("session_start", () => {
-    if (standalone || provider.attached()) return;
-    standalone = true;
-    registerStandaloneTools(pi, provider.resources, provider.guide);
+    if (registered) return;
+    registered = true;
+    registerComputerTools(pi, provider.resources, provider.guide);
+    if (!provider.attached()) registerStandaloneTools(pi, provider.resources, provider.guide);
+    // Deferred tools are reachable only through tool_search, which Pi registers inactive.
+    const active = pi.getActiveTools();
+    if (!active.includes("tool_search") && pi.getAllTools().some(tool => tool.name === "tool_search"))
+      pi.setActiveTools([...active, "tool_search"]);
   });
   pi.on("session_shutdown", async () => {
     if (loading) await loading.catch(() => undefined);

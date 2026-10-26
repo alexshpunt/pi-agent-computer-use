@@ -22,6 +22,7 @@ async function fixture(branch: unknown[] = []) {
       const previous = events.get(name);
       events.set(name, previous ? async (event, context) => { await previous(event, context); return handler(event, context); } : handler);
     },
+    getActiveTools: () => [], getAllTools: () => [], setActiveTools: vi.fn(),
     appendEntry } as unknown as ExtensionAPI);
   return { commands, tools, events, appendEntry, ctx,
     close: vi.mocked(registerComputerProvider).mock.calls.at(-1)![2] };
