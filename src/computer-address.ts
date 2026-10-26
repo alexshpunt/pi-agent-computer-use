@@ -9,7 +9,12 @@ export type ComputerAddress =
   /** A display of one machine: `primary`, or a reference listed by that machine's displays. */
   | { kind: "display"; source: string; machine: string; ref: string }
   /** `hint` names one element of the observation for an internal input step; parsed addresses never carry it. */
-  | { kind: "observation"; source: string; ref: string; hint?: string };
+  | { kind: "observation"; source: string; ref: string; hint?: string }
+  /** A named rectangle of a window: `ref` is the window's reference, `name` the viewport's name in that window. */
+  | { kind: "viewport"; source: string; ref: string; name: string };
+
+/** A name the agent gives a window (computer:<name>) or a viewport of a window (computer:<window>/<name>). */
+export const NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 
 const references = new Set(["app", "window", "observation", "sequence", "sandbox", "machine"]);
 /** Words a long address starts with; machine names and window names never take them. */
@@ -40,6 +45,10 @@ export function parseComputerAddress(source: string): ComputerAddress | undefine
     if (query !== undefined) return invalid();
     return { kind: "display", source, machine: reference(segments[1]), ref: reference(segments[3]) };
   }
+  if (kind === "window" && segments.length === 3) {
+    if (query !== undefined || !NAME.test(segments[2])) return invalid();
+    return { kind: "viewport", source, ref: reference(segments[1]), name: segments[2] };
+  }
   const machinePart = kind === "machine" && segments.length === 3 ? segments[2] : undefined;
   if (!references.has(kind) || (segments.length !== 2 && !(machinePart && parts.has(machinePart)))) return invalid();
   const ref = reference(segments[1]);
@@ -51,6 +60,13 @@ export function parseComputerAddress(source: string): ComputerAddress | undefine
 /** Build a computer address from an opaque session-issued reference, or a machine's address from its name. */
 export function computerSource(kind: "app" | "window" | "observation" | "sequence" | "sandbox" | "machine", ref: string, part?: MachinePart): string {
   const source = `computer:${kind}/${encodeURIComponent(ref)}${part ? `/${part}` : ""}`;
+  parseComputerAddress(source);
+  return source;
+}
+
+/** The long address of a window's viewport. */
+export function viewportSource(window: string, name: string): string {
+  const source = `${computerSource("window", window)}/${name}`;
   parseComputerAddress(source);
   return source;
 }

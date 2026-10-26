@@ -5,6 +5,8 @@ export interface CuaVisionSettings {
 }
 /** Default overview long edge (HD): large enough to read UI text, small enough for model image budgets. */
 export const DEFAULT_MAX_LONG_EDGE = 1280;
+/** The largest long edge CUA captures for this extension: windows up to it come at their own full resolution. */
+export const FULL_RESOLUTION = 4096;
 const defaults = (): CuaVisionSettings => ({ kernel: "lanczos3", maxLongEdge: DEFAULT_MAX_LONG_EDGE, scale: 1, version: 0, route: "cua_native" });
 
 /** Validate and freeze the native cap; returned raster sizes are never adjusted by the extension. */

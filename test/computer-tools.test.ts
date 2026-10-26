@@ -280,7 +280,7 @@ test("Delete reports a window that stays open and refuses what it cannot close",
   expect((await kept.remove("computer:machine/local?force=true")).summary).toContain("?force=true applies to window addresses only.");
   // A malformed address is refused before anything is sent, like an invalid field.
   expect((await kept.remove("computer:display/primary")).script).toMatchObject({ outcome: "refused", effect: "not-applied" });
-  expect((await kept.remove("computer:machine/local/windows")).summary).toContain("Delete closes a window, a sandbox or isolated session, a machine or computer:session.");
+  expect((await kept.remove("computer:machine/local/windows")).summary).toContain("Delete closes a window, a sandbox or isolated session, a machine or computer:session, or removes a viewport.");
 
   // Safe mode closes only windows this session opened, like any other input.
   const safe = fixture("closed");

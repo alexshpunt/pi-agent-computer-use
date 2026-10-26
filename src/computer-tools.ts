@@ -97,6 +97,14 @@ export function windowCommand(params: Static<typeof windowParameters>): Record<s
   return { action, ...fields, ...(wanted.length ? { unit: "windows_desktop_pixels" } : {}) };
 }
 
+const viewParameters = Type.Object({
+  viewport: Type.String({ description: "Viewport address: a window's name or address with the viewport's name after it, such as computer:game/pano or computer:zinpc/w3qk/pano. The name is 1-32 lowercase letters, digits, - or _, starting with a letter. A new name makes the viewport; the name of an existing one moves or resizes it." }),
+  x: Type.Optional(Type.Integer({ minimum: 0, description: "Left edge in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
+  y: Type.Optional(Type.Integer({ minimum: 0, description: "Top edge in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
+  width: Type.Optional(Type.Integer({ minimum: 1, description: "Width in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
+  height: Type.Optional(Type.Integer({ minimum: 1, description: "Height in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
+}, { additionalProperties: false });
+
 const displayParameters = Type.Object({
   display: Type.String({ description: "computer:machine/<name>/display/primary, or a display address listed by Read computer:machine/<name>/displays." }),
   width: Type.Integer({ minimum: 640, maximum: 16384, description: "New width in physical pixels." }),
@@ -254,9 +262,9 @@ export function recordCommand(params: Static<typeof recordParameters>): { comman
   return { command: { action: "audio_record", ...fields } };
 }
 
-const inputWindow = Type.String({ description: "Window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game." });
+const inputWindow = Type.String({ description: "Window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game, or a viewport address from computer_view, such as computer:game/pano." });
 const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest Read (1:a in a window Read, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }). On native windows a target is pressed through UI Automation in the background when it supports that, otherwise with the real pointer.` }));
-const coordinate = (axis: string) => Type.Optional(Type.Number({ minimum: 0, description: `${axis} of a point instead of target: pixels of the window's latest image, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front.` }));
+const coordinate = (axis: string) => Type.Optional(Type.Number({ minimum: 0, description: `${axis} of a point instead of target: pixels of the window's latest image, pixels of the viewport's image for a viewport address, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front.` }));
 const pointSpace = Type.Optional(Type.Union([Type.Literal("page"), Type.Literal("window")], { description: "Browser windows: page (default) takes refs, locators and CSS points of the page; window takes refs and points of a window Read, such as the browser's own toolbar." }));
 const modifiersField = Type.Optional(Type.Array(Type.Union([Type.Literal("ctrl"), Type.Literal("shift"), Type.Literal("alt"), Type.Literal("win")]), { maxItems: 4, description: "Keys held during the action." }));
 const locatorTimeout = Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "How long a locator target may take to match one ready element, default 5000." }));
@@ -506,6 +514,18 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
         command = windowCommand(params);
         return resources.address(params.window);
       }, address => command.action === "name" ? resources.name(address, ctx.cwd, command.as, signal) : resources.manageWindow(address, ctx.cwd, command, signal)));
+    },
+  });
+  pi.registerTool({
+    ...common, name: "computer_view", label: "Computer view",
+    description: "Use computer_view to make, move or resize a viewport: a named rectangle of a window that follows the window. The result shows the viewport at the window's own resolution. Give its address to the computer_* input tools to act at points of that image and see what changed only there; Read it to look again.",
+    parameters: viewParameters,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    ...rendered("computer_view", args => `${args.viewport}${args.x !== undefined || args.y !== undefined ? ` at ${args.x ?? "_"},${args.y ?? "_"}` : ""}${args.width !== undefined || args.height !== undefined ? ` ${args.width ?? "_"}x${args.height ?? "_"}` : ""}`),
+    async execute(_id, params, signal, _update, ctx) {
+      const { viewport, ...rect } = params;
+      return actionResult(await computerAction(resources, viewport, "view", () => resources.address(viewport),
+        address => resources.view(address, ctx.cwd, rect, signal)));
     },
   });
   pi.registerTool({
