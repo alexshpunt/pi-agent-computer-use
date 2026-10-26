@@ -128,7 +128,7 @@ function openTarget(command: Record<string, unknown>, where: string): string | {
   return { path: command.path, args: args as string[], ...(command.debugging ? { debugging: true } : {}) };
 }
 /** The Delete option that kills the process of a hung window the session opened instead of asking it to close. */
-const FORCE = "?force=true";
+export const FORCE = "?force=true";
 const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop", "audio_record"];
 /** Speech in a WAV file as text, with faster-whisper run through uv on the agent's own machine. */
 async function transcribe(wav: string): Promise<{ text: string; language: string; segments: { start: number; end: number; text: string }[] }> {
@@ -1368,7 +1368,10 @@ export class ComputerResources {
 
 /** Parse a tool-owned path without allowing an unknown computer URI to fall through to files. */
 export function requireComputerAddress(source: string): ComputerAddress {
-  const address = parseComputerAddress(source);
+  let address;
+  // A malformed address is a refused request: nothing was sent anywhere.
+  try { address = parseComputerAddress(source); }
+  catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
   if (!address) throw new ComputerRequestError("Not a computer resource.");
   return address;
 }

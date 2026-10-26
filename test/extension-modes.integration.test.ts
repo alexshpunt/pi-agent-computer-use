@@ -42,6 +42,7 @@ test("without Pi Agent IDE, tool_search finds the deferred computer tools and th
   for (const tool of ["computer_open", "computer_window", "computer_display", "computer_delete"]) expect(getToolResultText(result, "find")).toContain(tool);
   // A typed tool refuses a bad address with a receipt before any native work.
   expect(getToolExecution(result, "display").isError).toBe(true);
+  expect(getToolResultText(result, "display")).not.toContain("unknown");
   expect(getToolResultText(result, "display")).toContain("Display addresses name their machine");
   expect(getToolResultText(result, "delete")).toContain("Computer closed");
   expect(getToolResultText(result, "guide")).toMatch(/^# Computer resources/);
@@ -65,8 +66,11 @@ test("with Pi Agent IDE, computer use extends Read, Search, Insert and Delete an
       { id: "find", name: "tool_search", arguments: { query: "computer read windows displays" } },
       { id: "session", name: "read", arguments: { path: "computer:session" } },
       { id: "close", name: "insert", arguments: { path: "computer:session", text: '{"action":"close"}' } },
+      { id: "force", name: "delete", arguments: { path: "computer:machine/local?force=true" } },
       { id: "delete", name: "delete", arguments: { path: "computer:session" } },
     ]);
+    // The force option reaches computer use through the IDE's resolver, which then refuses it for a machine.
+    expect(getToolResultText(result, "force")).toContain("?force=true applies to window addresses only.");
     expect(getToolResultText(result, "find")).not.toContain("computer_read");
     expect(getToolResultText(result, "find")).not.toContain("computer_delete");
     for (const tool of ["computer_open", "computer_window", "computer_display"]) expect(getToolResultText(result, "find")).toContain(tool);

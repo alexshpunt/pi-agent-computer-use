@@ -5,7 +5,7 @@ import { connectTextEditorPlugin, TEXT_EDITOR_PROTOCOL, TEXT_EDITOR_API_VERSION 
 import type { ResourceResolver } from "pi-agent-ide/api/resource";
 import { connectAgentDocumentation } from "pi-agent-ide/api/documentation";
 import { readFile } from "node:fs/promises";
-import { ComputerResources, computerResultText, ComputerRequestError, LOCAL_MACHINE, type SandboxFactory, type MachineFactory } from "./computer-resources.ts";
+import { ComputerResources, computerResultText, ComputerRequestError, FORCE, LOCAL_MACHINE, type SandboxFactory, type MachineFactory } from "./computer-resources.ts";
 import { computerSource, displaySource, type ComputerAddress } from "./computer-address.ts";
 import type { WebLogEntry } from "./web-browser.ts";
 import { diffIsEmpty, type PixelReport, type StateDiff } from "./successor.ts";
@@ -396,7 +396,7 @@ export async function computerAction(resources: ComputerResources, source: strin
 export function deleteComputer(resources: ComputerResources, source: string, input: Record<string, unknown>, cwd: string, signal?: AbortSignal) {
   return computerAction(resources, source, "close", () => {
     if (Object.keys(input).some(key => key !== "path")) throw new ComputerRequestError("Delete of a computer address takes only its path; it closes the whole resource.");
-    return resources.address(source.replace(/\?force=true$/, ""));
+    return resources.address(source.endsWith(FORCE) ? source.slice(0, -FORCE.length) : source);
   }, () => resources.delete(source, cwd, signal));
 }
 /** A receipt whose window, sandbox and observation addresses are this run's short aliases. */
@@ -430,7 +430,8 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
     async tryResolve(source) {
       if (!owns(source)) return { kind: "not-handled" };
       try {
-        const address = resources.address(source);
+        // Delete's force option is not part of the address; Delete itself checks where it applies.
+        const address = resources.address(source.endsWith(FORCE) ? source.slice(0, -FORCE.length) : source);
         return { kind: "resolved", resource: { source, skipPostEdit: true,
           // An expired reference still resolves, so Write/Insert reach the handler and return a refused receipt.
           read: async () => {
