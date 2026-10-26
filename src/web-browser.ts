@@ -30,6 +30,8 @@ export interface WebAction {
     | "upload" | "wait_download" | "cancel_download" | "evaluate";
   target?: WebTarget;
   button?: "left" | "right" | "middle"; click_count?: number;
+  /** Keys held during a click or hover. */
+  modifiers?: ("Alt" | "Control" | "Meta" | "Shift")[];
   text?: string; key?: string; values?: string[];
   delta_x?: number; delta_y?: number;
   /** Element state for wait; load state for wait_load. */
@@ -174,10 +176,10 @@ export function validateWebSnapshot(value: unknown = {}): WebSnapshotOptions {
 }
 
 const ACTIONS: Record<WebAction["action"], { fields: readonly string[]; target: "required" | "optional" | "none" }> = {
-  click: { fields: ["button", "click_count"], target: "required" },
-  hover: { fields: [], target: "required" },
+  click: { fields: ["button", "click_count", "modifiers"], target: "required" },
+  hover: { fields: ["modifiers"], target: "required" },
   fill: { fields: ["text"], target: "required" },
-  type: { fields: ["text"], target: "required" },
+  type: { fields: ["text"], target: "optional" },
   press: { fields: ["key"], target: "optional" },
   check: { fields: [], target: "required" },
   uncheck: { fields: [], target: "required" },
@@ -219,6 +221,11 @@ export function validateWebAction(value: unknown): WebAction {
     action.button = command.button as WebAction["button"];
   }
   if (command.click_count !== undefined) action.click_count = integer(command.click_count, 1, 3, "click_count");
+  if (command.modifiers !== undefined) {
+    if (!Array.isArray(command.modifiers) || command.modifiers.length > 4 || new Set(command.modifiers).size !== command.modifiers.length || command.modifiers.some(key => !["Alt", "Control", "Meta", "Shift"].includes(key as string)))
+      throw Error("modifiers must be unique Alt, Control, Meta or Shift.");
+    action.modifiers = command.modifiers as WebAction["modifiers"];
+  }
   if (name === "fill" || name === "type") {
     if (typeof command.text !== "string" || command.text.length > 20_000) throw Error(`${name} needs text of at most 20000 characters.`);
     action.text = command.text;

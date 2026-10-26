@@ -49,7 +49,38 @@ const BATCH_STEPS = 200;
 /** Native actions a batch may run; each later step re-resolves its target in a fresh UI walk. */
 const NATIVE_BATCH_ACTIONS = ["click", "double_click", "right_click", "type_text", "key", "hotkey", "scroll", "invoke", "select", "set_value"];
 /** Native actions that take a Playwright locator or JSON target. */
-const NATIVE_LOCATOR_ACTIONS = ["click", "double_click", "right_click", "hover", "type_text", "scroll", "invoke", "select", "set_value", "check", "uncheck"];
+const NATIVE_LOCATOR_ACTIONS = ["click", "double_click", "right_click", "hover", "type_text", "key", "scroll", "invoke", "select", "set_value", "check", "uncheck"];
+/** A point in pixels of a window's latest image, or in CSS pixels of a browser page. */
+export interface InputPoint { x: number; y: number }
+/** One typed input on a window, built by a computer_* input tool; the window decides which backend runs it. */
+export interface InputPlan {
+  /** The tool's action for refusals, such as click. */
+  label: string;
+  /** A ref of the window's latest Read (a native ref such as 1:a, a page ref such as e12) or a Playwright locator. */
+  target?: string;
+  point?: InputPoint;
+  /** drag: where it ends. */
+  end?: { target?: string; point?: InputPoint };
+  /** Browser windows: page (CSS pixels of the page, the default) or window (pixels of the window's latest image). */
+  space?: "page" | "window";
+  /** The native command without its target, or why native windows cannot run it. */
+  native: Record<string, unknown> | string;
+  /** The Playwright action without its target, or why browser pages cannot run it. */
+  web: Record<string, unknown> | string;
+  /** true sends native input in the foreground at once; false never leaves the background. */
+  foreground?: boolean;
+  /** Runs after this one is delivered, such as Enter after typing. */
+  then?: InputPlan;
+}
+/** Native input that moves the real pointer, so it always goes in the foreground. */
+const FOREGROUND_ONLY = ["hover", "move", "timeline"];
+/** Native actions that only a locator target runs; a ref of the latest Read becomes the locator of its element. */
+const LOCATOR_ONLY = ["check", "uncheck"];
+/** What a target string is: a native ref of a window Read (1:a), a page ref of a DOM Read (e12, f1e3), or a Playwright locator. */
+export function refKind(target: unknown): "hint" | "page" | "locator" | undefined {
+  if (typeof target !== "string") return undefined;
+  return /^[0-9a-z]+:[a-z]+$/.test(target) ? "hint" : /^(?:f\d+)?e\d+$/.test(target) ? "page" : "locator";
+}
 /** Playwright verbs with a different native name. */
 const LOCATOR_VERBS: Record<string, string> = { fill: "set_value", dblclick: "double_click" };
 /**
@@ -287,6 +318,8 @@ export class ComputerResources {
   private readonly starting = new Map<string, Promise<OpenedMachine>>();
   /** Sandbox launches and machine starts still in progress; a cancelled one finishes its own cleanup before it settles. */
   private readonly opening = new Set<Promise<unknown>>();
+  /** Windows that refused background input once; typed input to them goes in the foreground. */
+  private readonly foreground = new Set<string>();
   /** Short aliases of this run's long addresses (computer:zinpc/w3qk). */
   private readonly shorts = new ShortAddresses();
   /** Window names the agent gave, with the window's title when it was named. */
@@ -876,6 +909,127 @@ export class ComputerResources {
     this.retireWindow(address.ref);
     const result = await session.actPage(address.ref, action, signal);
     return this.stamp(place, result.details.dom ? this.remember({ window_ref: address.ref }, result) : result);
+  }
+  /**
+   * One typed input on a window by its address. The window picks the backend: Playwright for page refs, locators
+   * and CSS points of a browser page, the native driver and UI Automation otherwise. Native points are pixels of the
+   * window's latest image; without a current one the window is captured first. The receipt names its machine.
+   */
+  async input(address: ComputerAddress, cwd: string, plan: InputPlan, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "window") throw new ComputerRequestError("Give the window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game.");
+    const place = this.place(address);
+    const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    let result = await this.inputStep(address.ref, session, plan, cwd, signal);
+    // A follow-up such as Enter after typing runs only after the first part was delivered.
+    if (plan.then && result.details.status === "delivered") {
+      const next = await this.inputStep(address.ref, session, plan.then, cwd, signal);
+      result = { ...next, content: [...result.content, ...next.content] };
+    }
+    return this.stamp(place, result);
+  }
+  private async inputStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+    const ref = refKind(plan.target);
+    const browser = session.isBrowserWindow(window);
+    if (browser && plan.space !== "window" && ref !== "hint") return this.pageInput(window, session, plan, cwd, signal);
+    if (plan.space !== undefined && !browser) throw new ComputerRequestError("space applies to browser windows only; points on other windows are pixels of the window's latest image.");
+    if (ref === "page") throw new ComputerRequestError(`${plan.target} is a page ref from a DOM Read; ${browser ? "omit space: \"window\" to act on the page" : "this window is not a browser page, so use a ref from its latest Read or a Playwright locator"}.`);
+    return this.nativeStep(window, session, plan, cwd, signal);
+  }
+
+  /** Typed input on the active page of a browser window through Playwright; a current DOM observation gives the change list. */
+  private async pageInput(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+    if (typeof plan.web === "string") throw new ComputerRequestError(plan.web);
+    if (plan.point || plan.end) throw new ComputerRequestError(`${plan.label} at a point of a browser page is not available yet; give a target, or space: "window" for window pixels.`);
+    const target = typeof plan.target === "string" ? refKind(plan.target) === "page" ? { ref: plan.target } : plan.target : undefined;
+    const command = { ...plan.web, ...(target !== undefined ? { target } : {}) };
+    let action: WebAction;
+    try { action = validateWebAction(command); }
+    catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
+    const dom = session.inputView(window).dom;
+    if (dom && this.snapshots.has(dom)) return this.performAt({ kind: "observation", ref: dom, source: computerSource("observation", dom) }, cwd, JSON.stringify(command), "insert", signal);
+    this.retireWindow(window);
+    const result = await session.actPage(window, action, signal);
+    return result.details.dom ? this.remember({ window_ref: window }, result) : result;
+  }
+
+  /**
+   * Typed input on a native window: a locator resolves in fresh UI walks, a ref of the latest Read and points use the
+   * window's current observation, captured first when there is none with the pixels a point needs. A background
+   * refusal, which sends nothing, is retried at once in the foreground, and the window keeps foreground delivery.
+   */
+  private async nativeStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
+    if (typeof plan.native === "string") throw new ComputerRequestError(plan.native);
+    const command: Record<string, unknown> = structuredClone(plan.native);
+    const action = String(command.action);
+    const pointerOnly = FOREGROUND_ONLY.includes(action);
+    if (pointerOnly && plan.foreground === false) throw new ComputerRequestError(`${plan.label} on a native window moves the real pointer, so it needs the foreground.`);
+    const foreground = plan.foreground ?? (pointerOnly || this.foreground.has(window));
+    if (foreground && !isSemanticAction(action)) command.delivery_mode = "foreground";
+    let target = plan.target;
+    let view = session.inputView(window);
+    // Actions that only exist on locators take a ref of the latest Read as the locator that names its element.
+    if (refKind(target) === "hint" && (LOCATOR_ONLY.includes(action) || command.option !== undefined)) target = suggestLocator(this.hinted(view, target as string));
+    if (command.option !== undefined) {
+      if (refKind(target) !== "locator") throw new ComputerRequestError(`${plan.label} with values needs the list as target.`);
+      target = `${target}.getByRole("option", { name: ${JSON.stringify(command.option)}, exact: true })`;
+      delete command.option;
+    }
+    let result: ComputerResult;
+    // What a foreground retry sends: the input observation is spent by then, so its refs become locators or points.
+    let retry = (): InputPlan => plan;
+    if (refKind(target) === "locator") {
+      if (plan.end) throw new ComputerRequestError(`${plan.label} takes refs of the window's latest Read or points, not locators.`);
+      result = await this.performAt({ kind: "window", ref: window, source: computerSource("window", window) }, cwd, JSON.stringify({ ...command, target }), "insert", signal);
+    } else {
+      const hint = refKind(target) === "hint" ? target as string : undefined;
+      // Only a locator waits for its element; refs and points act on the current observation at once.
+      delete command.timeout_ms;
+      const pixels = plan.point !== undefined || plan.end !== undefined || command.unit === "wheel_detents" || action === "timeline";
+      if (hint) this.hinted(view, hint);
+      else if (!view.native || pixels && view.native.width === undefined) {
+        const captured = await this.read({ kind: "window", ref: window, source: computerSource("window", window) }, cwd, ["image"], signal);
+        if (!captured || captured.details.status !== "observed") return captured ?? { content: [{ type: "text", text: "The window could not be captured; nothing was sent." }], details: { status: "refused", mode: this.getMode(), window_ref: window }, isError: true };
+        view = session.inputView(window);
+      }
+      const native = view.native!;
+      if (pixels && native.width === undefined) throw new ComputerRequestError(`${plan.label} at a point needs the window's pixels: Read the window with an image, or give a locator.`);
+      // Points are in the latest image the agent saw; the current observation can be a capture of another size.
+      const sx = native.width && view.seen ? native.width / view.seen.width : 1, sy = native.height && view.seen ? native.height / view.seen.height : 1;
+      const at = (point: InputPoint) => ({ x: Math.min(native.width! - 1, Math.round(point.x * sx)), y: Math.min(native.height! - 1, Math.round(point.y * sy)) });
+      const seen = (point: InputPoint) => ({ x: point.x / sx, y: point.y / sy });
+      const centre = (ref: string) => {
+        const box = this.hinted(view, ref).bounds.window_image;
+        if (!box || native.width === undefined) throw new ComputerRequestError(`${ref} has no place in the window's image; give a point or a locator.`);
+        return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+      };
+      if (action === "drag") {
+        const from = hint ? centre(hint) : plan.point ? at(plan.point) : undefined;
+        const end = plan.end?.target !== undefined ? refKind(plan.end.target) === "hint" ? centre(plan.end.target as string) : undefined : plan.end?.point ? at(plan.end.point) : undefined;
+        if (!from || !end) throw new ComputerRequestError("drag on a native window goes from and to refs of the window's latest Read or points.");
+        Object.assign(command, { from_x: from.x, from_y: from.y, to_x: end.x, to_y: end.y });
+        if (Array.isArray(command.via)) command.via = (command.via as InputPoint[]).map(at);
+        retry = () => ({ ...plan, target: undefined, point: seen(from), end: { point: seen(end) } });
+      } else if (action === "timeline") {
+        command.events = (command.events as Record<string, unknown>[]).map(event => typeof event.x === "number" && typeof event.y === "number" ? { ...event, ...at(event as unknown as InputPoint) } : event);
+      } else if (plan.point) Object.assign(command, at(plan.point));
+      else if (command.unit === "wheel_detents") Object.assign(command, { x: Math.floor(native.width! / 2), y: Math.floor(native.height! / 2) });
+      if (hint && action !== "drag") retry = () => NATIVE_LOCATOR_ACTIONS.includes(LOCATOR_VERBS[action] ?? action) ? { ...plan, target: suggestLocator(this.hinted(view, hint)) }
+        : { ...plan, target: undefined, point: seen(centre(hint)) };
+      const observation = { kind: "observation" as const, ref: native.id, source: computerSource("observation", native.id), ...(hint && action !== "drag" ? { hint } : {}) };
+      result = await this.performAt(observation, cwd, JSON.stringify(command), "insert", signal);
+    }
+    const capability = result.details.action_capability;
+    if (foreground || plan.foreground === false || result.details.status !== "refused" || capability?.background !== "unavailable") return result;
+    this.foreground.add(window);
+    const again = await this.nativeStep(window, session, { ...retry(), foreground: true }, cwd, signal);
+    return { ...again, content: [{ type: "text", text: `The window refused background input (${capability.code}), so this call sent it in the foreground; later input to this window goes in the foreground.` }, ...again.content] };
+  }
+
+  /** The element of a ref in the window's current observation. */
+  private hinted(view: ReturnType<ComputerSession["inputView"]>, hint: string): UiElement {
+    const element = view.native?.ui?.elements.find(item => item.hint === hint);
+    if (!element) throw new ComputerRequestError(`${hint} is not a ref of this window's latest Read, or input since then spent it: Read the window again, or give a Playwright locator.`);
+    return element;
   }
   /** Dispatch exactly one literal Write or JSON Insert against its address-bound target; the receipt names its machine. */
   async perform(address: ComputerAddress, cwd: string, value: string, tool: "write" | "insert", signal?: AbortSignal): Promise<ComputerResult> {

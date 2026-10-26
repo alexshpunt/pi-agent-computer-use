@@ -1,7 +1,7 @@
 import { Type, type JsonValue, type Static } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { ComputerRequestError, type ComputerResources } from "./computer-resources.ts";
+import { ComputerRequestError, type ComputerResources, type InputPlan } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
 import { computerActionRenderer } from "./computer-action-renderer.ts";
 import { parseComputerViews } from "./computer-views.ts";
@@ -242,6 +242,188 @@ export function recordCommand(params: Static<typeof recordParameters>): { comman
   return { command: { action: "audio_record", ...fields } };
 }
 
+const inputWindow = Type.String({ description: "Window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game." });
+const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest Read (1:a in a window Read, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }).` }));
+const coordinate = (axis: string) => Type.Optional(Type.Number({ minimum: 0, description: `${axis} of a point instead of target: pixels of the window's latest image, or CSS pixels of a browser page.` }));
+const pointSpace = Type.Optional(Type.Union([Type.Literal("page"), Type.Literal("window")], { description: "Browser windows: page (default) takes refs, locators and CSS points of the page; window takes refs and points of a window Read, such as the browser's own toolbar." }));
+const foregroundField = Type.Optional(Type.Boolean({ description: "Native windows: true sends input in the foreground at once (it activates the window and moves the real pointer); false never leaves the background. By default input starts in the background and moves to the foreground when the window refuses it." }));
+const modifiersField = Type.Optional(Type.Array(Type.Union([Type.Literal("ctrl"), Type.Literal("shift"), Type.Literal("alt"), Type.Literal("win")]), { maxItems: 4, description: "Keys held during the action." }));
+const locatorTimeout = Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "How long a locator target may take to match one ready element, default 5000." }));
+const PAGE_MODIFIERS: Record<string, string> = { ctrl: "Control", shift: "Shift", alt: "Alt", win: "Meta" };
+
+type Endpoint = { target?: string; x?: number; y?: number };
+/** The target or point of an action; required unless the action can go to the focused element. */
+function aim(params: Endpoint, label: string, required: boolean): Pick<InputPlan, "target" | "point"> {
+  if ((params.x === undefined) !== (params.y === undefined)) throw new ComputerRequestError(`${label} needs both x and y for a point.`);
+  const point = params.x !== undefined ? { x: params.x, y: params.y! } : undefined;
+  if (point && params.target !== undefined) throw new ComputerRequestError(`${label} takes a target or a point, not both.`);
+  if (required && !point && params.target === undefined) throw new ComputerRequestError(`${label} needs a target or a point (x and y).`);
+  return { ...(params.target !== undefined ? { target: params.target } : {}), ...(point ? { point } : {}) };
+}
+/** Fields every input plan shares. */
+const shared = (params: { space?: "page" | "window"; foreground?: boolean }) =>
+  ({ ...(params.space ? { space: params.space } : {}), ...(params.foreground !== undefined ? { foreground: params.foreground } : {}) });
+const timeout = (params: { timeout_ms?: number }) => params.timeout_ms !== undefined ? { timeout_ms: params.timeout_ms } : {};
+const pageModifiers = (modifiers?: string[]) => modifiers?.length ? { modifiers: modifiers.map(key => PAGE_MODIFIERS[key]) } : {};
+
+const clickParameters = Type.Object({
+  window: inputWindow, target: inputTarget("The element to click"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
+  button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")], { description: "Mouse button, default left." })),
+  count: Type.Optional(Type.Integer({ minimum: 1, maximum: 3, description: "Clicks: 2 is a double click, 3 a triple click (browser pages). Default 1." })),
+  modifiers: modifiersField, timeout_ms: locatorTimeout, foreground: foregroundField,
+}, { additionalProperties: false });
+
+/** What computer_click sends to a native window and to a browser page. */
+export function clickPlan(params: Static<typeof clickParameters>): InputPlan {
+  const count = params.count ?? 1, button = params.button ?? "left", modifiers = params.modifiers?.length ? { modifiers: params.modifiers } : {};
+  const native = count === 3 ? "A triple click works on browser pages only."
+    : button === "right" ? count === 2 ? "A right double click works on browser pages only." : { action: "right_click", ...modifiers, ...timeout(params) }
+    : count === 2 ? button === "middle" ? "A middle double click works on browser pages only." : { action: "double_click", ...modifiers, ...timeout(params) }
+    : { action: "click", ...(button === "middle" ? { button } : {}), ...modifiers, ...timeout(params) };
+  return { label: "click", ...aim(params, "click", true), ...shared(params), native,
+    web: { action: "click", ...(button !== "left" ? { button } : {}), ...(count > 1 ? { click_count: count } : {}), ...pageModifiers(params.modifiers), ...timeout(params) } };
+}
+
+const hoverParameters = Type.Object({
+  window: inputWindow, target: inputTarget("The element to point at"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
+  dwell_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: how long the pointer rests there before the result, default 300." })),
+  timeout_ms: locatorTimeout,
+}, { additionalProperties: false });
+
+/** What computer_hover sends; on a native window it moves the real pointer, so it runs in the foreground. */
+export function hoverPlan(params: Static<typeof hoverParameters>): InputPlan {
+  return { label: "hover", ...aim(params, "hover", true), ...shared(params),
+    native: { action: "hover", dwell_ms: params.dwell_ms ?? 300, ...timeout(params) }, web: { action: "hover", ...timeout(params) } };
+}
+
+const endpoint = (what: string) => Type.Object({
+  target: Type.Optional(Type.String({ description: `${what}: a ref from the window's latest Read, or a Playwright locator on browser pages.` })),
+  x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
+}, { additionalProperties: false, description: `${what}: a target, or a point (x and y) in pixels of the window's latest image or CSS pixels of a browser page.` });
+const dragParameters = Type.Object({
+  window: inputWindow, from: endpoint("Where the drag starts"), to: endpoint("Where the drag ends"), space: pointSpace,
+  via: Type.Optional(Type.Array(Type.Object({ x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }) }, { additionalProperties: false }),
+    { minItems: 1, maxItems: 254, description: "Points the pointer passes through on the way, in order, for a path rather than a straight line; left button only." })),
+  duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: "How long the move takes, default 500." })),
+  button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")], { description: "Button held during the drag, default left." })),
+  modifiers: modifiersField, foreground: foregroundField,
+}, { additionalProperties: false });
+
+/** What computer_drag sends to a native window. */
+export function dragPlan(params: Static<typeof dragParameters>): InputPlan {
+  const end = aim(params.to, "to", true);
+  return { label: "drag", ...aim(params.from, "from", true), end, ...shared(params),
+    native: { action: "drag", ...(params.duration_ms !== undefined ? { duration_ms: params.duration_ms } : {}), ...(params.button && params.button !== "left" ? { button: params.button } : {}),
+      ...(params.modifiers?.length ? { modifiers: params.modifiers } : {}), ...(params.via ? { via: params.via } : {}) },
+    web: "drag on browser pages is not available yet; use space: \"window\" for window pixels." };
+}
+
+const scrollParameters = Type.Object({
+  window: inputWindow, target: inputTarget("The element to scroll; omit for the middle of the window or page"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
+  delta_x: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches to the right (negative: left)." })),
+  delta_y: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches down (negative: up). One notch scrolls about 100 CSS pixels in a browser; apps decide their own distance." })),
+  timeout_ms: locatorTimeout, foreground: foregroundField,
+}, { additionalProperties: false });
+
+/** What computer_scroll sends: wheel notches at a point, or an accessibility scroll of a native element target. */
+export function scrollPlan(params: Static<typeof scrollParameters>): InputPlan {
+  const dx = params.delta_x ?? 0, dy = params.delta_y ?? 0;
+  if (!dx && !dy) throw new ComputerRequestError("scroll needs delta_x or delta_y.");
+  const aimed = aim(params, "scroll", false);
+  const native = aimed.target === undefined ? { action: "scroll", ...(dx ? { delta_x: dx } : {}), ...(dy ? { delta_y: dy } : {}), unit: "wheel_detents" }
+    : dx && dy ? "Scroll a native element along one axis at a time, or give a point."
+    : { action: "scroll", direction: dy > 0 ? "down" : dy < 0 ? "up" : dx > 0 ? "right" : "left", amount: Math.abs(dx || dy), ...timeout(params) };
+  return { label: "scroll", ...aimed, ...shared(params), native,
+    web: { action: "scroll", ...(dx ? { delta_x: dx * 100 } : {}), ...(dy ? { delta_y: dy * 100 } : {}), ...timeout(params) } };
+}
+
+const typeParameters = Type.Object({
+  window: inputWindow, text: Type.String({ maxLength: 20000, description: "Text to type, as is: newlines and quotes stay text. Native windows take up to 2000 characters." }),
+  target: inputTarget("The field to type into; omit for the focused element"), space: pointSpace,
+  replace: Type.Optional(Type.Boolean({ description: "Replace the field's whole value instead of typing at the caret; needs target." })),
+  submit: Type.Optional(Type.Boolean({ description: "Press Enter after the text." })),
+  delay_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 200, description: "Native windows: pause between characters." })),
+  timeout_ms: locatorTimeout, foreground: foregroundField,
+}, { additionalProperties: false });
+
+/** What computer_type sends, with Enter as a second step when submit is set. */
+export function typePlan(params: Static<typeof typeParameters>): InputPlan {
+  if (params.replace && params.target === undefined) throw new ComputerRequestError("replace needs the field as target.");
+  // Enter goes to the same field: a semantic replace does not move the keyboard focus there.
+  const enter: InputPlan = { label: "submit", ...(params.target !== undefined ? { target: params.target } : {}), ...shared(params), native: { action: "key", key: "return", ...timeout(params) }, web: { action: "press", key: "Enter", ...timeout(params) } };
+  return { label: "type", ...aim(params, "type", false), ...shared(params),
+    native: params.replace ? { action: "set_value", text: params.text, ...timeout(params) } : { action: "type_text", text: params.text, ...(params.delay_ms !== undefined ? { delay_ms: params.delay_ms } : {}), ...timeout(params) },
+    web: params.delay_ms !== undefined ? "delay_ms applies to native windows." : { action: params.replace ? "fill" : "type", text: params.text, ...timeout(params) },
+    ...(params.submit ? { then: enter } : {}) };
+}
+
+const pressParameters = Type.Object({
+  window: inputWindow, key: Type.String({ maxLength: 64, description: "A key with optional modifiers joined by +, such as Enter, ctrl+s, shift+Tab, F5, ArrowDown or a." }),
+  target: inputTarget("The element to focus first; omit for the focused element"), space: pointSpace,
+  hold_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: hold the keys down this long, for apps and games that read held keys." })),
+  foreground: foregroundField,
+}, { additionalProperties: false });
+const PAGE_KEYS: Record<string, string> = { enter: "Enter", return: "Enter", esc: "Escape", escape: "Escape", tab: "Tab", space: "Space", backspace: "Backspace", delete: "Delete", del: "Delete",
+  up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown", pgup: "PageUp", pgdn: "PageDown" };
+
+/** What computer_press sends: one key or chord, or keys held for hold_ms on a native window. */
+export function pressPlan(params: Static<typeof pressParameters>): InputPlan {
+  const parts = params.key.split("+").map(part => part.trim());
+  if (parts.some(part => !part)) throw new ComputerRequestError("key joins a key and its modifiers with +, such as ctrl+s.");
+  const key = parts.at(-1)!, held = parts.slice(0, -1).map(part => part.toLowerCase().replace(/^(control)$/, "ctrl").replace(/^(meta|windows|cmd)$/, "win"));
+  if (held.some(part => !PAGE_MODIFIERS[part])) throw new ComputerRequestError("Modifiers are ctrl, shift, alt and win.");
+  const native = params.hold_ms !== undefined ? { action: "hold", keys: [...held, key.toLowerCase()], duration_ms: params.hold_ms }
+    : { action: "key", key: key.toLowerCase(), ...(held.length ? { modifiers: held } : {}) };
+  const pageKey = PAGE_KEYS[key.toLowerCase()] ?? (/^f\d{1,2}$/i.test(key) ? key.toUpperCase() : key);
+  return { label: "press", ...aim(params, "press", false), ...shared(params), native,
+    web: params.hold_ms !== undefined ? "hold_ms on browser pages is not available yet." : { action: "press", key: [...held.map(part => PAGE_MODIFIERS[part]), pageKey].join("+") } };
+}
+
+const selectParameters = Type.Object({
+  window: inputWindow, target: inputTarget("The list, select, checkbox or option; not used with menu"), space: pointSpace,
+  values: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 64, description: "Options to choose in the target list, by label or value. Native lists take one; omit values to select the target option itself." })),
+  checked: Type.Optional(Type.Boolean({ description: "Set the target checkbox, radio or toggle to checked (true) or unchecked (false); nothing is sent when it already is." })),
+  menu: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 16, description: "Native windows: menu labels from the menu bar to the item, such as [\"File\", \"Save As...\"]." })),
+  timeout_ms: locatorTimeout,
+}, { additionalProperties: false });
+
+/** What computer_select sends: options of a list, a checked state, or a menu item. */
+export function selectPlan(params: Static<typeof selectParameters>): InputPlan {
+  const chosen = [params.values && "values", params.checked !== undefined && "checked", params.menu && "menu"].filter(Boolean);
+  if (chosen.length > 1) throw new ComputerRequestError(`select takes one of values, checked or menu, not ${chosen.join(" and ")}.`);
+  if (params.menu) {
+    if (params.target !== undefined) throw new ComputerRequestError("menu names its item by path; omit target.");
+    return { label: "select", ...shared(params), native: { action: "menu", path: params.menu }, web: "menu works on native windows; use a target on browser pages." };
+  }
+  if (params.target === undefined) throw new ComputerRequestError("select needs a target.");
+  const base = { label: "select", target: params.target, ...shared(params) };
+  if (params.checked !== undefined) return { ...base, native: { action: params.checked ? "check" : "uncheck", ...timeout(params) }, web: { action: params.checked ? "check" : "uncheck", ...timeout(params) } };
+  if (params.values) return { ...base, native: params.values.length > 1 ? "A native list takes one value at a time." : { action: "select", option: params.values[0], ...timeout(params) },
+    web: { action: "select", values: params.values, ...timeout(params) } };
+  return { ...base, native: { action: "select", ...timeout(params) }, web: "Give values: the options to choose in this select element." };
+}
+
+const timelineParameters = Type.Object({
+  window: inputWindow, space: pointSpace,
+  events: Type.Array(Type.Object({
+    at_ms: Type.Integer({ minimum: 0, maximum: 120000, description: "Time from the start; never decreases." }),
+    type: Type.Union([Type.Literal("key_down"), Type.Literal("key_up"), Type.Literal("button_down"), Type.Literal("button_up"), Type.Literal("move"), Type.Literal("move_relative"), Type.Literal("wheel"), Type.Literal("pen_down"), Type.Literal("pen_move"), Type.Literal("pen_up")]),
+    key: Type.Optional(Type.String({ description: "key_down, key_up." })),
+    button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle"), Type.Literal("x1"), Type.Literal("x2")], { description: "button_down, button_up; default left." })),
+    x: Type.Optional(Type.Number({ minimum: 0, description: "move and pen events: pixels of the window's latest image." })),
+    y: Type.Optional(Type.Number({ minimum: 0 })),
+    dx: Type.Optional(Type.Integer({ description: "move_relative: raw mouse counts; wheel: notches." })),
+    dy: Type.Optional(Type.Integer()),
+    pressure: Type.Optional(Type.Number({ minimum: 0, maximum: 1, description: "Pen events." })),
+    tilt_x: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })), tilt_y: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })),
+    eraser: Type.Optional(Type.Boolean()), barrel: Type.Optional(Type.Boolean()),
+  }, { additionalProperties: false }), { minItems: 1, maxItems: 5000, description: "Timed events. Every key and button pressed must be released; anything still held is released when the call ends." }),
+}, { additionalProperties: false });
+
+/** What computer_timeline sends to a native window, in the foreground. */
+export function timelinePlan(params: Static<typeof timelineParameters>): InputPlan {
+  return { label: "timeline", ...shared(params), native: { action: "timeline", events: params.events }, web: "timeline on browser pages is not available yet; use space: \"window\" for window pixels." };
+}
 /**
  * Register the typed computer_* tools that replace Insert commands one cluster at a time. They are deferred: a
  * tool_search for computer loads them, so sessions that never use the computer pay nothing for them.
@@ -358,6 +540,70 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
         ? (await resources.read(address, ctx.cwd, run.views, signal))!
         : resources.perform(address, ctx.cwd, JSON.stringify(run.command), "insert", signal)));
     },
+  });
+  /** Run one typed input on a window: the plan is built and checked before anything reaches the machine. */
+  const input = (window: string, action: string, build: () => InputPlan, cwd: string, signal?: AbortSignal) => {
+    let plan: InputPlan | undefined;
+    return computerAction(resources, window, action, () => { plan = build(); return resources.address(window); },
+      address => resources.input(address, cwd, plan!, signal)).then(actionResult);
+  };
+  const aimed = (args: Record<string, unknown>) => args.target !== undefined ? String(args.target) : args.x !== undefined ? `${args.x},${args.y}` : "";
+  const inputAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
+  pi.registerTool({
+    ...common, name: "computer_click", label: "Computer click",
+    description: "Use computer_click to click an element or a point of a window: any button, double or triple clicks, with modifier keys. The result lists what changed.",
+    parameters: clickParameters, annotations: inputAnnotations,
+    ...rendered("computer_click", args => `${args.window} ${aimed(args)}${args.count ? ` x${args.count}` : ""}${args.button && args.button !== "left" ? ` ${args.button}` : ""}`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "click", () => clickPlan(params), ctx.cwd, signal); },
+  });
+  pi.registerTool({
+    ...common, name: "computer_hover", label: "Computer hover",
+    description: "Use computer_hover to rest the pointer on an element or a point without clicking, for tooltips, hover menus and hover states.",
+    parameters: hoverParameters, annotations: inputAnnotations,
+    ...rendered("computer_hover", args => `${args.window} ${aimed(args)}`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "hover", () => hoverPlan(params), ctx.cwd, signal); },
+  });
+  pi.registerTool({
+    ...common, name: "computer_drag", label: "Computer drag",
+    description: "Use computer_drag to press a button at one element or point, move to another, optionally through a path, and release there, for sliders, drag and drop and drawing.",
+    parameters: dragParameters, annotations: inputAnnotations,
+    ...rendered("computer_drag", args => `${args.window} ${aimed(args.from as Record<string, unknown>)} → ${aimed(args.to as Record<string, unknown>)}`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "drag", () => dragPlan(params), ctx.cwd, signal); },
+  });
+  pi.registerTool({
+    ...common, name: "computer_scroll", label: "Computer scroll",
+    description: "Use computer_scroll to turn the mouse wheel over an element, a point or the middle of a window or page.",
+    parameters: scrollParameters, annotations: inputAnnotations,
+    ...rendered("computer_scroll", args => `${args.window} ${aimed(args)} ${args.delta_x ?? 0},${args.delta_y ?? 0}`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "scroll", () => scrollPlan(params), ctx.cwd, signal); },
+  });
+  pi.registerTool({
+    ...common, name: "computer_type", label: "Computer type",
+    description: "Use computer_type to type text into a field or the focused element, or to replace a field's value, optionally pressing Enter after it.",
+    parameters: typeParameters, annotations: inputAnnotations,
+    ...rendered("computer_type", args => `${args.window} ${aimed(args)} ${String(args.text ?? "").length} chars${args.submit ? " + Enter" : ""}`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "type", () => typePlan(params), ctx.cwd, signal); },
+  });
+  pi.registerTool({
+    ...common, name: "computer_press", label: "Computer press",
+    description: "Use computer_press to press a key or shortcut such as Enter or ctrl+s, or to hold keys down for a time.",
+    parameters: pressParameters, annotations: inputAnnotations,
+    ...rendered("computer_press", args => `${args.window} ${args.key}${args.hold_ms ? ` for ${args.hold_ms} ms` : ""}`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "press", () => pressPlan(params), ctx.cwd, signal); },
+  });
+  pi.registerTool({
+    ...common, name: "computer_select", label: "Computer select",
+    description: "Use computer_select to choose options in a list or select element, set a checkbox, radio or toggle, or open an app's menu item.",
+    parameters: selectParameters, annotations: inputAnnotations,
+    ...rendered("computer_select", args => `${args.window} ${args.menu ? (args.menu as string[]).join(" > ") : `${args.target ?? ""} ${args.values ? (args.values as string[]).join(", ") : args.checked !== undefined ? (args.checked ? "checked" : "unchecked") : ""}`}`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "select", () => selectPlan(params), ctx.cwd, signal); },
+  });
+  pi.registerTool({
+    ...common, name: "computer_timeline", label: "Computer timeline",
+    description: "Use computer_timeline to play timed key, button, pointer, wheel and pen events in one call, for games, held keys across moves and pressure-sensitive strokes.",
+    parameters: timelineParameters, annotations: inputAnnotations,
+    ...rendered("computer_timeline", args => `${args.window} ${(args.events as unknown[] | undefined)?.length ?? 0} events`),
+    async execute(_id, params, signal, _update, ctx) { return input(params.window, "timeline", () => timelinePlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_display", label: "Computer display",

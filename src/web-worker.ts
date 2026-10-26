@@ -449,10 +449,10 @@ async function act(action: WebAction) {
   const target = action.target && locate(page, action.target);
   const run = async (): Promise<unknown> => {
     switch (action.action) {
-      case "click": return target!.click({ button: action.button, clickCount: action.click_count, timeout });
-      case "hover": return target!.hover({ timeout });
+      case "click": return target!.click({ button: action.button, clickCount: action.click_count, modifiers: action.modifiers, timeout });
+      case "hover": return target!.hover({ modifiers: action.modifiers, timeout });
       case "fill": return target!.fill(action.text!, { timeout });
-      case "type": return target!.pressSequentially(action.text!, { timeout });
+      case "type": return target ? target.pressSequentially(action.text!, { timeout }) : page.keyboard.type(action.text!);
       case "press": return target ? target.press(action.key!, { timeout }) : page.keyboard.press(action.key!);
       case "check": return target!.check({ timeout });
       case "uncheck": return target!.uncheck({ timeout });
