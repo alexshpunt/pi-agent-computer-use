@@ -876,6 +876,13 @@ export class ComputerResources {
     if (address.kind === "session") return this.closeAll();
     throw new ComputerRequestError("Delete closes a window, a sandbox or isolated session, a machine or computer:session. Observations, sequences, apps and displays need no closing.");
   }
+  /** Name a window by its address, so computer:<name> resolves to it until it closes. The receipt names its machine. */
+  async name(address: ComputerAddress, cwd: string, name: unknown, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "window") throw new ComputerRequestError("computer_window needs a window address from Search, Read or a name.");
+    const place = this.place(address);
+    await this.route(cwd, { window_ref: address.ref }, signal);
+    return this.stamp(place, this.nameWindow(name, address.ref));
+  }
   /**
    * Move, resize, minimize, maximize, focus or restore a window by its address: a fresh native state sample bounds the
    * one command, so no window-state address is handed out.

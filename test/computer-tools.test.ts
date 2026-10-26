@@ -21,6 +21,8 @@ test("computer_open opens one thing, chosen by its fields and the address", () =
   expect(openCommand(machine, { at: "", browser: "msedge", profile: "agent" })).toEqual({ action: "open_browser", browser: "msedge", profile: "agent" });
   expect(openCommand(machine, { at: "", sandbox: { export: "C:\\out" } })).toEqual({ action: "open_sandbox", export: "C:\\out" });
   expect(openCommand(machine, { at: "", isolated_session: true })).toEqual({ action: "open_session" });
+  expect(openCommand(machine, { at: "", webview2_debugging: { app: "ms-teams.exe", enabled: true } })).toEqual({ action: "webview2_debugging", app: "ms-teams.exe", enabled: true });
+  expect(() => openCommand(machine, { at: "", path: "C:\\app.exe", webview2_debugging: { app: "app.exe", enabled: true } })).toThrow("path and webview2_debugging");
   expect(openCommand(at("computer:app/a1"), { at: "" })).toEqual({ action: "open" });
   expect(openCommand(at("computer:window/w1"), { at: "" })).toEqual({ action: "attach_browser" });
   expect(openCommand(at("computer:sandbox/s1"), { at: "", app: "Notepad" })).toEqual({ action: "open", app: "Notepad" });
@@ -37,7 +39,10 @@ test("computer_window takes exactly the fields of its action", () => {
   expect(windowCommand({ window: "w", action: "resize", width: 800, height: 600 })).toEqual({ action: "resize", width: 800, height: 600, unit: "windows_desktop_pixels" });
   expect(windowCommand({ window: "w", action: "restore" })).toEqual({ action: "restore" });
   expect(() => windowCommand({ window: "w", action: "move", x: 1 })).toThrow("move needs x and y and nothing else.");
-  expect(() => windowCommand({ window: "w", action: "focus", width: 1 })).toThrow("focus takes no coordinates or size.");
+  expect(() => windowCommand({ window: "w", action: "focus", width: 1 })).toThrow("focus takes no coordinates, size or name.");
+  expect(windowCommand({ window: "w", action: "name", as: "game" })).toEqual({ action: "name", as: "game" });
+  expect(() => windowCommand({ window: "w", action: "name" })).toThrow("name needs as and nothing else.");
+  expect(() => windowCommand({ window: "w", action: "move", x: 1, y: 2, as: "game" })).toThrow("move needs x and y and nothing else.");
 });
 
 test("computer_wait maps to wait_for or a single verify sample", () => {

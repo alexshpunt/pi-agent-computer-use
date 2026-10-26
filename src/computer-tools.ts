@@ -45,13 +45,17 @@ const openParameters = Type.Object({
     export: Type.Optional(Type.String({ description: "One host folder the sandbox can write to." })),
   }, { additionalProperties: false, description: "Open a disposable Windows Sandbox on that machine, apart from the user's desktop; pass {} for no shared folders." })),
   isolated_session: Type.Optional(Type.Boolean({ description: "Open an isolated agent session on that machine, with its own desktop and foreground input." })),
+  webview2_debugging: Type.Optional(Type.Object({
+    app: Type.String({ description: "The app's executable file name, such as ms-teams.exe." }),
+    enabled: Type.Boolean({ description: "true opens the debugging port from the app's next start, whoever starts it; false turns it off again." }),
+  }, { additionalProperties: false, description: "YOLO: set a WebView2 app's debugging port for its next start on that machine, so its window can be attached; opens nothing. Windows may ask the person there to approve the change." })),
 }, { additionalProperties: false });
 
 /** The Insert command that opens what computer_open asks for at this address. */
 export function openCommand(address: ComputerAddress, params: Static<typeof openParameters>): Record<string, unknown> {
-  const { app, path, args, debugging, browser, url, profile, sandbox, isolated_session } = params;
+  const { app, path, args, debugging, browser, url, profile, sandbox, isolated_session, webview2_debugging } = params;
   const chosen = [app !== undefined && "app", path !== undefined && "path", (browser ?? url ?? profile) !== undefined && "browser",
-    sandbox !== undefined && "sandbox", isolated_session === true && "isolated_session"].filter(Boolean);
+    sandbox !== undefined && "sandbox", isolated_session === true && "isolated_session", webview2_debugging !== undefined && "webview2_debugging"].filter(Boolean);
   if (chosen.length > 1) throw new ComputerRequestError(`Open one thing at a time: ${chosen.join(" and ")} were both given.`);
   if ((args !== undefined || debugging !== undefined) && path === undefined) throw new ComputerRequestError("args and debugging go with path.");
   const what = chosen[0];
@@ -67,13 +71,15 @@ export function openCommand(address: ComputerAddress, params: Static<typeof open
   if (what === "browser") return { action: "open_browser", ...(browser ? { browser } : {}), ...(url ? { url } : {}), ...(profile ? { profile } : {}) };
   if (what === "sandbox") return { action: "open_sandbox", ...sandbox };
   if (what === "isolated_session") return { action: "open_session" };
-  throw new ComputerRequestError("Name what to open: app, path, browser or url, sandbox, or isolated_session.");
+  if (what === "webview2_debugging") return { action: "webview2_debugging", ...webview2_debugging };
+  throw new ComputerRequestError("Name what to open: app, path, browser or url, sandbox, isolated_session or webview2_debugging.");
 }
 
 const windowParameters = Type.Object({
   window: Type.String({ description: "Window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game." }),
-  action: Type.Union([Type.Literal("move"), Type.Literal("resize"), Type.Literal("maximize"), Type.Literal("minimize"), Type.Literal("focus"), Type.Literal("restore")],
-    { description: "focus activates a visible window; restore brings a minimized window back and activates it." }),
+  action: Type.Union([Type.Literal("move"), Type.Literal("resize"), Type.Literal("maximize"), Type.Literal("minimize"), Type.Literal("focus"), Type.Literal("restore"), Type.Literal("name")],
+    { description: "focus activates a visible window; restore brings a minimized window back and activates it; name gives the window a short address computer:<as>." }),
+  as: Type.Optional(Type.String({ description: "name: 1-32 lowercase letters, digits, - or _, starting with a letter, such as game. It resolves until the window closes." })),
   x: Type.Optional(Type.Integer({ description: "move: new left edge in Windows desktop pixels." })),
   y: Type.Optional(Type.Integer({ description: "move: new top edge in Windows desktop pixels." })),
   width: Type.Optional(Type.Integer({ minimum: 1, description: "resize: new width in Windows desktop pixels." })),
@@ -83,10 +89,11 @@ const windowParameters = Type.Object({
 /** The window management command of computer_window. */
 export function windowCommand(params: Static<typeof windowParameters>): Record<string, unknown> {
   const { window: _window, action, ...fields } = params;
-  const wanted = action === "move" ? ["x", "y"] : action === "resize" ? ["width", "height"] : [];
+  const wanted = action === "move" ? ["x", "y"] : action === "resize" ? ["width", "height"] : action === "name" ? ["as"] : [];
   const given = Object.keys(fields);
   if (given.some(key => !wanted.includes(key)) || wanted.some(key => !given.includes(key)))
-    throw new ComputerRequestError(wanted.length ? `${action} needs ${wanted.join(" and ")} and nothing else.` : `${action} takes no coordinates or size.`);
+    throw new ComputerRequestError(wanted.length ? `${action} needs ${wanted.join(" and ")} and nothing else.` : `${action} takes no coordinates, size or name.`);
+  if (action === "name") return { action, ...fields };
   return { action, ...fields, ...(wanted.length ? { unit: "windows_desktop_pixels" } : {}) };
 }
 
@@ -492,16 +499,16 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_window", label: "Computer window",
-    description: "Use computer_window to move, resize, maximize, minimize, focus or restore an app window by its address, without keys or clicks.",
+    description: "Use computer_window to move, resize, maximize, minimize, focus or restore an app window by its address without keys or clicks, or to give it a short name.",
     parameters: windowParameters,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_window", args => `${args.window} ${args.action}${args.action === "move" ? ` ${args.x},${args.y}` : args.action === "resize" ? ` ${args.width}x${args.height}` : ""}`),
+    ...rendered("computer_window", args => `${args.window} ${args.action}${args.action === "move" ? ` ${args.x},${args.y}` : args.action === "resize" ? ` ${args.width}x${args.height}` : args.action === "name" ? ` ${args.as}` : ""}`),
     async execute(_id, params, signal, _update, ctx) {
       let command: Record<string, unknown> = {};
       return actionResult(await computerAction(resources, params.window, params.action, () => {
         command = windowCommand(params);
         return resources.address(params.window);
-      }, address => resources.manageWindow(address, ctx.cwd, command, signal)));
+      }, address => command.action === "name" ? resources.name(address, ctx.cwd, command.as, signal) : resources.manageWindow(address, ctx.cwd, command, signal)));
     },
   });
   pi.registerTool({
