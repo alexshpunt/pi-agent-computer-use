@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import sharp from "sharp";
 import { ComputerSession, type Driver, type Content } from "../src/session.ts";
+import { createUiResource, webContentTop } from "../src/ui-resources.ts";
 
 async function fixture() {
   let snapshot = 0;
@@ -265,4 +266,14 @@ test("native limits are explicit, while disabled annotation returns exact native
   expect(ui(view).elements).toHaveLength(2);
   expect(f.driver.call).toHaveBeenLastCalledWith("get_window_state", expect.objectContaining({ max_elements: 2, max_depth: 4 }), undefined);
   expect(view.content.filter(b => b.type === "image")).toContainEqual({ type: "image", mimeType: "image/png", data: f.raw.toString("base64") });
+});
+
+// LPT-928: where a browser window's page starts, from the elements the browser marks as web content.
+test("web content starts at the top of its topmost web element; native rows do not count", () => {
+  const row = (index: number, y: number, web: boolean) => ({ element_index: index, element_token: `s1:${index}`, role: web ? "CheckBox" : "Button",
+    label: `Row ${index}`, screenshot_frame: { x: 10, y, w: 20, h: 20 }, ...(web ? { in_web_content: true } : {}) });
+  const resource = createUiResource({ elements: [row(0, 40, false), row(1, 178, true), row(2, 100, true)] }, "w1", "o1", 1);
+  expect(resource.elements.map(element => element.in_web_content)).toEqual([undefined, true, true]);
+  expect(webContentTop(resource)).toBe(100);
+  expect(webContentTop(createUiResource({ elements: [row(0, 40, false)] }, "w1", "o2", 2))).toBeUndefined();
 });

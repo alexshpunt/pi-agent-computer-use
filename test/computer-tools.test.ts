@@ -201,6 +201,21 @@ test("a page action compares page screenshots and puts the change at its point f
   expect(clicked.content.filter(block => block.type === "image")).toHaveLength(3);
 });
 
+test("a page action that navigates shows the whole page after it, even when the pages look alike", async () => {
+  const f = browserFixture();
+  const white = await sharp({ create: { width: 400, height: 300, channels: 3, background: "white" } }).png().toBuffer();
+  const lined = await sharp(white).composite([{ input: { create: { width: 200, height: 10, channels: 3, background: "black" } }, left: 10, top: 10 }]).png().toBuffer();
+  const shots = [white, lined];
+  (f.browser as unknown as { request: unknown }).request = vi.fn(async () => ({ url: "https://example.com/next", title: "Next", png: (shots.shift() ?? lined).toString("base64") }));
+  const window = await f.window();
+  await f.resources.input(window, cwd, clickPlan({ window: "x", target: "e1" }));
+  f.page.mockImplementation(async () => ({ url: "https://example.com/other", title: "Other", snapshot: "- heading \"Other\" [ref=e1]", tabs: [], events: [] }));
+  const left = await f.resources.input(window, cwd, clickPlan({ window: "x", target: "e1" }));
+  expect(left.details.successor?.diff?.pixels).toMatchObject({ full: true, navigated: true });
+  expect(presentComputerResult(left)).toMatch(/The page navigated \([\d.]+% of its pixels changed\): image 1 shows the whole page after the action\./);
+  expect(left.content.filter(block => block.type === "image")).toHaveLength(1);
+});
+
 test("typed input on a browser window goes to Playwright with page refs and locators", async () => {
   const f = browserFixture();
   const window = await f.window();

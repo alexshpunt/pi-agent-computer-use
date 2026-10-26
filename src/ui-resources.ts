@@ -208,14 +208,14 @@ export async function annotateUi(image: Content, resource: UiResource, width: nu
 }
 
 /**
- * The part of a window image that shows web page content: the bounds of its largest web content element, such as a
- * browser's document. Undefined when the window shows no web content.
+ * Where web page content starts in a window image: the top of its topmost web content element. Browsers report the
+ * page's elements, not always a document with the viewport's bounds. Undefined when the window shows no web content.
  */
-export function webContentBox(ui: UiResource | undefined): ScreenRect | undefined {
-  let best: ScreenRect | undefined;
+export function webContentTop(ui: UiResource | undefined): number | undefined {
+  let top: number | undefined;
   for (const element of ui?.elements ?? []) {
     const box = element.bounds.window_image;
-    if (element.in_web_content && box && (!best || box.width * box.height > best.width * best.height)) best = box;
+    if (element.in_web_content && box && box.width > 0 && box.height > 0 && (top === undefined || box.y < top)) top = box.y;
   }
-  return best;
+  return top;
 }

@@ -124,7 +124,7 @@ Pixels changed in 2 areas (overview pixels; 0.07% of the window); image 1 outlin
 Browser chrome outside the page also changed (x=0 y=0 w=1280 h=80, 2 areas): tab strip, address bar or loading state; not listed.
 ```
 
-The area at or nearest to the input point comes first, otherwise the largest. In a window whose web content fills most of it, changes outside the page, such as a loading tab or the address bar, are summarised in one line. When most of the window or page changed, as after a navigation, image 1 is the whole window or page after the action instead of an overview and crops.
+The area at or nearest to the input point comes first, otherwise the largest. In a browser window whose page elements reach UI Automation (Edge does; Chrome often does not), changes above the page, such as a loading tab or the address bar, are summarised in one line. When most of the window or page changed, or a page action navigated to another URL, image 1 is the whole window or page after the action instead of an overview and crops.
 
 This shows a stroke on a canvas or a moved sprite when the UI tree says nothing. Changes under 12 pixels and caret-shaped spots do not count. When the first capture shows no change, it looks again for up to 300 ms, then says `Nothing changed in the UI or the window's pixels within N ms`; check the target before repeating the action. When something changed, it captures until the window settles, for up to 1 second.
 

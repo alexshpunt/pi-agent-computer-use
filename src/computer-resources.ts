@@ -14,7 +14,7 @@ import { validateWebAction, validateWebLaunch, type WebAction } from "./web-brow
 import { compareCaptures, diffDom, diffIsEmpty, diffUi, type Capture, type StateDiff } from "./successor.ts";
 import { changeCrops, changeOverview, decodeFrame, diffFrames, MOST_CHANGED, type DiffContext } from "./pixel-diff.ts";
 import type { WindowFrame } from "./session.ts";
-import { webContentBox, type UiCaptureOptions, type UiElement, type UiResource } from "./ui-resources.ts";
+import { webContentTop, type UiCaptureOptions, type UiElement, type UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
 import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, type ParsedSelector } from "./native-locator.ts";
@@ -37,8 +37,10 @@ async function cropImages(before: Buffer, after: Buffer, diff: StateDiff): Promi
   const pixels = diff.pixels;
   if (!pixels?.box || pixels.size_changed) return [];
   const image = (png: Buffer) => ({ type: "image" as const, data: png.toString("base64"), mimeType: "image/png" });
-  if (pixels.share >= MOST_CHANGED) {
+  // A navigation replaces the page even when the old and new pages look alike, so it gets the whole page too.
+  if (pixels.share >= MOST_CHANGED || diff.page?.url) {
     pixels.full = true;
+    if (diff.page?.url) pixels.navigated = true;
     return [image(after)];
   }
   const [overview, cropped] = await Promise.all([changeOverview(after, pixels).catch(() => undefined), changeCrops(before, after, pixels).catch(() => [])]);
@@ -46,15 +48,18 @@ async function cropImages(before: Buffer, after: Buffer, diff: StateDiff): Promi
   pixels.crops = cropped.map(item => ({ ...item.region, scale: item.scale }));
   return [...(overview ? [image(overview)] : []), ...cropped.flatMap(item => [image(item.before), image(item.after)])];
 }
+/** Web content up to this far above its topmost element still counts as page, for the page's own margin. */
+const PAGE_MARGIN = 12;
 /**
  * What a pixel comparison of a window knows about the action: its input point in the input observation's pixels,
- * and in a browser window the web page, so changes outside it count as browser chrome. A window whose web content
- * covers most of it is treated as a browser; an app with a small embedded web view is not.
+ * and in a browser window where its web page starts, so changes wholly above it count as browser chrome. A window
+ * whose web content starts in its upper half is treated as a browser; an app with a web view lower down is not.
  */
 function diffContext(ui: UiResource | undefined, image: { width: number; height: number } | undefined, focus: InputPoint | undefined): DiffContext {
-  const page = webContentBox(ui);
-  const browser = page && image && page.width * page.height >= 0.6 * image.width * image.height;
-  return { ...(focus ? { focus } : {}), ...(browser ? { page } : {}) };
+  const top = webContentTop(ui);
+  const start = top === undefined ? undefined : Math.max(0, top - PAGE_MARGIN);
+  const page = image && start !== undefined && start > 0 && start < image.height / 2 ? { x: 0, y: start, width: image.width, height: image.height - start } : undefined;
+  return { ...(focus ? { focus } : {}), ...(page ? { page } : {}) };
 }
 /**
  * Where an input command lands in its observation's pixels: the end of a drag, the last pointed event of a timeline,

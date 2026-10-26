@@ -226,7 +226,8 @@ function pixelLines(pixels: PixelReport, uiChanged: boolean): string[] {
   const rect = (b: PixelBox) => `x=${b.x} y=${b.y} w=${b.width} h=${b.height}`;
   const chrome = pixels.chrome ? [`Browser chrome outside the page also changed (${rect(pixels.chrome.box)}, ${pixels.chrome.regions} ${pixels.chrome.regions === 1 ? "area" : "areas"}): tab strip, address bar or loading state; not listed.`] : [];
   const page = pixels.space === "page", whole = page ? "page" : "window", unit = page ? "CSS pixels of the page" : "overview pixels";
-  if (pixels.full) return [`Most of the ${whole} changed${since} (${percent}% of its pixels): image 1 shows the whole ${whole} after the action.`, ...chrome];
+  if (pixels.full) return [pixels.navigated ? `The page navigated (${percent}% of its pixels changed): image 1 shows the whole page after the action.`
+    : `Most of the ${whole} changed${since} (${percent}% of its pixels): image 1 shows the whole ${whole} after the action.`, ...chrome];
   if (!pixels.areas.length) return chrome;
   // The overview, when attached, is image 1 and numbers the areas as listed; each crop pair follows it.
   const first = pixels.overview ? 2 : 1;
