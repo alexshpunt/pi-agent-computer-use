@@ -11,7 +11,7 @@ The current desktop scope is Windows, with Pi running on it directly or in its W
 
 ## Typed tools
 
-Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above. `tool_search` loads at most 8 best matches per query, so search one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`. Their receipts match Insert receipts.
+Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above. `tool_search` loads at most 8 best matches per query, so search one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click type press drag`. Their receipts match Insert receipts.
 
 | Tool | Does | Replaces |
 | --- | --- | --- |
@@ -23,9 +23,29 @@ Some operations have their own tool with typed fields, in both modes. They are d
 | `computer_files` | Copies a workspace file into the session's folder on a machine (`put`), copies one out (`get`), or lists the folder (`list`) | Insert `put`, `get`, `files` into a machine |
 | `computer_clipboard` | Reads (`include_image` adds the image) or replaces a machine's clipboard with text or an image, in YOLO | Insert `clipboard_read`, `clipboard_write` |
 | `computer_record` | Records the main display to video (`video_start`, `video_stop`) or playback audio (`audio`) on a machine in YOLO; captures frames of a window or display (`sequence`) and returns a sequence address for Read with a `frames:` view | Insert `record_start`, `record_stop`, `audio_record`; Read `sequence:` |
+| `computer_click` | Clicks an element or a point with any button, double or triple, with modifier keys | Insert `click`, `double_click`, `right_click` |
+| `computer_hover` | Rests the pointer on an element or a point | Insert `hover`, `move` |
+| `computer_drag` | Presses at one element or point, moves through optional `via` points and releases at another | Insert `drag` |
+| `computer_scroll` | Turns the wheel over an element, a point or the middle of the window | Insert `scroll` |
+| `computer_type` | Types text into a field or the focused element; `replace` sets the whole value, `submit` presses Enter after it | Write, Insert `type_text`, `set_value`, `fill`, `type` |
+| `computer_press` | Presses a key or a chord such as `ctrl+s`, or holds keys for `hold_ms` | Insert `key`, `hotkey`, `hold`, `press` |
+| `computer_select` | Chooses options of a list, sets a checkbox, radio or toggle (`checked`), or invokes a menu item by its path | Insert `select`, `check`, `uncheck`, `menu` |
+| `computer_timeline` | Plays timed key, button, pointer, wheel and pen events | Insert `timeline` |
 | Delete (`computer_delete` without IDE) | Closes a window like its close button, or releases a sandbox, isolated session, machine or `computer:session` | Insert `close` and `kill` |
 
 Delete of a window asks it to close: a browser the session opened closes with its disposable profile, an attached browser is detached first, and any other window gets the standard close request. The receipt says whether the window closed; an app that asks about unsaved work keeps it open, so Read it next. Add `?force=true` to the window address to kill the hung app of a window this session opened. Safe mode closes only windows the session opened.
+
+### Input tools
+
+The input tools take a window address, never an observation. The window decides how the input goes: a browser opened or attached by computer use runs it through Playwright on its active page, any other window through the native driver and UI Automation. Give a `target` or a point (`x`, `y`):
+
+- A ref from the window's latest Read: a native ref such as `1:a` from a window Read (`aria`, `ui` or `full`), or a page ref such as `e12` from a DOM snapshot. Input spends native refs, because the result's successor observation brings new ones.
+- A Playwright locator such as `getByRole('button', { name: 'Save' })`, resolved with auto-waiting like the [native locators](#native-locators) or by Playwright on a page; `timeout_ms` bounds the wait.
+- A point. On a native window it is in pixels of the latest image of that window: a Read with an image, or the successor of an action. Without one, the tool captures the window at the default overview size first, about 300 ms once. On a browser window a point is in CSS pixels of the page; add `space: "window"` for pixels of a window Read, for example the browser's own toolbar.
+
+Native input starts in the background. When the window refuses it before anything was sent, the same call sends it in the foreground and says so; later input to that window goes in the foreground at once. `foreground: true` goes there first, `foreground: false` never does. A foreground action activates the window and moves the real pointer. `computer_hover` and `computer_timeline` move the real pointer on native windows, so they always run in the foreground. Pen eraser and barrel, the `x1`/`x2` buttons and `move_relative` exist only natively; on a browser page give `space: "window"`. Pen pressure and tilt on a page reach it as a `pen` pointer through CDP in Chrome and Edge.
+
+A native Read and a DOM Read of the same browser window keep each other's observations; input retires both.
 
 The JSON commands below keep working while the remaining operations move to their own tools.
 
