@@ -30,7 +30,7 @@ The desktop scope is Windows, with Pi running on it directly or in its WSL, on t
 | `computer_browser` | Navigates, manages tabs, answers dialogs, uploads, handles downloads and runs page JavaScript |
 | `computer_files` | Copies files between the workspace and the session's folder on a machine |
 | `computer_clipboard` | Reads or replaces a machine's clipboard |
-| `computer_record` | Records a machine's display to video or its playback audio, or captures frames of a window or display over time |
+| `computer_record` | Records a machine's display to video or its playback audio, captures frames of a window or display over time, or watches a window or viewport in the background while the agent acts |
 
 Several steps in a row go into a Codemode script that calls these tools; each call returns a [receipt](#receipts-in-codemode).
 
@@ -45,7 +45,7 @@ Several steps in a row go into a Codemode script that calls these tools; each ca
 | `computer:window/...` | A window, returned by Search or `computer_open` |
 | `computer:window/.../<name>` | A [viewport](#viewports) of that window, made by `computer_view` |
 | `computer:observation/...` | One Read of a window or display, or a page snapshot |
-| `computer:sequence/...` | Frames captured by `computer_record` `sequence` |
+| `computer:sequence/...` | Frames captured by `computer_record` `sequence` or `watch` |
 | `computer:app/...` | An installed app from Search; `computer_open` opens it |
 | `computer:sandbox/...` | A Windows Sandbox or an isolated session |
 | `computer:session` | Everything this computer use started |
@@ -226,6 +226,8 @@ Each computer session owns a folder in the machine's Windows temp directory. `co
 `computer_clipboard` (YOLO) reads or replaces the clipboard, which is shared with the user's own apps and never read otherwise; paste with `computer_press` `ctrl+v`.
 
 `computer_record` (YOLO) records the whole main display to H.264 video for up to 600 s (needs ffmpeg on that machine) or what its default playback device plays, with an optional transcript from [faster-whisper](https://github.com/SYSTRAN/faster-whisper); recognised speech can be wrong. Files land in the session folder, and `to` also copies them into the workspace. `sequence` captures frames of a window or display for up to 60 s, 30 FPS and 300 frames, and returns a sequence address; Read it with a `frames:` view. A window sequence spends the refs of the window's earlier Read, because the window may have changed while it was recorded: Read the window again before input.
+
+`watch` captures a window, or a viewport of it, in the background while the agent keeps acting, so motion during a drag, a pan or a game shows up frame by frame. It returns a sequence address at once (default 10 FPS, frames up to 800 px; a viewport is captured at its own pixels up to that size) and keeps the window's refs. Every action on the window meanwhile names its span and frames in the watch in its receipt (`watch_spans` in Codemode). Read the address with `frames:last` for the newest frame while it runs. `watch_stop` at that address returns a contact sheet of the frames that changed, with frames during an action under an orange label, the changes against the frame before (share of pixels and box), and the frames as files: one PNG per frame that changed and `watch.json` with every frame's time, file, change and actions, in `to` or a temporary folder removed when the session closes; `video: true` adds `watch.webp`, an animation in real time. A watch stops by itself after `timeout_ms` (default 60 s, at most 300 s) or 3000 frames, and when the session closes. See [temporal capture](temporal-capture.md#watch-while-acting).
 
 ## Receipts in Codemode
 

@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./selected-displays.ts";
 import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type FrameSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
-import { changeLines, differs, frameChanges, framesBetween, sheetFrames, WATCH_LIMITS, writeWatchFiles, type WatchFiles, type WatchSpan } from "./watch.ts";
+import { changeLines, differs, frameChanges, framesBetween, sheetFrames, WATCH_LIMITS, WATCH_SHEET_FRAMES, writeWatchFiles, type WatchFiles, type WatchSpan } from "./watch.ts";
 import type { PixelBox } from "./pixel-diff.ts";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -822,7 +822,7 @@ export class ComputerSession {
     const changes = await frameChanges(frames);
     const distinct = frames.filter((_, i) => differs(frames, i)).length;
     const lines = [`Watch of ${watch.watching} ${reasons[sequence.stop_reason]}: ${frames.length} frames over ${(sequence.elapsed_ms / 1000).toFixed(1)} s` +
-      `${sequence.actual_fps ? ` at ${sequence.actual_fps.toFixed(1)} FPS` : ""}; ${distinct} differ from the frame before.`];
+      `${sequence.actual_fps ? ` at ${sequence.actual_fps.toFixed(1)} FPS` : ""}; ${distinct === 1 ? "1 differs" : `${distinct} differ`} from the frame before.`];
     if (watch.marks.length) lines.push("Actions (ms of the watch):", ...watch.marks.map(mark => {
       const span = framesBetween(frames, mark.start_ms, mark.end_ms);
       return `- ${mark.label} ${Math.round(mark.start_ms)}–${Math.round(mark.end_ms)} ms, ${span ? `frames ${span.from}–${span.to}` : "no frame during it"}`;
@@ -834,7 +834,7 @@ export class ComputerSession {
     if (frames.length) {
       const { png, ...layout } = await renderFrames(sheetFrames(frames, watch.marks), { as: "sheet", marks: watch.marks });
       rendered = layout;
-      lines.push(`Contact sheet: ${layout.tiles.length} frames that changed, ${layout.columns}x${layout.rows} tiles in time order, each under "#index · time"; an orange label means an action ran then. Frames: ${layout.tiles.map(tile => `#${tile.index}`).join(", ")}.`);
+      lines.push(`Contact sheet: the frames that changed (at most ${WATCH_SHEET_FRAMES}, kept around each action and spread over the rest) and the last one, ${layout.columns}x${layout.rows} tiles in time order, each under "#index · time"; an orange label means an action ran then. Frames: ${layout.tiles.map(tile => `#${tile.index}`).join(", ")}.`);
       content.push({ type: "image", mimeType: "image/png", data: png.toString("base64") });
     }
     const dir = files.dir ?? join(tmpdir(), "pi-computer-use-watch", id);
@@ -842,7 +842,7 @@ export class ComputerSession {
     try {
       written = await writeWatchFiles(dir, sequence, watch.marks, changes, { watching: watch.watching }, files.animation);
       if (!files.dir) this.watchDirs.add(dir);
-      lines.push(`Files in ${dir}: ${written.frames} PNG frames (the frames that differ from the one before), watch.json with every frame's time, file, change and actions${written.animation ? ", and watch.webp, an animation in real time" : ""}.` +
+      lines.push(`Files in ${dir}: ${written.frames} PNG ${written.frames === 1 ? "frame" : "frames"} (each frame that differs from the one before), watch.json with every frame's time, file, change and actions${written.animation ? ", and watch.webp, an animation in real time" : ""}.` +
         (files.dir ? "" : " The folder is removed when the computer session closes."));
     } catch (error) { lines.push(`The frames were not written to ${dir}: ${error instanceof Error ? error.message : error}`); }
     lines.push("Read the sequence with a frames: view for other frames.");
