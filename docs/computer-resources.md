@@ -11,7 +11,7 @@ The current desktop scope is Windows, with Pi running on it directly or in its W
 
 ## Typed tools
 
-Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above: one `tool_search` for computer loads them. Their receipts match Insert receipts.
+Some operations have their own tool with typed fields, in both modes. They are deferred like the tools above: `tool_search` loads the best matches of a query, such as `computer open window` or `computer wait browser`. Their receipts match Insert receipts.
 
 | Tool | Does | Replaces |
 | --- | --- | --- |
