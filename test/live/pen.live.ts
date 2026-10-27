@@ -11,7 +11,11 @@ const gimp = process.env.GIMP_PATH ?? "C:\\Users\\user\\AppData\\Local\\Programs
 let pid = 0;
 afterAll(async () => { if (pid) await live.kill(pid); await live.close(); });
 
-test("a pen stroke with rising pressure gets thicker in GIMP", async () => {
+test("a pen stroke with rising pressure gets thicker in GIMP", async context => {
+  // GIMP runs one instance: a running GIMP would take the canvas, and the cleanup below would kill that instance with
+  // whatever the person has open in it.
+  const running = (await live.powershell("(Get-Process gimp* -ErrorAction SilentlyContinue | Measure-Object).Count")).trim();
+  if (running !== "0") context.skip("GIMP is already running on the machine; close it to run this check.");
   await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#ffffff" } }).png().toFile(".tmp/pen-canvas.png");
   const put = await live.insert(live.machine, { action: "put", from: ".tmp/pen-canvas.png" });
   await live.insert(live.machine, { action: "open", path: gimp, args: [put.details.state!.path as string] });
