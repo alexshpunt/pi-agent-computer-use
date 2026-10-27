@@ -96,6 +96,8 @@ No input is posted to a window as messages, so a `delivered` receipt never stand
 
 While the human uses the keyboard or mouse, real input pauses: it refuses with the time since their last input and when to retry, until 10 s pass without it. Never try to outrun the human. When Windows refuses to activate the target (`foreground_unavailable`), the result names the process that holds the foreground; if it is a system service, for example after a UAC prompt, Windows blocks injected input until a person clicks or presses a key on that machine, so ask the user.
 
+A real press goes to whichever window is on top at its point. After the target comes to the front, the driver checks the point of each click, drag start and timeline press. When another window still covers it, the action refuses before anything is pressed there and names that window with its address: a dialog the target owns (it stays in front of its owner even while the owner is active), another window of the same app, or a window of another app. Close or move that window, or act on it instead. The target's own menus and drop-downs take the press as usual.
+
 Keys on a browser page go to the page, so browser shortcuts such as `alt+ArrowLeft` do not run there; use `computer_browser` to go back, or `space: "window"` to press them natively. Pen eraser and barrel, the `x1`/`x2` buttons and `move_relative` exist only natively. Pen pressure and tilt reach apps as real pen input; on a page they arrive as a `pen` pointer in Chrome and Edge. Paint 11 ignores pen pressure; GIMP uses it.
 
 A refused action sent nothing. An `unknown` outcome may have reached the target: Read again and never replay it blindly. Delivery is not proof of the application's response.
@@ -210,7 +212,7 @@ To set one up:
   "lab": {
     "ssh": "lab-wsl",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-c920b66b/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-2f1a8b1d/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
