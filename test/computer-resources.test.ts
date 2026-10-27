@@ -299,6 +299,22 @@ test("a click on a ref goes through UI Automation only, and no pattern means the
   expect(sent[1]).not.toHaveProperty("uia_only");
 });
 
+// LPT-948: a triple click selects a field's value; no UI Automation pattern carries a multi-click, so it is real input.
+test("triple clicks and right or middle double clicks reach a native window as real clicks", async () => {
+  const f = await fixture();
+  let view = await f.read();
+  const triple = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint!, count: 3 }));
+  expect(triple.details.status).toBe("delivered");
+  view = await f.read();
+  await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70, button: "right", count: 2 }));
+  await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70, button: "middle", count: 2 }));
+  expect(f.inputs()).toEqual([
+    ["click", { target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "foreground", element_token: expect.any(String), count: 3 }, undefined],
+    ["click", expect.objectContaining({ delivery_mode: "foreground", x: expect.any(Number), y: expect.any(Number), button: "right", count: 2 }), undefined],
+    ["click", expect.objectContaining({ delivery_mode: "foreground", button: "middle", count: 2 }), undefined]]);
+  expect(f.inputs().some(([, args]) => "uia_only" in (args as object))).toBe(false);
+});
+
 test("points and keys are real input; nothing posts window messages", async () => {
   const f = await fixture();
   (f.driver as Driver & { coordinateScroll: boolean }).coordinateScroll = true;

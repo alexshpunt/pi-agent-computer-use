@@ -99,7 +99,10 @@ test("input tools build one plan for native windows and one for browser pages", 
     native: { action: "double_click", modifiers: ["ctrl"] }, web: { action: "timeline" } });
   expect(clickPlan({ window: w, target: "e1", count: 2, modifiers: ["ctrl"] }).web).toEqual({ action: "click", click_count: 2, modifiers: ["Control"] });
   expect(clickPlan({ window: w, target: "e1", button: "right" }).native).toEqual({ action: "right_click" });
-  expect(clickPlan({ window: w, target: "e1", count: 3 }).native).toBe("A triple click works on browser pages only.");
+  // LPT-948: every multi-click goes to a native window as the driver's click with its button and count.
+  expect(clickPlan({ window: w, target: "1:a", count: 3 }).native).toEqual({ action: "click", count: 3 });
+  expect(clickPlan({ window: w, x: 1, y: 2, button: "right", count: 2, modifiers: ["shift"] }).native).toEqual({ action: "click", button: "right", count: 2, modifiers: ["shift"] });
+  expect(clickPlan({ window: w, x: 1, y: 2, button: "middle", count: 3 }).native).toEqual({ action: "click", button: "middle", count: 3 });
   expect(() => clickPlan({ window: w })).toThrow("click needs a target or a point (x and y).");
   expect(() => clickPlan({ window: w, x: 1 })).toThrow("click needs both x and y for a point.");
   expect(() => clickPlan({ window: w, x: 1, y: 2, target: "1:a" })).toThrow("click takes a target or a point, not both.");
