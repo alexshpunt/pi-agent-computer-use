@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { findBundledRuntime, type BundledRuntime } from "./native-runtime.ts";
 import { ADDRESS_KINDS } from "./computer-address.ts";
+import { liveInterop } from "./wsl-interop.ts";
 
 /** Trusted overrides and an internal verified bundle. No executable or per-window target comes from agent input. */
 export interface ComputerConfig {
@@ -60,13 +61,15 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     throw new Error("Invalid computer-use configuration. Remove the old target field: this extension uses YOLO session window references, not configured PID/HWND.");
   const command = raw.command as string | undefined ?? process.env.CUA_DRIVER_PATH;
   if (!command && raw.args !== undefined) throw new Error("Bundled runtimes use their pinned MCP arguments; set a trusted command to override arguments.");
-  const bundled = command ? undefined : await findBundledRuntime(raw.interop as string | undefined);
+  // A configured socket is used as given; otherwise a live one, since WSL_INTEROP can outlive its WSL session.
+  const interop = raw.interop as string | undefined ?? await liveInterop();
+  const bundled = command ? undefined : await findBundledRuntime(interop);
   // The shipped runtime is the qualified windows-desktop build, so it gets that profile's capabilities.
   // A configured runtime always comes with its own trusted command.
   const runtime = (raw.runtime as ComputerConfig["runtime"]) ?? (bundled ? "windows-desktop" : undefined);
   return { command: command || bundled!.command,
     ...(bundled ? { bundled } : {}),
-    ...(raw.args ? { args: raw.args as string[] } : {}), ...(raw.interop ? { interop: raw.interop as string } : {}),
+    ...(raw.args ? { args: raw.args as string[] } : {}), ...(interop ? { interop } : {}),
     ...(runtime ? { runtime } : {}),
     ...(raw.machines !== undefined ? { machines: parseMachines(raw.machines) } : {}) };
 }
@@ -79,8 +82,9 @@ export async function readMachineSettings(cwd: string): Promise<{ interop?: stri
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
-  const { interop, machines } = raw as Record<string, unknown>;
-  return { ...(typeof interop === "string" ? { interop } : {}), machines: machines === undefined ? {} : parseMachines(machines) };
+  const { interop: configured, machines } = raw as Record<string, unknown>;
+  const interop = typeof configured === "string" ? configured : await liveInterop();
+  return { ...(interop ? { interop } : {}), machines: machines === undefined ? {} : parseMachines(machines) };
 }
 
 function parseMachines(value: unknown): Record<string, MachineConfig> {
