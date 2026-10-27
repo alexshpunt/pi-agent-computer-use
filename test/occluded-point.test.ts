@@ -65,8 +65,10 @@ test("Safe mode names the covering window without granting it an address", async
 });
 
 test("a timeline that stops at a covered press after earlier events stays unknown and says where it stopped", async () => {
-  const session = fixture({ content: [{ type: "text", text: `Input timeline: 2/5 events sent in 80 ms; everything held released: true. ${covered("other_process", "Overlay")}` }],
-    structuredContent: { timeline: { events_sent: 2 } } });
+  const summary = `Input timeline: 2/5 events sent in 80 ms; everything held released: true. ${covered("other_process", "Overlay")}`;
+  // The driver publishes a partial delivery as its action record: effect partial, with the summary text.
+  const session = fixture({ content: [{ type: "text", text: summary }],
+    structuredContent: { delivery: { delivered_count: 2, mode: "foreground" }, effect: "partial", route: "global_input", summary } });
   // A partial delivery carries no refusal; the receipt names the covering window above the usual guidance.
   const result = await click(session);
   expect(result.details.status).toBe("unknown");
