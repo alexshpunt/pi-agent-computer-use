@@ -29,7 +29,7 @@ export interface ObservationSource extends SourceIdentity {
     original_dimensions: { width: number; height: number } | null;
     origin: { x: number; y: number; relative_to: "primary_display" | "display" | "window" } | null;
     native_bounds: unknown;
-    crop?: { requested: { x: number; y: number; width: number; height: number }; applied: { x: number; y: number; width: number; height: number }; coordinate_space: "uncropped_image_pixels" };
+    crop?: { requested: { x: number; y: number; width: number; height: number }; applied: { x: number; y: number; width: number; height: number }; /** Old crops count in the uncropped image; a driver crop counts in the window's physical pixels. */ coordinate_space: "uncropped_image_pixels" | "window_physical_pixels" };
   };
   semantic_scope: "none" | "native_window";
   scale: { native_scale_factor: number | null; screenshot_scale: number | null; dpi: null; device_pixel_ratio: null };

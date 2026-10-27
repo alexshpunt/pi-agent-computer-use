@@ -86,8 +86,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "d9f380f68550691eec806dc45fdbc60f6d066de6", version: "0.37.0",
-  sha256: "057eecd1150fa462d9838e7475a35690d29a05fb2783ed1c91083a2605a973eb",
+  source: "2437a85e339e1be2a0ab5b9c736227d1139127a3", version: "0.37.0",
+  sha256: "00e4014073feddadd19f763cb59884cbe20c2f77d5c59c269784e0b15b733bf8",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -161,6 +161,8 @@ export class McpDriver implements Driver {
   get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
   /** Old profiles cannot borrow state-bound management from matching version numbers. */
   get windowManagement(): boolean { return ["windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
+  /** Display-only window reads with a crop arrived in the windows-desktop runtime 2437a85e. */
+  get windowCrop(): boolean { return this.config.runtime === "windows-desktop"; }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
   get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
