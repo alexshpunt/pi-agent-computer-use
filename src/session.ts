@@ -26,6 +26,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import type { StateDiff } from "./successor.ts";
 import { combine, evaluateNative, validateWait, type ConditionResult, type WaitResult, type WaitSpec } from "./ui-conditions.ts";
+import { computerSource } from "./computer-address.ts";
 import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
 
 /** Native Windows address. Models use session window references instead. */
@@ -191,6 +192,16 @@ const ELEMENT_TEXT_LIMIT = 200_000;
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 /** File name of a Win32 launch path without directory and extension; packaged shell:appsFolder paths have none. */
 const executableName = (path: string) => /^shell:/i.test(path) ? "" : appName(path.split(/[\\/]/).pop() ?? "");
+
+interface CoveringWindow { pid: number; window_id: number; relation: string; title: string }
+/** The window a driver refusal names as covering the press point (code pointer_target_occluded). */
+function coveringWindow(message: string): CoveringWindow | undefined {
+  const match = /pointer_target_occluded: .*?window_id=(\d+) pid=(\d+) relation=(\w+) title=("(?:[^"\\]|\\.)*")/.exec(message);
+  if (!match) return undefined;
+  let title = "";
+  try { title = String(JSON.parse(match[4])); } catch { /* A malformed title leaves the window untitled. */ }
+  return { window_id: Number(match[1]), pid: Number(match[2]), relation: match[3], title };
+}
 
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
 export class ComputerSession {
@@ -1942,9 +1953,12 @@ export class ComputerSession {
           const nativeMessage = native.content.filter(c => c.type === "text").map(c => c.text).join("\n");
           // Foreground input checks for recent physical input before sending anything (CUA_HUMAN_IDLE_MS).
           const takeover = /human_takeover:/.test(nativeMessage) && (native.isError || state.effect === "refused");
+          // A real press at a point another window covers is refused by the driver before anything is pressed there.
+          const covering = coveringWindow(nativeMessage);
           const refused = takeover || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
             "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
-          const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
+          // A covered press that is not a refusal stopped an action partway, after earlier events were sent.
+          const uncertain = native.isError || !!covering || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
           const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
             : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
             : isCoordinateScroll(step) && (delivery_mode !== "foreground" || !scrollReceipt(step, state)));
@@ -1975,7 +1989,9 @@ export class ComputerSession {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
           }
-          const result = this.result(status, takeover ? `Foreground input paused because the human is using the computer: ${nativeMessage.slice(nativeMessage.indexOf("human_takeover:") + 16)}` : `Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
+          const cover = covering && await this.coverText(covering, signal);
+          const result = this.result(status, takeover ? `Foreground input paused because the human is using the computer: ${nativeMessage.slice(nativeMessage.indexOf("human_takeover:") + 16)}`
+            : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
             { ...state, ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
               overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
               resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
@@ -1995,6 +2011,16 @@ export class ComputerSession {
         return finish(await this.failed(error, inFlight), inFlight ? "Transport/dispatch failed; current step is uncertain." : "Stopped before next dispatch.");
       }
     });
+  }
+
+  /** Names the window that covers a press point, with its address where this session may act on it. */
+  private async coverText(covering: CoveringWindow, signal?: AbortSignal): Promise<string> {
+    const entry = this.getMode() === "yolo" ? await this.register(covering, signal).catch(() => undefined) : undefined;
+    const named = `${covering.title ? `"${covering.title}"` : "an untitled window"}${entry ? ` (${computerSource("window", entry.ref)})` : ""}`;
+    const then = "Close or move it, or act on it instead.";
+    if (covering.relation === "owned_window")
+      return `${named}, a window this window owns, covers the point. It stays in front of this window even when this window is active. ${then}`;
+    return `${covering.relation === "same_process" ? "another window of this app" : "a window of another app"}, ${named}, covers the point. ${then}`;
   }
 
   /** Why a kept pixel observation no longer matches its window, or undefined while it still does. Movement keeps window-local points valid. */
