@@ -7,6 +7,7 @@ import { connectAgentDocumentation } from "pi-agent-ide/api/documentation";
 import { readFile } from "node:fs/promises";
 import { ComputerResources, computerResultText, ComputerRequestError, FORCE, LOCAL_MACHINE, type SandboxFactory, type MachineFactory } from "./computer-resources.ts";
 import { computerSource, displaySource, type ComputerAddress } from "./computer-address.ts";
+import { REMOTE_DESKTOP_DISPLAY } from "./display-mode.ts";
 import type { WebLogEntry } from "./web-browser.ts";
 import { diffIsEmpty, type PixelReport, type StateDiff } from "./successor.ts";
 import type { PixelBox } from "./pixel-diff.ts";
@@ -140,6 +141,7 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     if (d.aria !== undefined) lines.push("Playwright aria snapshot; [ref=…] values are this observation's hints. Act with a target such as getByRole('button', { name: 'Save' }) on the window address, or a hint on this observation.", d.aria);
     else if (!d.changes?.diff) for (const e of d.ui.elements) lines.push(`${e.hint} | ${label(e.role)} | ${label(e.name)} | ${label(e.value)} | enabled=${e.enabled} | image_bounds=${JSON.stringify(e.bounds.window_image ?? null)}`);
   } else if (d.status === "listed") {
+    if (state.remote_session === true) lines.push(`These displays belong to a Remote Desktop session: ${REMOTE_DESKTOP_DISPLAY}`);
     for (const kind of ["windows", "apps", "displays"] as const) {
       const rows = state[kind];
       if (!Array.isArray(rows)) continue;

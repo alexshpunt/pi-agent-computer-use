@@ -20,7 +20,7 @@ import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClic
 import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
 import { DEFAULT_MAX_LONG_EDGE, FULL_RESOLUTION, nativeImageCap, type CuaVisionSettings } from "./cua-image-settings.ts";
-import type { DisplayMode } from "./display-mode.ts";
+import { REMOTE_DESKTOP_DISPLAY, type DisplayMode } from "./display-mode.ts";
 import { WEBVIEW2_DEBUGGING, type MachineHost, type ProcessHealth, type TextLine } from "./machine-host.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
@@ -910,7 +910,10 @@ export class ComputerSession {
       if (!this.driver.selectedDisplays) return this.result("refused", "Selected displays require an explicitly qualified Windows runtime.");
       if (signal?.aborted) return this.result("refused", "Cancelled before display discovery.");
       try {
+        // Remote Desktop is asked alongside the listing; when it cannot be told, the listing says nothing about it.
+        const remote = this.host?.displayModes.remoteSession(signal).catch(() => false) ?? Promise.resolve(false);
         const state = await this.state("list_displays", {}, signal);
+        const remoteSession = await remote;
         if (this.getMode() !== "yolo") return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display discovery; metadata withheld.");
         if (state.platform !== "windows" || typeof state.topology_id !== "string" || !state.topology_id || !Array.isArray(state.displays) || !state.displays.length)
@@ -926,8 +929,9 @@ export class ComputerSession {
           return { ...d, display_ref: entry.ref, source_identity: this.domained(sourceIdentity({ session_id: this.sessionId, display_ref: entry.ref, display_id: d.display_id, topology_id: topology }, d.display_id)) };
         });
         for (const ref of this.displayEntries.keys()) if (!current.has(ref)) this.displayEntries.delete(ref);
-        return this.result("listed", "Native connected Windows displays. Read a returned display address for its pixels. Image pixels start at zero; bounds are host-global. No input authority.",
-          { platform: "windows", topology_id: topology, displays: addressed });
+        return this.result("listed", "Native connected Windows displays. Read a returned display address for its pixels. Image pixels start at zero; bounds are host-global. No input authority." +
+          (remoteSession ? ` These displays belong to a Remote Desktop session: ${REMOTE_DESKTOP_DISPLAY}` : ""),
+          { platform: "windows", topology_id: topology, ...(remoteSession ? { remote_session: true } : {}), displays: addressed });
       } catch (error) {
         this.displayEntries.clear();
         if (this.getMode() !== "yolo") return denied();
@@ -1043,7 +1047,9 @@ export class ComputerSession {
       catch (error) {
         // A cancelled or timed-out change may still have reached Windows.
         if (signal?.aborted) return this.result("unknown", "Cancelled during the display change; the resolution may have changed. Read the displays again.");
-        return this.result("refused", `Display not changed. ${error instanceof Error ? error.message : error}`);
+        const remote = await this.host.displayModes.remoteSession(signal).catch(() => false);
+        return this.result("refused", `Display not changed. ${error instanceof Error ? error.message : error}` +
+          (remote ? ` This display belongs to a Remote Desktop session: ${REMOTE_DESKTOP_DISPLAY}` : ""));
       }
       if (!this.replacedModes.has(change.device)) this.replacedModes.set(change.device, change.previous);
       const original = this.replacedModes.get(change.device)!;
