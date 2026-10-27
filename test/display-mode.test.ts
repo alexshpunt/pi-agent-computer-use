@@ -2,16 +2,18 @@ import { expect, test, vi } from "vitest";
 import { ComputerSession, type ComputerMode, type Driver, type DriverResult } from "../src/session.ts";
 import { displayMode, type DisplayModes } from "../src/display-mode.ts";
 import { MachineHost } from "../src/machine-host.ts";
+import { presentComputerResult } from "../src/provider.ts";
 
 const primary = { display_id: "\\\\.\\DISPLAY1", monitor_handle: "0x10001", monitor_device_paths: ["native-primary"],
   bounds: { x: 0, y: 0, width: 3840, height: 2560 }, work_area: { x: 0, y: 0, width: 3840, height: 2500 }, primary: true, scale_factor: 1.5, dpi: null };
 
-function fixture() {
+function fixture(remote = false) {
   let mode: ComputerMode = "yolo";
   let current = { width: 3840, height: 2560 };
   const modes = {
     set: vi.fn<DisplayModes["set"]>(async (_monitor, next) => { const previous = current; current = next; return { device: "\\\\.\\DISPLAY1", previous, current: next }; }),
     restore: vi.fn<DisplayModes["restore"]>(async (_device, next) => { current = next; }),
+    remoteSession: vi.fn<DisplayModes["remoteSession"]>(async () => remote),
   };
   const driver = {
     selectedDisplays: true,
@@ -67,3 +69,33 @@ test("resize sizes are whole physical pixels within display limits", () => {
   for (const bad of [{ width: 2160.5, height: 1440 }, { width: 320, height: 240 }, { width: "1920", height: 1080 }, { width: 20000, height: 1440 }])
     expect(() => displayMode(bad)).toThrow();
 });
+
+// LPT-953: a Remote Desktop session's display takes its size from the client, so it has one mode; the listing and the
+// refusal say so and where to change it.
+test("a Remote Desktop display says its size comes from the client, in the listing and in a refused resize", async () => {
+  const f = fixture(true);
+  const listed = await f.session.displays();
+  expect(listed.details.state).toMatchObject({ remote_session: true });
+  const note = /These displays belong to a Remote Desktop session: the resolution comes from the Remote Desktop client/;
+  expect(listed.content[0]).toMatchObject({ text: expect.stringMatching(note) });
+  // The listing the agent reads says it above the rows.
+  expect(presentComputerResult(listed)).toMatch(note);
+  f.modes.set.mockRejectedValueOnce(new Error("\\\\.\\DISPLAY273 has no 1920x1280 mode. Supported: 3840x2560."));
+  const refused = await f.session.resizeDisplay(await f.ref(), { width: 1920, height: 1280 });
+  expect(refused.details.status).toBe("refused");
+  const text = (refused.content[0] as { text: string }).text;
+  expect(text).toContain("Supported: 3840x2560.");
+  expect(text).toMatch(/This display belongs to a Remote Desktop session: the resolution comes from the Remote Desktop client \(its window size or its display settings\)/);
+  expect(text).toContain("computer_view");
+});
+
+test("a console display says nothing about Remote Desktop", async () => {
+  const f = fixture();
+  const listed = await f.session.displays();
+  expect(listed.details.state).not.toHaveProperty("remote_session");
+  expect((listed.content[0] as { text: string }).text).not.toMatch(/Remote Desktop/);
+  expect(presentComputerResult(listed)).not.toMatch(/Remote Desktop/);
+  f.modes.set.mockRejectedValueOnce(new Error("\\\\.\\DISPLAY1 has no 1234x777 mode. Supported: 1920x1080."));
+  expect(((await f.session.resizeDisplay(await f.ref(), { width: 1234, height: 777 })).content[0] as { text: string }).text).not.toMatch(/Remote Desktop/);
+});
+
