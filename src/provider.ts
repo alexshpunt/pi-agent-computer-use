@@ -99,6 +99,11 @@ export function presentComputerResult(result: ComputerResult, full = false): str
       if (tree) lines.push("Received aria snapshot:", ...condition.observed!.split("\n"));
     });
     if (d.ui) lines.push(`UI: collected=${d.ui.collected}, complete=${d.ui.complete}, truncated=${d.ui.truncated}. Read or Search the observation for elements and hints.`);
+    // A browser page's last sample is a fresh snapshot: show it like a dom Read, so the next step needs no Read.
+    if (d.dom) {
+      if (d.dom.truncated) lines.push("Snapshot truncated; Read the window with dom:{\"target\":...,\"depth\":...} to narrow it.");
+      lines.push(...d.dom.snapshot.split("\n"));
+    }
   } else if (d.dom) {
     if (d.status !== "observed") {
       const message = computerResultText(result).split("\n{", 1)[0];
