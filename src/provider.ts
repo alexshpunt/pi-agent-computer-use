@@ -194,7 +194,10 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     : d.window_state_id ? "This Read only looks; computer_window changes the window's state."
     : d.watch && d.status === "observed" ? "A watch only looks: the window's refs and points stay as they were for input."
     : d.viewport && d.status === "observed" ? "Act in this viewport with the computer_* input tools at its address; a viewport Read gives no refs."
-    : d.status === "observed" ? "Refs of this Read are current for the next input to its window; detail, display and frame Reads give none."
+    : (d.selected_frames || d.sequence) && d.status === "observed" ? "Frames only look: a sequence grants no input. Read the window for refs and points."
+    // A window overview without accessibility has points but no refs.
+    : d.granularity && !d.ui?.elements.length && d.captured?.image && d.status === "observed" ? "Points of this image are current for the next input to its window; it has no refs."
+    : d.status === "observed" ? "Refs of this Read are current for the next input to its window; detail and display Reads give none."
     : "Native delivery is not verified application state. Never replay unknown input; Read a fresh window overview/state before another action.");
   const text = lines.join("\n");
   if (full || !d.dom || Buffer.byteLength(text) <= 24_000) return text;
