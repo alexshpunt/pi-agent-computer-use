@@ -84,11 +84,20 @@ export async function loadBundledRuntime(directory: string, pins: RuntimePins): 
 }
 
 /**
- * Download the pinned release files into `directory/runtime` when they are absent. Each file must match its
- * pinned hash before the set is moved into place; an existing directory is never replaced.
+ * Download the pinned release files into `directory/runtime` when they are absent, and name their source in
+ * `directory/runtime.source`. Each file must match its pinned hash before the set is moved into place. A download of
+ * another source, left by a Git checkout before its pins changed, is moved aside to `runtime-<source>` and kept; any
+ * other existing directory is never replaced.
  */
 export async function fetchRuntime(directory: string, pins: RuntimePins, signal?: AbortSignal): Promise<void> {
-  if (await lstat(path.join(directory, "runtime")).catch(() => undefined)) return;
+  const target = path.join(directory, "runtime"), marker = path.join(directory, "runtime.source");
+  if (await lstat(target).catch(() => undefined)) {
+    const earlier = (await readFile(marker, "utf8").catch(() => "")).trim();
+    if (!/^[0-9a-f]{40}$/.test(earlier) || earlier === pins.source) return;
+    let aside = path.join(directory, `runtime-${earlier.slice(0, 8)}`);
+    for (let n = 2; await lstat(aside).catch(() => undefined); n++) aside = path.join(directory, `runtime-${earlier.slice(0, 8)}-${n}`);
+    await rename(target, aside);
+  }
   await mkdir(directory, { recursive: true });
   const staging = await mkdtemp(path.join(directory, ".staging-"));
   try {
@@ -100,10 +109,12 @@ export async function fetchRuntime(directory: string, pins: RuntimePins, signal?
       if (createHash("sha256").update(bytes).digest("hex") !== expected) throw new Error(`native_runtime_hash_mismatch: ${name}`);
       await writeFile(path.join(staging, "runtime", name), bytes);
     }
-    try { await rename(path.join(staging, "runtime"), path.join(directory, "runtime")); }
+    try { await rename(path.join(staging, "runtime"), target); }
     catch (error) {
       if (!["EEXIST", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+      return;
     }
+    await writeFile(marker, `${pins.source}\n`);
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 
@@ -167,6 +178,11 @@ export async function findBundledRuntime(interop?: string): Promise<BundledRunti
   const pins = await readRuntimePins();
   // A stalled first-use download must not hold session startup indefinitely.
   await fetchRuntime(PACKAGED_RUNTIME, pins, AbortSignal.timeout(300_000));
-  const runtime = await loadBundledRuntime(PACKAGED_RUNTIME, pins);
+  const runtime = await loadBundledRuntime(PACKAGED_RUNTIME, pins).catch((error: unknown) => {
+    // A download from before runtime.source existed, or a changed file, is never replaced on its own.
+    if (error instanceof Error && /^native_runtime_(hash_mismatch|file_missing)/.test(error.message))
+      throw new Error(`${error.message}. ${path.join(PACKAGED_RUNTIME, "runtime")} does not hold the pinned runtime ${pins.source.slice(0, 8)}; move that folder away and computer use downloads the pinned one.`);
+    throw error;
+  });
   return process.platform === "linux" ? cacheWindowsRuntime(runtime, await windowsCacheDirectory(interop)) : runtime;
 }
