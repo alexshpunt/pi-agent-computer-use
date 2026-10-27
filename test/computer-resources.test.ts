@@ -76,7 +76,7 @@ test("typed text is sent exactly and descriptor/UI reads do not refresh native g
     target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "foreground",
     element_token: "snapshot-1:0", text: literal, delay_ms: 0,
   }, undefined]]);
-  await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "type_text", text: "replay" }))).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(target, cwd, JSON.stringify({ action: "type_text", text: "replay" }))).rejects.toThrow(/expired|no longer current/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
@@ -90,7 +90,7 @@ test.each(["refused", "unknown"] as const)("a native %s receipt consumes the pro
   if (status === "refused") expect(f.captures()).toHaveLength(1);
   else expect(result.details.successor?.observation_id).toBeDefined();
   const captured = f.captures().length;
-  await expect(f.resources.perform(view.observation, cwd, command)).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, command)).rejects.toThrow(/expired|no longer current/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
@@ -119,7 +119,7 @@ test("temporal Read retires input authority and frame selection does not recaptu
   await expect(f.resources.read(f.window, cwd, ['sequence:{"duration_ms":1,"max_frames":1}'])).rejects.toThrow(/computer_record/);
   const captured = await f.resources.sequence(f.window, cwd, ['sequence:{"duration_ms":1,"max_frames":1}']);
   expect(captured?.details.sequence?.frames).toHaveLength(1);
-  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "stale" }))).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "stale" }))).rejects.toThrow(/expired|no longer current/i);
   const sequence = address(computerSource("sequence", captured!.details.sequence!.sequence_id));
   const before = f.captures().length;
   const frames = await f.resources.read(sequence, cwd, ["frames:first"]);
@@ -133,8 +133,9 @@ test("temporal Read retires input authority and frame selection does not recaptu
 test("a new overview retires the prior resource instead of rebinding its hint", async () => {
   const f = await fixture(), first = await f.read(["ui"]), latest = await f.read(["ui"]);
   expect(latest.source).not.toBe(first.source);
-  await expect(f.resources.read(first.observation, cwd, ["ui"])).rejects.toThrow(/expired/i);
-  await expect(f.resources.perform(first.observation, cwd, JSON.stringify({ action: "type_text", text: "stale" }))).rejects.toThrow(/expired/i);
+  // LPT-962: the refusal names the window's current observation.
+  await expect(f.resources.read(first.observation, cwd, ["ui"])).rejects.toThrow(latest.source);
+  await expect(f.resources.perform(first.observation, cwd, JSON.stringify({ action: "type_text", text: "stale" }))).rejects.toThrow(latest.source);
   expect(f.inputs()).toHaveLength(0);
   expect((await f.resources.perform({ ...latest.observation, hint: latest.hint! } as typeof latest.observation, cwd, JSON.stringify({ action: "type_text", text: "current" }))).details.status).toBe("delivered");
   expect(f.inputs()[0][1]).toMatchObject({ element_token: "snapshot-2:0", text: "current" });
@@ -151,7 +152,7 @@ test.each(["safe", "closed", "reused"] as const)("%s targets refuse cached reads
   const checked = await f.resources.read(view.observation, cwd, ["ui"]);
   expect(checked?.details.status).toBe("refused");
   expect(checked?.content.every(block => block.type === "text")).toBe(true);
-  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "forbidden" }))).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "forbidden" }))).rejects.toThrow(/expired|no longer current/i);
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
 });
 
@@ -199,7 +200,7 @@ test("an element crop is readonly detail and consumes its overview without a new
   expect(detail?.details).not.toHaveProperty("observation_id");
   expect(f.captures()).toHaveLength(1);
   expect(f.native().filter(([name]) => name === "zoom")).toEqual([["zoom", { pid: 42, window_id: 91, x1: 80, y1: 60, x2: 120, y2: 80 }, undefined]]);
-  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x: 100, y: 70 }))).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", x: 100, y: 70 }))).rejects.toThrow(/expired|no longer current/i);
   expect(f.inputs()).toHaveLength(0);
 });
 
@@ -246,7 +247,7 @@ test("pre-dispatch cancellation cannot send input or leave a reusable provider h
   const f = await fixture(), view = await f.read(["ui"]), cancellation = new AbortController();
   cancellation.abort();
   expect((await f.resources.perform(view.observation, cwd, JSON.stringify({ action: "click", hint: view.hint }), cancellation.signal)).details.status).toBe("refused");
-  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "retry" }))).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, JSON.stringify({ action: "type_text", text: "retry" }))).rejects.toThrow(/expired|no longer current/i);
   expect(f.inputs()).toHaveLength(0); expect(f.captures()).toHaveLength(1);
 });
 
@@ -264,7 +265,7 @@ test.each(["native-partial", "in-flight-cancel"] as const)("%s preserves the att
   expect(result.details.state).toMatchObject({ sequence: { total: 2, attempted: 1, completed: interruption === "native-partial" ? 0 : 1, steps: [{ action: "type_text" }] } });
   expect(f.inputs()).toHaveLength(1); expect(f.inputs()[0][1]).toMatchObject({ text: "first prefix" });
   const captured = f.captures().length;
-  await expect(f.resources.perform(view.observation, cwd, command)).rejects.toThrow(/expired/i);
+  await expect(f.resources.perform(view.observation, cwd, command)).rejects.toThrow(/expired|no longer current/i);
   expect(f.inputs()).toHaveLength(1); expect(f.captures()).toHaveLength(captured);
 });
 
