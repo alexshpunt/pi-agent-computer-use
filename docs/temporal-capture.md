@@ -32,7 +32,7 @@ Frames are ordered and indexed from zero. `slot` is the scheduled sampling slot;
 
 `actual_fps` is `(frame count - 1) / sample_span_ms`, in seconds. A single frame has no measured FPS. `interval_ms` reports min/max/mean intervals, making jitter visible. `elapsed_ms` is the whole capture call, not a fabricated requested duration. The last admitted read may finish after the requested duration; timeout/cancellation bounds further work.
 
-Slow captures and delayed wakes skip expired slots instead of catching up with bursts. `skipped_slots` lists missed scheduled slots. `pending_slots` counts unsampled slots left by an early stop. No backend dropped-frame count is invented: CUA provides snapshots, not a continuous stream.
+Slow captures and delayed wakes skip expired slots instead of catching up with bursts. `skipped_slots` lists missed scheduled slots. `pending_slots` counts unsampled slots left by an early stop; a watch stopped with `watch_stop` has none, because its duration is only a safety limit. No backend dropped-frame count is invented: CUA provides snapshots, not a continuous stream.
 
 - `completed`: the scheduled duration was sampled, including any missed slots.
 - `frame_limit`: the requested frame cap was reached. The resource is available, but the remaining slots were not sampled.
@@ -60,7 +60,7 @@ Add `as` to a JSON selection to get one image instead of one per frame:
 
 ## Watch while acting
 
-`computer_record` `watch` starts capturing a window, or a viewport of it, and returns a sequence address once the first frame is in. Capture runs outside the session's queue through a second driver process on the same machine: a driver answers one call at a time, so a capture sent during a 2 s drag would otherwise wait for the drag to end. Starting that process takes a few seconds on the first watch; it stays until the session closes. A sandbox or isolated session has one driver connection, so its watch captures between the session's calls only.
+`computer_record` `watch` starts capturing a window, or a viewport of it, and returns a sequence address once the first frame is in. Its sequence metadata says `running: true` with the frames so far, the elapsed time and the rate reached; a stop reason and slot counts come with `watch_stop`. Capture runs outside the session's queue through a second driver process on the same machine: a driver answers one call at a time, so a capture sent during a 2 s drag would otherwise wait for the drag to end. Starting that process takes a few seconds on the first watch; it stays until the session closes. A sandbox or isolated session has one driver connection, so its watch captures between the session's calls only.
 
 | Field | Bounds / default |
 | --- | --- |
