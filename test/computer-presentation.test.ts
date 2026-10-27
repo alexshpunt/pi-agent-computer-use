@@ -139,3 +139,10 @@ test("a wait on a browser page shows the snapshot of its last sample, satisfied 
     expect(text).toContain("computer:observation/o7");
   }
 });
+
+test("a receipt without a successor gives its reason once", () => {
+  const reason = "This window closed or is hidden; the app's frontmost window is \"Main\".";
+  const text = presentComputerResult({ content: [], details: { status: "delivered", mode: "yolo", successor: { reason } } } as ComputerResult);
+  expect(text).toContain(`Successor: none. ${reason}`);
+  expect(text.split(reason)).toHaveLength(2);
+});
