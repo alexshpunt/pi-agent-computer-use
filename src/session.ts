@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { nativeDisplay, selectedDisplaySource, type NativeDisplay } from "./selected-displays.ts";
-import { collectSequence, cropSequenceFrame, frameSummary, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type FrameSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
+import { collectSequence, cropSequenceFrame, frameSummary, runningSequenceMetadata, selectFrames, sequenceMetadata, SequenceStop, SequenceStore, validateSequence, type FrameSequence, type SequenceOptions, type FrameSelection, type SequenceFrame } from "./temporal-capture.ts";
 import { changeLines, differs, frameChanges, framesBetween, sheetFrames, WATCH_LIMITS, WATCH_SHEET_FRAMES, writeWatchFiles, type WatchFiles, type WatchSpan } from "./watch.ts";
 import type { PixelBox } from "./pixel-diff.ts";
 import { rm } from "node:fs/promises";
@@ -121,7 +121,8 @@ export interface ComputerResult {
     /** Fresh window capture parts; omitted for non-overview results. */
     granularity?: "image" | "ui" | "full";
     captured?: { image: boolean; ui: boolean };
-    sequence?: ReturnType<typeof sequenceMetadata>;
+    /** A finished sequence, or one still collecting (`running`), such as a watch just started. */
+    sequence?: ReturnType<typeof sequenceMetadata> | ReturnType<typeof runningSequenceMetadata>;
     selected_frames?: Omit<SequenceFrame, "image">[];
     /** A watch this result started or stopped: what it watches, whether it still runs, the actions it noted and, once stopped, its files. */
     watch?: { sequence_id: string; watching: string; running: boolean; marks: FrameMark[]; changed_frames?: number; files?: WatchFiles };
@@ -782,7 +783,7 @@ export class ComputerSession {
     return this.result("observed", `Watching ${watching} at up to ${options.fps} FPS in the background, ${size.width}x${size.height} frames. ` +
       `Act on the window as usual: each action's receipt names its span and frames in this watch. Read the sequence with frames:last for the newest frame; computer_record watch_stop at the sequence returns the contact sheet, change statistics and files. ` +
       `It stops by itself after ${Math.round(options.timeout_ms / 1000)} s or ${WATCH_LIMITS.max_frames} frames, and when the session closes.`,
-      undefined, { ...this.addressed(entry), sequence: sequenceMetadata(sequence), watch: { sequence_id: sequence.sequence_id, watching, running: true, marks: [] } });
+      undefined, { ...this.addressed(entry), sequence: runningSequenceMetadata(sequence, performance.now() - watch.started), watch: { sequence_id: sequence.sequence_id, watching, running: true, marks: [] } });
   }
 
   /** Note an action on a window in each running watch of it: the action's span in the watch's time and the frames captured during it so far. */

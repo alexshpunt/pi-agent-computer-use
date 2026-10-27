@@ -112,7 +112,8 @@ export async function collectSequence(options: SequenceOptions,
   }
   sequence.elapsed_ms = clock.now() - started;
   sequence.last_frame_age_ms = sequence.frames.length ? sequence.elapsed_ms - sequence.frames.at(-1)!.timestamp_ms : null;
-  sequence.pending_slots = slots - sequence.frames.length - sequence.skipped_slots.length;
+  // A stop request ends a watch whose duration is only its safety limit: the slots after it were never due.
+  sequence.pending_slots = sequence.stop_reason === "stopped" ? 0 : slots - sequence.frames.length - sequence.skipped_slots.length;
   sequence.sample_span_ms = sequence.frames.length > 1 ? sequence.frames.at(-1)!.timestamp_ms - sequence.frames[0].timestamp_ms : 0;
   sequence.actual_fps = sequence.sample_span_ms > 0 ? (sequence.frames.length - 1) * 1000 / sequence.sample_span_ms : null;
   const intervals = sequence.frames.slice(1).map((frame, i) => frame.timestamp_ms - sequence.frames[i].timestamp_ms);
@@ -130,6 +131,19 @@ export function frameSummary(frame: Omit<SequenceFrame, "image">) {
 export function sequenceMetadata(sequence: FrameSequence) {
   return { ...sequence, frames: sequence.frames.map(({ image: _image, ...frame }) => frame),
     timestamp_boundary: "native_call_completed", input: "none", retention: "session-local; newest 3 sequences within 48 MiB" };
+}
+/** A sequence still collecting: no stop reason or slot counts yet. */
+export type RunningSequenceMetadata = Omit<ReturnType<typeof sequenceMetadata>, "stop_reason" | "pending_slots" | "skipped_slots" | "interval_ms">
+  & { running: true; stop_reason?: never; pending_slots?: never; skipped_slots?: never; interval_ms?: never };
+/**
+ * Metadata of a sequence that is still collecting, such as a running watch, `elapsed_ms` after its start: the frames
+ * so far and the rate they reach. A stop reason and slot counts exist only once it ends.
+ */
+export function runningSequenceMetadata(sequence: FrameSequence, elapsed_ms: number): RunningSequenceMetadata {
+  const { stop_reason: _stop, pending_slots: _pending, skipped_slots: _skipped, interval_ms: _intervals, ...metadata } = sequenceMetadata(sequence);
+  const frames = sequence.frames, span = frames.length > 1 ? frames.at(-1)!.timestamp_ms - frames[0].timestamp_ms : 0;
+  return { ...metadata, running: true as const, elapsed_ms, sample_span_ms: span, actual_fps: span > 0 ? (frames.length - 1) * 1000 / span : null,
+    last_frame_age_ms: frames.length ? elapsed_ms - frames.at(-1)!.timestamp_ms : null };
 }
 /** Select an ordered subset; changed means exact byte changes, not a model judgement. */
 export function selectFrames(sequence: FrameSequence, selection: FrameSelection): SequenceFrame[] {

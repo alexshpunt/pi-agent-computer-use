@@ -163,7 +163,10 @@ export function presentComputerResult(result: ComputerResult, full = false): str
   if (d.sequence) {
     const sequence = d.sequence;
     lines.push(`Sequence: ${computerSource("sequence", sequence.sequence_id)}`,
-      `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; last_frame_age_ms=${sequence.last_frame_age_ms === null ? null : Math.round(sequence.last_frame_age_ms)}; skipped_slots=${sequence.skipped_slots.length}; pending_slots=${sequence.pending_slots}`);
+      // A running watch has no stop reason or slots yet; a watch the agent stopped left no slots pending.
+      "running" in sequence
+        ? `Frames so far: ${sequence.frames.length}; running; elapsed_ms=${Math.round(sequence.elapsed_ms)}${sequence.actual_fps === null ? "" : `; actual_fps=${sequence.actual_fps}`}`
+        : `Frames: ${sequence.frames.length}; stop=${sequence.stop_reason}; elapsed_ms=${Math.round(sequence.elapsed_ms)}; actual_fps=${sequence.actual_fps}; last_frame_age_ms=${sequence.last_frame_age_ms === null ? null : Math.round(sequence.last_frame_age_ms)}; skipped_slots=${sequence.skipped_slots.length}${sequence.stop_reason === "stopped" ? "" : `; pending_slots=${sequence.pending_slots}`}`);
   }
   if (d.watch) lines.push(d.watch.running
     ? `Watch: ${d.watch.watching} runs in the background as ${computerSource("sequence", d.watch.sequence_id)}; computer_record watch_stop at that address stops it`
