@@ -99,3 +99,41 @@ test("selection keeps temporal order and compares bytes, not semantic claims", a
   for (let i = 0; i < 3; i++) store.put({ ...sequence, sequence_id: `other-${i}` });
   expect(store.get(sequence.sequence_id)).toBeUndefined(); store.clear(); expect(store.get("other-2")).toBeUndefined();
 });
+
+// LPT-950: a capture that takes longer than a frame interval runs alongside the next one, at most `concurrency` at a
+// time; frames stay in the order their captures started.
+test("captures slower than the frame interval overlap up to the concurrency limit and keep their order", async () => {
+  const run = async (concurrency?: number) => {
+    let inFlight = 0, most = 0, calls = 0;
+    const sequence = await collectSequence({ duration_ms: 1200, fps: 25 }, async () => {
+      const call = ++calls;
+      inFlight++; most = Math.max(most, inFlight);
+      // Later captures finish faster, so completion order differs from start order.
+      await new Promise(resolve => setTimeout(resolve, call % 2 ? 110 : 80));
+      inFlight--;
+      return frame(Buffer.from(String(call)).toString("base64"));
+    }, undefined, undefined, concurrency ? { concurrency } : {});
+    return { sequence, most };
+  };
+  const serial = await run(), paired = await run(2);
+  expect(serial.most).toBe(1);
+  expect(paired.most).toBe(2);
+  expect(paired.sequence.frames.length).toBeGreaterThanOrEqual(serial.sequence.frames.length * 1.5);
+  const slots = paired.sequence.frames.map(f => f.slot);
+  expect(slots).toEqual([...slots].sort((a, b) => a - b));
+  const starts = paired.sequence.frames.map(f => f.capture_started_ms);
+  expect(starts).toEqual([...starts].sort((a, b) => a - b));
+  expect(paired.sequence.frames.map(f => f.index)).toEqual(paired.sequence.frames.map((_, i) => i));
+});
+
+test("a failed capture among overlapping ones ends the sequence with the frames before it", async () => {
+  let calls = 0;
+  const sequence = await collectSequence({ duration_ms: 2000, fps: 25 }, async () => {
+    const call = ++calls;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    if (call === 4) throw new Error("window closed");
+    return frame(Buffer.from(String(call)).toString("base64"));
+  }, undefined, undefined, { concurrency: 2 });
+  expect(sequence.stop_reason).toBe("capture_failed");
+  expect(sequence.frames).toHaveLength(3);
+});

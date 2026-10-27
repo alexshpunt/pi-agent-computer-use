@@ -15,7 +15,7 @@ afterAll(async () => { await mkdir(out, { recursive: true }); await writeFile(`$
 const image = (result: ComputerResult) => Buffer.from((result.content.find(block => block.type === "image") as { data: string }).data, "base64");
 
 /** A form with a 600x300 view of a wide strip of numbered colour bands that follows the pointer while the left button is held. */
-function panoramaForm(title: string): string[] {
+function panoramaForm(title: string, maximized = false): string[] {
   const script = `Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 $f = New-Object Windows.Forms.Form; $f.Text = '${title}'; $f.Width = 660; $f.Height = 380
 $v = New-Object Windows.Forms.Panel; $v.Left = 10; $v.Top = 10; $v.Width = 600; $v.Height = 300; $v.BackColor = 'Black'
@@ -29,7 +29,7 @@ for ($i = 0; $i -lt 16; $i++) {
 $p = New-Object Windows.Forms.PictureBox; $p.Image = $bmp; $p.Width = 2400; $p.Height = 300; $p.Left = 0; $p.AccessibleName = 'Pano'
 $p.Add_MouseDown({ $script:mx = [Windows.Forms.Control]::MousePosition.X; $script:left = $p.Left })
 $p.Add_MouseMove({ if ([Windows.Forms.Control]::MouseButtons -eq 'Left') { $p.Left = [Math]::Min(0, [Math]::Max(-1800, $script:left + [Windows.Forms.Control]::MousePosition.X - $script:mx)) } })
-$v.Controls.Add($p); $f.Controls.Add($v); [void]$f.ShowDialog()`;
+$v.Controls.Add($p); $f.Controls.Add($v); ${maximized ? "$f.WindowState = 'Maximized'; " : ""}[void]$f.ShowDialog()`;
   return ["-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
 }
 
@@ -92,5 +92,36 @@ test("a watch of a viewport sees the panorama move during a drag and stops with 
     expect(ended.details.sequence!.stop_reason).toBe("completed");
   } finally {
     await live.resources.delete(window, live.cwd).catch(() => undefined);
+  }
+}, 180_000);
+
+// LPT-950: a viewport of a maximized window: the driver encodes only the viewport, and a second capture overlaps a slow
+// one, so the watch keeps at least 12 of 15 FPS during a drag. Before, every frame was the whole window: 5 FPS at 4K.
+test("a watch of a viewport in a maximized window keeps its frame rate during a drag", async () => {
+  const title = `pi-watch-max-${Date.now()}`;
+  const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, panoramaForm(title, true), `regex:^${title}$`);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await live.resources.manageWindow(requireComputerAddress(window), live.cwd, windowCommand({ window, action: "focus" }));
+    const overview = await live.read(window, ["full"]);
+    const box = overview.details.ui!.elements.find(e => e.name === "Pano")!.bounds.window_image!;
+    const state = overview.details.state as { screenshot_width: number; screenshot_original_width: number };
+    const k = state.screenshot_width / state.screenshot_original_width;
+    const rect = { x: box.x, y: box.y, width: Math.round(600 * k), height: box.height };
+    const view = requireComputerAddress(`${window}/pano`);
+    expect((await live.resources.view(view, live.cwd, rect)).details.status).toBe("observed");
+    const watch = await live.resources.watch(view, live.cwd, { fps: 15 });
+    expect(watch.details.status, presentComputerResult(watch)).toBe("observed");
+    const from = { x: rect.x + Math.round(rect.width * 0.8), y: rect.y + Math.round(rect.height / 2) };
+    const dragged = await live.resources.input(requireComputerAddress(window), live.cwd, dragPlan({ window, from, to: { x: from.x - Math.round(300 * k), y: from.y }, duration_ms: 2000 }));
+    expect(dragged.details.status, presentComputerResult(dragged)).toBe("delivered");
+    const stopped = await live.resources.stopWatch(requireComputerAddress(`computer:sequence/${watch.details.watch!.sequence_id}`), live.cwd, {});
+    const sequence = stopped.details.sequence!;
+    report.push(`maximized window\n${(stopped.content[0] as { text: string }).text.split("\n")[0]}\ncapture latency ${JSON.stringify(sequence.frames.map(f => Math.round(f.capture_latency_ms)))}`);
+    expect(sequence.actual_fps).toBeGreaterThanOrEqual(12);
+    expect(sequence.frames[0].source.image.crop?.coordinate_space).toBe("window_physical_pixels");
+  } finally {
+    const { pid } = (await live.read(window, ["state"])).details.target as { pid: number };
+    await live.kill(pid);
   }
 }, 180_000);
