@@ -100,7 +100,7 @@ A real press goes to whichever window is on top at its point. After the target c
 
 A click that closes its window, such as OK or Cancel in a dialog, is `delivered` when a window of the same app takes the foreground. The receipt says the window closed and names the app's window now in front with its address, so the next action can go there. When a window of another app takes the foreground instead, the click stays `unknown`.
 
-Keys on a browser page go to the page, so browser shortcuts such as `alt+ArrowLeft` do not run there; use `computer_browser` to go back, or `space: "window"` to press them natively. Pen eraser and barrel, the `x1`/`x2` buttons and `move_relative` exist only natively. Pen pressure and tilt reach apps as real pen input; on a page they arrive as a `pen` pointer in Chrome and Edge. Paint 11 ignores pen pressure; GIMP uses it.
+Keys on a browser page go to the page, so browser shortcuts such as `alt+ArrowLeft` do not run there; use `computer_browser` to go back, or `space: "window"` to press them natively. Pen eraser and barrel, the `x1`/`x2` buttons and `move_relative` exist only natively. Pen pressure and tilt reach apps as real pen input from one pen device for the whole computer session, so an app that keeps settings per pen, such as GIMP, keeps them across calls; on a page they arrive as a `pen` pointer in Chrome and Edge. Paint 11 ignores pen pressure; GIMP uses it.
 
 A refused action sent nothing. An `unknown` outcome may have reached the target: Read again and never replay it blindly. Delivery is not proof of the application's response.
 
@@ -214,7 +214,7 @@ To set one up:
   "lab": {
     "ssh": "lab-wsl",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-2437a85e/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-cac6f49d/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
