@@ -1,6 +1,6 @@
 # Bundled CUA runtime
 
-The npm package carries one native runtime: Cua Driver 0.37.0 for Windows x64, built from the `pi-computer-use` branch of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork at source `cac6f49d`. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists what the fork adds to upstream Cua Driver. It is the qualified `windows-desktop` profile, so a fresh installation gets every native capability without any configuration:
+The npm package carries one native runtime: Cua Driver 0.37.0 for Windows x64, built from the `pi-computer-use` branch of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork at source `e2c256de`. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists what the fork adds to upstream Cua Driver. It is the qualified `windows-desktop` profile, so a fresh installation gets every native capability without any configuration:
 
 ```sh
 pi install npm:pi-agent-computer-use
@@ -10,7 +10,7 @@ An update installs a new extension version with its exact runtime. Computer use 
 
 ## Where the files come from
 
-The files are published as the fork release [`pi-runtime-0.37.0-cac6f49d`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.37.0-cac6f49d): `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`. They are byte-identical to the fork's CI build of that commit.
+The files are published as the fork release [`pi-runtime-0.37.0-e2c256de`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.37.0-e2c256de): `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`. They are byte-identical to the fork's CI build of that commit.
 
 `src/runtime-pins.json` pins the source, the version, the release URL and the SHA-256 of every file. Before packing, `npm pack` runs `scripts/fetch-runtime.mjs`, which downloads the files into `native-runtime/win32-x64/runtime/` and checks each hash. The directory is not committed to Git.
 
