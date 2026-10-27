@@ -160,11 +160,32 @@ An `aria` template is Playwright's YAML, such as `- list "Pick":\n  - listitem "
 
 `computer_window` samples the window's state and sends one command. Move and resize take integer Windows desktop pixels, not image, CSS or DIP coordinates, and need a normal window that is neither minimized nor maximized. Maximize and focus need the window on the current virtual desktop; nothing switches desktops. Focus does not restore a minimized window; `restore` does. The receipt reports the requested and measured bounds and the foreground separately from keyboard focus; Read again to see the new paint. These need the `windows-window-management` runtime (`windows-desktop` includes it); a runtime without it refuses, and keys or clicks are no substitute.
 
-`computer_display` (YOLO) uses only modes the graphics driver lists; an unsupported size refuses and lists the supported ones. The change also affects what the human sees. Closing the computer session or the machine restores the replaced mode. Read displays and windows again afterwards: earlier display and window observations no longer work. A display of a Remote Desktop session has the one size its client sets: the displays listing and a refused change say so. The user changes it by resizing the client window, reconnecting with another size or the client's display settings; Windows scaling is the user's setting too. Computer use changes neither; to read small controls, Read a region in detail or make a viewport.
+`computer_display` (YOLO) uses only modes the graphics driver lists; an unsupported size refuses and lists the supported ones. The change also affects what the human sees. Closing the computer session or the machine restores the replaced mode. Read displays and windows again afterwards: earlier display and window observations no longer work. A display of a Remote Desktop session has the one size its client sets: the displays listing and a refused change say so. The user changes it by resizing the client window, reconnecting with another size or the client's display settings; Windows scaling is the user's setting too. Computer use changes neither; to read small controls, Read a region in detail or make a viewport. Remote Desktop replaces the session's displays: while the user is connected, the only display is the client's; after they disconnect, the physical display with all its modes comes back under a new address. Read the displays again after the user connects or disconnects.
+
+When an overview shrinks a large display several times, compare the display's size with the overview before acting, then work through a viewport, or ask the user before making the display smaller. Pick a mode with the display's aspect ratio from the supported list: a 3840x2560 (3:2) display has no 1920x1280, and 2160x1440 is its closest smaller 3:2 mode. Tell the user the display stays smaller until the computer session closes.
 
 Delete of a window asks it to close: a browser the session opened closes with its disposable profile, an attached browser is detached first, and other windows get the standard close request. The receipt says whether the window closed; an app that asks about unsaved work stays open, so Read it next. Add `?force=true` to the window address to kill the hung app of a window this session opened. Safe closes only windows the session opened.
 
 `computer_open` with `path` and `args` (YOLO) starts an executable by its absolute Windows path. Apps with their own scripting, such as Blender, can build content while computer use checks it: `computer_files` `put` the script, open the app with the returned path in `args`, then Read the window. Never replay an unknown launch.
+
+### App notes
+
+Ways of working found in real sessions, per app.
+
+**GIMP 3 on Windows.**
+- GIMP (GTK) exposes almost no UI Automation, so locators find nothing. Reach tool options by points, best through a viewport of the Tool Options panel.
+- Maximize GIMP's window before making viewports: GIMP resizes its own window when tool options change, which moves the canvas under a viewport. At 150% scaling with its docks showing, GIMP 3.2 can open a window far taller than the display and its canvas is not visible; Tab hides the docks and shows it.
+- Digits are zoom shortcuts (1 = 100%, 4 = 800%): text meant for a field that did not get focus changes the zoom. To set a spin field, click it, press End then shift+Home to select the whole value (a double click selects one word only, such as "6" of "6.00"), type, press Enter, and Read the field afterwards.
+- The colour dialog and other GIMP dialogs stay above the main window; move one with `computer_window` to an empty corner before clicking under it.
+- Pen pressure reaches a brush only while its Enable dynamics is on; the "Pressure Size" preset maps pressure to brush size. GIMP keeps tool options per input device, so the pen has its own brush size, separate from the mouse's.
+- For drawing, keep one brush size and set each stroke's width with pressure (pressure = width / size). Fill a shape with back-and-forth strokes at a gap of about a third of their width.
+- A timeline returns when its events are sent, not when GIMP has painted them. GIMP 3.2.6 crashed when the foreground colour changed while its paint thread still drew earlier strokes: wait about 2 s after a long timeline before changing colour or tool options.
+
+**Browser games and widgets.**
+- The DOM and component state often hold the exact answer or the real success rule (a tile's CSS rotation, image file names, a Vue component's own check). Read them with `computer_browser` `evaluate` before estimating from pixels, and confirm against a crop.
+- For a canvas game, `getImageData` through `evaluate` returns a moving object's pose in about 0.3 s; keep screenshots for a final visual check.
+- When the page exposes obstacle geometry, plan the motion offline against it (for example A* over forward, reverse and turning primitives), then follow the plan with pose feedback instead of guessing paths by eye.
+- Check success in the app's own state, such as its level or scene counter before and after the final step: a multi-scene level can keep its title after a scene is solved.
 
 ## Browser pages
 
@@ -234,6 +255,8 @@ Each computer session owns a folder in the machine's Windows temp directory. `co
 `watch` captures a window, or a viewport of it, in the background while the agent keeps acting, so motion during a drag, a pan or a game shows up frame by frame. It returns a sequence address at once (default 10 FPS, frames up to 800 px; a viewport is captured at its own pixels up to that size) and keeps the window's refs. Every action on the window meanwhile names its span and frames in the watch in its receipt (`watch_spans` in Codemode). Read the address with `frames:last` for the newest frame while it runs. `watch_stop` at that address returns a contact sheet of the frames that changed, with frames during an action under an orange label, the changes against the frame before (share of pixels and box), and the frames as files: one PNG per frame that changed and `watch.json` with every frame's time, file, change and actions, in `to` or a temporary folder removed when the session closes; `video: true` adds `watch.webp`, an animation in real time. A watch stops by itself after `timeout_ms` (default 60 s, at most 300 s) or 3000 frames, and when the session closes. See [temporal capture](temporal-capture.md#watch-while-acting).
 
 ## Receipts in Codemode
+
+Check each receipt's `outcome` before the next input: after a refused click, keys go to whatever has focus. `computer_browser` `evaluate` puts the value in the receipt; use that field instead of parsing the text, which carries the page snapshot. A point on a window address is in pixels of the window's latest image, and an action's change-list image can have another size than the last Read; a script that clicks many controls clicks them through viewports, which keep one pixel space. `store()` of a script that later fails is lost: store helpers in a separate call that succeeds, and set the app state a helper relies on (a brush size, a tool) at the start of each call.
 
 In Codemode every `computer_*` tool resolves to a receipt object, also when it refused or its outcome is unknown, so scripts branch without try/catch or text parsing:
 
