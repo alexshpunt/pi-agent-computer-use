@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { collectSequence, SequenceStore, selectFrames, validateSequence } from "../src/temporal-capture.ts";
+import { collectSequence, runningSequenceMetadata, SequenceStore, selectFrames, validateSequence } from "../src/temporal-capture.ts";
 import { observationSource } from "../src/observation-source.ts";
 
 const source = observationSource("window", { screenshot_width: 10, screenshot_height: 10, window_bounds: { x: 0, y: 0, width: 10, height: 10 } }, { window_ref: "test-window" });
@@ -39,6 +39,23 @@ test("a stop request ends a capture as stopped and keeps its frames; the running
   expect(seen).toBe(sequence);
   expect(sequence.stop_reason).toBe("stopped");
   expect(sequence.frames).toHaveLength(2);
+  // LPT-949: the slots left in the watch's time limit were never due once the agent stopped it.
+  expect(sequence.pending_slots).toBe(0);
+});
+
+// LPT-949: a running watch reports frames so far, how long it has run and the rate it reaches, not a finished capture.
+test("a sequence still collecting reports itself running, without a stop reason or slots", async () => {
+  const c = clock(); const stop = new AbortController(); let running: ReturnType<typeof runningSequenceMetadata> | undefined;
+  let sequence: Parameters<typeof runningSequenceMetadata>[0] | undefined; let calls = 0;
+  await collectSequence({ duration_ms: 10_000, fps: 10, max_frames: 1000, timeout_ms: 20_000 }, async () => {
+    c.advance(10);
+    // Three frames at 100 ms intervals are in when the fourth capture runs, 315 ms into the watch.
+    if (++calls === 4) { c.advance(5); running = runningSequenceMetadata(sequence!, c.now()); stop.abort(); }
+    return frame(String(calls));
+  }, undefined, c, { limits: { duration_ms: 300_000, fps: 30, max_frames: 3000, timeout_ms: 320_000 }, stop: stop.signal, started: s => { sequence = s; } });
+  expect(running).toMatchObject({ running: true, elapsed_ms: 315, actual_fps: 10, last_frame_age_ms: 105 });
+  expect(running!.frames).toHaveLength(3);
+  for (const key of ["stop_reason", "pending_slots", "skipped_slots"]) expect(running).not.toHaveProperty(key);
 });
 
 test("a running sequence is never evicted from the store; once settled it is", () => {
