@@ -140,7 +140,7 @@ This shows a stroke on a canvas or a moved sprite when the UI tree says nothing.
 
 ### Wait for conditions
 
-`computer_wait` samples a window until every condition holds (`mode: "wait"`) or once (`mode: "check"`), without sending input. The last sample's refs are current for the next action.
+`computer_wait` samples a window until every condition holds (`mode: "wait"`) or once (`mode: "check"`), without sending input. The last sample's refs are current for the next action. On a browser page the result ends with that sample's page snapshot, as a `dom` Read shows it, whether the conditions held or not; its observation takes `element:crop,<ref>` right away.
 
 | Check | Native windows | Browser pages |
 | --- | --- | --- |
