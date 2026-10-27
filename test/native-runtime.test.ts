@@ -21,10 +21,10 @@ async function scratch(prefix: string) {
   return dir;
 }
 /** Synthetic release assets and the format-2 pins that describe them. */
-function release(url = "https://example.invalid/release/") {
-  const bytes = Object.fromEntries(NAMES.map(name => [name, Buffer.from(`fixture-${name}`)]));
+function release(url = "https://example.invalid/release/", source = "a".repeat(40)) {
+  const bytes = Object.fromEntries(NAMES.map(name => [name, Buffer.from(`fixture-${source.slice(0, 1)}-${name}`)]));
   const files = Object.fromEntries(NAMES.map(name => [name, createHash("sha256").update(bytes[name]!).digest("hex")]));
-  const pins: RuntimePins = { format: 2, source: "a".repeat(40), version: "0.37.0", url, files };
+  const pins: RuntimePins = { format: 2, source, version: "0.37.0", url, files };
   return { bytes, pins };
 }
 /** A package directory holding runtime/<files>, as prepack leaves it. */
@@ -132,7 +132,9 @@ test("fetchRuntime downloads every pinned file from loopback, checks it and does
   const { pins } = release(server.url);
   const directory = await scratch("fetched-runtime-");
   await fetchRuntime(directory, pins);
-  expect((await readdir(directory)).sort()).toEqual(["runtime"]);
+  // The download names the pinned source it came from.
+  expect((await readdir(directory)).sort()).toEqual(["runtime", "runtime.source"]);
+  expect((await readFile(path.join(directory, "runtime.source"), "utf8")).trim()).toBe(pins.source);
   expect((await readdir(path.join(directory, "runtime"))).sort()).toEqual([...NAMES].sort());
   await expect(loadBundledRuntime(directory, pins)).resolves.toMatchObject({ command: path.join(directory, "runtime", "cua-driver.exe") });
   expect([...server.requests].sort()).toEqual([...NAMES].sort());
@@ -153,3 +155,34 @@ test("fetchRuntime refuses a wrong hash or a missing asset without leaving a run
   await expect(fetchRuntime(absent, release(missing.url).pins)).rejects.toThrow("native_runtime_download_failed: THIRD_PARTY_NOTICES.md (HTTP 404)");
   expect(await readdir(absent)).toEqual([]);
 });
+
+// LPT-968: a Git checkout downloads the runtime on first use. After the pins change, the earlier download is kept aside
+// and the pinned runtime is downloaded, instead of refusing on its hashes until someone deletes the folder.
+test("after a pin change fetchRuntime keeps the earlier download aside and downloads the pinned one", async () => {
+  const first = release(undefined, "a".repeat(40)), second = release(undefined, "b".repeat(40));
+  const servedFirst = await assetServer(first.bytes), servedSecond = await assetServer(second.bytes);
+  const directory = await scratch("fetched-runtime-");
+  await fetchRuntime(directory, release(servedFirst.url, "a".repeat(40)).pins);
+  const pins = release(servedSecond.url, "b".repeat(40)).pins;
+  await fetchRuntime(directory, pins);
+  expect((await readdir(directory)).sort()).toEqual(["runtime", "runtime-aaaaaaaa", "runtime.source"]);
+  await expect(loadBundledRuntime(directory, pins)).resolves.toMatchObject({ source: "b".repeat(40) });
+  expect(await readFile(path.join(directory, "runtime-aaaaaaaa", "cua-driver.exe"), "utf8")).toBe("fixture-a-cua-driver.exe");
+  // Back and forth: each earlier download keeps its own folder.
+  await fetchRuntime(directory, release(servedFirst.url, "a".repeat(40)).pins);
+  await fetchRuntime(directory, pins);
+  expect((await readdir(directory)).sort()).toEqual(["runtime", "runtime-aaaaaaaa", "runtime-aaaaaaaa-2", "runtime-bbbbbbbb", "runtime.source"]);
+});
+
+test("a download of the pinned source that was changed afterwards is not replaced", async () => {
+  const { bytes } = release();
+  const server = await assetServer(bytes);
+  const { pins } = release(server.url);
+  const directory = await scratch("fetched-runtime-");
+  await fetchRuntime(directory, pins);
+  await writeFile(path.join(directory, "runtime", "cua-driver.exe"), "changed");
+  await fetchRuntime(directory, pins);
+  expect(server.requests).toHaveLength(NAMES.length);
+  await expect(loadBundledRuntime(directory, pins)).rejects.toThrow("native_runtime_hash_mismatch: cua-driver.exe");
+});
+
