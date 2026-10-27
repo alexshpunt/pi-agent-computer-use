@@ -219,6 +219,26 @@ test("a page action that navigates shows the whole page after it, even when the 
   expect(left.content.filter(block => block.type === "image")).toHaveLength(1);
 });
 
+// LPT-962: a crop needs no fresh DOM Read: the window's Read takes a locator, or a ref of its latest snapshot, against the live page.
+test("a browser window's Read crops an element by locator or latest ref, and a replaced observation names the current one", async () => {
+  const f = browserFixture();
+  const png = (await sharp({ create: { width: 30, height: 20, channels: 3, background: "red" } }).png().toBuffer()).toString("base64");
+  const request = vi.fn(async (_kind: string, _args: unknown) => ({ url: "https://example.com/next", title: "Next", png }));
+  (f.browser as unknown as { request: unknown }).request = request;
+  const window = await f.window();
+  const first = (await f.resources.read(window, cwd, ["dom"]))!;
+  // A click issues the page's next snapshot, which replaces the first one.
+  const clicked = await f.resources.input(window, cwd, clickPlan({ window: "x", target: "e1" }));
+  const byLocator = (await f.resources.read(window, cwd, ["element:crop,getByRole('button', { name: 'Verify, now' })"]))!;
+  expect(byLocator.content.filter(block => block.type === "image")).toHaveLength(1);
+  expect(request.mock.calls.at(-1)).toEqual(["screenshot", { target: { locator: "internal:role=button[name=\"Verify, now\"i]" }, highlight: false }, undefined]);
+  const byRef = (await f.resources.read(window, cwd, ["element:highlight,e1"]))!;
+  expect(byRef.content.filter(block => block.type === "image")).toHaveLength(1);
+  expect(request.mock.calls.at(-1)).toEqual(["screenshot", { target: { ref: "e1" }, highlight: true }, undefined]);
+  await expect(f.resources.read(at(`computer:observation/${first.details.observation_id}`), cwd, ["element:crop,e1"]))
+    .rejects.toThrow(`computer:observation/${clicked.details.observation_id}`);
+});
+
 test("typed input on a browser window goes to Playwright with page refs and locators", async () => {
   const f = browserFixture();
   const window = await f.window();
