@@ -193,7 +193,14 @@ const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+
 /** File name of a Win32 launch path without directory and extension; packaged shell:appsFolder paths have none. */
 const executableName = (path: string) => /^shell:/i.test(path) ? "" : appName(path.split(/[\\/]/).pop() ?? "");
 
-interface CoveringWindow { pid: number; window_id: number; relation: string; title: string }
+interface NamedWindow { pid: number; window_id: number; title: string }
+interface CoveringWindow extends NamedWindow { relation: string }
+/** The window a click result names as in front after the click closed its own window. */
+function foregroundAfter(value: unknown): NamedWindow | undefined {
+  const window = value as Partial<NamedWindow> | undefined;
+  return window && Number.isSafeInteger(window.pid) && Number.isSafeInteger(window.window_id)
+    ? { pid: window.pid!, window_id: window.window_id!, title: typeof window.title === "string" ? window.title : "" } : undefined;
+}
 /** The window a driver refusal names as covering the press point (code pointer_target_occluded). */
 function coveringWindow(message: string): CoveringWindow | undefined {
   const match = /pointer_target_occluded: .*?window_id=(\d+) pid=(\d+) relation=(\w+) title=("(?:[^"\\]|\\.)*")/.exec(message);
@@ -1990,8 +1997,11 @@ export class ComputerSession {
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
           }
           const cover = covering && await this.coverText(covering, signal);
+          // A click that closed its window, such as OK in a dialog, names the window of the app the driver found in front.
+          const after = status === "delivered" ? foregroundAfter(state.foreground_after) : undefined;
+          const front = after && `The click closed this window; ${await this.windowName(after, signal)} of the same app is now in front.\n`;
           const result = this.result(status, takeover ? `Foreground input paused because the human is using the computer: ${nativeMessage.slice(nativeMessage.indexOf("human_takeover:") + 16)}`
-            : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
+            : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
             { ...state, ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
               overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
               resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
@@ -2013,10 +2023,31 @@ export class ComputerSession {
     });
   }
 
+  /**
+   * After input whose window could not be read again: when the window is gone from the window list (closed or hidden),
+   * say so and name the app's frontmost remaining window. The list is in the desktop's z-order, front first. It takes
+   * the native target, since a closed window's reference is already dropped.
+   */
+  closedWindowNote(target: WindowTarget, signal?: AbortSignal): Promise<string | undefined> {
+    return this.queue(async () => {
+      if (this.driver.windowLifetime === false) return undefined;
+      const windows = await this.list(signal).catch(() => undefined);
+      if (!windows || windows.some(window => window.pid === target.pid && window.window_id === target.window_id)) return undefined;
+      const front = windows.find(window => window.pid === target.pid && Number.isSafeInteger(window.window_id));
+      return `This window closed or is hidden; ${front ? `the app's frontmost window is ${await this.windowName({ pid: target.pid,
+        window_id: front.window_id as number, title: typeof front.title === "string" ? front.title : "" }, signal)}` : "the app has no other visible window"}.`;
+    });
+  }
+
+  /** A window the driver named by its handle: its title, and its address where this session may act on it. YOLO adopts it; Safe never does. */
+  private async windowName(window: NamedWindow, signal?: AbortSignal): Promise<string> {
+    const entry = this.getMode() === "yolo" ? await this.register(window, signal).catch(() => undefined) : undefined;
+    return `${window.title ? `"${window.title}"` : "an untitled window"}${entry ? ` (${computerSource("window", entry.ref)})` : ""}`;
+  }
+
   /** Names the window that covers a press point, with its address where this session may act on it. */
   private async coverText(covering: CoveringWindow, signal?: AbortSignal): Promise<string> {
-    const entry = this.getMode() === "yolo" ? await this.register(covering, signal).catch(() => undefined) : undefined;
-    const named = `${covering.title ? `"${covering.title}"` : "an untitled window"}${entry ? ` (${computerSource("window", entry.ref)})` : ""}`;
+    const named = await this.windowName(covering, signal);
     const then = "Close or move it, or act on it instead.";
     if (covering.relation === "owned_window")
       return `${named}, a window this window owns, covers the point. It stays in front of this window even when this window is active. ${then}`;
