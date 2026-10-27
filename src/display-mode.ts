@@ -15,7 +15,14 @@ export interface DisplayModes {
   set(monitor: string, mode: DisplayMode, signal?: AbortSignal): Promise<DisplayModeChange>;
   /** Return a device to an earlier mode. */
   restore(device: string, mode: DisplayMode, signal?: AbortSignal): Promise<void>;
+  /** Whether the desktop is a Remote Desktop session now; its displays then take their size from the client. */
+  remoteSession(signal?: AbortSignal): Promise<boolean>;
 }
+
+/** What the agent and the user can do about a Remote Desktop display's size. */
+export const REMOTE_DESKTOP_DISPLAY = "the resolution comes from the Remote Desktop client (its window size or its display settings), so computer_display cannot change it; " +
+  "the user can resize the client window or reconnect with another size, and set Windows scaling in Settings > System > Display. " +
+  "To read small controls, Read a region of the display or window in detail, or make a viewport with computer_view.";
 
 const SCRIPT = String.raw`
 Add-Type @"
@@ -78,6 +85,10 @@ export function displayModes(runner: CommandRunner): DisplayModes {
   return {
     set: (monitor, mode, signal) => change({ monitor, ...mode }, signal),
     restore: async (device, mode, signal) => { await change({ device, ...mode }, signal); },
+    // SM_REMOTESESSION answers for the session as it is now; SESSIONNAME stays what it was when the shell started.
+    remoteSession: async signal => (await runner.run(powershellOf(runner), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+      `Add-Type -Name M -Namespace PiDisplayRemote -MemberDefinition '[DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);'; [PiDisplayRemote.M]::GetSystemMetrics(0x1000)`],
+      { signal, timeoutMs: 20_000 })).trim() !== "0",
   };
 }
 
