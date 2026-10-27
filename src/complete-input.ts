@@ -13,6 +13,8 @@ export interface InputCommand {
   dwell_ms?: number;
   delay_ms?: number;
   button?: "left" | "right" | "middle";
+  /** click only: 2 is a double click, 3 a triple click, at the system double-click timing. */
+  count?: number;
   direction?: "up" | "down" | "left" | "right";
   amount?: number; by?: "line" | "page";
   /** Signed native wheel detents at a pixel point; positive values scroll content right/down. */
@@ -51,7 +53,7 @@ const modifiers = ["ctrl", "shift", "alt", "win"];
 const fields: Record<InputCommand["action"], string[]> = {
   move: [], hover: ["dwell_ms"],
   key: ["key", "modifiers"], hotkey: ["keys"], type_text: ["text", "delay_ms"], set_value: ["text"],
-  click: ["button", "modifiers"], right_click: ["modifiers"], double_click: ["modifiers"],
+  click: ["button", "count", "modifiers"], right_click: ["modifiers"], double_click: ["modifiers"],
   scroll: ["direction", "amount", "by", "delta_x", "delta_y", "unit"], drag: ["from_x", "from_y", "to_x", "to_y", "duration_ms", "steps", "button", "modifiers", "via"],
   select_all: [], invoke: [], select: [],
   hold: ["keys", "duration_ms", "actions"],
@@ -114,6 +116,7 @@ export function validateInput(command: InputStep, observed: { tokens: Set<string
   }
   if (command.delay_ms !== undefined && !integer(command.delay_ms, 0, 200)) throw new Error("delay_ms must be 0..200.");
   if (command.button !== undefined && !["left", "right", "middle"].includes(command.button)) throw new Error("Unsupported button.");
+  if (command.count !== undefined && !integer(command.count, 1, 3)) throw new Error("count must be 1, 2 or 3.");
   if (command.action === "scroll") {
     if (pixel) {
       if (command.direction !== undefined || command.amount !== undefined || command.by !== undefined) throw new Error("Coordinate scroll cannot combine detents with direction, amount or by.");

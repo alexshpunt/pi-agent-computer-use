@@ -311,17 +311,17 @@ function holding(modifiers: string[] | undefined, start: number, end: number, ev
 const clickParameters = Type.Object({
   window: inputWindow, target: inputTarget("The element to click"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
   button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")], { description: "Mouse button, default left." })),
-  count: Type.Optional(Type.Integer({ minimum: 1, maximum: 3, description: "Clicks: 2 is a double click, 3 a triple click (browser pages). Default 1." })),
+  count: Type.Optional(Type.Integer({ minimum: 1, maximum: 3, description: "Clicks: 2 is a double click, 3 a triple click. Default 1." })),
   modifiers: modifiersField, timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
 
 /** What computer_click sends to a native window and to a browser page. */
 export function clickPlan(params: Static<typeof clickParameters>): InputPlan {
   const count = params.count ?? 1, button = params.button ?? "left", modifiers = params.modifiers?.length ? { modifiers: params.modifiers } : {};
-  const native = count === 3 ? "A triple click works on browser pages only."
-    : button === "right" ? count === 2 ? "A right double click works on browser pages only." : { action: "right_click", ...modifiers, ...timeout(params) }
-    : count === 2 ? button === "middle" ? "A middle double click works on browser pages only." : { action: "double_click", ...modifiers, ...timeout(params) }
-    : { action: "click", ...(button === "middle" ? { button } : {}), ...modifiers, ...timeout(params) };
+  // A native window gets the driver's own single, right and double clicks; every other multi-click is its click with a count.
+  const native = count === 1 ? button === "right" ? { action: "right_click", ...modifiers, ...timeout(params) } : { action: "click", ...(button === "middle" ? { button } : {}), ...modifiers, ...timeout(params) }
+    : count === 2 && button === "left" ? { action: "double_click", ...modifiers, ...timeout(params) }
+    : { action: "click", ...(button !== "left" ? { button } : {}), count, ...modifiers, ...timeout(params) };
   const aimed = aim(params, "click", true);
   // A point of a page gets the presses Playwright's mouse.click sends, numbered so the page sees double and triple clicks.
   const presses = Array.from({ length: count }, (_, index) => [{ at_ms: 0, type: "button_down", button, click_count: index + 1 }, { at_ms: 0, type: "button_up", button, click_count: index + 1 }]).flat();

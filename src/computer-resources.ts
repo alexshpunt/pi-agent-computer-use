@@ -1084,8 +1084,8 @@ export class ComputerResources {
     const action = String(command.action);
     // What the agent sees structurally is pressed structurally: a click or scroll on a target goes through UI Automation
     // alone, and the driver refuses before sending anything when no pattern carries it. Points, keys, drags and timelines
-    // are real input; semantic actions and menus are UI Automation calls of their own.
-    const structural = !plan.real && plan.target !== undefined && plan.point === undefined && STRUCTURAL.includes(action) && command.unit === undefined && command.modifiers === undefined;
+    // are real input; semantic actions and menus are UI Automation calls of their own. No pattern carries a multi-click.
+    const structural = !plan.real && plan.target !== undefined && plan.point === undefined && STRUCTURAL.includes(action) && command.unit === undefined && command.modifiers === undefined && command.count === undefined;
     if (structural) command.uia_only = true;
     else if (!isSemanticAction(action) && action !== "menu") command.delivery_mode = "foreground";
     let target = plan.target;
