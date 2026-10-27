@@ -73,10 +73,10 @@ Read a window for its UI tree and a small overview image. Overviews have a 1280 
 | `regions` | Icons and text areas found by [Cua perception](https://github.com/trycua/cua/releases/tag/cua-perception-v0.2.1) in the overview pixels, for controls without UI names such as canvas toolbars. Needs `/computer-setup perception` on that machine |
 | `capture:{"max_elements":500,"max_depth":20,"hints":true,"maxLongEdge":...,"scale":...}` | Limits of one fresh Read; optional `guides` |
 | `region:x,y,w,h` | Readonly detail of a rectangle in a display observation's pixels. For part of a window, make a [viewport](#viewports) |
-| `element:inspect,1:a` | One element of an observation; also `scope`, `highlight`, `crop` and `text` (its full text). On a page snapshot, `element:crop,<ref>` and `element:highlight,<ref>` |
+| `element:inspect,1:a` | One element of an observation; also `scope`, `highlight`, `crop` and `text` (its full text). On a page snapshot, `element:crop,<ref>` and `element:highlight,<ref>`. On a browser window's own address, `element:crop` and `element:highlight` take a Playwright locator, such as `element:crop,locator('#board')`, or a ref of its latest snapshot, and shoot the live page without a new DOM Read |
 | `frames:endpoints` | Frames of a sequence: `first`, `last`, `all`, `changed`, `{"indexes":[0,2]}` or `{"from":0,"to":2}`; add `"as":"sheet"` for one tiled image, or `"max"`/`"min"` for a per-pixel composite ([temporal capture](temporal-capture.md#one-image-of-many-frames)) |
 
-Read an observation with `offset` and `limit` to page through its text; pages come from the stored observation and never capture again. A browser snapshot keeps up to 400,000 characters, and `element:text` returns up to 200,000 characters of one native element. A partial UI walk leaves missing elements unknown. When a capture refuses and the window's process is hung, the refusal says so; wait or close the app.
+Read an observation with `offset` and `limit` to page through its text; pages come from the stored observation and never capture again. A browser snapshot keeps up to 400,000 characters, and `element:text` returns up to 200,000 characters of one native element. A partial UI walk leaves missing elements unknown. When a capture refuses and the window's process is hung, the refusal says so; wait or close the app. A Read or input on an observation that a newer one replaced or an action spent refuses and names its window's current observation, when there is one.
 
 ## Act on windows
 
