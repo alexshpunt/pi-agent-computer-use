@@ -61,10 +61,16 @@ export interface CaptureHooks {
   stop?: AbortSignal;
   /** Receives the sequence, which then grows frame by frame, and the clock time its timestamps count from. */
   started?(sequence: FrameSequence, at: number): void;
+  /**
+   * How many captures may run at once (default 1). A capture slower than the frame interval then overlaps the next
+   * slot's instead of making it skip; frames keep the order their captures started in.
+   */
+  concurrency?: number;
 }
 /**
- * Sequential sampling skips missed slots. The clock seam allows deterministic timing contract checks. A frame with the
- * same bytes as the one before shares its image and adds nothing to the byte budget, so a still window costs little.
+ * Sampling skips missed slots instead of bursting; with `concurrency` above 1 a slow capture overlaps the next slot's.
+ * The clock seam allows deterministic timing contract checks. A frame with the same bytes as the one before shares its
+ * image and adds nothing to the byte budget, so a still window costs little.
  */
 export async function collectSequence(options: SequenceOptions,
   capture: (signal: AbortSignal) => Promise<{ image: SequenceFrame["image"]; source: ObservationSource; native_completed_at?: number; native_latency_ms?: number }>, signal?: AbortSignal,
@@ -77,11 +83,40 @@ export async function collectSequence(options: SequenceOptions,
     elapsed_ms: 0, sample_span_ms: 0, actual_fps: null, last_frame_age_ms: null, skipped_slots: [], pending_slots: 0, payload_bytes: 0, stop_reason: "completed", frames: [] };
   hooks.started?.(sequence, started);
   const interval = 1000 / requested.fps; const slots = Math.ceil(requested.duration_ms / interval);
+  const concurrency = Math.max(1, Math.floor(hooks.concurrency ?? 1));
+  type Captured = Awaited<ReturnType<typeof capture>>;
+  // Captures in flight, oldest first. Each settles into a value or an error, so none rejects unobserved.
+  const pending: { slot: number; before: number; done: Promise<{ result?: Captured; error?: unknown; after: number }> }[] = [];
+  /** Take the oldest capture's frame. False when the sequence must end. */
+  let ended = false;
+  const settle = async (): Promise<boolean> => {
+    const { slot: at, before, done } = pending.shift()!;
+    const { result, error, after } = await done;
+    if (error !== undefined) throw error;
+    active.throwIfAborted();
+    const bytes = Buffer.from(result!.image.data, "base64");
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    const previous = sequence.frames.at(-1);
+    const geometry = (source: ObservationSource) => JSON.stringify({ image: source.image, scale: source.scale });
+    const geometryChanged = !!previous && geometry(previous.source) !== geometry(result!.source);
+    const repeated = !!previous && previous.hash === hash && !geometryChanged;
+    if (!repeated && (bytes.length > 12 * 1024 * 1024 || sequence.payload_bytes + bytes.length > byteBudget)) { sequence.stop_reason = "byte_limit"; ended = true; return false; }
+    sequence.frames.push({ index: sequence.frames.length, slot: at, timestamp_ms: (result!.native_completed_at ?? after) - started, capture_started_ms: before - started,
+      capture_latency_ms: result!.native_latency_ms ?? after - before, sample_latency_ms: after - before, hash, bytes: bytes.length,
+      source: result!.source, geometry_changed: geometryChanged, image: repeated ? previous.image : result!.image });
+    if (!repeated) sequence.payload_bytes += bytes.length;
+    return true;
+  };
   let slot = 0;
   try {
-    while (slot < slots) {
+    sampling: while (slot < slots) {
       if (active.aborted) throw new SequenceStop(signal?.aborted ? "cancelled" : "timeout");
-      if (sequence.frames.length >= requested.max_frames) { sequence.stop_reason = "frame_limit"; break; }
+      if (sequence.frames.length + pending.length >= requested.max_frames) {
+        if (pending.length) { if (!await settle()) break; continue; }
+        sequence.stop_reason = "frame_limit"; break;
+      }
+      // All capture slots are busy: the oldest capture's frame comes first.
+      if (pending.length >= concurrency) { if (!await settle()) break; continue; }
       const wait = started + slot * interval - clock.now();
       if (wait > 0) await clock.wait(wait, active);
       active.throwIfAborted();
@@ -91,22 +126,17 @@ export async function collectSequence(options: SequenceOptions,
         while (slot < slots) sequence.skipped_slots.push(slot++);
       }
       if (slot >= slots) break;
-      const before = clock.now(); const result = await capture(active); const after = clock.now();
-      active.throwIfAborted();
-      const bytes = Buffer.from(result.image.data, "base64");
-      const hash = createHash("sha256").update(bytes).digest("hex");
-      const previous = sequence.frames.at(-1);
-      const geometry = (source: ObservationSource) => JSON.stringify({ image: source.image, scale: source.scale });
-      const geometryChanged = !!previous && geometry(previous.source) !== geometry(result.source);
-      const repeated = !!previous && previous.hash === hash && !geometryChanged;
-      if (!repeated && (bytes.length > 12 * 1024 * 1024 || sequence.payload_bytes + bytes.length > byteBudget)) { sequence.stop_reason = "byte_limit"; break; }
-      sequence.frames.push({ index: sequence.frames.length, slot, timestamp_ms: (result.native_completed_at ?? after) - started, capture_started_ms: before - started,
-        capture_latency_ms: result.native_latency_ms ?? after - before, sample_latency_ms: after - before, hash, bytes: bytes.length,
-        source: result.source, geometry_changed: geometryChanged, image: repeated ? previous.image : result.image });
-      if (!repeated) sequence.payload_bytes += bytes.length;
+      const before = clock.now();
+      pending.push({ slot, before, done: capture(active).then(result => ({ result, after: clock.now() }), error => ({ error: error ?? new Error("capture failed"), after: clock.now() })) });
       slot++;
-      while (slot < slots && slot * interval < clock.now() - started) sequence.skipped_slots.push(slot++);
+      // One capture at a time waits for its frame before the next slot, as sequential sampling always has.
+      if (concurrency === 1) {
+        if (!await settle()) break sampling;
+        while (slot < slots && slot * interval < clock.now() - started) sequence.skipped_slots.push(slot++);
+      }
     }
+    // Captures still running when sampling ends deliver their frames, unless a limit ended it.
+    while (pending.length && !ended) if (!await settle()) break;
   } catch (error) {
     sequence.stop_reason = hooks.stop?.aborted ? "stopped" : signal?.aborted ? "cancelled" : timeout.aborted ? "timeout" : error instanceof SequenceStop ? error.reason : "capture_failed";
   }

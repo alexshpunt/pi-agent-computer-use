@@ -69,6 +69,8 @@ export interface Driver {
   windowManagement?: boolean;
   /** Fixed overview filter of the selected native runtime; never a tool-controlled resize switch. */
   overviewKernel?: CuaVisionSettings["kernel"];
+  /** A display-only window read can return one rectangle of the window, encoding only that rectangle. */
+  windowCrop?: boolean;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   /**
@@ -192,6 +194,23 @@ const ELEMENT_TEXT_LIMIT = 200_000;
 const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+/, "").replace(/\.exe$/, "");
 /** File name of a Win32 launch path without directory and extension; packaged shell:appsFolder paths have none. */
 const executableName = (path: string) => /^shell:/i.test(path) ? "" : appName(path.split(/[\\/]/).pop() ?? "");
+
+/** Watch captures in flight at once. A third measured no faster on ZinPC: part of each driver call is serial. */
+const WATCH_CONCURRENCY = 2;
+/** A watch frame the driver cropped to its viewport: the image is the viewport, at most `cap` on its long edge. */
+function nativeCropFrame(state: Record<string, unknown>, images: SequenceFrame["image"][], requested: PixelBox, cap: number, base: ObservationSource) {
+  const applied = state.screenshot_crop as PixelBox | undefined;
+  const width = state.screenshot_width, height = state.screenshot_height;
+  const originalWidth = state.screenshot_original_width, originalHeight = state.screenshot_original_height;
+  if (!images[0] || images[0].data.length > 16 * 1024 * 1024 || !applied || typeof width !== "number" || typeof height !== "number"
+    || typeof originalWidth !== "number" || typeof originalHeight !== "number" || Math.max(width, height) > cap)
+    throw new SequenceStop("capture_failed");
+  const source: ObservationSource = { ...base, semantic_scope: "none", capabilities: { read: true, input: "none", detail: "unsupported" },
+    image: { ...base.image, scope: "native_window_zoom", coordinate_space: "detail_image_pixels", dimensions: { width, height },
+      original_dimensions: { width: originalWidth, height: originalHeight }, origin: { x: applied.x, y: applied.y, relative_to: "window" },
+      crop: { requested, applied, coordinate_space: "window_physical_pixels" } } };
+  return { image: images[0], source };
+}
 
 interface NamedWindow { pid: number; window_id: number; title: string }
 interface CoveringWindow extends NamedWindow { relation: string }
@@ -731,6 +750,8 @@ export class ComputerSession {
     const driver = this.watcher ??= this.driver.companion?.() ?? this.driver;
     // Watch frames come from the window's own pixels at a size that gives the crop maxLongEdge pixels on its long edge.
     let cap = Math.min(FULL_RESOLUTION, options.maxLongEdge);
+    // With a native crop the driver copies and encodes only the viewport, in the window's physical pixels.
+    let nativeCrop: PixelBox | undefined;
     const fullSize = (state: Record<string, unknown>) => {
       const width = state.screenshot_original_width, height = state.screenshot_original_height;
       if (typeof width !== "number" || typeof height !== "number" || width <= 0 || height <= 0) return undefined;
@@ -745,11 +766,18 @@ export class ComputerSession {
       if (!full) return this.result("refused", "The watch did not start: the window could not be captured.");
       const long = Math.max(options.crop.width, options.crop.height);
       cap = Math.max(64, Math.min(FULL_RESOLUTION, Math.ceil(Math.max(full.width, full.height) * Math.min(options.maxLongEdge, long) / long)));
+      if (driver.windowCrop) {
+        const kx = (probe.structuredContent!.screenshot_original_width as number) / full.width;
+        const ky = (probe.structuredContent!.screenshot_original_height as number) / full.height, crop = options.crop;
+        nativeCrop = { x: Math.floor(crop.x * kx), y: Math.floor(crop.y * ky), width: Math.max(1, Math.ceil(crop.width * kx)), height: Math.max(1, Math.ceil(crop.height * ky)) };
+        cap = Math.max(64, Math.min(FULL_RESOLUTION, options.maxLongEdge, long));
+      }
     }
     const capture = async (active: AbortSignal) => {
       if (!permitted()) throw new SequenceStop(this.entries.has(window_ref) ? "access_revoked" : "target_lost");
       const nativeStarted = performance.now();
-      const native = await driver.call("get_window_state", { ...entry.target, include_accessibility_tree: false, max_image_dimension: cap }, active);
+      const native = await driver.call("get_window_state", { ...entry.target, include_accessibility_tree: false, max_image_dimension: cap,
+        ...(nativeCrop ? { display_only: true, crop: nativeCrop } : {}) }, active);
       const native_completed_at = performance.now();
       active.throwIfAborted();
       if (!permitted()) throw new SequenceStop(this.entries.has(window_ref) ? "access_revoked" : "target_lost");
@@ -759,6 +787,8 @@ export class ComputerSession {
       if ((state.pid !== undefined && state.pid !== entry.target.pid) || (state.window_id !== undefined && state.window_id !== entry.target.window_id))
         throw new SequenceStop("target_lost");
       const images = native.content.filter((block): block is SequenceFrame["image"] => block.type === "image");
+      if (nativeCrop) return { ...nativeCropFrame(state, images, nativeCrop, cap, this.source("window", state, { session_id: this.sessionId, window_ref, ...entry.target })),
+        native_completed_at, native_latency_ms: native_completed_at - nativeStarted };
       const context = this.overview(state, "watch-frame", false, images);
       if (!context || Math.max(context.width, context.height) > cap || images[0].data.length > 16 * 1024 * 1024) throw new SequenceStop("capture_failed");
       let source = this.source("window", state, { session_id: this.sessionId, window_ref, ...entry.target });
@@ -776,8 +806,9 @@ export class ComputerSession {
     };
     const stop = new AbortController();
     const watch: Watching = { window_ref, watching, started: 0, marks: [], stop, finished: false, done: Promise.resolve(undefined as unknown as FrameSequence) };
+    // A frame of a large window takes longer than a frame interval; a second capture in flight keeps the rate up.
     watch.done = collectSequence({ duration_ms: options.timeout_ms, fps: options.fps, max_frames: WATCH_LIMITS.max_frames, timeout_ms: options.timeout_ms + 20_000 }, capture,
-      undefined, undefined, { limits: WATCH_LIMITS, stop: stop.signal, started: (sequence, at) => {
+      undefined, undefined, { limits: WATCH_LIMITS, stop: stop.signal, concurrency: WATCH_CONCURRENCY, started: (sequence, at) => {
         watch.sequence = sequence; watch.started = at;
         sequence.configuration = { ...this.overviewSettings(), maxLongEdge: cap };
         this.sequences.put(sequence, true);
