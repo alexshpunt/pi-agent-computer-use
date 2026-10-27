@@ -14,7 +14,7 @@ The files are published as the fork release [`pi-runtime-0.37.0-e2c256de`](https
 
 `src/runtime-pins.json` pins the source, the version, the release URL and the SHA-256 of every file. Before packing, `npm pack` runs `scripts/fetch-runtime.mjs`, which downloads the files into `native-runtime/win32-x64/runtime/` and checks each hash. The directory is not committed to Git.
 
-An installation from Git has no packaged files. On first use, computer use downloads the same pinned files once into that directory, with the same checks. A failed download or a changed file refuses; nothing is replaced silently.
+An installation from Git has no packaged files. On first use, computer use downloads the same pinned files once into that directory, with the same checks, and names their source in `native-runtime/win32-x64/runtime.source`. When a pull changes the pins, the earlier download is moved aside to `runtime-<source>` and the pinned one is downloaded. A failed download, a changed file or a folder with no recorded source refuses and says which folder to move away; nothing is replaced silently.
 
 ## Platforms
 
