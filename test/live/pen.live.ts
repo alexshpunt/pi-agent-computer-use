@@ -124,3 +124,25 @@ test("a light pen stroke sent 4 ms apart keeps its width from its first dab", as
   expect(Math.max(...fast)).toBeLessThanOrEqual(middle + 2);
   expect(Math.max(...fast)).toBeLessThanOrEqual(Math.max(...slow) + 2);
 });
+
+// LPT-965: every timeline's pen events come from the driver's one synthetic pen, so GIMP keeps one pen with its tool
+// settings instead of registering a new one per call. GIMP lists one synthetic pen as two device entries; before,
+// five timelines left six.
+test("GIMP keeps one pen across timelines", async () => {
+  for (const y of [190, 210, 230]) {
+    await draw(stroke(0, canvas.left + 20, canvas.top + y, 6, 12, () => 0.3));
+  }
+  // Quit so GIMP writes its devicerc, discarding the drawing.
+  await press(window, "ctrl+q");
+  await pause(2000);
+  const quit = (await windows("regex:^Quit GIMP")).find(row => row.pid === own!.pid && row.window_ref);
+  if (quit) await press(`computer:window/${quit.window_ref}`, "ctrl+d");
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await pause(1000);
+    if ((await live.powershell(`(Get-Process -Id ${own!.pid} -ErrorAction SilentlyContinue | Measure-Object).Count`)).trim() === "0") break;
+  }
+  const devicerc = await live.powershell(`Get-Content -Raw -LiteralPath '${own!.folder}\\gimp-profile\\devicerc'`);
+  const pens = devicerc.match(/GimpDeviceInfo "[^"]*Pen stylus"/g) ?? [];
+  console.log("GIMP pen devices", pens);
+  expect(pens.length).toBeLessThanOrEqual(2);
+});
