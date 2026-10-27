@@ -75,7 +75,7 @@ From there the agent can:
 Input goes to a window by its address and targets an element by a ref from the latest read, a Playwright locator, or a point. It can:
 
 - type literal text, press keys and chords, and hold several keys at once;
-- click, double-click, right-click, hover and scroll by wheel detents;
+- click, double and triple click with any button, right-click, hover and scroll by wheel detents;
 - drag in straight lines or draw continuous brush strokes through many points;
 - run a timeline of timed key, button, mouse and pen events, with raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
 - invoke, select or set values through UI Automation, and open menu items by their labels.

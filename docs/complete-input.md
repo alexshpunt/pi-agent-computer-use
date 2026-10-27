@@ -13,7 +13,7 @@ CUA draws an agent cursor over the desktop and, by default, waits for it to glid
 - `type_text`: literal text up to 2000 characters; `delay_ms` is CUA's per-character delay, 0..200, default 30.
 - `invoke`, `select`, `set_value`: [strict UIA intents](semantic-actions.md) on a current hint/token. No physical or foreground fallback; `set_value` takes replacement `text`.
 - `select_all`: complete Ctrl+A.
-- `click`, `right_click`, `double_click`: observed token or window-image x/y. Optional modifiers; click also accepts a left/right/middle button.
+- `click`, `right_click`, `double_click`: observed token or window-image x/y. Optional modifiers; click also accepts a left/right/middle button and a `count` of 1 to 3, so a triple click or a right or middle double click is one click action at the system double-click timing.
 - `scroll`: observed element token, direction up/down/left/right, amount 1..50, by line/page; or a window-image x/y with signed `delta_x`/`delta_y` in wheel detents (`unit:"wheel_detents"`).
 - `drag`: from_x/from_y/to_x/to_y in the window PNG. Optional duration_ms 0..10000 (default 500), steps 1..200 (default 20), left/right/middle button and modifiers.
 
