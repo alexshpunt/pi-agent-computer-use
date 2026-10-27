@@ -124,3 +124,18 @@ test("native image presentation keeps local geometry but not annotation or hash 
   expect(text.length).toBeLessThan(600);
   expect((result.details.agent_image!.annotation as { labels: unknown[] }).labels).toHaveLength(100);
 });
+
+// LPT-961: a wait on a browser page ends with the page's fresh snapshot, so the agent sees the new content and its refs.
+test("a wait on a browser page shows the snapshot of its last sample, satisfied or not", () => {
+  const snapshot = '- heading "Level 7" [level=1] [ref=e3]\n- button "Verify" [ref=e5]';
+  for (const verdict of ["satisfied", "unsatisfied"] as const) {
+    const result = { content: [], details: { status: "observed", mode: "yolo", window_ref: "w1", observation_id: "o7",
+      dom: { title: "Game", url: "https://example.test/", active: "t1", snapshot, truncated: false },
+      verification: { verdict, conditions: [{ index: 0, verdict }], samples: 2, elapsed_ms: 300, timed_out: verdict !== "satisfied",
+        spec: { conditions: [{ target: "getByText('Level 7')", is: "visible" }], timeout_ms: 5000, interval_ms: 250, stable: 1 } } } } as unknown as ComputerResult;
+    const text = presentComputerResult(result);
+    expect(text).toContain('- heading "Level 7" [level=1] [ref=e3]');
+    expect(text).toContain('- button "Verify" [ref=e5]');
+    expect(text).toContain("computer:observation/o7");
+  }
+});
