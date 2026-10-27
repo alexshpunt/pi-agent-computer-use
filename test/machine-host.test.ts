@@ -12,7 +12,7 @@ test("plain names are kept as given", () => {
 
 test("a host whose folder was never used removes nothing on close", async () => {
   const run = vi.fn();
-  await new MachineHost({ run, spawn: vi.fn() }, { set: vi.fn(), restore: vi.fn() }).removeFiles();
+  await new MachineHost({ run, spawn: vi.fn() }, { set: vi.fn(), restore: vi.fn(), remoteSession: vi.fn() }).removeFiles();
   expect(run).not.toHaveBeenCalled();
 });
 
