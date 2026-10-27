@@ -140,6 +140,8 @@ const SETTLE_MS = 300;
 const STEADY_MS = 1_000;
 /** What an observation shows: a window, or one machine's display (display references are per machine; each has a primary). */
 type ObservationTarget = { window_ref: string; display?: never; machine?: never } | { display: string; machine: string; window_ref?: never };
+/** How many retired observations a session remembers to name their window's current one. */
+const RETIRED_LIMIT = 256;
 /** Whether an observation is a page's DOM snapshot or a native capture of a window or display. */
 const observationKind = (result: ComputerResult) => result.details.dom ? "dom" : "native";
 const sameTarget = (a: ObservationTarget, b: ObservationTarget) => a.window_ref === b.window_ref && a.display === b.display && a.machine === b.machine;
@@ -318,6 +320,8 @@ function only(value: Record<string, unknown>, fields: readonly string[]): void {
 /** Addressable projections of one ComputerSession. Cached descriptors never acquire native pixels. */
 export class ComputerResources {
   private readonly snapshots = new Map<string, Snapshot>();
+  /** Observations that were replaced or spent, newest last, so a Read of one can name its window's current one. */
+  private readonly retired = new Map<string, { target: ObservationTarget; kind: ReturnType<typeof observationKind> }>();
   /** Each window's latest observed UI, the baseline of its next `changes` Read. Outlives the observation's input authority. */
   private readonly lastUi = new Map<string, { observation_id: string; ui: UiResource }>();
   /** Installed apps by opaque reference, each with the machine that listed it. */
@@ -486,7 +490,7 @@ export class ComputerResources {
   /** Forget a released session's observations, and the display observations of its machine. */
   private forget(session: ComputerSession, machine?: string): void {
     for (const [id, entry] of this.snapshots)
-      if (entry.target.window_ref !== undefined ? session.hasWindow(entry.target.window_ref) : entry.target.machine === machine) this.snapshots.delete(id);
+      if (entry.target.window_ref !== undefined ? session.hasWindow(entry.target.window_ref) : entry.target.machine === machine) this.retire(id);
   }
   /**
    * Release one machine: its sandboxes and sessions, then its own session with its browsers and file folder. The
@@ -499,7 +503,7 @@ export class ComputerResources {
     let own: ComputerResult;
     if (name === LOCAL_MACHINE) {
       for (const [id, entry] of this.snapshots)
-        if (entry.target.window_ref !== undefined ? !this.remoteWindow(entry.target.window_ref) : entry.target.machine === LOCAL_MACHINE) this.snapshots.delete(id);
+        if (entry.target.window_ref !== undefined ? !this.remoteWindow(entry.target.window_ref) : entry.target.machine === LOCAL_MACHINE) this.retire(id);
       own = await this.closeSession().catch(error => failure(error, this.getMode()));
     } else {
       const machine = this.machines.get(name);
@@ -553,18 +557,31 @@ export class ComputerResources {
     const names = [...new Set([...this.machines.keys(), ...[...this.sandboxes.values()].map(sandbox => sandbox.machine ?? LOCAL_MACHINE)])].filter(name => name !== LOCAL_MACHINE);
     const results = await Promise.all([...names.map(name => this.closeMachine(name)), this.closeMachine(LOCAL_MACHINE)]);
     this.snapshots.clear();
+    this.retired.clear();
     this.apps.clear();
     return report(this.getMode(), results.map(result => [undefined, result]), "Computer use released. Application documents were not closed or saved.");
   }
 
   private snapshot(id: string): Snapshot {
     const entry = this.snapshots.get(id);
-    if (!entry) throw new ComputerRequestError("Observation reference expired. Read a new window/display overview.");
-    return entry;
+    if (entry) return entry;
+    const retired = this.retired.get(id);
+    const current = retired && [...this.snapshots].find(([, item]) => sameTarget(item.target, retired.target) && observationKind(item.result) === retired.kind)?.[0];
+    if (current) throw new ComputerRequestError(`This observation is no longer current; its window's current one is ${computerSource("observation", current)}. Use that address, or Read the window again.`);
+    throw new ComputerRequestError("Observation reference expired. Read a new window/display overview.");
+  }
+  /** Drop an observation, remembering its window and kind so a later Read of it can name the window's current one. */
+  private retire(id: string): void {
+    const entry = this.snapshots.get(id);
+    this.snapshots.delete(id);
+    if (!entry) return;
+    this.retired.delete(id);
+    this.retired.set(id, { target: entry.target, kind: observationKind(entry.result) });
+    if (this.retired.size > RETIRED_LIMIT) this.retired.delete(this.retired.keys().next().value!);
   }
   /** Forget a window's observations: all of them, or only its DOM snapshots or only its native captures, which a Read of the other kind keeps. */
   private retireWindow(ref: string, kind?: "dom" | "native"): void {
-    for (const [id, entry] of this.snapshots) if (entry.target.window_ref === ref && (!kind || observationKind(entry.result) === kind)) this.snapshots.delete(id);
+    for (const [id, entry] of this.snapshots) if (entry.target.window_ref === ref && (!kind || observationKind(entry.result) === kind)) this.retire(id);
   }
   private remember(target: ObservationTarget, result: ComputerResult): ComputerResult {
     const id = result.details.observation_id ?? result.details.agent_image?.image_id;
@@ -572,7 +589,7 @@ export class ComputerResources {
     const observed = result.details.status === "observed" || result.details.status === "delivered" && result.details.dom !== undefined;
     if (!observed || typeof id !== "string") return result;
     // A window keeps one DOM snapshot and one native capture: a new one replaces only the earlier one of its kind.
-    for (const [old, entry] of this.snapshots) if (sameTarget(entry.target, target) && observationKind(entry.result) === observationKind(result)) this.snapshots.delete(old);
+    for (const [old, entry] of this.snapshots) if (sameTarget(entry.target, target) && observationKind(entry.result) === observationKind(result)) this.retire(old);
     this.snapshots.set(id, { target, result });
     if (target.window_ref !== undefined && result.details.ui) {
       this.lastUi.delete(target.window_ref);
@@ -580,7 +597,7 @@ export class ComputerResources {
       while (this.lastUi.size > 64) this.lastUi.delete(this.lastUi.keys().next().value!);
     }
     // Match the backend's small pixel-retention window; eviction never renews references.
-    while (this.snapshots.size > 3) this.snapshots.delete(this.snapshots.keys().next().value!);
+    while (this.snapshots.size > 3) this.retire(this.snapshots.keys().next().value!);
     return result;
   }
 
@@ -729,7 +746,7 @@ export class ComputerResources {
       if (address.kind !== "window" && address.kind !== "display") throw new ComputerRequestError("Capture a sequence from a window/display address, not an observation.");
       if (owner.sandbox) throw new ComputerRequestError("Temporal capture is not available for sandbox windows.");
       const target: ObservationTarget = address.kind === "display" ? { display: address.ref, machine: address.machine } : { window_ref: address.ref };
-      for (const [id, entry] of this.snapshots) if (sameTarget(entry.target, target)) this.snapshots.delete(id);
+      for (const [id, entry] of this.snapshots) if (sameTarget(entry.target, target)) this.retire(id);
       return session.captureSequence(address.kind === "window" ? { window_ref: address.ref } : { display: address.ref }, view.options, signal);
     }
     if (address.kind === "sequence") {
@@ -741,6 +758,12 @@ export class ComputerResources {
       // A fresh window Read retires the earlier observation of its kind; a DOM snapshot and a native capture coexist.
       // A state Read only looks and keeps the window's observations; computer_window samples its own state for each change.
       if (view.kind === "state") return session.observeWindowState(address.ref, signal);
+      // A browser page's element image comes from the live page by locator or a ref of its latest snapshot; it only looks.
+      if (view.kind === "element") {
+        if (!session.isBrowserWindow(address.ref) || (view.operation !== "crop" && view.operation !== "highlight"))
+          throw new ComputerRequestError("A window address takes element:crop|highlight,<locator or aria ref> on a browser page. On a native window, Read an overview and use element views on its observation address.");
+        return session.webImage(address.ref, undefined, view.operation, view.locator ?? { ref: view.hint }, signal);
+      }
       this.retireWindow(address.ref, view.kind === "dom" ? "dom" : "native");
       if (view.kind === "dom") return this.remember({ window_ref: address.ref }, await session.observeDom(address.ref, view.options, signal));
       if (view.kind !== "overview") throw new ComputerRequestError("Read an overview of the window, then element views on its returned observation address.");
@@ -760,7 +783,7 @@ export class ComputerResources {
       if (!ref) throw new ComputerRequestError("Readonly DOM requires a window source.");
       if (view.kind === "element") {
         if (view.operation !== "crop" && view.operation !== "highlight") throw new ComputerRequestError("A DOM observation supports element:crop|highlight,<aria ref>. Use dom:{\"target\":...} for a scoped snapshot.");
-        return session.webImage(ref, address.ref, view.operation, { ref: view.hint }, signal);
+        return session.webImage(ref, address.ref, view.operation, view.locator ?? { ref: view.hint }, signal);
       }
       if (view.kind === "dom" && Object.keys(view.options).length) {
         this.retireWindow(ref, "dom");
@@ -771,27 +794,28 @@ export class ComputerResources {
       if (view.kind !== "dom" && (view.kind !== "overview" || views?.length))
         throw new ComputerRequestError("A DOM observation supports dom, image (page screenshot) and element:crop|highlight. Read the window for native views.");
       const checked = await session.checkDom(ref, address.ref, signal);
-      if (checked.details.status !== "observed") this.snapshots.delete(address.ref);
+      if (checked.details.status !== "observed") this.retire(address.ref);
       return checked;
     }
     if (view.kind === "dom") throw new ComputerRequestError("This observation has no DOM scope. Read its window with dom view.");
     if (view.kind === "element") {
       if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations have no collected UI.");
+      if (view.locator) throw new ComputerRequestError("A Playwright locator crops a browser page; on a native observation, crop by a UI hint of its Read.");
       if (view.operation === "text") return session.elementText(snapshot.target.window_ref, address.ref, view.hint);
-      if (view.operation === "crop") this.snapshots.delete(address.ref);
+      if (view.operation === "crop") this.retire(address.ref);
       return session.observe(snapshot.target.window_ref, signal, undefined, undefined,
         { operation: view.operation, observation_id: address.ref, hint: view.hint });
     }
     if (view.kind === "region") {
       if (snapshot.target.window_ref !== undefined) throw new ComputerRequestError(WINDOW_REGION);
       // Retire the provider handle even when detail refuses; never turn detail into an input target.
-      this.snapshots.delete(address.ref);
+      this.retire(address.ref);
       const imageId = snapshot.result.details.agent_image?.image_id;
       if (typeof imageId !== "string") throw new ComputerRequestError("This observation has no image for detail.");
       return session.observeDisplay(snapshot.target.display!, signal, { image_id: imageId, ...view.region });
     }
     const checked = await session.checkObservation(snapshot.target, address.ref, signal);
-    if (checked.details.status !== "observed") { this.snapshots.delete(address.ref); return checked; }
+    if (checked.details.status !== "observed") { this.retire(address.ref); return checked; }
     if (view.kind !== "overview") throw new ComputerRequestError("Unsupported observation view.");
     if (Object.keys(view.capture).some(key => key !== "granularity")) throw new ComputerRequestError("Acquisition options require a fresh window Read, not a stored observation.");
     if (view.capture.granularity === "ui" && !snapshot.result.details.ui) throw new ComputerRequestError("This observation has no collected UI. Read a new UI/full window overview.");
@@ -1235,7 +1259,7 @@ export class ComputerResources {
       // a successful change also retires the window references used to recognize them.
       const stale = [...this.snapshots].filter(([, entry]) => entry.target.window_ref !== undefined ? session.hasWindow(entry.target.window_ref) : entry.target.machine === address.machine).map(([id]) => id);
       const result = await session.resizeDisplay(address.ref, mode, signal);
-      if (result.details.status !== "refused") { for (const id of stale) this.snapshots.delete(id); this.forget(session, address.machine); }
+      if (result.details.status !== "refused") { for (const id of stale) this.retire(id); this.forget(session, address.machine); }
       return result;
     }
     if (address.kind === "window") {
@@ -1263,7 +1287,7 @@ export class ComputerResources {
     const window = snapshot.target.window_ref;
     if (window && commandObject(value).target !== undefined && !snapshot.result.details.dom) {
       if (address.hint !== undefined) throw new ComputerRequestError("Choose the ref or a locator target, not both.");
-      this.snapshots.delete(address.ref);
+      this.retire(address.ref);
       return this.locatorAction(window, await this.sessionFor(cwd, { window_ref: window }), commandObject(value), cwd, signal, { successor: true, explicit: false });
     }
     const focus = inputFocus(commandObject(value), snapshot.result.details.ui, address.hint);
@@ -1286,7 +1310,7 @@ export class ComputerResources {
       let command;
       try { command = validateWebAction(commandObject(value)); }
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-      this.snapshots.delete(address.ref);
+      this.retire(address.ref);
       const result = await (await this.sessionFor(cwd, snapshot.target)).actDom(snapshot.target.window_ref, address.ref, command, signal);
       return result.details.dom ? this.remember({ window_ref: snapshot.target.window_ref }, result) : result;
     }
@@ -1302,7 +1326,7 @@ export class ComputerResources {
     const session = await this.sessionFor(cwd, snapshot.target);
     let result = await session.act(action, signal);
     // Delivered pixel-only input keeps the observation usable until a successor replaces it; anything else, including a refusal, spends it.
-    if (result.details.status !== "delivered" || !session.holdsObservation(snapshot.target.window_ref!, address.ref)) this.snapshots.delete(address.ref);
+    if (result.details.status !== "delivered" || !session.holdsObservation(snapshot.target.window_ref!, address.ref)) this.retire(address.ref);
     // Windows refused to activate the target: say who holds the foreground, so a blocked desktop is not mistaken for a bad target.
     if (/foreground_unavailable/.test(JSON.stringify(result.details.state ?? {})) && session.host) {
       const owner = await session.host.foregroundOwner().catch(() => undefined);
@@ -1481,7 +1505,7 @@ export class ComputerResources {
     if (follow) follow = await this.withFrame({ ...follow, ...(box ? { focus: { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) } } : {}) },
       window, observation.details.observation_id, cwd);
     const finish = (result: ComputerResult) => follow ? this.followUp(window, before, result, follow, cwd, signal) : Promise.resolve(result);
-    this.snapshots.delete(observation.details.observation_id!);
+    this.retire(observation.details.observation_id!);
     const result = await session.act(nativeCommand as Action, signal);
     const prefix = { type: "text" as const, text: `Target ${describe} resolved to ${named}.` };
     if ((action !== "check" && action !== "uncheck") || result.details.status !== "delivered") return finish({ ...result, content: [prefix, ...result.content] });

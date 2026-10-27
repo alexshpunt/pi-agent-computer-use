@@ -1,6 +1,6 @@
 import { validateUiCapture, type UiCaptureOptions } from "./ui-resources.ts";
 import { SEQUENCE_LIMITS, validateSequence, type SequenceOptions, type FrameSelection } from "./temporal-capture.ts";
-import { validateWebSnapshot, type WebSnapshotOptions } from "./web-browser.ts";
+import { validateWebSnapshot, validateWebTarget, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
 import { validateRendering, type FrameRendering } from "./contact-sheet.ts";
 
 /** One native Read mode. Details and sampled frames never grant input authority. */
@@ -12,7 +12,8 @@ export type ComputerViews =
   | { kind: "sequence"; options: SequenceOptions }
   /** Selected frames, one image each, or one sheet or composite image of them. */
   | { kind: "frames"; selection: FrameSelection; rendering?: FrameRendering }
-  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop" | "text"; hint: string };
+  /** An element by a UI hint or an aria ref, or, for crop and highlight of a browser page, by a Playwright locator in `locator`. */
+  | { kind: "element"; operation: "inspect" | "scope" | "highlight" | "crop" | "text"; hint: string; locator?: WebTarget };
 
 function json(value: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(value);
@@ -79,11 +80,15 @@ function parseView(views: readonly string[]): ComputerViews {
       return { kind: "sequence", options };
     }
     if (first.startsWith("element:")) {
-      const [operation, hint, extra] = value.split(",");
+      // The target is everything after the first comma: a Playwright locator can contain commas of its own.
+      const comma = value.indexOf(","), operation = value.slice(0, comma < 0 ? undefined : comma), hint = comma < 0 ? "" : value.slice(comma + 1);
+      const usage = "Use element:inspect|scope|highlight|crop|text,<UI hint>, element:crop|highlight,<aria ref> on a DOM observation, or element:crop|highlight,<Playwright locator> on a browser window.";
+      if (!["inspect", "scope", "highlight", "crop", "text"].includes(operation) || !hint) throw Error(usage);
+      const kind = operation as Extract<ComputerViews, { kind: "element" }>["operation"];
       // UI hints look like "3:ab"; Playwright aria refs look like "e12" or "f1e3".
-      if (extra !== undefined || !["inspect", "scope", "highlight", "crop", "text"].includes(operation) || !/^[a-z0-9]+(:[a-z]+)?$/i.test(hint ?? ""))
-        throw Error("Use element:inspect|scope|highlight|crop|text,<UI hint>, or element:crop|highlight,<aria ref> on a DOM observation.");
-      return { kind: "element", operation: operation as Extract<ComputerViews, { kind: "element" }>["operation"], hint };
+      if (/^[a-z0-9]+(:[a-z]+)?$/i.test(hint)) return { kind: "element", operation: kind, hint };
+      if (kind !== "crop" && kind !== "highlight") throw Error(usage);
+      return { kind: "element", operation: kind, hint, locator: validateWebTarget(hint) };
     }
     if (["all", "first", "last", "endpoints", "changed"].includes(value)) return { kind: "frames", selection: value as FrameSelection };
     const raw = json(value);
