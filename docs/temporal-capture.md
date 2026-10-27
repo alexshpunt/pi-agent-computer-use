@@ -68,6 +68,8 @@ Add `as` to a JSON selection to get one image instead of one per frame:
 | `timeout_ms` | 1..300000, default 60000; the watch stops by itself then |
 | `maxLongEdge` | 64..4096, default 800; a viewport is captured so its own rectangle gets at most this many pixels on its long edge, never more than its full resolution |
 
+A viewport watch asks the driver for the viewport's rectangle only: the driver copies and encodes just that part instead of the whole window. When a frame takes longer than the interval, a second capture starts on time while the first finishes, at most two at once; frames keep the order their captures started in. The rate reached is in the sequence metadata, while the watch runs and in the `watch_stop` result.
+
 A watch only looks: it does not take the window's observation, so refs and points of the latest Read stay valid for input. A frame with the same bytes as the one before shares its image and costs no memory; 3000 frames or 48 MiB of distinct frames stop the watch by itself. It checks process and window id on every frame, and stops when the window closes or access ends.
 
 Each input or window action on the watched window notes its span, from the call to its result, in every running watch of that window; the receipt lists it with the frames captured during it. Read the sequence address with a `frames:` view while the watch runs, for example `frames:last`.
