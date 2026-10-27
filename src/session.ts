@@ -2001,8 +2001,7 @@ export class ComputerSession {
           const covering = coveringWindow(nativeMessage);
           const refused = takeover || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
             "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
-          // A covered press that is not a refusal stopped an action partway, after earlier events were sent.
-          const uncertain = native.isError || !!covering || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
+          const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
           const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
             : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
             : isCoordinateScroll(step) && (delivery_mode !== "foreground" || !scrollReceipt(step, state)));
