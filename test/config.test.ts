@@ -3,6 +3,9 @@ import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { loadComputerConfig } from "../src/config.ts";
 
+// These tests read configuration only; the live WSL interop socket of the machine running them stays out.
+vi.mock("../src/wsl-interop.ts", () => ({ liveInterop: vi.fn(async () => undefined) }));
+
 const owned: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -81,3 +84,18 @@ test("coordinate scroll is an explicit trusted artifact profile, never an implic
     await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
   }
 });
+
+// LPT-967: without a configured socket, the live one found on the machine is used; a configured socket stays as given.
+test("an unconfigured interop socket is the live one; a configured one is kept", async () => {
+  const { liveInterop } = await import("../src/wsl-interop.ts");
+  vi.mocked(liveInterop).mockResolvedValue("/run/WSL/1_interop");
+  const bare = await mkdtemp(path.join(".tmp", "config-interop-"));
+  owned.push(bare);
+  await mkdir(path.join(bare, ".pi"), { recursive: true });
+  await writeFile(path.join(bare, ".pi/computer-use.json"), JSON.stringify({ command: "/driver.exe" }));
+  expect((await loadComputerConfig(bare)).interop).toBe("/run/WSL/1_interop");
+  await writeFile(path.join(bare, ".pi/computer-use.json"), JSON.stringify({ command: "/driver.exe", interop: "/run/WSL/7_interop" }));
+  expect((await loadComputerConfig(bare)).interop).toBe("/run/WSL/7_interop");
+  vi.mocked(liveInterop).mockResolvedValue(undefined);
+});
+

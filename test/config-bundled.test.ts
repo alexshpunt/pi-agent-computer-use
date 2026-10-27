@@ -3,6 +3,9 @@ import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import type { BundledRuntime } from "../src/native-runtime.ts";
 
+// These tests read configuration only; the live WSL interop socket of the machine running them stays out.
+vi.mock("../src/wsl-interop.ts", () => ({ liveInterop: vi.fn(async () => undefined) }));
+
 // Selecting the shipped runtime needs Windows or WSL and its files; stand in for that lookup only.
 const runtime: BundledRuntime = { target: "win32-x64", root: "/package/native-runtime/win32-x64", command: "/package/native-runtime/win32-x64/runtime/cua-driver.exe",
   source: "a".repeat(40), version: "0.37.0", driverVersion: "0.37.0", files: {} };
