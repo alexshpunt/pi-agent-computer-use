@@ -21,7 +21,7 @@ On another configured machine, use its own addresses exactly as for this one, an
 
 For work in one part of a window, such as a canvas, a map or a game board, make a viewport with `computer_view` from a rectangle of the overview already seen, then pass its address (`computer:game/pano`) to the input tools: points are pixels of the viewport's image, which has the window's own resolution, and the change list covers only the viewport. Read the viewport to look again, with `ocr` for small text; it follows the window. To see one element closer, crop it with `element:crop`; a crop is readonly.
 
-Read displays only within authorized YOLO scope. If a high-resolution display makes overviews too dense, `computer_display` changes its resolution; the session restores it on close, and earlier display and window observations stop working. Display, detail and frame pixels never become input points.
+Read displays only within authorized YOLO scope. If a high-resolution display makes overviews too dense, `computer_display` changes its resolution; the session restores it on close, and earlier display and window observations stop working. A Remote Desktop display keeps the size its client sets: Read a region in detail or make a viewport instead, and tell the user where the size is set. Display, detail and frame pixels never become input points.
 
 ## Plan and act
 
