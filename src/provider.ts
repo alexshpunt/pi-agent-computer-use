@@ -193,7 +193,8 @@ export function presentComputerResult(result: ComputerResult, full = false): str
     const s = d.successor, diff = s.diff;
     lines.push(s.observation_id ? `Successor: ${computerSource("observation", s.observation_id)}` : `Successor: none. ${s.reason ?? ""}`);
     if (diff) lines.push(...diffLines(diff, true));
-    else if (s.reason) lines.push(s.reason);
+    // Without a successor, the reason already follows "Successor: none".
+    else if (s.reason && s.observation_id) lines.push(s.reason);
   }
   if (d.selected_frames) lines.push(`Selected frames: ${d.selected_frames.map(frame => frame.index).join(", ")}; readonly, input=none`);
   lines.push(d.successor?.observation_id ? "Refs in this change list are current for the next input; Read the window for its full state."

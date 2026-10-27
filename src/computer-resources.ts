@@ -1377,10 +1377,16 @@ export class ComputerResources {
         crops = await cropImages(follow.page, shot, diff);
       }
     }
+    // A window that could not be read again may have closed, as a dialog does after OK: say so and name the app's window
+    // in front. The receipt already names it when the driver saw the click close its window.
+    const target = before.result.details.target ?? result.details.target;
+    const closed = after?.observation_id || status === "refused" || !target ? undefined
+      : (result.details.state as { foreground_after?: unknown } | undefined)?.foreground_after ? "This window closed or is hidden."
+      : await session.closedWindowNote(target, signal).catch(() => undefined);
     // The successor replaces the action's own observation as the current one; a wait retired the earlier snapshot.
     const details = { ...result.details, ...(after?.observation_id ? { observation_id: after.observation_id, ...(after.dom ? { dom: after.dom } : {}) } : {}),
       successor: after?.observation_id ? { observation_id: after.observation_id, ...(diff ? { diff } : { reason: "The input observation had no comparable UI or DOM." }) }
-        : { reason: status === "refused" ? "The action was refused; the input observation is unchanged but consumed." : "No successor observation could be taken." } };
+        : { reason: status === "refused" ? "The action was refused; the input observation is unchanged but consumed." : closed ?? "No successor observation could be taken." } };
     return { ...result, content: [...result.content, ...crops], details };
   }
 
