@@ -235,7 +235,7 @@ To set one up:
   "lab": {
     "ssh": "lab-wsl",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-cac6f49d/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-e2c256de/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
