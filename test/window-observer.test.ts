@@ -142,7 +142,13 @@ test("a refused pixel dispatch cannot turn a plausible native coordinate into an
   } : original(name, args, signal));
   const result = await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "click", x: 100, y: 100 });
   expect(result.details.status).toBe("refused");
-  expect(observer.mock.calls[0][0]).toEqual({ clear: true });
+  const before = observer.mock.calls[0][0];
+  expect(before).toMatchObject({ target: { pid: 42, window_id: 100 }, identity: expect.any(String),
+    bounds: f.bounds, mark: { kind: "action" }, action: "click" });
+  expect(before).not.toHaveProperty("mark.point");
+  expect(before).not.toHaveProperty("mark.region", expect.anything());
+  expect(before).not.toHaveProperty("outcome");
+  expect(before).not.toHaveProperty("image");
   expect(observer.mock.calls.at(-1)?.[0]).toMatchObject({ mark: { kind: "action" }, outcome: "refused" });
   expect(observer.mock.calls.at(-1)?.[0]).not.toHaveProperty("mark.point");
   expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "click")).toHaveLength(1);

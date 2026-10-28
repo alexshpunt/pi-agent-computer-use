@@ -1,5 +1,9 @@
 import { expect, test, vi } from "vitest";
 import { NativeVisuals, VisualSettings, notifyHighlight } from "../src/native-visuals.ts";
+import sharp from "sharp";
+import { ComputerSession, type Driver, type DriverResult } from "../src/session.ts";
+import type { InputCommand } from "../src/complete-input.ts";
+import { WebError, type WebAction, type WebBrowser, type WebLauncher } from "../src/web-browser.ts";
 
 const frame = { target: { window_id: 101, pid: 42 }, identity: `PiComputerUse.${"a".repeat(32)}:42:1`,
   bounds: { x: -100, y: 20, width: 800, height: 600 } };
@@ -77,4 +81,116 @@ test("settings validate before mutation and unavailable native presentation does
   const visuals = new NativeVisuals(async () => { throw new Error("not available"); }, settings);
   expect(await visuals.flash(frame)).toMatchObject({ status: "queued" }); await tick();
   expect(await visuals.flash(frame)).toMatchObject({ status: "unavailable" }); visuals.close();
+});
+
+
+async function actionFixture(outcome: "delivered" | "refused" | "unknown" = "delivered") {
+  const png = { type: "image" as const, mimeType: "image/png", data: (await sharp({ create: {
+    width: frame.bounds.width, height: frame.bounds.height, channels: 3, background: "white",
+  } }).png().toBuffer()).toString("base64") };
+  const send = vi.fn(async (_name: string, _args: Record<string, unknown>) => true);
+  const visuals = new NativeVisuals(send);
+  const driver: Driver = {
+    visuals: visuals.flash, heldKeys: true, heldPaths: true, captureBoundDrag: true, semanticActions: true,
+    identity: vi.fn(async () => frame.identity), close: vi.fn(async () => {}),
+    call: vi.fn<Driver["call"]>(async (name, args): Promise<DriverResult> => {
+      if (name === "list_windows") return { content: [], structuredContent: { windows: [{
+        ...frame.target, bounds: frame.bounds, app_name: "Fixture.exe", title: "Action fixture",
+      }] } };
+      if (name === "get_window_state") return { content: [png], structuredContent: {
+        ...frame.target, window_bounds: frame.bounds, capture_id: "11111111-1111-4111-8111-111111111111",
+        screenshot_width: frame.bounds.width, screenshot_height: frame.bounds.height,
+        elements: [{ element_token: "field", role: "TextBox", frame: { x: 0, y: 60, w: 80, h: 40 } }],
+      } };
+      if (outcome !== "delivered") return { content: [], structuredContent: { effect: outcome } };
+      return { content: [], structuredContent: name === "semantic_action"
+        ? { operation: args.operation, pattern: "value", route: "accessibility", effect: "unverifiable", fallback: false, delivery: { mode: "background" } }
+        : { effect: "unverifiable" } };
+    }),
+  };
+  const browser = { close: vi.fn(async () => {}), page: vi.fn(async () => ({
+    url: "https://fixture.invalid", title: "Action fixture", snapshot: '- textbox "Field"', tabs: [], events: [],
+  })) };
+  const launch: WebLauncher = async () => ({ browser: browser as unknown as WebBrowser,
+    opened: { pid: frame.target.pid, version: "155", url: "https://fixture.invalid", title: "Action fixture", via: "cdp" } });
+  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, launch);
+  return { session, driver, send, browser, close: async () => { visuals.close(); await session.close(); } };
+}
+
+const nativeFamilies: { label: string; command: InputCommand; family: string; native: string }[] = [
+  { label: "typing", command: { action: "type_text", text: "synthetic-private-text" }, family: "type_text", native: "type_text" },
+  { label: "key press", command: { action: "key", key: "f12" }, family: "press_key", native: "press_key" },
+  { label: "select all", command: { action: "select_all" }, family: "hotkey", native: "hotkey" },
+  { label: "semantic value", command: { action: "set_value", element_token: "field", text: "synthetic-private-value" }, family: "fill", native: "semantic_action" },
+  { label: "scroll", command: { action: "scroll", element_token: "field", direction: "down" }, family: "scroll", native: "scroll" },
+  { label: "drag", command: { action: "drag", from_x: 10, from_y: 10, to_x: 100, to_y: 100, duration_ms: 10 }, family: "drag", native: "drag" },
+  { label: "keyboard hold", command: { action: "hold", keys: ["ctrl"], duration_ms: 10 }, family: "hotkey", native: "hold_keys" },
+  { label: "held pointer", command: { action: "hold", keys: ["ctrl"], duration_ms: 10,
+    actions: [{ action: "drag", from_x: 10, from_y: 10, to_x: 100, to_y: 100, duration_ms: 10 }] }, family: "input_timeline", native: "hold_keys" },
+  { label: "keyboard timeline", command: { action: "timeline", events: [
+    { at_ms: 0, type: "key_down", key: "ctrl" }, { at_ms: 10, type: "key_up", key: "ctrl" },
+  ] }, family: "hotkey", native: "input_timeline" },
+  { label: "pointer timeline", command: { action: "timeline", events: [
+    { at_ms: 0, type: "move", x: 10, y: 10 }, { at_ms: 10, type: "wheel", dy: 1 },
+  ] }, family: "input_timeline", native: "input_timeline" },
+];
+
+test.each(nativeFamilies)("native $label retains its presentation family before and after one dispatch", async ({ command, family, native }) => {
+  const f = await actionFixture();
+  try {
+    const listed = await f.session.windows();
+    const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+    const read = await f.session.observe(ref); await tick(); f.send.mockClear(); vi.mocked(f.driver.call).mockClear();
+    const result = await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, ...command });
+    await tick();
+    expect(result.details.status).toBe("delivered");
+    expect(vi.mocked(f.driver.call).mock.calls.map(([name]) => name)).toEqual([native]);
+    const activities = f.send.mock.calls.filter(([name]) => name === "present_agent_activity").map(([, args]) => args);
+    expect(activities.map(args => ({ kind: args.kind, action: args.action, outcome: args.outcome }))).toEqual([
+      { kind: "action", action: family, outcome: undefined }, { kind: "action", action: family, outcome: "delivered" },
+    ]);
+    for (const args of activities) {
+      expect(args.source).toEqual({ ...frame.target, identity: frame.identity, bounds: frame.bounds });
+      expect(Object.keys(args).every(key => ["generation", "kind", "source", "region", "action", "outcome"].includes(key))).toBe(true);
+      if (!command.element_token) expect(args).not.toHaveProperty("region");
+    }
+  } finally { await f.close(); }
+});
+
+test.each(["refused", "unknown"] as const)("native keyboard %s keeps its family without replaying input", async outcome => {
+  const f = await actionFixture(outcome);
+  try {
+    const listed = await f.session.windows();
+    const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+    const read = await f.session.observe(ref); await tick(); f.send.mockClear(); vi.mocked(f.driver.call).mockClear();
+    const result = await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "key", key: "f12" });
+    await tick();
+    expect(result.details.status).toBe(outcome);
+    expect(vi.mocked(f.driver.call).mock.calls.map(([name]) => name)).toEqual(["press_key"]);
+    expect(f.send.mock.calls.map(([, args]) => ({ action: args.action, outcome: args.outcome }))).toEqual([
+      { action: "press_key", outcome: undefined }, { action: "press_key", outcome },
+    ]);
+  } finally { await f.close(); }
+});
+
+test.each(["dom", "page"] as const)("browser %s key outcomes use keyboard presentation without forwarding key or target", async route => {
+  for (const outcome of ["delivered", "refused", "unknown"] as const) {
+    const f = await actionFixture();
+    try {
+      const opened = await f.session.openBrowser(); const ref = opened.details.window_ref!;
+      const read = await f.session.observeDom(ref); await tick(); f.send.mockClear(); f.browser.page.mockClear();
+      if (outcome !== "delivered") f.browser.page.mockRejectedValueOnce(new WebError("Synthetic page failure", outcome === "unknown"));
+      const action: WebAction = { action: "press", target: { ref: "e1" }, key: "Control+Shift+F12" };
+      const result = route === "dom"
+        ? await f.session.actDom(ref, read.details.observation_id!, action)
+        : await f.session.actPage(ref, action);
+      await tick();
+      expect(result.details.status).toBe(outcome);
+      expect(f.browser.page).toHaveBeenCalledExactlyOnceWith("act", action, undefined);
+      expect(f.send.mock.calls).toEqual([["present_agent_activity", {
+        generation: expect.any(Number), kind: "action", source: { ...frame.target, identity: frame.identity, bounds: frame.bounds },
+        action: "press_key", outcome,
+      }]]);
+    } finally { await f.close(); }
+  }
 });
