@@ -7,7 +7,7 @@ import { McpDriver } from "../src/driver.ts";
 const dirs: string[] = [];
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
 
-async function start(mode: "applies" | "refuses" | "ignores" | "no-overlay" | "visuals") {
+async function start(mode: "applies" | "refuses" | "ignores" | "no-overlay" | "visuals" | "visuals-refused") {
   const dir = await mkdtemp(path.join(tmpdir(), "agent-cursor-"));
   dirs.push(dir);
   const log = path.join(dir, "calls.jsonl");
@@ -38,6 +38,23 @@ test("a native visual driver receives presentation settings without forcing a on
     for (let n = 0; n < 20 && (await calls()).length < 3; n++) await new Promise(resolve => setTimeout(resolve, 5));
     expect((await calls()).at(-1)).toMatchObject({ name: "present_agent_activity", arguments: { kind: "overview", generation: 1 } });
   } finally { await driver.close(); }
+});
+test("presentation configuration failure leaves input usable without replay", async () => {
+  const { driver, calls } = await start("visuals-refused");
+  try {
+    expect((await driver.call("list_windows", {})).isError).toBeFalsy();
+    expect((await calls()).map(call => call.name)).toEqual(["set_agent_visuals", "list_windows"]);
+  } finally { await driver.close(); }
+});
+
+test("a capture companion disables its own native presentation", async () => {
+  const { driver, calls } = await start("visuals"); const companion = driver.companion()!;
+  try {
+    await companion.call("list_windows", {});
+    expect((await calls())[0]).toMatchObject({ name: "set_agent_visuals", arguments: { preset: "off" } });
+    await driver.call("list_windows", {});
+    expect((await calls())[2]).toMatchObject({ name: "set_agent_visuals", arguments: { preset: "full" } });
+  } finally { await companion.close(); await driver.close(); }
 });
 test("a refused cursor setting stops the driver before any input", async () => {
   const { driver, calls } = await start("refuses");

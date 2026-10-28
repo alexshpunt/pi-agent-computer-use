@@ -237,8 +237,13 @@ export class McpDriver implements Driver {
               throw new Error(`native_runtime_schema_missing: ${name}`);
       }
       if (this.nativeVisualsAvailable) {
-        const configured = CallToolResultSchema.parse(await client.callTool({ name: "set_agent_visuals", arguments: { ...this.visualSettings.current() } }, undefined, { signal, timeout: 15_000 }));
-        if (configured.isError) throw new Error("The driver refused its native visual configuration.");
+        try {
+          const configured = CallToolResultSchema.parse(await client.callTool({ name: "set_agent_visuals", arguments: { ...this.visualSettings.current() } }, undefined, { signal, timeout: 2_000 }));
+          this.nativeVisualsAvailable = !configured.isError;
+        } catch {
+          // Presentation is optional. A renderer/configuration failure must not prevent native input.
+          this.nativeVisualsAvailable = false;
+        }
       } else await this.jumpCursor(client, signal);
       return client;
     } catch (error) {
@@ -320,7 +325,9 @@ export class McpDriver implements Driver {
    * connection, so it has none.
    */
   companion(): McpDriver | undefined {
-    return this.config.endpoint ? undefined : new McpDriver(this.config, this.version);
+    if (this.config.endpoint) return undefined;
+    const visuals = new VisualSettings(); visuals.update({ preset: "off" });
+    return new McpDriver(this.config, this.version, visuals);
   }
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {

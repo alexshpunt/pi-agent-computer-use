@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import sharp from "sharp";
 import { ComputerSession, type ComputerMode, type Driver } from "../src/session.ts";
 import type { WindowObserver } from "../src/native-visuals.ts";
+import { ComputerResources, requireComputerAddress } from "../src/computer-resources.ts";
 
 async function fixture(observer: WindowObserver) {
   let mode: ComputerMode = "yolo"; let marker = 1;
@@ -19,7 +20,7 @@ async function fixture(observer: WindowObserver) {
         const created = { pid: 42, window_id: 101, app_name: "Calculator.exe", title: "Owned", bounds };
         windows.push(created); return { content: [], structuredContent: { pid: 42, windows: [created] } };
       }
-      if (name === "get_window_state") return { content: [png], structuredContent: { ...args, elements: [{ element_token: "root", frame: { x: 30, y: 40, w: 1000, h: 700 }, screenshot_frame: { x: -1, y: -1, w: 500, h: 350 } }, { element_token: "button", frame: { x: 230, y: 240, w: 120, h: 60 }, screenshot_frame: { x: 100, y: 100, w: 60, h: 30 } }], screenshot_width: 500, screenshot_height: 350, window_bounds: bounds } };
+      if (name === "get_window_state") return { content: [args.max_image_dimension === 4096 ? raw : png], structuredContent: { ...args, elements: [{ element_token: "root", frame: { x: 30, y: 40, w: 1000, h: 700 }, screenshot_frame: { x: -1, y: -1, w: 500, h: 350 } }, { element_token: "button", frame: { x: 230, y: 240, w: 120, h: 60 }, screenshot_frame: { x: 100, y: 100, w: 60, h: 30 } }], screenshot_width: args.max_image_dimension === 4096 ? 1000 : 500, screenshot_height: args.max_image_dimension === 4096 ? 700 : 350, window_bounds: bounds } };
       if (name === "zoom") return { content: [jpeg], structuredContent: { width: 200, height: 100 } };
       if (name === "get_desktop_state") return { content: [args.max_image_dimension === 0 ? raw : png], structuredContent: { display: "primary", platform: "windows", screenshot_width: args.max_image_dimension === 0 ? 1000 : 500, screenshot_height: args.max_image_dimension === 0 ? 700 : 350, screenshot_original_width: 1000, screenshot_original_height: 700, screen_width: 1000, screen_height: 700, scale_factor: 1 } };
       if (name === "click" && args.x !== undefined) return { content: [{ type: "text", text: "✅ Posted click to Chromium pid 42 at (231,241) (background, no foreground swap)." }], structuredContent: { path: "post_message", effect: "unverifiable" } };
@@ -35,6 +36,23 @@ async function outside(session: ComputerSession) {
   return (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
 }
 
+test("change reads present only images in the final returned result", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" })); const f = await fixture(observer);
+  const ref = await outside(f.session); const resources = new ComputerResources(async () => f.session, async () => f.session.close());
+  const address = requireComputerAddress(`computer:window/${ref}`);
+  await resources.read(address, process.cwd()); observer.mockClear();
+  const original = f.driver.call;
+  const changed = { type: "image" as const, mimeType: "image/png", data: (await sharp(Buffer.from(f.png.data, "base64"))
+    .composite([{ input: { create: { width: 40, height: 30, channels: 3, background: "red" } }, left: 60, top: 60 }]).png().toBuffer()).toString("base64") };
+  f.driver.call = vi.fn(async (name, args, signal) => { const reply = await original(name, args, signal);
+    return name === "get_window_state" ? { ...reply, content: [changed] } : reply; });
+  const result = await resources.read(address, process.cwd(), ["changes"]);
+  const images = result!.content.filter(block => block.type === "image");
+  expect(result!.details.status).toBe("observed"); expect(images.length).toBeGreaterThan(0);
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ image: images.at(-1) });
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("image.data", changed.data);
+});
 test("overview, requested window zoom and primary-display crop flash their own physical scopes", async () => {
   const observer = vi.fn<WindowObserver>(async () => ({ status: "shown" })); const f = await fixture(observer);
   f.setMode("safe"); const opened = await f.session.open("Calculator");
@@ -135,6 +153,16 @@ test("snapshot refinement previews the final annotated image and verification em
   expect(observer).toHaveBeenCalledTimes(1);
   expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "verify" } });
   expect(observer.mock.calls[0][0]).not.toHaveProperty("image");
+});
+test("a viewport previews its returned crop and marks only the proven physical region", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" }));
+  const f = await fixture(observer); const ref = await outside(f.session);
+  await f.session.observe(ref); observer.mockClear();
+  const resources = new ComputerResources(async () => f.session, async () => f.session.close());
+  const read = await resources.view(requireComputerAddress(`computer:window/${ref}/pano`), process.cwd(), { x: 10, y: 10, width: 100, height: 70 });
+  expect(read.details.status).toBe("observed");
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "detail", region: { x: 51, y: 61, width: 200, height: 140 } }, image: read.content.find(block => block.type === "image") });
 });
 test("renderer failure does not corrupt or replay a valid desktop capture", async () => {
   const observer = vi.fn<WindowObserver>(async () => { throw new Error("render failure"); }); const f = await fixture(observer);

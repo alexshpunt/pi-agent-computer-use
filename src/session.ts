@@ -640,6 +640,22 @@ export class ComputerSession {
       native: { capture_id: state.capture_id, agent_overlay_capture: state.agent_overlay_capture } };
   }
 
+  /** A temporal cue represents one returned operation; background capture samples stay silent. */
+  private async frameActivity(source: ObservationSource | undefined, image?: Content, signal?: AbortSignal, action = "frames"): Promise<void> {
+    if (!source || signal?.aborted || !this.observer) return;
+    const bounds = screenRect(source.image.native_bounds);
+    if (source.kind === "window") {
+      const entry = this.entries.get(String(source.identity.window_ref));
+      if (entry && this.allowed(entry)) await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
+        { kind: "inspect" }, image, action);
+    } else if (this.getMode() === "yolo") {
+      const display = String(source.identity.display_id ?? "primary");
+      const original = source.image.original_dimensions;
+      const physical = bounds ?? (display === "primary" && original ? { x: 0, y: 0, ...original } : undefined);
+      await notifyHighlight(this.observer, physical ? { display, bounds: physical, mark: { kind: "inspect" },
+        ...(image?.type === "image" ? { image } : {}), action } : undefined, signal);
+    }
+  }
   /** Capture one authorized source into a private bounded resource; no frame grants input or detail authority. */
   captureSequence(target: { window_ref?: string; display?: string }, options: SequenceOptions, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -696,6 +712,8 @@ export class ComputerSession {
         this.sequences.put(sequence);
         const metadata = sequenceMetadata(sequence);
         const complete = ["completed", "frame_limit"].includes(sequence.stop_reason);
+        if (complete) await this.frameActivity(sequence.frames.at(-1)?.source, undefined, signal, "sequence");
+        if (!permitted()) return denied();
         return this.result(complete ? "observed" : "refused", `Sequence ${sequence.stop_reason}: ${sequence.frames.length} frames, ${sequence.skipped_slots.length} skipped slots. No images forwarded; select frames explicitly. Read only; observe again before input.`,
           undefined, { sequence: metadata });
       } catch (error) {
@@ -734,13 +752,17 @@ export class ComputerSession {
               layout.tiles.map((tile, i) => `Tile ${i + 1} (row ${Math.floor(i / layout.columns!) + 1}, column ${i % layout.columns! + 1}): frame ${tile.index} at ${tile.timestamp_ms.toFixed(1)} ms`).join("\n")
             : `Per-pixel ${rendering.as === "max" ? "maximum" : "minimum"} of ${frames.length} frames${crop} (frames ${frames.map(frame => frame.index).join(", ")}); image ${layout.width}x${layout.height}. ` +
               `${rendering.as === "max" ? "Bright" : "Dark"} detail from any frame shows at once, for example text revealed by a moving light.`;
-          return this.result("observed", `${summary}\nRead only; observe again before input.`, undefined, { selected_frames: metadata, rendered_frames: layout },
-            [{ type: "image", mimeType: "image/png", data: png.toString("base64") }]);
+          const image: Content = { type: "image", mimeType: "image/png", data: png.toString("base64") };
+          await this.frameActivity(frames.at(-1)?.source, image, signal);
+          if (!permitted() || signal?.aborted) return denied();
+          return this.result("observed", `${summary}\nRead only; observe again before input.`, undefined, { selected_frames: metadata, rendered_frames: layout }, [image]);
         }
         // Interleave frame labels with their images so both direct calls and Codemode preserve correspondence.
         const result = this.result("observed", `Selected ${frames.length} read-only sequence frames. Their indexes and measured timestamps label the image order.`, undefined,
           { selected_frames: metadata });
         for (const frame of frames) result.content.push({ type: "text", text: `Sequence ${id} · frame ${frame.index} · ${frame.timestamp_ms.toFixed(1)} ms` }, frame.image);
+        await this.frameActivity(frames.at(-1)?.source, frames.at(-1)?.image, signal);
+        if (!permitted() || signal?.aborted) return denied();
         return result;
       } catch {
         if (!permitted()) return denied();
@@ -841,6 +863,8 @@ export class ComputerSession {
       return this.result("refused", `The watch did not start: ${signal?.aborted ? "cancelled" : ended.stop_reason === "stopped" ? "no frame came within 30 s" : ended.stop_reason}.`);
     }
     const size = sequence.frames[0].source.image.dimensions;
+    await this.frameActivity(sequence.frames[0].source, undefined, signal, "watch");
+    if (!this.allowed(entry) || signal?.aborted) { watch.stop.abort(); return this.result("refused", "Watch access revoked or cancelled."); }
     return this.result("observed", `Watching ${watching} at up to ${options.fps} FPS in the background, ${size.width}x${size.height} frames. ` +
       `Act on the window as usual: each action's receipt names its span and frames in this watch. Read the sequence with frames:last for the newest frame; computer_record watch_stop at the sequence returns the contact sheet, change statistics and files. ` +
       `It stops by itself after ${Math.round(options.timeout_ms / 1000)} s or ${WATCH_LIMITS.max_frames} frames, and when the session closes.`,
@@ -912,6 +936,8 @@ export class ComputerSession {
       { sequence: sequenceMetadata(sequence), ...(rendered ? { rendered_frames: rendered } : {}),
         watch: { sequence_id: id, watching: watch.watching, running: false, marks: watch.marks, changed_frames: distinct, ...(written ? { files: written } : {}) } });
     result.content.push(...content);
+    await this.frameActivity(frames.at(-1)?.source, content.find(block => block.type === "image"), undefined, "watch");
+    if (entry ? !this.allowed(entry) : this.getMode() !== "yolo") return this.result("refused", "Watch access revoked; pixels withheld.");
     return result;
   }
   /** Enumerate native Windows monitors in YOLO. References grant read access, never input. */
@@ -1212,7 +1238,7 @@ export class ComputerSession {
           output: { width: state.width, height: state.height, bytes: bytes.length, mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") }, input: "none" } }, images);
     } catch { return this.result("refused", "Window detail failed; pixels and diagnostics withheld. Observe again."); }
   }
-  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}, quiet = false): Promise<ComputerResult> {
+  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}, quiet = false, deferPresentation = false): Promise<ComputerResult> {
     validateUiCapture(options);
     // A native capture keeps the page's DOM snapshot: reading changes nothing, so both stay current until input.
     entry.windowState = undefined;
@@ -1298,7 +1324,7 @@ export class ComputerSession {
     const extra = { ...this.addressed(entry, state.virtual_desktop), observation_id: id,
       source, granularity, captured: { image: hasImage, ui: hasUi } };
     if (!hasImage) {
-      highlight = quiet ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal, { kind: "inspect" });
+      highlight = quiet || deferPresentation ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal, { kind: "inspect" });
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Observation revoked or cancelled; data withheld.");
       return this.result("observed", `Fresh UI-only window observation: ${ui!.elements.length} UI elements. No pixels or image detail; current hints/tokens only.`, state, { ...extra, ...(highlight ? { highlight } : {}), ui: structuredClone(ui!) });
     }
@@ -1316,7 +1342,7 @@ export class ComputerSession {
     const rendered = await annotateUi(raw, annotationUi, observed.width, observed.height, hasUi && (options.hints ?? settings.hints ?? true), undefined, annotationUi.elements,
       { options: settings.guides, action: observed.actionMark });
     if (!this.allowed(entry) || signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Observation revoked or cancelled during annotation; pixels withheld."); }
-    highlight = quiet ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal, undefined, rendered.image);
+    highlight = quiet || deferPresentation ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal, undefined, rendered.image);
     if (!this.allowed(entry) || signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Observation revoked or cancelled; pixels withheld."); }
     const metadata = this.imageMetadata([rendered.image], state, settings);
     const message = hasUi
@@ -1337,9 +1363,10 @@ export class ComputerSession {
     return entry;
   }
 
-  private webFailure(entry: WindowEntry, error: unknown, acting = false): ComputerResult {
+  private async webFailure(entry: WindowEntry, error: unknown, acting = false, signal?: AbortSignal): Promise<ComputerResult> {
     const reason = error instanceof Error ? error.message : String(error);
     const uncertain = acting && error instanceof WebError && (error.timeout || error.transport);
+    if (acting) await this.activity(entry, { kind: "action" }, signal, undefined, uncertain ? "unknown" : "refused");
     return this.result(uncertain ? "unknown" : "refused", uncertain
       ? `The action may have reached the page. ${reason} Read the window with dom before deciding; never replay it blindly.`
       : `Playwright refused: ${reason}`, undefined, this.addressed(entry));
@@ -1429,9 +1456,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", action.action);
+        if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}${action.target && action.action !== "evaluate" ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true); }
+      } catch (error) { return this.webFailure(entry, error, true, signal); }
     });
   }
 
@@ -1448,9 +1477,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", action.action);
+        if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}. Check the fresh snapshot below for the page's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true); }
+      } catch (error) { return this.webFailure(entry, error, true, signal); }
     });
   }
 
@@ -1536,6 +1567,9 @@ export class ComputerSession {
       catch (error) { return this.result("refused", (error as Error).message, undefined, this.addressed(entry)); }
       const text = observed.texts?.get(hint) ?? [element.name, element.value].filter(item => item).join("\n");
       const cut = text.length >= ELEMENT_TEXT_LIMIT;
+      const region = observed.frames.get(element.element_token);
+      await this.activity(entry, { kind: "inspect", ...(region ? { region } : {}) });
+      if (!this.allowed(entry)) return this.denied(ref);
       return this.result("observed", `Element ${hint} text from this observation: ${text.length} characters${cut ? ", cut at the 200,000-character limit" : ""}. Page it with offset/limit.`,
         undefined, { ...this.addressed(entry), observation_id: id, element_text: { hint, role: element.role, name: element.name, text, cut } });
     });
@@ -1589,6 +1623,36 @@ export class ComputerSession {
     });
   }
 
+  /** Present a post-processed observation without recapturing or changing its input authority. */
+  presentObservation(ref: string, result: ComputerResult, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = await this.current(ref, signal);
+      if (!entry || !this.allowed(entry) || signal?.aborted || entry.observation?.id !== result.details.observation_id)
+        return this.result("refused", "Observation source revoked or cancelled; data withheld.");
+      const image = result.content.filter(block => block.type === "image").at(-1);
+      const highlight = await this.activity(entry, { kind: "inspect" }, signal, image);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Observation source revoked or cancelled; data withheld.");
+      return { ...result, details: { ...result.details, ...(highlight ? { highlight } : {}) } };
+    });
+  }
+  /** Present a final viewport image without changing observation/input authority. */
+  presentViewport(ref: string, image: Content, captured: ComputerResult, rect: PixelBox, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = await this.current(ref, signal);
+      if (!entry || !this.allowed(entry) || signal?.aborted) return this.result("refused", "Viewport source revoked or cancelled; pixels withheld.");
+      const bounds = screenRect(captured.details.state?.window_bounds);
+      const observed = entry.observation;
+      const mapping = observed?.mapping;
+      const sameBounds = bounds && observed?.bounds && (["x", "y", "width", "height"] as const).every(key => bounds[key] === observed.bounds![key]);
+      // The earlier AX witnesses must prove the same full-resolution width and native source.
+      const region = sameBounds && mapping && observed?.width && observed.height && mapping.scale * observed.width === captured.details.state?.screenshot_width && mapping.scale * observed.height === captured.details.state?.screenshot_height
+        ? windowRegion({ image_id: "viewport", ...rect }, { ...mapping, scale: 1 }, bounds) : undefined;
+      const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
+        region ? { kind: "detail", region } : { kind: "inspect" }, image);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Viewport source revoked or cancelled; pixels withheld.");
+      return this.result("observed", "", undefined, highlight ? { highlight } : {});
+    });
+  }
   /**
    * A fresh observation without the human frame, for successors: UI-only by default, or with
    * pixels at a given overview size so they compare with an earlier capture.
@@ -1821,7 +1885,7 @@ export class ComputerSession {
     });
   }
   /** Read fresh window parts for an existing reference. Each mode retires this window's previous observation. */
-  observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions): Promise<ComputerResult> {
+  observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions, deferPresentation = false): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
       try {
@@ -1835,7 +1899,7 @@ export class ComputerSession {
           catch (error) { return this.result("refused", (error as Error).message); }
         }
         if (zoom && !known?.detail) return this.result("refused", "Detail needs a current overview. Observe again.");
-        return entry ? ui ? await this.refineUi(entry, ui, signal) : zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query, options) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        return entry ? ui ? await this.refineUi(entry, ui, signal) : zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query, options, false, deferPresentation) : this.result("refused", "Unknown or closed window_ref. Discover again.");
       } catch (error) { return this.failed(error, false); }
     });
   }

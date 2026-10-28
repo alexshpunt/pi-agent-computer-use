@@ -5,14 +5,14 @@ import { FULL_RESOLUTION } from "./cua-image-settings.ts";
 import { WATCH_DEFAULTS } from "./watch.ts";
 import type { PixelBox } from "./pixel-diff.ts";
 import { ShortAddresses, SHORT_REFERENCE } from "./short-addresses.ts";
-import { parseComputerViews, type ComputerViews } from "./computer-views.ts";
+import { parseComputerViews } from "./computer-views.ts";
 import { checkedName, type ProcessHealth } from "./machine-host.ts";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, resolve } from "node:path";
-import type { ComputerSession, ComputerResult, ComputerMode, Action } from "./session.ts";
+import type { ComputerSession, ComputerResult, ComputerMode, Action, Content } from "./session.ts";
 import { parseWindowManagement, type WindowManagementCommand } from "./window-management.ts";
 import { validateWebAction, validateWebLaunch, type WebAction } from "./web-browser.ts";
 import { compareCaptures, diffDom, diffIsEmpty, diffUi, type Capture, type StateDiff } from "./successor.ts";
@@ -684,11 +684,11 @@ export class ComputerResources {
       result = await this.readNative(address, cwd, views, { ...view, capture: { ...view.capture, granularity: "ui" } }, signal);
     if (!result) return result;
     if (view.regions && result.details.status === "observed") {
-      try { return { ...result, details: { ...result.details, visual_regions: await session.visualRegions(windowRef!, result.details.observation_id!, signal) } }; }
+      try { result = { ...result, details: { ...result.details, visual_regions: await session.visualRegions(windowRef!, result.details.observation_id!, signal) } }; }
       catch (error) { throw new ComputerRequestError(`Visual region detection failed: ${error instanceof Error ? error.message : error}`); }
     }
     if (view.aria && result.details.status === "observed" && result.details.ui) {
-      try { return { ...result, details: { ...result.details, aria: nativeAriaSnapshot(result.details.ui) } }; }
+      try { result = { ...result, details: { ...result.details, aria: nativeAriaSnapshot(result.details.ui) } }; }
       catch (error) { throw new ComputerRequestError(`The aria snapshot could not be rendered: ${error instanceof Error ? error.message : error}`); }
     }
     if (view.changes && result.details.status === "observed") {
@@ -697,12 +697,12 @@ export class ComputerResources {
       const earlier = latest ? await decodeFrame(frame!.png) : undefined;
       const diff = compareCaptures({ ui: baseline?.ui, frame: earlier }, { ui: result.details.ui, frame: latest ? await decodeFrame(latest.png) : undefined },
         diffContext(result.details.ui, earlier, undefined));
-      if (!diff) return { ...result, details: { ...result.details, changes: { reason: "No earlier observation of this window in this session to compare with, so this is the full observation." } } };
+      if (!diff) return session.presentObservation(windowRef!, { ...result, details: { ...result.details, changes: { reason: "No earlier observation of this window in this session to compare with, so this is the full observation." } } }, signal);
       const since = baseline?.observation_id ?? frame!.observation_id;
       if (diff.pixels && frame!.observation_id !== since) diff.pixels.since = frame!.observation_id;
       // The change list replaces the full overview: only crops of the changed area are shown.
       const crops = latest ? await cropImages(frame!.png, latest.png, diff) : [];
-      return { ...result, content: [...result.content.filter(block => block.type !== "image"), ...crops], details: { ...result.details, changes: { since, diff } } };
+      return session.presentObservation(windowRef!, { ...result, content: [...result.content.filter(block => block.type !== "image"), ...crops], details: { ...result.details, changes: { since, diff } } }, signal);
     }
     if (view.kind === "state" && result.details.status === "observed") {
       const health = await session.processHealth(target);
@@ -728,7 +728,7 @@ export class ComputerResources {
     return { ...result, content: [...result.content, { type: "text", text: `${header}\n${listing}` }], details: { ...result.details, text_lines: lines } };
   }
 
-  private async readNative(address: ComputerAddress, cwd: string, views: readonly string[] | undefined, view: ComputerViews, signal?: AbortSignal): Promise<ComputerResult | undefined> {
+  private async readNative(address: ComputerAddress, cwd: string, views: readonly string[] | undefined, view: ReturnType<typeof parseComputerViews>, signal?: AbortSignal): Promise<ComputerResult | undefined> {
     if (address.kind === "machine") {
       if (views?.length) throw new ComputerRequestError("A machine address has no image views. Read a returned window or display address.");
       if (address.part === "windows" || address.part === "apps") throw new ComputerRequestError(`Search ${address.source} with a name or regex:<pattern>.`);
@@ -767,7 +767,7 @@ export class ComputerResources {
       this.retireWindow(address.ref, view.kind === "dom" ? "dom" : "native");
       if (view.kind === "dom") return this.remember({ window_ref: address.ref }, await session.observeDom(address.ref, view.options, signal));
       if (view.kind !== "overview") throw new ComputerRequestError("Read an overview of the window, then element views on its returned observation address.");
-      return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture));
+      return this.remember({ window_ref: address.ref }, await session.observe(address.ref, signal, undefined, undefined, undefined, view.capture, view.changes));
     }
     if (address.kind === "display") {
       if (view.kind !== "overview" || Object.keys(view.capture).some(key => key !== "maxLongEdge" && key !== "scale"))
@@ -929,14 +929,17 @@ export class ComputerResources {
     return { source: viewportSource(viewport.window_ref, viewport.name), name: viewport.name, window_ref: viewport.window_ref, rect: clipped, image: viewportImageSize(clipped) };
   }
   /** A viewport's image cut from a full-resolution window capture, with where it lies in the window's latest image. */
-  private async showViewport(viewport: Viewport, clipped: PixelBox, png: Buffer, captured: ComputerResult, scale: { x: number; y: number }, note = ""): Promise<ComputerResult> {
+  private async showViewport(viewport: Viewport, clipped: PixelBox, png: Buffer, captured: ComputerResult, scale: { x: number; y: number }, session: ComputerSession, signal?: AbortSignal, note = ""): Promise<ComputerResult> {
     const image = await viewportImage(png, clipped), details = ComputerResources.viewportDetails(viewport, clipped), size = details.image;
     const shown = { x: Math.round(clipped.x / scale.x), y: Math.round(clipped.y / scale.y), width: Math.round(clipped.width / scale.x), height: Math.round(clipped.height / scale.y) };
     const text = `${details.source} is ${shown.width}x${shown.height} at ${shown.x},${shown.y} of the window's latest image. Its image is ${size.width}x${size.height}` +
       (size.width === clipped.width ? ", the window's own resolution." : `: ${clipped.width}x${clipped.height} window pixels scaled down to fit ${VIEWPORT_CAP} px.`) +
       ` Points of the computer_* input tools on ${details.source} are pixels of this image.${note}`;
-    return { content: [{ type: "text", text }, { type: "image", data: image.toString("base64"), mimeType: "image/png" }],
-      details: { ...captured.details, status: "observed", viewport: details } };
+    const output: Extract<Content, { type: "image" }> = { type: "image", data: image.toString("base64"), mimeType: "image/png" };
+    const presented = await session.presentViewport(viewport.window_ref, output, captured, clipped, signal);
+    if (presented.details.status !== "observed") return presented;
+    return { content: [{ type: "text", text }, output],
+      details: { ...captured.details, ...presented.details, status: "observed", viewport: details } };
   }
   /**
    * Make, move or resize a viewport of a window and show it. The rectangle is in pixels of the window's latest image,
@@ -961,7 +964,7 @@ export class ComputerResources {
     const viewport: Viewport = { window_ref: address.ref, name: address.name, rect: clipped };
     this.viewports.set(viewportSource(address.ref, address.name), viewport);
     const unseen = session.inputView(address.ref).seen ? "" : " The window had no Read with an image yet, so the rectangle was taken in its full-resolution pixels.";
-    return this.stamp(place, await this.showViewport(viewport, clipped, png, captured, scale, unseen));
+    return this.stamp(place, await this.showViewport(viewport, clipped, png, captured, scale, session, signal, unseen));
   }
   /** Read a viewport: its image at full resolution up to VIEWPORT_CAP, and with ocr the text in it. Only looks. */
   private async readViewport(address: Extract<ComputerAddress, { kind: "viewport" }>, cwd: string, views: readonly string[] | undefined, signal?: AbortSignal): Promise<ComputerResult> {
@@ -975,8 +978,8 @@ export class ComputerResources {
     if (!png) return captured;
     const full = await pngSize(png), clipped = clipViewport(viewport.rect, full);
     if (!clipped) throw new ComputerRequestError(`${viewportSource(viewport.window_ref, viewport.name)} lies outside its window now. Move it with computer_view.`);
-    const result = await this.showViewport(viewport, clipped, png, captured, this.imageScale(session, viewport.window_ref, full));
-    if (!view.ocr) return result;
+    const result = await this.showViewport(viewport, clipped, png, captured, this.imageScale(session, viewport.window_ref, full), session, signal);
+    if (!view.ocr || result.details.status !== "observed") return result;
     const image = result.content.find(block => block.type === "image")!;
     let lines;
     // The whole image as a region: Windows OCR then reads it enlarged, so small text of a small viewport reads too.
