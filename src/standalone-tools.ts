@@ -1,20 +1,19 @@
 import { Type, type JsonValue } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import type { ComputerResources } from "./computer-resources.ts";
-import { computerReadRenderer } from "./computer-read-renderer.ts";
+import { resourceRenderers } from "./computer-renderers.ts";
 import { computerNamespace, registerComputerDelete } from "./computer-tools.ts";
 import { COMPUTER_PATH_HELP, COMPUTER_SEARCH_HELP, COMPUTER_VIEWS_HELP, presentComputerResult, readComputer } from "./provider.ts";
 
 const GUIDE = "docs:computer";
 const image = Type.Object({ type: Type.Literal("image"), data: Type.String(), mimeType: Type.String() });
-const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
 /**
  * Offer computer use without Pi Agent IDE: computer_read, computer_search and computer_delete stand in for the IDE's Read,
  * Search and Delete. Like the other computer_* tools they are deferred, off the model's tool list until tool_search loads them.
  */
 export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerResources, guide: string): void {
+  const describe = (source: string) => resources.describe(source);
   const namespace = computerNamespace();
   pi.registerTool({
     name: "computer_read", label: "Computer read", exposure: "deferred", namespace,
@@ -31,8 +30,7 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
       Type.Object({ type: Type.Literal("images"), note: Type.String(), images: Type.Array(image) }),
     ]),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    renderCall: args => new Text(`computer_read ${plain(args.path)}${args.views?.length ? ` [${plain(args.views.join(", "))}]` : ""}`, 0, 0),
-    renderResult: computerReadRenderer,
+    ...resourceRenderers("computer_read", describe),
     async execute(_id, params, signal, _update, ctx) {
       if (params.path === GUIDE) {
         const lines = guide.replace(/\n$/, "").split("\n"), offset = params.offset ?? 1;
@@ -59,7 +57,7 @@ export function registerStandaloneTools(pi: ExtensionAPI, resources: ComputerRes
       limit: Type.Optional(Type.Integer({ minimum: 1, description: "Maximum results." })),
     }, { additionalProperties: false }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    renderCall: args => new Text(`computer_search ${plain(args.path)} ${plain(JSON.stringify(args.query))}`, 0, 0),
+    ...resourceRenderers("computer_search", describe),
     async execute(_id, params, signal, _update, ctx) {
       const result = await resources.search(resources.address(params.path), ctx.cwd, params.query, params.limit, signal);
       return { content: [{ type: "text", text: resources.shorten(presentComputerResult(result)) }], details: result.details, ...(result.isError ? { isError: true } : {}) };

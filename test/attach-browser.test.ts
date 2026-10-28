@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import sharp from "sharp";
 import { ComputerSession, type ComputerMode, type Driver, type DriverResult } from "../src/session.ts";
 import type { WebBrowser, WebLauncher } from "../src/web-browser.ts";
 import type { WindowObserver } from "../src/native-visuals.ts";
@@ -13,7 +14,7 @@ function fixture(observer?: WindowObserver) {
     if (name === "list_windows") return { content: [], structuredContent: { windows: [window] } };
     throw new Error(`Unexpected native call ${name}`);
   });
-  const browser = { close: vi.fn(async () => {}), page: vi.fn(async () => ({ url: "data:", title: "Attach target", snapshot: "- textbox \"Field\"", tabs: [], events: [] })) };
+  const browser = { close: vi.fn(async () => {}), request: vi.fn(async () => ({})), page: vi.fn(async () => ({ url: "data:", title: "Attach target", snapshot: "- textbox \"Field\"", tabs: [], events: [] })) };
   const launch = vi.fn<WebLauncher>(async () => ({ browser: browser as unknown as WebBrowser,
     opened: { pid: window.pid, version: "155", url: "data:", title: "Attach target", via: "cdp" } }));
   const session = new ComputerSession({ call, identity: vi.fn(async () => `PiComputerUse.${"a".repeat(32)}:4100:1`), close: vi.fn(async () => {}) }, () => mode, undefined, observer, launch);
@@ -34,6 +35,25 @@ test("Playwright activity stays source-associated without exposing text or inven
   expect(observer.mock.calls[0][0]).not.toHaveProperty("mark.point");
   expect(observer.mock.calls[0][0]).not.toHaveProperty("mark.region");
   expect(JSON.stringify(observer.mock.calls)).not.toContain("synthetic-secret");
+  await f.session.close();
+});
+test("browser crop presentation uses the final derived pixels returned to the agent", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" })); const f = fixture(observer);
+  const ref = await f.ref(); await f.session.attachBrowser(ref);
+  const png = await sharp({ create: { width: 6, height: 4, channels: 3, background: "blue" } }).png().toBuffer();
+  f.browser.request.mockResolvedValue({ url: "data:", title: "Attach target", png: png.toString("base64"),
+    derive: { geometry: { dpr: 1, scrollX: 0, scrollY: 0, innerWidth: 6, innerHeight: 4 }, box: { x: 2, y: 1, width: 2, height: 2 } } });
+  const result = await f.session.webImage(ref, undefined, "crop", { ref: "e1" });
+  expect(result.details.status).toBe("observed");
+  const image = result.content.find(block => block.type === "image");
+  expect(image?.type).toBe("image");
+  const decoded = await sharp(Buffer.from(image!.data!, "base64")).raw().toBuffer({ resolveWithObject: true });
+  expect(decoded.info).toMatchObject({ width: 2, height: 2, channels: 3 });
+  expect([...decoded.data]).toEqual(Array.from({ length: 4 }, () => [0, 0, 255]).flat());
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "inspect" }, image });
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("mark.point");
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("mark.region");
   await f.session.close();
 });
 test("Safe mode refuses before any Playwright work", async () => {

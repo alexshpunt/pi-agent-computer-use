@@ -424,6 +424,19 @@ export class ComputerResources {
   shorten(text: string): string {
     return this.shorts.shorten(text, (kind, ref) => this.place(requireComputerAddress(computerSource(kind, ref)))?.machine);
   }
+  /**
+   * What a person calls the thing an address points at: its machine and, for a window, the title its last listing
+   * gave. For display only: it never throws, issues no alias and starts no native work, so an address from an
+   * earlier run or a window that is gone simply has no name.
+   */
+  describe(source: string): { machine?: string; title?: string } | undefined {
+    try {
+      const address = this.address(source);
+      const place = this.place(address);
+      const title = address.kind === "window" || address.kind === "viewport" ? this.titles.get(address.ref) : undefined;
+      return place || title ? { ...(place ? { machine: place.machine } : {}), ...(title ? { title } : {}) } : undefined;
+    } catch { return undefined; }
+  }
   /** The owner of a window, or of one machine's display. */
   private async route(cwd: string, target: ObservationTarget, signal?: AbortSignal): Promise<Owner> {
     if (target.window_ref !== undefined)

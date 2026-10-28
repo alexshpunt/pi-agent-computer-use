@@ -201,14 +201,14 @@ test("an address no machine issued is refused before anything is sent", async ()
 });
 
 test("a remote browser refuses before launch when that machine's worker copy is stale or missing", async () => {
-  const local = execFileSync("sha256sum", ["src/web-worker.ts", "src/aria-match.ts", require.resolve("playwright-core/package.json")], { encoding: "utf8" });
+  const local = execFileSync("sha256sum", ["src/web-worker.ts", "src/aria-match.ts", "src/web-geometry.ts", require.resolve("playwright-core/package.json")], { encoding: "utf8" });
   const runner = (output: string | Error): CommandRunner => ({ spawn: vi.fn(), run: vi.fn(async () => {
     if (output instanceof Error) throw output;
     return output;
   }) });
   const current = runner(local);
   await checkRemoteWorker(current, "/pkg", "setup part machine");
-  expect(current.run).toHaveBeenCalledWith("sha256sum", ["/pkg/src/web-worker.ts", "/pkg/src/aria-match.ts", "/pkg/node_modules/playwright-core/package.json"], expect.anything());
+  expect(current.run).toHaveBeenCalledWith("sha256sum", ["/pkg/src/web-worker.ts", "/pkg/src/aria-match.ts", "/pkg/src/web-geometry.ts", "/pkg/node_modules/playwright-core/package.json"], expect.anything());
   const stale = local.replace(/^[0-9a-f]{64}/, "0".repeat(64));
   await expect(checkRemoteWorker(runner(stale), "/pkg", "setup part machine"))
     .rejects.toThrow(/out of date \(src\/web-worker\.ts\); nothing was launched\. Refresh it from this package with setup part machine/);

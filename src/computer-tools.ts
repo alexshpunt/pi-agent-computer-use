@@ -1,13 +1,11 @@
 import { Type, type JsonValue, type Static } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { ComputerRequestError, refKind, type ComputerResources, type InputPlan, type InputPoint } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
-import { computerActionRenderer } from "./computer-action-renderer.ts";
+import { resourceRenderers, typedRenderers } from "./computer-renderers.ts";
 import { parseComputerViews } from "./computer-views.ts";
 import { COMPUTER_DELETE_HELP, computerAction, deleteComputer } from "./provider.ts";
 
-const plain = (value: unknown) => String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 type Action = Awaited<ReturnType<typeof computerAction>>;
 
 /**
@@ -492,16 +490,14 @@ export function timelinePlan(params: Static<typeof timelineParameters>): InputPl
 export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResources): void {
   const namespace = computerNamespace();
   const common = { exposure: "deferred" as const, namespace, outputSchema: receiptSchema };
-  const rendered = (name: string, call: (args: Record<string, unknown>) => string) => ({
-    renderCall: (args: unknown) => new Text(`${name} ${plain(call(args as Record<string, unknown>))}`, 0, 0),
-    renderResult: computerActionRenderer(name).renderResult,
-  });
+  const describe = (source: string) => resources.describe(source);
+  const rendered = (name: string) => typedRenderers(name, describe);
   pi.registerTool({
     ...common, name: "computer_open", label: "Computer open",
     description: "Use computer_open to start an app, a Playwright browser, a Windows Sandbox or an isolated session on a machine, or to attach Playwright to a running browser window. The result gives the new window or sandbox address.",
     parameters: openParameters,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_open", args => [args.at, args.app ?? args.path ?? args.url ?? args.browser ?? (args.sandbox ? "sandbox" : args.isolated_session ? "isolated session" : "")].filter(Boolean).join(" ")),
+    ...rendered("computer_open"),
     async execute(_id, params, signal, _update, ctx) {
       let command: Record<string, unknown> = {};
       return actionResult(await computerAction(resources, params.at, "open", () => {
@@ -516,7 +512,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_window to move, resize, maximize, minimize, focus or restore an app window by its address without keys or clicks, or to give it a short name.",
     parameters: windowParameters,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_window", args => `${args.window} ${args.action}${args.action === "move" ? ` ${args.x},${args.y}` : args.action === "resize" ? ` ${args.width}x${args.height}` : args.action === "name" ? ` ${args.as}` : ""}`),
+    ...rendered("computer_window"),
     async execute(_id, params, signal, _update, ctx) {
       let command: Record<string, unknown> = {};
       return actionResult(await computerAction(resources, params.window, params.action, () => {
@@ -530,7 +526,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_view to make, move or resize a viewport: a named rectangle of a window that follows the window. The result shows the viewport at the window's own resolution. Give its address to the computer_* input tools to act at points of that image and see what changed only there; Read it to look again.",
     parameters: viewParameters,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_view", args => `${args.viewport}${args.x !== undefined || args.y !== undefined ? ` at ${args.x ?? "_"},${args.y ?? "_"}` : ""}${args.width !== undefined || args.height !== undefined ? ` ${args.width ?? "_"}x${args.height ?? "_"}` : ""}`),
+    ...rendered("computer_view"),
     async execute(_id, params, signal, _update, ctx) {
       const { viewport, ...rect } = params;
       return actionResult(await computerAction(resources, viewport, "view", () => resources.address(viewport),
@@ -542,7 +538,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_wait to wait until a window's UI or a browser page meets conditions, or to check them once, without sending input. The last sample becomes the window's current observation.",
     parameters: waitParameters,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_wait", args => `${args.window} ${args.mode ?? "wait"} ${(args.conditions as unknown[] | undefined)?.length ?? 0} condition(s)`),
+    ...rendered("computer_wait"),
     async execute(_id, params, signal, _update, ctx) {
       let command: Record<string, unknown> = {};
       return actionResult(await computerAction(resources, params.window, params.mode === "check" ? "verify" : "wait_for", () => {
@@ -558,7 +554,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_browser to navigate, manage tabs, answer JavaScript dialogs, upload or download files, and run page JavaScript in a browser window. The result shows the page's fresh snapshot.",
     parameters: browserParameters,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-    ...rendered("computer_browser", args => `${args.window} ${args.action}${args.url ? ` ${args.url}` : args.tab ? ` ${args.tab}` : ""}`),
+    ...rendered("computer_browser"),
     async execute(_id, params, signal, _update, ctx) {
       const { window, ...command } = params;
       return actionResult(await computerAction(resources, window, params.action, () => resources.address(window),
@@ -570,7 +566,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_files to copy files between the workspace and this session's own folder on a machine, or to list that folder, so apps there can open or save them.",
     parameters: filesParameters,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_files", args => `${args.machine} ${args.action}${args.from ? ` ${args.from}` : args.name ? ` ${args.name}` : ""}`),
+    ...rendered("computer_files"),
     async execute(_id, params, signal, _update, ctx) {
       let command: Record<string, unknown> = {};
       return actionResult(await computerAction(resources, params.machine, params.action, () => {
@@ -584,7 +580,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_clipboard to read or replace a machine's clipboard in YOLO mode, with text or an image.",
     parameters: clipboardParameters,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    ...rendered("computer_clipboard", args => `${args.machine} ${args.action}${args.image ? ` ${args.image}` : ""}`),
+    ...rendered("computer_clipboard"),
     async execute(_id, params, signal, _update, ctx) {
       let command: Record<string, unknown> = {};
       return actionResult(await computerAction(resources, params.machine, `clipboard_${params.action}`, () => {
@@ -598,7 +594,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_record to record a machine's display to video or its playback audio, to capture frames of a window or display over time for motion and animation, or to watch a window or viewport in the background while acting on it, such as panning a panorama or dragging a 3D camera.",
     parameters: recordParameters,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_record", args => `${args.at} ${args.action}${args.seconds ? ` ${args.seconds} s` : args.duration_ms ? ` ${args.duration_ms} ms` : ""}`),
+    ...rendered("computer_record"),
     async execute(_id, params, signal, _update, ctx) {
       let run: RecordRun = { command: {} };
       return actionResult(await computerAction(resources, params.at, params.action, () => {
@@ -628,56 +624,56 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     ...common, name: "computer_click", label: "Computer click",
     description: "Use computer_click to click an element or a point of a window: any button, double or triple clicks, with modifier keys. The result lists what changed.",
     parameters: clickParameters, annotations: inputAnnotations,
-    ...rendered("computer_click", args => `${args.window} ${aimed(args)}${args.count ? ` x${args.count}` : ""}${args.button && args.button !== "left" ? ` ${args.button}` : ""}`),
+    ...rendered("computer_click"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "click", () => clickPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_hover", label: "Computer hover",
     description: "Use computer_hover to rest the pointer on an element or a point without clicking, for tooltips, hover menus and hover states.",
     parameters: hoverParameters, annotations: inputAnnotations,
-    ...rendered("computer_hover", args => `${args.window} ${aimed(args)}`),
+    ...rendered("computer_hover"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "hover", () => hoverPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_drag", label: "Computer drag",
     description: "Use computer_drag to press a button at one element or point, move to another, optionally through a path, and release there, for sliders, drag and drop and drawing.",
     parameters: dragParameters, annotations: inputAnnotations,
-    ...rendered("computer_drag", args => `${args.window} ${aimed(args.from as Record<string, unknown>)} → ${aimed(args.to as Record<string, unknown>)}`),
+    ...rendered("computer_drag"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "drag", () => dragPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_scroll", label: "Computer scroll",
     description: "Use computer_scroll to turn the mouse wheel over an element, a point or the middle of a window or page.",
     parameters: scrollParameters, annotations: inputAnnotations,
-    ...rendered("computer_scroll", args => `${args.window} ${aimed(args)} ${args.delta_x ?? 0},${args.delta_y ?? 0}`),
+    ...rendered("computer_scroll"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "scroll", () => scrollPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_type", label: "Computer type",
     description: "Use computer_type to type text into a field or the focused element, or to replace a field's value, optionally pressing Enter after it.",
     parameters: typeParameters, annotations: inputAnnotations,
-    ...rendered("computer_type", args => `${args.window} ${aimed(args)} ${String(args.text ?? "").length} chars${args.submit ? " + Enter" : ""}`),
+    ...rendered("computer_type"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "type", () => typePlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_press", label: "Computer press",
     description: "Use computer_press to press a key or shortcut such as Enter or ctrl+s, or to hold keys down for a time.",
     parameters: pressParameters, annotations: inputAnnotations,
-    ...rendered("computer_press", args => `${args.window} ${args.key}${args.hold_ms ? ` for ${args.hold_ms} ms` : ""}`),
+    ...rendered("computer_press"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "press", () => pressPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_select", label: "Computer select",
     description: "Use computer_select to choose options in a list or select element, set a checkbox, radio or toggle, or open an app's menu item.",
     parameters: selectParameters, annotations: inputAnnotations,
-    ...rendered("computer_select", args => `${args.window} ${args.menu ? (args.menu as string[]).join(" > ") : `${args.target ?? ""} ${args.values ? (args.values as string[]).join(", ") : args.checked !== undefined ? (args.checked ? "checked" : "unchecked") : ""}`}`),
+    ...rendered("computer_select"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "select", () => selectPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_timeline", label: "Computer timeline",
     description: "Use computer_timeline to play timed key, button, pointer, wheel and pen events in one call, for games, held keys across moves and pressure-sensitive strokes.",
     parameters: timelineParameters, annotations: inputAnnotations,
-    ...rendered("computer_timeline", args => `${args.window} ${(args.events as unknown[] | undefined)?.length ?? 0} events`),
+    ...rendered("computer_timeline"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "timeline", () => timelinePlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
@@ -685,7 +681,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
     description: "Use computer_display to change a display's resolution in YOLO mode, for example to test an app at another size; closing computer use restores it.",
     parameters: displayParameters,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    ...rendered("computer_display", args => `${args.display} ${args.width}x${args.height}`),
+    ...rendered("computer_display"),
     async execute(_id, params, signal, _update, ctx) {
       return actionResult(await computerAction(resources, params.display, "resize", () => resources.address(params.display),
         address => resources.perform(address, ctx.cwd, JSON.stringify({ action: "resize", width: params.width, height: params.height }), signal)));
@@ -700,8 +696,7 @@ export function registerComputerDelete(pi: ExtensionAPI, resources: ComputerReso
     description: "Use computer_delete to close an app window, or to release a sandbox, isolated session, machine or all of computer use.",
     parameters: Type.Object({ path: Type.String({ description: COMPUTER_DELETE_HELP }) }, { additionalProperties: false }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    renderCall: args => new Text(`computer_delete ${plain(args.path)}`, 0, 0),
-    renderResult: computerActionRenderer("computer_delete").renderResult,
+    ...resourceRenderers("computer_delete", resource => resources.describe(resource)),
     async execute(_id, params, signal, _update, ctx) {
       return actionResult(await deleteComputer(resources, params.path, params, ctx.cwd, signal));
     },

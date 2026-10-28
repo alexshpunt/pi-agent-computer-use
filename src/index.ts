@@ -10,7 +10,8 @@ import { registerSetupCommand } from "./setup-command.ts";
 import { ComputerSession, type ComputerResult } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
 import { registerStandaloneTools } from "./standalone-tools.ts";
-import { registerComputerTools } from "./computer-tools.ts";
+import { computerNamespace, registerComputerTools } from "./computer-tools.ts";
+import { registerToolOmission } from "./responses-tools.ts";
 import { WebBrowser } from "./web-browser.ts";
 import { localRunner } from "./runner.ts";
 import { MachineHost } from "./machine-host.ts";
@@ -65,6 +66,8 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     if (!active.includes("tool_search") && pi.getAllTools().some(tool => tool.name === "tool_search"))
       pi.setActiveTools([...active, "tool_search"]);
   });
+  // Copilot's Responses route makes every optional field of a tool with unsaid strictness required (LPT-975).
+  registerToolOmission(pi, computerNamespace().name);
   pi.on("session_shutdown", async () => {
     if (loading) await loading.catch(() => undefined);
     visuals.clear();

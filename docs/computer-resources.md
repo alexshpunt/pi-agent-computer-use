@@ -158,7 +158,7 @@ An `aria` template is Playwright's YAML, such as `- list "Pick":\n  - listitem "
 
 ### Windows and displays
 
-`computer_window` samples the window's state and sends one command. Move and resize take integer Windows desktop pixels, not image, CSS or DIP coordinates, and need a normal window that is neither minimized nor maximized. Maximize and focus need the window on the current virtual desktop; nothing switches desktops. Focus does not restore a minimized window; `restore` does. The receipt reports the requested and measured bounds and the foreground separately from keyboard focus; Read again to see the new paint. These need the `windows-window-management` runtime (`windows-desktop` includes it); a runtime without it refuses, and keys or clicks are no substitute.
+`computer_window` samples the window's state and sends one command. Move and resize take integer Windows desktop pixels, not image, CSS or DIP coordinates, and need a normal window that is neither minimized nor maximized. Maximize and focus need the window on the current virtual desktop; nothing switches desktops. Focus does not restore a minimized window; `restore` does. The receipt reports the requested and measured bounds and the foreground separately from keyboard focus. Position and move must match exactly. A resize may land up to 2 px away in width or height and still ends `delivered`: Windows keeps a window that is not DPI aware in whole logical pixels on a scaled display (150%: some sizes are unreachable), so the measured size can differ from the request by that much, and the receipt shows both; Read again to see the new paint. These need the `windows-window-management` runtime (`windows-desktop` includes it); a runtime without it refuses, and keys or clicks are no substitute.
 
 `computer_display` (YOLO) uses only modes the graphics driver lists; an unsupported size refuses and lists the supported ones. The change also affects what the human sees. Closing the computer session or the machine restores the replaced mode. Read displays and windows again afterwards: earlier display and window observations no longer work. A display of a Remote Desktop session has the one size its client sets: the displays listing and a refused change say so. The user changes it by resizing the client window, reconnecting with another size or the client's display settings; Windows scaling is the user's setting too. Computer use changes neither; to read small controls, Read a region in detail or make a viewport. Remote Desktop replaces the session's displays: while the user is connected, the only display is the client's; after they disconnect, the physical display with all its modes comes back under a new address. Read the displays again after the user connects or disconnects.
 
@@ -194,6 +194,12 @@ Web pages run through [Playwright](https://playwright.dev/). The browser window 
 `computer_open` with `browser` or `url` launches a visible browser with a disposable profile: Chrome by default, installed Edge, or Playwright's own Firefox (`/computer-setup firefox` once per machine and after updating this package; it cannot be attached to). `profile: "agent"` (YOLO) uses the agent's own persistent profile on that machine, so logins made there stay; it is never the user's profile, and one browser at a time uses it. Closing the computer session closes these browsers and deletes their disposable profiles.
 
 Each page snapshot lists the tabs (`Tab t1 (active): title | url | load state`), `Event:` lines for opened or closed tabs and dialogs, `Download` lines and `Log` lines for console errors, page errors, failed requests and HTTP errors since the previous snapshot. Input, snapshots and screenshots use only the active tab; a popup never becomes active by itself, so use `computer_browser` `switch_tab`. A JavaScript dialog stays open until `computer_browser` `dialog` answers it, and other page actions refuse until then. Downloads land in the browser's temporary directory, which closing the session deletes; copy what you need. `evaluate` returns its result as JSON, cut at 20,000 characters; reaching the time limit is `unknown`. A Playwright timeout or lost connection is `unknown`; read a fresh snapshot.
+
+### Screenshots without a flash
+
+A visible Chromium window shrinks for a moment while Chrome takes a screenshot with a clip or scale of its own, so the human would see a flash on every element crop and every page action's pixel comparison. The browser worker therefore takes one plain viewport screenshot, which does not move the window, and the host derives the image from it: an element crop is cut from it at the element's pixels, and the page image used by the change list is scaled to one pixel per CSS pixel (exactly `innerWidth` x `innerHeight`). The image the agent gets and its coordinates stay the same; an element crop is the same size as Chrome's own, and its pixels match except for slight resampling at fractional device pixels.
+
+The worker falls back to Chrome's own screenshot, which can flash, when the derived image would not be exact: an element that is not wholly inside the viewport (for example taller than the window), a pinch-zoomed page, or a page that scrolls or resizes during the capture. In testing Firefox showed no flash with this path.
 
 ### Attach to a running browser
 
@@ -235,7 +241,7 @@ To set one up:
   "lab": {
     "ssh": "lab-wsl",
     "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-e2c256de/runtime/cua-driver.exe",
+    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-33c4b82b/runtime/cua-driver.exe",
     "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
     "package": "/home/user/.local/share/pi-computer-use/package"
   }
