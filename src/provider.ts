@@ -11,8 +11,7 @@ import { REMOTE_DESKTOP_DISPLAY } from "./display-mode.ts";
 import type { WebLogEntry } from "./web-browser.ts";
 import { diffIsEmpty, type PixelReport, type StateDiff } from "./successor.ts";
 import type { PixelBox } from "./pixel-diff.ts";
-import { computerActionRenderer } from "./computer-action-renderer.ts";
-import { computerReadRenderer } from "./computer-read-renderer.ts";
+import { computerActionRenderer, computerReadRenderer, computerSearchRenderer } from "./computer-renderers.ts";
 import type { ComputerSession, ComputerResult, ComputerMode, Content } from "./session.ts";
 
 const owns = (source: unknown): source is string => typeof source === "string" && source.startsWith("computer:");
@@ -452,6 +451,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
     markdown: guide,
     triggers: ["read", "search"].map(tool => ({ tool, resourcePrefixes: ["computer:"] })) }]);
   const resources = new ComputerResources(getSession, closeSession, openSandbox, connectMachine, getMode);
+  const describe = (source: string) => resources.describe(source);
   // Pi shutdown releases every machine, sandbox and session this computer use started.
   pi.on("session_shutdown", () => resources.closeAll().then(() => undefined));
   const resolver: ResourceResolver = {
@@ -475,7 +475,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
   await Promise.all([
     optional(connectReadPlugin(pi, { protocol: READ_PROTOCOL, apiVersion: READ_API_VERSION, id: "computer", setup(api) {
       accepted.add("read");
-      api.addResolver({ resolver, priority: -250, renderResult: computerReadRenderer });
+      api.addResolver({ resolver, priority: -250, renderResult: computerReadRenderer(describe) as never });
       for (const view of ["image", "ui", "full", "state", "dom", "region", "sequence", "frames", "capture", "element", "ocr", "changes", "regions", "aria"])
         api.addView({ view, contentKind: "any", presenter: { id: `computer-${view}`, present: document => document } });
       api.addHandler({ stage: "read", when: { resolvedBy: resolver.id, contentKind: "any" }, async handler(context) {
@@ -489,7 +489,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
     } })),
     optional(connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       accepted.add("search");
-      api.addResolver({ priority: -250, resolver: { id: "computer", readResources: request => owns(request.path) ? [request.path] : [],
+      api.addResolver({ priority: -250, resolver: { id: "computer", renderResult: computerSearchRenderer(describe) as never, readResources: request => owns(request.path) ? [request.path] : [],
         async tryResolve(request, context) {
           if (!owns(request.path)) return { kind: "not-handled" };
           try {
@@ -511,7 +511,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
       let renderersRegistered = false;
       pi.on("session_start", () => {
         if (renderersRegistered) return;
-        for (const tool of ["write", "insert", "delete"] as const) api.addToolRenderer(computerActionRenderer(tool));
+        for (const tool of ["write", "insert", "delete"] as const) api.addToolRenderer(computerActionRenderer(tool, describe) as never);
         renderersRegistered = true;
       });
       // Write and Insert do not act on computer addresses; they refuse instead of treating the address as a file.
