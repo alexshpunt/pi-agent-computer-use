@@ -12,6 +12,7 @@ import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-l
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget, WebTimelineEvent } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 import { ariaTreeFromYaml, matchesAriaTemplate } from "./aria-match.ts";
+import { elementRect, matchesViewport, type CssBox, type Derive, type PageGeometry } from "./web-geometry.ts";
 
 interface Tab { id: string; page: Page; title: string; load: WebTab["load"]; opener?: string; dialog?: Dialog; onDialog: Set<() => void> }
 interface DownloadRecord { info: WebDownload; download: Download; done: Promise<void> }
@@ -589,20 +590,58 @@ async function check({ conditions }: { conditions: UiCondition[] }): Promise<Con
     }
   }));
 }
+/** The page's viewport size in device pixels and the scroll, DPR and zoom behind it, measured in the main frame. */
+async function measure(page: Page): Promise<PageGeometry & { zoom: number }> {
+  return page.evaluate(() => ({ dpr: devicePixelRatio, scrollX, scrollY, innerWidth, innerHeight, zoom: visualViewport?.scale ?? 1 }));
+}
+/**
+ * Headful Chrome shrinks the visible window while it takes a screenshot with a clip or a scale of its own (an element,
+ * or `scale: "css"`), so the human sees a flash. A plain viewport screenshot does not; this takes one and describes
+ * how the host derives the wanted image from it (see web-capture.ts). It returns undefined when that would not be
+ * exact or the element cannot be resolved quickly (pinch-zoomed or scrolling page, element not wholly in view, no
+ * such element): the caller then takes the ordinary screenshot, which also reports the real error.
+ */
+async function plainShot(page: Page, element?: Locator): Promise<{ png: Buffer; derive: Derive } | undefined> {
+  try {
+    let box: CssBox | undefined;
+    if (element) {
+      await element.scrollIntoViewIfNeeded({ timeout: 2_000 });
+      box = await element.boundingBox({ timeout: 2_000 }) ?? undefined;
+      if (!box) return undefined;
+    }
+    const before = await measure(page);
+    const png = await page.screenshot({ timeout: 10_000 });
+    const after = await measure(page);
+    const geometry: PageGeometry = { dpr: before.dpr, scrollX: before.scrollX, scrollY: before.scrollY, innerWidth: before.innerWidth, innerHeight: before.innerHeight };
+    const settled = before.zoom === 1 && JSON.stringify(before) === JSON.stringify(after);
+    const image = { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+    if (!settled || !matchesViewport(image, geometry) || (box && !elementRect(box, geometry, image))) return undefined;
+    return { png, derive: { geometry, ...(box ? { box } : {}) } };
+  } catch { return undefined; }
+}
+
 async function screenshot({ target, highlight, css }: { target?: WebTarget; highlight?: boolean; css?: boolean }) {
   const tab = current(), page = idle(tab);
   let box;
   let png: Buffer;
-  if (target && !highlight) png = await locate(page, target).screenshot({ timeout: 10_000 });
-  else if (target) {
+  let derive: Derive | undefined;
+  if (target && !highlight) {
+    const plain = await plainShot(page, locate(page, target));
+    if (plain) ({ png, derive } = plain);
+    else png = await locate(page, target).screenshot({ timeout: 10_000 });
+  } else if (target) {
     // Playwright's mask overlays the element in the screenshot only; the page itself is not modified.
     const element = locate(page, target);
     box = await element.boundingBox({ timeout: 10_000 });
     if (!box) throw new Error("The element is not visible, so it cannot be highlighted.");
     png = await page.screenshot({ timeout: 10_000, mask: [element], maskColor: "rgba(255, 0, 96, 0.35)" });
   // In CSS pixels a page point of an action is a pixel of the screenshot, so a pixel change list can find it.
-  } else png = await page.screenshot({ timeout: 10_000, ...(css ? { scale: "css" as const } : {}) });
-  return { url: page.url(), title: tab.title, png: png.toString("base64"), ...(box ? { box } : {}) };
+  } else if (css) {
+    const plain = await plainShot(page);
+    if (plain) { png = plain.png; derive = { ...plain.derive, css: true }; }
+    else png = await page.screenshot({ timeout: 10_000, scale: "css" });
+  } else png = await page.screenshot({ timeout: 10_000 });
+  return { url: page.url(), title: tab.title, png: png.toString("base64"), ...(box ? { box } : {}), ...(derive ? { derive } : {}) };
 }
 
 async function close() {
