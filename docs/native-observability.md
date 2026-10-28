@@ -40,7 +40,7 @@ Window events carry the existing HWND/PID lifetime identity and physical source 
 
 The adapter admits one native request at a time and retains one replaceable pending activity. Pending activity expires after 250 ms; preview transport accepts only bounded PNG/JPEG payloads. Cancellation and mode changes revoke older generations. A cancellation of an old operation cannot clear a newer one. Capture companions disable their own presentation.
 
-`highlight.status: queued` records adapter admission, not proof that a person saw pixels. An unavailable renderer does not repeat capture or input. Backend refusal and capture exclusion still need qualification on the exact Windows runtime; the adapter alone cannot prove focus, transparency, screenshot exclusion or visual quality.
+`highlight.status: queued` records adapter admission, not proof that a person saw pixels. An unavailable renderer does not repeat capture or input. Failed or cancelled startup releases the connection while keeping presentation preferences subscribed for a later attempt. Final session shutdown disposes those subscriptions. Backend refusal and capture exclusion still need qualification on the exact Windows runtime; the adapter alone cannot prove focus, transparency, screenshot exclusion or visual quality.
 
 ## Runtime qualification
 
