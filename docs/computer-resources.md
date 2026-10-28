@@ -199,7 +199,7 @@ Each page snapshot lists the tabs (`Tab t1 (active): title | url | load state`),
 
 A visible Chromium window shrinks for a moment while Chrome takes a screenshot with a clip or scale of its own, so the human would see a flash on every element crop and every page action's pixel comparison. The browser worker therefore takes one plain viewport screenshot, which does not move the window, and the host derives the image from it: an element crop is cut from it at the element's pixels, and the page image used by the change list is scaled to one pixel per CSS pixel (exactly `innerWidth` x `innerHeight`). The image the agent gets and its coordinates stay the same; an element crop is the same size as Chrome's own, and its pixels match except for slight resampling at fractional device pixels.
 
-The worker falls back to Chrome's own screenshot, which can flash, when the derived image would not be exact: an element that is not wholly inside the viewport (for example taller than the window), a pinch-zoomed page, or a page that scrolls or resizes during the capture. Firefox does not flash and takes the same path.
+The worker falls back to Chrome's own screenshot, which can flash, when the derived image would not be exact: an element that is not wholly inside the viewport (for example taller than the window), a pinch-zoomed page, or a page that scrolls or resizes during the capture. In testing Firefox showed no flash with this path.
 
 ### Attach to a running browser
 
