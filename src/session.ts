@@ -28,6 +28,8 @@ import type { StateDiff } from "./successor.ts";
 import { combine, evaluateNative, validateWait, type ConditionResult, type WaitResult, type WaitSpec } from "./ui-conditions.ts";
 import { computerSource } from "./computer-address.ts";
 import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
+import { derivedPng } from "./web-capture.ts";
+import type { Derive } from "./web-geometry.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -1383,16 +1385,17 @@ export class ComputerSession {
       // Without an observation it shoots the live page: a locator, or a ref of the page's latest snapshot.
       if (id !== undefined && entry.dom?.id !== id) return this.result("refused", "This DOM observation is no longer current. Read the window with dom again.", undefined, this.addressed(entry));
       try {
-        const shot = await entry.web!.request<{ url: string; title: string; png: string; box?: unknown }>("screenshot",
+        const shot = await entry.web!.request<{ url: string; title: string; png: string; box?: unknown; derive?: Derive }>("screenshot",
           { ...(target ? { target } : {}), highlight: kind === "highlight", ...(css ? { css } : {}) }, signal);
-        const bytes = Buffer.from(shot.png, "base64");
+        const plain = Buffer.from(shot.png, "base64");
+        const bytes = shot.derive ? await derivedPng(plain, shot.derive) : plain;
         if (bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error("Playwright did not return a PNG.");
         return this.result("observed", `Playwright ${kind === "page" ? "page viewport" : kind === "crop" ? "element" : "highlighted viewport"} screenshot. These are page pixels, not native window coordinates; they grant no input.`,
           { url: shot.url, title: shot.title, ...(shot.box ? { box_css: shot.box } : {}) },
           { ...this.addressed(entry), ...(id !== undefined ? { observation_id: id } : {}), agent_image: { route: "playwright_screenshot", kind, coordinate_space: "page_image_pixels", input_authority: false,
             output: { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), bytes: bytes.length, mimeType: "image/png",
               hash: createHash("sha256").update(bytes).digest("hex") } } },
-          [{ type: "image", data: shot.png, mimeType: "image/png" }]);
+          [{ type: "image", data: bytes.toString("base64"), mimeType: "image/png" }]);
       } catch (error) { return this.webFailure(entry, error); }
     });
   }

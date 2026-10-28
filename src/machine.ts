@@ -24,6 +24,7 @@ export async function machineConfig(cwd: string, name: string): Promise<NonNulla
 const WORKER_FILES: [string, string][] = [
   ["src/web-worker.ts", fileURLToPath(new URL("./web-worker.ts", import.meta.url))],
   ["src/aria-match.ts", fileURLToPath(new URL("./aria-match.ts", import.meta.url))],
+  ["src/web-geometry.ts", fileURLToPath(new URL("./web-geometry.ts", import.meta.url))],
   ["node_modules/playwright-core/package.json", createRequire(import.meta.url).resolve("playwright-core/package.json")],
 ];
 
