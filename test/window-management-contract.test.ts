@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseWindowManagement, validWindowControlState, windowManagementStatus, type WindowManagementCommand } from "../src/window-management.ts";
+import { MAX_RESIZE_SIZE_DIFFERENCE_PX, parseWindowManagement, validWindowControlState, windowManagementStatus, type WindowManagementCommand } from "../src/window-management.ts";
 
 const target = { pid: 42, window_id: 91 }, nativeId = "one-use";
 const desktop: Record<string, unknown> = { desktop_id: "12345678-1234-1234-1234-123456789abc", on_current_desktop: true,
@@ -65,6 +65,25 @@ test("success confirms exactly the requested geometry or native state, not fresh
   const focus = { action: "focus" } as const, focused = receipt(focus);
   focused.before.virtual_desktop.on_current_desktop = false;
   expect(windowManagementStatus(focused, target, nativeId, focus, false)).toBe("unknown");
+});
+test("a resize that lands within the scaled-window size difference is delivered, anything else off the request is not", () => {
+  const resize = { action: "resize", width: 600, height: 450, unit: "windows_desktop_pixels" } as const;
+  const landed = (patch: Partial<Record<"x" | "y" | "width" | "height", number>>) => {
+    const state = receipt(resize);
+    state.observed.bounds = { ...state.observed.bounds, ...Object.fromEntries(Object.entries(patch).map(([key, by]) => [key, (state.observed.bounds as Record<string, number>)[key] + by!])) };
+    return state;
+  };
+  for (const patch of [{ width: 1 }, { width: -1 }, { height: MAX_RESIZE_SIZE_DIFFERENCE_PX }, { width: -MAX_RESIZE_SIZE_DIFFERENCE_PX, height: 1 }])
+    expect(windowManagementStatus(landed(patch), target, nativeId, resize, false), JSON.stringify(patch)).toBe("delivered");
+  for (const patch of [{ width: MAX_RESIZE_SIZE_DIFFERENCE_PX + 1 }, { height: -MAX_RESIZE_SIZE_DIFFERENCE_PX - 1 }, { x: 1 }, { y: -1 }])
+    expect(windowManagementStatus(landed(patch), target, nativeId, resize, false), JSON.stringify(patch)).toBe("unknown");
+  // A move gets no allowance, and the receipt must still echo the request exactly.
+  const nudged = receipt(move);
+  nudged.observed.bounds = { ...nudged.observed.bounds, x: nudged.observed.bounds.x + 1 };
+  expect(windowManagementStatus(nudged, target, nativeId, move, false)).toBe("unknown");
+  const echoed = landed({ width: 1 });
+  echoed.requested_bounds = { ...echoed.requested_bounds!, width: 601 };
+  expect(windowManagementStatus(echoed, target, nativeId, resize, false)).toBe("unknown");
 });
 test("only exact all-false native refusals are known not-applied; interrupted or absent prefixes stay unknown", () => {
   const refused = { ...target, state_id: nativeId, operation: "move", requested_bounds: null, before: null, observed: null,
