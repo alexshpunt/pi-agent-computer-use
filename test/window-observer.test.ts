@@ -20,7 +20,7 @@ async function fixture(observer: WindowObserver) {
         const created = { pid: 42, window_id: 101, app_name: "Calculator.exe", title: "Owned", bounds };
         windows.push(created); return { content: [], structuredContent: { pid: 42, windows: [created] } };
       }
-      if (name === "get_window_state") return { content: [args.max_image_dimension === 4096 ? raw : png], structuredContent: { ...args, elements: [{ element_token: "root", frame: { x: 30, y: 40, w: 1000, h: 700 }, screenshot_frame: { x: -1, y: -1, w: 500, h: 350 } }, { element_token: "button", frame: { x: 230, y: 240, w: 120, h: 60 }, screenshot_frame: { x: 100, y: 100, w: 60, h: 30 } }], screenshot_width: args.max_image_dimension === 4096 ? 1000 : 500, screenshot_height: args.max_image_dimension === 4096 ? 700 : 350, window_bounds: bounds } };
+      if (name === "get_window_state") return { content: [args.max_image_dimension === 4096 ? raw : png], structuredContent: { ...args, elements: [{ element_token: "root", role: "Window", frame: { x: 30, y: 40, w: 1000, h: 700 }, screenshot_frame: { x: -1, y: -1, w: 500, h: 350 } }, { element_token: "button", role: "Button", frame: { x: 230, y: 240, w: 120, h: 60 }, screenshot_frame: { x: 100, y: 100, w: 60, h: 30 } }], screenshot_width: args.max_image_dimension === 4096 ? 1000 : 500, screenshot_height: args.max_image_dimension === 4096 ? 700 : 350, window_bounds: bounds } };
       if (name === "zoom") return { content: [jpeg], structuredContent: { width: 200, height: 100 } };
       if (name === "get_desktop_state") return { content: [args.max_image_dimension === 0 ? raw : png], structuredContent: { display: "primary", platform: "windows", screenshot_width: args.max_image_dimension === 0 ? 1000 : 500, screenshot_height: args.max_image_dimension === 0 ? 700 : 350, screenshot_original_width: 1000, screenshot_original_height: 700, screen_width: 1000, screen_height: 700, scale_factor: 1 } };
       if (name === "click" && args.x !== undefined) return { content: [{ type: "text", text: "✅ Posted click to Chromium pid 42 at (231,241) (background, no foreground swap)." }], structuredContent: { path: "post_message", effect: "unverifiable" } };
@@ -173,6 +173,37 @@ test("snapshot refinement previews the final annotated image and verification em
   expect(observer).toHaveBeenCalledTimes(1);
   expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "verify" } });
   expect(observer.mock.calls[0][0]).not.toHaveProperty("image");
+});
+test.each(["after lifetime check", "during sample"] as const)("cancelled verification stays unknown %s and emits no completion", async phase => {
+  const abort = new AbortController(); const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" }));
+  const f = await fixture(observer); const ref = await outside(f.session);
+  if (phase === "after lifetime check") {
+    const identity = f.driver.identity;
+    f.driver.identity = vi.fn<Driver["identity"]>(async (...args) => { const value = await identity(...args); abort.abort(); return value; });
+  } else {
+    const call = f.driver.call;
+    f.driver.call = vi.fn<Driver["call"]>(async (...args) => { const value = await call(...args); if (args[0] === "get_window_state") abort.abort(); return value; });
+  }
+  const result = await f.session.waitFor(ref, f.session.waitSpec(ref, { action: "verify", conditions: [{ target: { role: "Button" }, is: "visible" }] }), abort.signal);
+  expect(result.details).toMatchObject({ status: "observed", verification: { verdict: "unknown", samples: 0, timed_out: false } });
+  expect(result.content.every(block => block.type !== "image")).toBe(true);
+  expect(observer).not.toHaveBeenCalled();
+  expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state")).toHaveLength(phase === "during sample" ? 1 : 0);
+});
+
+test.each(["cancel", "revoke"] as const)("verification completion rechecks %s without exposing a decided result", async change => {
+  const abort = new AbortController(); const observer = vi.fn<WindowObserver>(async () => {
+    if (change === "cancel") abort.abort(); else f.setMode("safe");
+    return { status: "queued" };
+  });
+  const f = await fixture(observer); const ref = await outside(f.session);
+  const result = await f.session.waitFor(ref, f.session.waitSpec(ref, { action: "verify", conditions: [{ target: { role: "Button" }, is: "visible" }] }), abort.signal);
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "verify" }, outcome: "verified" });
+  if (change === "cancel") expect(result.details).toMatchObject({ status: "observed", verification: { verdict: "unknown", samples: 1 } });
+  else { expect(result.details.status).toBe("refused"); expect(result.details).not.toHaveProperty("verification"); }
+  expect(result.content.every(block => block.type !== "image")).toBe(true);
+  expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state")).toHaveLength(1);
 });
 test("a viewport previews its returned crop and marks only the proven physical region", async () => {
   const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" }));

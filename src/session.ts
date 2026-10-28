@@ -1511,12 +1511,17 @@ export class ComputerSession {
       let samples = 0, stable = 0, results: ConditionResult[] = [], last: ComputerResult | undefined;
       entry.dom = undefined; entry.windowState = undefined;
       const finish = async (verdict: WaitResult["verdict"], timedOut: boolean, final: ComputerResult | undefined, why?: string): Promise<ComputerResult> => {
+        if (!this.allowed(entry!)) return this.denied(entry!.ref);
+        await this.activity(entry!, { kind: "verify" }, signal, undefined, verdict === "satisfied" ? "verified" : "unknown");
+        if (!this.allowed(entry!)) return this.denied(entry!.ref);
+        if (signal?.aborted) {
+          verdict = "unknown";
+          why = "Cancelled; the last sample does not decide the conditions.";
+        }
         const verification = { verdict, conditions: results, samples, elapsed_ms: Math.round(performance.now() - started), timed_out: timedOut,
           ...(why ? { reason: why } : {}), spec };
         const message = `Verification ${verdict} after ${samples} sample(s) in ${verification.elapsed_ms} ms${timedOut ? " (timed out)" : ""}.${why ? ` ${why}` : ""}`;
         const d = final?.details;
-        await this.activity(entry!, { kind: "verify" }, signal, undefined, verdict === "satisfied" ? "verified" : "unknown");
-        if (!this.allowed(entry!) || signal?.aborted) return this.result("refused", "Verification revoked or cancelled; data withheld.");
         return this.result("observed", message, undefined, { ...this.addressed(entry!), verification,
           ...(d?.observation_id ? { observation_id: d.observation_id } : {}), ...(d?.ui ? { ui: d.ui } : {}), ...(d?.dom ? { dom: d.dom } : {}) });
       };
