@@ -245,9 +245,10 @@ export class McpDriver implements Driver {
           this.nativeVisualsAvailable = false;
         }
       } else await this.jumpCursor(client, signal);
+      signal?.throwIfAborted();
       return client;
     } catch (error) {
-      await this.close();
+      await this.disconnect();
       throw new Error(`Driver startup failed: ${error instanceof Error ? error.message : error}\n${this.stderr}`);
     }
   }
@@ -379,6 +380,11 @@ export class McpDriver implements Driver {
   /** EOF owns shutdown; the SDK escalates only for this child if it does not exit. */
   async close(): Promise<void> {
     this.presentation.close();
+    await this.disconnect();
+  }
+
+  /** Startup cleanup is retryable; only final close disposes presentation and its subscriptions. */
+  private async disconnect(): Promise<void> {
     this.nativeVisualsAvailable = false;
     const client = this.client;
     const transport = this.transport;
