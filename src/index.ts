@@ -1,11 +1,12 @@
-import { registerVisionDebug } from "./vision-debug.ts";
+import { registerImageSettingsCommand } from "./image-settings-command.ts";
+import { registerVisualSettingsCommand } from "./visual-settings-command.ts";
+import { VisualSettings } from "./native-visuals.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "./config.ts";
 import { McpDriver } from "./driver.ts";
 import { registerComputerMode } from "./mode.ts";
 import { registerSetupCommand } from "./setup-command.ts";
-import { WindowHighlights } from "./window-highlights.ts";
 import { ComputerSession, type ComputerResult } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
 import { registerStandaloneTools } from "./standalone-tools.ts";
@@ -22,18 +23,19 @@ import { machineFactory, sandboxFactory } from "./machine.ts";
 export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   let overviewKernel: "lanczos3" | "bilinear" = "lanczos3";
   const images = new CuaImageSettings(() => overviewKernel);
-  const debug = registerVisionDebug(pi, images);
-  const highlights = new WindowHighlights();
-  const getMode = registerComputerMode(pi, () => highlights.clear());
+  const visuals = new VisualSettings();
+  registerImageSettingsCommand(pi, images);
+  registerVisualSettingsCommand(pi, visuals);
+  const getMode = registerComputerMode(pi, async () => { visuals.clear(); });
   registerSetupCommand(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;
   async function getSession(cwd: string): Promise<ComputerSession> {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(async config => {
-      const driver = new McpDriver(config);
+      const driver = new McpDriver(config, undefined, visuals);
       overviewKernel = driver.overviewKernel ?? "lanczos3";
-      session = new ComputerSession(driver, getMode, () => images.settings(), driver.platform === "windows" ? highlights.flash : undefined, image => debug.trace.retainOriginal(image),
+      session = new ComputerSession(driver, getMode, () => images.settings(), undefined,
         driver.platform === "windows" ? (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal) : undefined,
         driver.platform === "windows" ? new MachineHost(localRunner(config.interop)) : undefined);
       return session;
@@ -41,17 +43,14 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     try { return await loading; }
     finally { loading = undefined; }
   }
-  const openSandbox = sandboxFactory({ settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
-  const connectMachine = machineFactory({ getMode, settings: () => images.settings(), retainRaw: image => debug.trace.retainOriginal(image) });
+  const openSandbox = sandboxFactory({ settings: () => images.settings(), visuals });
+  const connectMachine = machineFactory({ getMode, settings: () => images.settings(), visuals });
   const provider = await registerComputerProvider(pi, getSession, async () => {
     const result: ComputerResult = session ? await session.close() : {
       content: [{ type: "text", text: "Not started." }],
       details: { status: "closed", mode: getMode() },
     };
     session = undefined;
-    try { await highlights.close(); }
-    catch { return { content: [{ type: "text", text: "Qt frame shutdown is unconfirmed." }],
-      details: { status: "unknown", mode: getMode() }, isError: true }; }
     return result;
   }, openSandbox, connectMachine, getMode);
   // Every extension has loaded by session_start, so an IDE that accepts the provider has done so by now.
@@ -68,7 +67,8 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   });
   pi.on("session_shutdown", async () => {
     if (loading) await loading.catch(() => undefined);
-    try { await session?.close(); } finally { await highlights.close(); }
+    visuals.clear();
+    await session?.close();
     session = undefined;
   });
 }

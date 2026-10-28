@@ -8,7 +8,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 const [log, mode] = process.argv.slice(2);
 let glide = 0;
 const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: mode === "visuals" ? ["present_agent_activity", "set_agent_visuals"].map(name => ({ name, inputSchema: { type: "object" } })) : [] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
   if (name === "set_agent_cursor_motion") {

@@ -15,7 +15,7 @@ function fixture() {
   const browser = { close: vi.fn(async () => {}), page: vi.fn(async () => ({ url: "data:", title: "Attach target", snapshot: "- textbox \"Field\"", tabs: [], events: [] })) };
   const launch = vi.fn<WebLauncher>(async () => ({ browser: browser as unknown as WebBrowser,
     opened: { pid: window.pid, version: "155", url: "data:", title: "Attach target", via: "cdp" } }));
-  const session = new ComputerSession({ call, identity: vi.fn(async () => "life"), close: vi.fn(async () => {}) }, () => mode, undefined, undefined, undefined, launch);
+  const session = new ComputerSession({ call, identity: vi.fn(async () => "life"), close: vi.fn(async () => {}) }, () => mode, undefined, undefined, launch);
   const ref = async () => ((await session.windows()).details.state!.windows as { window_ref: string }[])[0].window_ref;
   return { session, launch, browser, ref, setMode(value: ComputerMode) { mode = value; } };
 }

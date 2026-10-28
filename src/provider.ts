@@ -493,7 +493,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         async tryResolve(request, context) {
           if (!owns(request.path)) return { kind: "not-handled" };
           try {
-            if (request.include !== undefined || request.exclude !== undefined || request.navigation !== undefined || request.caseSensitive || request.wholeWord)
+            if (request.include !== undefined || request.exclude !== undefined || ("navigation" in request && request.navigation !== undefined) || request.caseSensitive || request.wholeWord)
               throw new ComputerRequestError("Computer Search uses native discovery/UI text predicates, not file globs or symbol navigation.");
             const result = await resources.search(resources.address(request.path), context.cwd, request.query, request.limit, context.signal);
             return { kind: "resolved", payload: result };

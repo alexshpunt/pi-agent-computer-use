@@ -20,7 +20,7 @@ export function nativeImageCap(settings: Pick<CuaVisionSettings, "maxLongEdge" |
 /** Session-local controls for the native cap. CUA owns resizing and fresh zoom. */
 export class CuaImageSettings {
   private current = defaults();
-  /** The trusted runtime owns the filter; the viewer may only change the cap. */
+  /** The trusted runtime owns the filter; human controls may change the cap. */
   constructor(private readonly overviewKernel: () => CuaVisionSettings["kernel"] = () => "lanczos3") {}
   /** In-flight captures keep their own immutable settings copy. */
   settings(): CuaVisionSettings { return structuredClone({ ...this.current, kernel: this.overviewKernel() }); }

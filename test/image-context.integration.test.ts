@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { getToolExecution, PiIntegrationTest, testArtifactsDir } from "pi-coding-agent-test";
 import { expect, test } from "vitest";
 
-test("real Pi retains all twelve images on the actual HTTP wire while the debug viewer keeps three cards", async () => {
+test("real Pi retains all twelve images on the actual HTTP wire", async () => {
   await mkdir(".tmp/image-context", { recursive: true }); const cwd = await mkdtemp(path.resolve(".tmp/image-context/pi-"));
   const bodies: any[] = [];
   const provider = createServer(async (request, response) => {
@@ -34,11 +34,6 @@ test("real Pi retains all twelve images on the actual HTTP wire while the debug 
     expect(JSON.stringify(bodies.at(-1))).toContain(wireImages[1][0]);
     for (let n = 0; n < 12; n++) expect(JSON.stringify(bodies.at(-1))).toContain(`frame=${n}`);
     for (let n = 0; n < 12; n += 2) expect(getToolExecution(run, `frames-${n}`).isError).toBe(false);
-    const state = JSON.parse(await readFile(path.join(cwd, "vision-trace.json"), "utf8"));
-    expect(state).not.toHaveProperty("imageContext");
-    expect(state.requests.at(-1).imageCount).toBe(12);
-    expect(state.frames).toHaveLength(3);
-    expect(state.captures).toHaveLength(3);
     await writeFile(path.join(run.artifacts.directory, "provider-bodies.json"), JSON.stringify(bodies));
   } finally {
     await new Promise<void>(resolve => { provider.close(() => resolve()); provider.closeAllConnections(); });

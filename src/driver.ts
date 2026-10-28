@@ -13,6 +13,7 @@ import { SingleConnectionHttpTransport } from "./http-transport.ts";
 import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts";
 import { verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
+import { NativeVisuals, VisualSettings, type WindowObserver } from "./native-visuals.ts";
 
 /** Foreground input waits until the human has not used the keyboard or mouse for this long (owner choice, LPT-835). */
 const HUMAN_IDLE_MS = 10_000;
@@ -119,6 +120,9 @@ const timelineLength = (args: Record<string, unknown>) => {
 };
 /** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
+  private nativeVisualsAvailable = false;
+  private readonly presentation: NativeVisuals;
+  readonly visuals: WindowObserver;
   private client?: Client;
   private transport?: Transport;
   private stderr = "";
@@ -165,7 +169,16 @@ export class McpDriver implements Driver {
   get windowCrop(): boolean { return this.config.runtime === "windows-desktop"; }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
   get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
-  constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
+  constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2",
+    private readonly visualSettings = new VisualSettings()) {
+    this.presentation = new NativeVisuals(async (name, args) => {
+      // Presentation never starts or reconnects a backend, including after close or while startup is pending.
+      if (!this.client || this.connecting) return undefined;
+      if (!this.nativeVisualsAvailable) return false;
+      const result = CallToolResultSchema.parse(await this.client.callTool({ name, arguments: args }, undefined, { timeout: 2000 }));
+      return !result.isError;
+    }, visualSettings);
+    this.visuals = this.presentation.flash;
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort)
       : hostIdentityPeer(config.ssh ? sshRunner(config.ssh) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
@@ -214,15 +227,19 @@ export class McpDriver implements Driver {
         throw new Error(`This backend requires cua-driver ${version}. Requalify before changing the pin.`);
       if (this.envelopes && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
         throw new Error("The native fork runtime did not acknowledge its EOF-aware receiver.");
+      const { tools } = await client.listTools({}, { signal, timeout: 15_000 });
+      this.nativeVisualsAvailable = ["present_agent_activity", "set_agent_visuals"].every(name => tools.some(tool => tool.name === name && tool.inputSchema.type === "object"));
       if (this.config.bundled) {
-        const { tools } = await client.listTools({}, { signal, timeout: 15_000 });
         this.nativeTools = new Set(tools.map(tool => tool.name));
         if (this.config.bundled)
           for (const name of ["list_apps", "list_windows", "get_window_state", "get_desktop_state"])
             if (!tools.some(tool => tool.name === name && tool.inputSchema.type === "object"))
               throw new Error(`native_runtime_schema_missing: ${name}`);
       }
-      await this.jumpCursor(client, signal);
+      if (this.nativeVisualsAvailable) {
+        const configured = CallToolResultSchema.parse(await client.callTool({ name: "set_agent_visuals", arguments: { ...this.visualSettings.current() } }, undefined, { signal, timeout: 15_000 }));
+        if (configured.isError) throw new Error("The driver refused its native visual configuration.");
+      } else await this.jumpCursor(client, signal);
       return client;
     } catch (error) {
       await this.close();
@@ -354,6 +371,8 @@ export class McpDriver implements Driver {
 
   /** EOF owns shutdown; the SDK escalates only for this child if it does not exit. */
   async close(): Promise<void> {
+    this.presentation.close();
+    this.nativeVisualsAvailable = false;
     const client = this.client;
     const transport = this.transport;
     this.client = undefined;

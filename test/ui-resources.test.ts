@@ -29,11 +29,10 @@ async function fixture() {
       return { content: [], structuredContent: { path: "ax", effect: "confirmed", verified: true } };
     }),
   };
-  const retained: Content[] = [];
-  const session = new ComputerSession(driver, () => mode, undefined, undefined, image => retained.push(image));
+  const session = new ComputerSession(driver, () => mode);
   const windows = (await session.windows()).details.state!.windows as { window_ref: string }[];
   const ref = windows[0].window_ref;
-  return { session, driver, raw, retained, ref, other: windows[1].window_ref, setMode: (value: "safe" | "yolo") => { mode = value; } };
+  return { session, driver, raw, ref, other: windows[1].window_ref, setMode: (value: "safe" | "yolo") => { mode = value; } };
 }
 function ui(result: Awaited<ReturnType<ComputerSession["observe"]>>) { return result.details.ui!; }
 
@@ -178,10 +177,16 @@ test("local search and scope keep the snapshot without another native walk or in
   expect(ui(absent)).toMatchObject({ complete: false, matches: 0 });
 });
 
-test("hints annotate only one delivered image and retain the exact raw PNG privately", async () => {
+test("hints annotate one image while later snapshot inspection can use the private raw PNG", async () => {
   const f = await fixture(); const view = await f.session.observe(f.ref); const images = view.content.filter(b => b.type === "image");
   expect(images).toHaveLength(1); expect(images[0].data).not.toBe(f.raw.toString("base64"));
-  expect(f.retained).toContainEqual({ type: "image", mimeType: "image/png", data: f.raw.toString("base64") });
+  const calls = nativeCalls(f.driver);
+  const inspected = await f.session.observe(f.ref, undefined, undefined, undefined, {
+    operation: "scope", observation_id: view.details.observation_id!, hint: ui(view).elements[3].hint,
+  });
+  expect(inspected.details.status).toBe("observed");
+  expect(inspected.content).toContainEqual({ type: "image", mimeType: "image/png", data: f.raw.toString("base64") });
+  expect(nativeCalls(f.driver)).toEqual(calls);
   expect(JSON.stringify(view.details)).not.toContain(f.raw.toString("base64"));
   expect(view.details.agent_image).toMatchObject({ route: "cua_native_ui_hints", annotation: { enabled: true, labels: expect.any(Array) } });
   expect(ui(view).elements[3].hint_display).toBe("no_bounds");
