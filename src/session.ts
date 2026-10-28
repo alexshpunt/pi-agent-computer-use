@@ -90,6 +90,15 @@ export type Action = {
   /** A click or scroll on an element token goes through UI Automation only; the driver refuses when no pattern carries it. */
   uia_only?: boolean;
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
+/** Presentation uses only a category identifier, never action payload or execution-route names. */
+function presentationAction(command: InputCommand | WebAction): string {
+  if (command.action === "key" || command.action === "press") return "press_key";
+  if (command.action === "set_value") return "fill";
+  if (command.action === "select_all") return "hotkey";
+  if (command.action === "hold") return command.actions?.length ? "input_timeline" : "hotkey";
+  if (command.action === "timeline") return command.events?.every(event => event.type === "key_down" || event.type === "key_up") ? "hotkey" : "input_timeline";
+  return command.action;
+}
 /** A stored Playwright snapshot of the active tab, with the tab list, any held dialog and events since the previous snapshot. */
 export interface WebDom extends WebPage { truncated: boolean; matches?: number }
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
@@ -1363,10 +1372,10 @@ export class ComputerSession {
     return entry;
   }
 
-  private async webFailure(entry: WindowEntry, error: unknown, acting = false, signal?: AbortSignal): Promise<ComputerResult> {
+  private async webFailure(entry: WindowEntry, error: unknown, acting = false, signal?: AbortSignal, action?: string): Promise<ComputerResult> {
     const reason = error instanceof Error ? error.message : String(error);
     const uncertain = acting && error instanceof WebError && (error.timeout || error.transport);
-    if (acting) await this.activity(entry, { kind: "action" }, signal, undefined, uncertain ? "unknown" : "refused");
+    if (acting) await this.activity(entry, { kind: "action" }, signal, undefined, uncertain ? "unknown" : "refused", action);
     return this.result(uncertain ? "unknown" : "refused", uncertain
       ? `The action may have reached the page. ${reason} Read the window with dom before deciding; never replay it blindly.`
       : `Playwright refused: ${reason}`, undefined, this.addressed(entry));
@@ -1456,11 +1465,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
-        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", action.action);
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action));
         if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}${action.target && action.action !== "evaluate" ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true, signal); }
+      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action)); }
     });
   }
 
@@ -1477,11 +1486,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
-        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", action.action);
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action));
         if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}. Check the fresh snapshot below for the page's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true, signal); }
+      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action)); }
     });
   }
 
@@ -2072,7 +2081,8 @@ export class ComputerSession {
           if (args.capture_id !== undefined) capture = undefined;
           // AX bounds are native. Only native click receipts establish an exact pixel action mark.
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
-          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);
+          const activityAction = presentationAction(step);
+          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction);
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
@@ -2127,7 +2137,7 @@ export class ComputerSession {
               : { reason: "Native action did not report usable target geometry." };
           }
           highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal,
-            { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, undefined, status);
+            { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, activityAction, status);
           if (!this.allowed(entry) || (!batch && signal?.aborted)) {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
