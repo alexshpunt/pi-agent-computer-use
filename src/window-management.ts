@@ -5,6 +5,8 @@ import { shellDesktop } from "./shell-desktop.ts";
 export type WindowManagementCommand = { action: "move"; x: number; y: number; unit: "windows_desktop_pixels" }
   | { action: "resize"; width: number; height: number; unit: "windows_desktop_pixels" }
   | { action: "minimize" | "maximize" | "focus" };
+/** The most a confirmed resize may differ from the request in width or height. Matches the driver's receipt contract. */
+export const MAX_RESIZE_SIZE_DIFFERENCE_PX = 2;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const integer = (value: unknown, min: number, max: number): value is number => Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
 const nonblank = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
@@ -55,7 +57,10 @@ export function windowManagementStatus(state: Record<string, unknown> | undefine
     const requested = command.action === "move" ? { ...before.bounds, x: command.x, y: command.y }
       : { ...before.bounds, width: command.width, height: command.height };
     const requestedBounds = state.requested_bounds, observedBounds = observed.bounds;
-    return (["x", "y", "width", "height"] as const).every(key => requestedBounds[key] === requested[key] && observedBounds[key] === requested[key]) ? "delivered" : "unknown";
+    // Windows scales a DPI-unaware window in whole logical pixels, so a resize may land a pixel away; position stays exact.
+    const reached = (key: "x" | "y" | "width" | "height") => observedBounds[key] === requested[key] ||
+      command.action === "resize" && (key === "width" || key === "height") && Math.abs(observedBounds[key] - requested[key]) <= MAX_RESIZE_SIZE_DIFFERENCE_PX;
+    return (["x", "y", "width", "height"] as const).every(key => requestedBounds[key] === requested[key] && reached(key)) ? "delivered" : "unknown";
   }
   if (state.requested_bounds !== null) return "unknown";
   if (command.action === "minimize") return !before.minimized && observed.minimized === true ? "delivered" : "unknown";
