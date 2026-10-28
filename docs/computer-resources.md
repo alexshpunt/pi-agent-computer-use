@@ -281,4 +281,4 @@ else if (r.outcome === "refused") { /* nothing was sent */ }
 
 Close only task-owned windows. Delete a machine address to release that machine, and `computer:session` to release every machine, browser, sandbox and isolated session this computer use started; Pi's shutdown does the same. This does not close or save the user's documents. The result lists each released part; an uncertain cleanup is `unknown`.
 
-For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. To try a worktree, point the package entry in your Pi settings at it, and point it back afterwards.
+For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`. When SDK-source testing is needed, link a compatible IDE source version with `npm run dev:ide -- /absolute/path/to/pi-agent-ide`; keep it within this package's dependency range. To try a worktree, point the package entry in your Pi settings at it, and point it back afterwards.
