@@ -87,8 +87,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "33c4b82b655065327253e771e73c70ff88697074", version: "0.37.0",
-  sha256: "14fee78b3b5a6ac0368d29813cbd2c0bdd43da3ee14a5a4791762ce0f3e3dc03",
+  source: "505d090e1538b9cbe349e579c30006abf1379871", version: "0.38.0",
+  sha256: "a4e68758c1c9403db40f6c9505d1defb551a5badde788f6e0983a1584eac8edc",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
