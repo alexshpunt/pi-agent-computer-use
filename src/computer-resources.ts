@@ -801,7 +801,7 @@ export class ComputerResources {
     if (view.kind === "element") {
       if (!snapshot.target.window_ref) throw new ComputerRequestError("Display observations have no collected UI.");
       if (view.locator) throw new ComputerRequestError("A Playwright locator crops a browser page; on a native observation, crop by a UI hint of its Read.");
-      if (view.operation === "text") return session.elementText(snapshot.target.window_ref, address.ref, view.hint);
+      if (view.operation === "text") return session.elementText(snapshot.target.window_ref, address.ref, view.hint, signal);
       if (view.operation === "crop") this.retire(address.ref);
       return session.observe(snapshot.target.window_ref, signal, undefined, undefined,
         { operation: view.operation, observation_id: address.ref, hint: view.hint });
@@ -821,7 +821,7 @@ export class ComputerResources {
     if (view.capture.granularity === "ui" && !snapshot.result.details.ui) throw new ComputerRequestError("This observation has no collected UI. Read a new UI/full window overview.");
     if (view.capture.granularity === "image" && !snapshot.result.content.some(block => block.type === "image"))
       throw new ComputerRequestError("This observation has no pixels. Read a new image/full window overview.");
-    return snapshot.result;
+    return snapshot.target.window_ref ? session.presentObservation(snapshot.target.window_ref, snapshot.result, signal) : snapshot.result;
   }
 
   /** Search permitted discovery metadata or the current collected UI without another native walk; the receipt names its machine. */

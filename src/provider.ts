@@ -519,11 +519,14 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         matches: input => owns(record(input).path),
         execute: (context, input) => refuseComputerEdit(resources, tool, context.sourceFor("path"), record(input)),
       });
-      api.tool("delete").addSemanticHandler({
+      const deleteTool = api.tool("delete");
+      deleteTool.addSemanticHandler({
         matches: input => owns(record(input).path),
         execute: (context, input) => deleteComputer(resources, context.sourceFor("path"), record(input), context.cwd, context.signal),
       });
-      api.tool("delete").describeField("path", COMPUTER_DELETE_HELP);
+      // Field descriptions are additive on newer IDE SDKs; semantic ownership works on both.
+      if ("describeField" in deleteTool && typeof deleteTool.describeField === "function")
+        deleteTool.describeField("path", COMPUTER_DELETE_HELP);
     } })),
   ]);
   return { resources, guide, attached: () => accepted.size === 3 };

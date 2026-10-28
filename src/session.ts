@@ -1555,9 +1555,10 @@ export class ComputerSession {
    * The complete text of one element in the current native observation, without another walk. Texts longer
    * than the walk's 1024-character cut come from the same capture, up to 200,000 characters.
    */
-  elementText(ref: string, id: string, hint: string): Promise<ComputerResult> {
+  elementText(ref: string, id: string, hint: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      const entry = this.entries.get(ref);
+      if (signal?.aborted) return this.result("refused", "Element text read cancelled.");
+      const entry = await this.current(ref, signal);
       if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
       if (!this.allowed(entry)) return this.denied(entry.ref);
       const observed = entry.observation;
@@ -1568,8 +1569,8 @@ export class ComputerSession {
       const text = observed.texts?.get(hint) ?? [element.name, element.value].filter(item => item).join("\n");
       const cut = text.length >= ELEMENT_TEXT_LIMIT;
       const region = observed.frames.get(element.element_token);
-      await this.activity(entry, { kind: "inspect", ...(region ? { region } : {}) });
-      if (!this.allowed(entry)) return this.denied(ref);
+      await this.activity(entry, { kind: "inspect", ...(region ? { region } : {}) }, signal);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Element text access revoked or cancelled.");
       return this.result("observed", `Element ${hint} text from this observation: ${text.length} characters${cut ? ", cut at the 200,000-character limit" : ""}. Page it with offset/limit.`,
         undefined, { ...this.addressed(entry), observation_id: id, element_text: { hint, role: element.role, name: element.name, text, cut } });
     });
@@ -1938,6 +1939,10 @@ export class ComputerSession {
         undefined, { ...this.addressed(entry), observation_id: observed.id, ui, source: observed.source,
           agent_image: { ...metadata, route: "cua_snapshot_ui_hints", annotation: rendered.annotation, image_id: observed.id } }, [rendered.image]);
     }
+    const selected = request.hint && ui.elements.find(element => element.hint === request.hint);
+    const region = selected && observed.frames.get(selected.element_token);
+    await this.activity(entry, { kind: "inspect", ...(region ? { region } : {}) }, signal);
+    if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "UI inspection revoked or cancelled; data withheld.");
     return this.result("observed", `Read-only UI ${request.operation}: ${ui.elements.length}/${ui.matches} matches in the collected snapshot. ${ui.complete === true ? "Native collection reported complete." : "Collection may be partial; absence does not prove nonexistence."}`,
       undefined, { ...this.addressed(entry), observation_id: observed.id, ui });
   }

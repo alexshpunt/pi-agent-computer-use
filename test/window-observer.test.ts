@@ -53,6 +53,26 @@ test("change reads present only images in the final returned result", async () =
   expect(observer.mock.calls[0][0]).toMatchObject({ image: images.at(-1) });
   expect(observer.mock.calls[0][0]).not.toHaveProperty("image.data", changed.data);
 });
+test("cached image reads and UI inspection announce their existing source without recapturing", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" })); const f = await fixture(observer);
+  const ref = await outside(f.session); const resources = new ComputerResources(async () => f.session, async () => f.session.close());
+  const overview = (await resources.read(requireComputerAddress(`computer:window/${ref}`), process.cwd()))!;
+  observer.mockClear(); const before = vi.mocked(f.driver.call).mock.calls.length;
+  const snapshot = requireComputerAddress(`computer:observation/${overview.details.observation_id}`);
+  const reread = (await resources.read(snapshot, process.cwd()))!;
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ image: reread.content.find(block => block.type === "image") });
+  observer.mockClear();
+  const inspected = await resources.read(snapshot, process.cwd(), [`element:inspect,${overview.details.ui!.elements[1].hint}`]);
+  expect(inspected!.details.status).toBe("observed");
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "inspect", region: { x: 230, y: 240, width: 120, height: 60 } } });
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("image");
+  expect(vi.mocked(f.driver.call).mock.calls).toHaveLength(before);
+  observer.mockClear(); const abort = new AbortController(); abort.abort();
+  const cancelled = await resources.read(snapshot, process.cwd(), [`element:text,${overview.details.ui!.elements[1].hint}`], abort.signal);
+  expect(cancelled!.details.status).toBe("refused"); expect(observer).not.toHaveBeenCalled();
+});
 test("overview, requested window zoom and primary-display crop flash their own physical scopes", async () => {
   const observer = vi.fn<WindowObserver>(async () => ({ status: "shown" })); const f = await fixture(observer);
   f.setMode("safe"); const opened = await f.session.open("Calculator");
