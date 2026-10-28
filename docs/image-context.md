@@ -4,9 +4,9 @@ This extension never removes or replaces older image blocks, rewrites text dumps
 
 Pi's normal compaction may summarize older context and keep recent messages. It does not erase the original session entries. Reload alone does not remove images. This extension does not change compaction settings or provider cache controls. Other extensions and provider processing can still affect final delivery.
 
-## Debug cards are separate
+## Previews are separate
 
-Vision debug keeps three recent application-boundary cards and bounded action/request metadata. That is a viewer memory limit, not a model-context limit. Its request summary counts all observed image blocks. There is no image-budget footer or active/omitted projection. Private session history and debug pixels must not be shared.
+[Native previews](native-observability.md) show a bounded final operation image. Their lifetime does not limit model context, and they do not prove downstream provider delivery. Computer use keeps no debugger-only image mirrors or separate viewer archive. Private session history and operational captures must not be shared.
 
 ## Verification
 

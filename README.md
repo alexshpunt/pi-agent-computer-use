@@ -108,9 +108,9 @@ The browser's toolbar, tabs and system dialogs are still ordinary windows, so th
 
 Each session has its own folder on the controlled machine for files an app opens or saves. In YOLO mode the agent can also read and write the clipboard, record the screen to video, and record what the machine plays, optionally with a transcript.
 
-### Debug viewer and overlay
+### Computer visuals
 
-`/computer-debug` opens a private viewer with the images the agent actually received, its action trace and the capture settings. On Windows an optional overlay briefly outlines the window and target the agent is working on, without taking focus.
+`/computer-visuals` chooses `off`, `subtle` or `full`, with optional image previews when the native driver supports them. A preview shows the final operation image; it does not prove delivery to a model. `/computer-images` changes screenshot size, hints and image guides for future captures.
 
 ## Platforms
 
@@ -170,7 +170,8 @@ The Windows binaries aren't code-signed. Signing certificates are hard to get fo
 | Command                          | Effect                                                   |
 | -------------------------------- | -------------------------------------------------------- |
 | `/computer-mode safe\|yolo`      | Switch between Safe and YOLO for this session            |
-| `/computer-debug on\|off`        | Start or stop the private vision debug viewer            |
+| `/computer-visuals off\|subtle\|full` | Choose native activity cues and image previews          |
+| `/computer-images`              | Show or change capture size, hints and image guides      |
 | `/computer-setup PART [MACHINE]` | Install an optional part; without a part it lists them   |
 
 ## Feedback and contributions
@@ -190,7 +191,7 @@ I use this every day on real tasks, but I can only test the machines, apps and w
 | [Temporal capture](docs/temporal-capture.md)              | Frame sequences and their timing                                      |
 | [Selected displays](docs/selected-displays.md)            | Monitor discovery and display reads                                   |
 | [Image guides](docs/image-guides.md)                      | Coordinate grid and last-action marks                                 |
-| [Vision debug viewer](docs/vision-debug.md)               | What the agent saw and the capture controls                           |
+| [Native visuals](docs/native-observability.md)            | Human controls, previews and presentation safety                       |
 | [Bundled runtime](docs/bundled-runtime.md)                | Native runtime packages and platform boundaries                       |
 | [Setup and modes](docs/setup.md)                          | Install, Safe and YOLO, runtime overrides and window lifetime         |
 

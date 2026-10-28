@@ -26,11 +26,11 @@ Do not use a project `.pi/settings.json` override with `extensions: []` plus a p
      pi --mode rpc --no-session --approve --no-mcp --offline
    ```
 
-   Require exit code zero and no extension load errors. The `computer-mode` and `computer-debug` commands must each appear once and name the worktree's `src/index.ts`. Missing or duplicate commands are a failure. This checks loading, not native Windows behavior.
+   Require exit code zero and no extension load errors. The `computer-mode`, `computer-images` and `computer-visuals` commands must each appear once and name the worktree's `src/index.ts`. Missing or duplicate commands are a failure. This checks loading, not native Windows behavior.
 7. Only after startup passes, reload with `pi_extension_dev_reload_self` and explicit acceptance of state loss. Put the worktree, the swapped settings line and the exact live verification steps in the continuation. Follow the `pi-feature-verification` skill: exercise the changed behavior, inspect agent-facing results, and capture the real viewport with `inspect_tui` when the result is visible. Do not rely on old runtime state or window references after reload.
 
 ## Restore global loading
 
 8. Before review, commit, push, or ending a paused/canceled task, put the global checkout path back in that one settings line. Compare the file with the backup: only changes made by others since the backup may remain.
-9. Repeat the startup probe. The commands must come from the global checkout's `src/index.ts`, once each, with no extension errors. Reload Pi before Git work or worktree removal so the session itself returns to global loading. If the user requests more changes, repeat setup and cleanup.
+9. Repeat the startup probe. Require the commands registered by the restored global checkout once each, from its `src/index.ts`, with no extension errors. Its command set can differ if the worktree is newer. Reload Pi before Git work or worktree removal so the session itself returns to global loading. If the user requests more changes, repeat setup and cleanup.
 10. Delete the settings backup after restoration is confirmed. Report any cleanup or startup blocker rather than leaving the personal settings pointing at a worktree.

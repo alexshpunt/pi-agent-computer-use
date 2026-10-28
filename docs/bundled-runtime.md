@@ -44,7 +44,7 @@ Computer use owns one MCP child. It disables telemetry and update checks, requir
 
 - The Windows binaries are unsigned. Shipping a UIAccess helper does not grant UIAccess rights or bypass Windows trust policy.
 - WSL needs a working Windows interop endpoint.
-- The optional Windows Qt overlay is separate and not part of the runtime.
+- [Native visuals](native-observability.md) require advertised driver capabilities. The adapter alone does not qualify a renderer or establish screenshot exclusion.
 
 ## Overrides
 
