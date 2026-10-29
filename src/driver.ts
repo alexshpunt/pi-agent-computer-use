@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -86,10 +87,10 @@ export const WINDOW_RESTORE_RUNTIME = {
   sha256: "c53dbdd3bd9a75469e14783b8e6f44573a9aa3f6c3c4998da9ee4e9a7a02d614",
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
+const shippedRuntime = JSON.parse(readFileSync(new URL("./runtime-pins.json", import.meta.url), "utf8")) as { source: string; version: string; files: Record<string, string> };
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "4b547b547edf415908557829fa723f143f781649", version: "0.38.0",
-  sha256: "18d3e3378a4111cf41e3fafd85035525dab1870af77b1ac0725f5b410397f623",
-} as const;
+  source: shippedRuntime.source, version: shippedRuntime.version, sha256: shippedRuntime.files["cua-driver.exe"],
+};
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
   "windows-window-management": WINDOW_MANAGEMENT_RUNTIME,
@@ -129,6 +130,7 @@ export class McpDriver implements Driver {
 
   private readonly windowIdentity?: WindowIdentity;
   private nativeTools?: Set<string>;
+  private connectedVersion?: string;
 
   private get forkRuntime() { return this.config.runtime ? forkRuntimes[this.config.runtime] : undefined; }
   private get bundledWindows() { return this.config.bundled?.target === "win32-x64"; }
@@ -207,7 +209,7 @@ export class McpDriver implements Driver {
     if (this.config.bundled) {
       if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
       await verifyBundledRuntime(this.config.bundled, signal);
-    } else if (this.forkRuntime) {
+    } else if (this.forkRuntime && !this.config.driverOverride) {
       const hash = this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
         : createHash("sha256").update(await readFile(this.config.command)).digest("hex");
       if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
@@ -223,15 +225,16 @@ export class McpDriver implements Driver {
       await client.connect(transport, { signal, timeout: 15_000 });
       const server = client.getServerVersion();
       const version = this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version;
-      if (server?.name !== "cua-driver" || server.version !== version)
-        throw new Error(`This backend requires cua-driver ${version}. Requalify before changing the pin.`);
+      if (server?.name !== "cua-driver" || (this.config.driverOverride ? !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(server.version ?? "") : server.version !== version))
+        throw new Error(this.config.driverOverride ? "The experimental driver did not report a valid cua-driver version." : `This backend requires cua-driver ${version}. Requalify before changing the pin.`);
+      this.connectedVersion = server.version;
       if (this.envelopes && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
         throw new Error("The native fork runtime did not acknowledge its EOF-aware receiver.");
       const { tools } = await client.listTools({}, { signal, timeout: 15_000 });
       this.nativeVisualsAvailable = ["present_agent_activity", "set_agent_visuals"].every(name => tools.some(tool => tool.name === name && tool.inputSchema.type === "object"));
-      if (this.config.bundled) {
+      if (this.config.bundled || this.config.driverOverride) {
         this.nativeTools = new Set(tools.map(tool => tool.name));
-        if (this.config.bundled)
+        if (this.config.bundled || this.config.runtime === "windows-desktop")
           for (const name of ["list_apps", "list_windows", "get_window_state", "get_desktop_state"])
             if (!tools.some(tool => tool.name === name && tool.inputSchema.type === "object"))
               throw new Error(`native_runtime_schema_missing: ${name}`);
@@ -364,7 +367,7 @@ export class McpDriver implements Driver {
     if (this.nativeTools && !this.nativeTools.has(name))
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
     // Since 0.35 the driver shapes window state for models; the adapter needs the full payload with `elements`.
-    if (name === "get_window_state" && compactWindowState(this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version)) args = { ...args, full_output: true };
+    if (name === "get_window_state" && compactWindowState(this.connectedVersion ?? this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version)) args = { ...args, full_output: true };
     // A timeline runs for its own length and a large app (GIMP, Blender) can take over 15 s to show its first window;
     // every other native call answers well within 15 s.
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
@@ -391,6 +394,7 @@ export class McpDriver implements Driver {
     this.client = undefined;
     this.transport = undefined;
     this.nativeTools = undefined;
+    this.connectedVersion = undefined;
     try { await client?.close(); }
     finally {
       try { await transport?.close(); }

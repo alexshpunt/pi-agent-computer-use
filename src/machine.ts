@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { loadComputerConfig, type ComputerConfig } from "./config.ts";
+import { loadComputerConfig, readMachineSettings, type ComputerConfig } from "./config.ts";
+import { prepareRemoteRuntime } from "./remote-runtime.ts";
+import { prepareRemoteBrowser } from "./remote-browser.ts";
+import { RemotePreparationUncertain } from "./remote-provision-error.ts";
 import { ComputerRequestError, machineGuide, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
@@ -11,12 +14,12 @@ import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { IsolatedSession } from "./isolated-session.ts";
 import { ComputerSession, type ComputerMode } from "./session.ts";
-import { WebBrowser } from "./web-browser.ts";
+import { WebBrowser, WebError } from "./web-browser.ts";
 import type { VisualSettings } from "./native-visuals.ts";
 
 /** The configured machine for a connect command; unknown names refuse before any SSH work. */
 export async function machineConfig(cwd: string, name: string): Promise<NonNullable<ComputerConfig["machines"]>[string]> {
-  const machine = (await loadComputerConfig(cwd)).machines?.[name];
+  const machine = (await readMachineSettings(cwd)).machines[name];
   if (!machine) throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json.`);
   return machine;
 }
@@ -57,13 +60,16 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
       if (command.action === "open_session" && Object.keys(command).some(key => key !== "action")) throw new Error("open_session takes no options.");
       parsed = command.action === "open_session" ? undefined : sandboxOptions(command);
     } catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
-    const config = await loadComputerConfig(cwd);
     const machine = machineName ? await machineConfig(cwd, machineName) : undefined;
-    const runner = machine ? sshRunner(machine.ssh) : localRunner(config.interop);
-    const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), machine?.command ?? config.command, parsed, signal)
-      : await IsolatedSession.open(runnerHost(runner), machine?.command ?? config.command, signal);
+    const config = machine ? undefined : await loadComputerConfig(cwd);
+    const runner = machine ? sshRunner(machine.ssh) : localRunner(config!.interop);
+    const commandPath = machine ? machine.command ?? await prepareRemoteRuntime(runner, signal) : config!.command;
+    const runtime = machine ? machine.command ? machine.runtime : "windows-desktop" : config!.runtime;
+    const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), commandPath, parsed, signal)
+      : await IsolatedSession.open(runnerHost(runner), commandPath, signal);
     // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
-    const driver = new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
+    const override = machine ? machine.driverOverride : config!.driverOverride;
+    const driver = new McpDriver({ command: commandPath, ...(runtime ? { runtime } : {}), ...(override ? { driverOverride: true as const } : {}),
       endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) }, undefined, options.visuals);
     try { await waitForGuestDriver(driver, signal); }
     catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
@@ -80,21 +86,26 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
 export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings }): MachineFactory {
   return async (cwd, name, signal) => {
     const machine = await machineConfig(cwd, name);
-    const refresh = `setup part machine (user: /computer-setup machine ${machine.ssh} ${name})`;
     const runner = sshRunner(machine.ssh);
-    const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh }, undefined, options.visuals);
+    const command = machine.command ?? await prepareRemoteRuntime(runner, signal);
+    const runtime = machine.command ? machine.runtime : "windows-desktop";
+    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ssh: machine.ssh }, undefined, options.visuals);
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
-    const launchWeb = machine.node && machine.package
-      ? async (launch: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) => {
-        await checkRemoteWorker(runner, machine.package!, refresh, webSignal);
-        return WebBrowser.launch({ ...launch, remote: { runner, node: machine.node!, worker: `${machine.package}/src/web-worker.ts` } }, webSignal);
-      }
-      : undefined;
+    const launchWeb = async (launch: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) => {
+      const prepared = await prepareRemoteBrowser(runner, webSignal, { node: machine.node, package: machine.package }).catch(error => {
+        if (error instanceof RemotePreparationUncertain) throw new WebError(error.message, false, true);
+        throw error;
+      });
+      const node = prepared.node;
+      const workerPackage = prepared.package;
+      if (machine.package) await checkRemoteWorker(runner, workerPackage, "the explicit browser worker override", webSignal);
+      return WebBrowser.launch({ ...launch, remote: { runner, node, worker: `${workerPackage}/src/web-worker.ts` } }, webSignal);
+    };
     const remote = new ComputerSession(driver, options.getMode, options.settings, undefined, launchWeb, new MachineHost(runner));
     return { ref: name, session: remote,
       describe: source => [`# Machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
-        `Browser: ${launchWeb ? "available" : "not configured (node and package)"}`, ...machineGuide(source)].join("\n"),
+        "Browser: prepared automatically on first use", ...machineGuide(source)].join("\n"),
       close: () => remote.close() };
   };
 }

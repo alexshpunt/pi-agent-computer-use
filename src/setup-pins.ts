@@ -5,6 +5,7 @@ export const WINDOWS_NODE = {
   version: "v22.22.2",
   url: "https://nodejs.org/dist/v22.22.2/node-v22.22.2-win-x64.zip",
   sha256: "7c93e9d92bf68c07182b471aa187e35ee6cd08ef0f24ab060dfff605fcc1c57c",
+  executableSha256: "ae1a50511be58e987483fdbc12125407443926d2d394669ade2352776e920dd3",
 };
 
 /** Microsoft Execution Containers; only x64/wxc-exec.exe is used, for isolated agent sessions. */

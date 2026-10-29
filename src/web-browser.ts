@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { CommandRunner } from "./runner.ts";
 import { ATTACH_APPROVAL_MS } from "./browser-command-line.ts";
-import { findWindowsNode } from "./windows-node.ts";
+import { ensureWindowsNode } from "./windows-node.ts";
+import { RemotePreparationUncertain } from "./remote-provision-error.ts";
 import { locatorSelector } from "./native-locator.ts";
 
 const run = promisify(execFile);
@@ -436,7 +437,7 @@ export class WebBrowser {
       child = runner.spawn(options.remote.node, ["--disable-warning=ExperimentalWarning", worker]);
     } else {
       if (process.platform === "linux") {
-        command = await findWindowsNode(options.interop).catch((error: Error) => { throw new WebError(error.message); });
+        command = await ensureWindowsNode(options.interop, signal).catch((error: Error) => { throw new WebError(error.message, false, error instanceof RemotePreparationUncertain); });
         worker = (await run("wslpath", ["-w", worker], { timeout: 5000 })).stdout.trim();
       } else if (process.platform !== "win32") throw new WebError("The Playwright browser backend runs only on Windows or WSL.");
       signal?.throwIfAborted();
