@@ -27,7 +27,8 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   const visuals = new VisualSettings();
   registerImageSettingsCommand(pi, images);
   registerVisualSettingsCommand(pi, visuals);
-  const getMode = registerComputerMode(pi, async () => { visuals.clear(); });
+  let canEnterSafe = () => true;
+  const getMode = registerComputerMode(pi, async () => { visuals.clear(); }, () => canEnterSafe());
   registerSetupCommand(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;
@@ -54,6 +55,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     session = undefined;
     return result;
   }, openSandbox, connectMachine, getMode);
+  canEnterSafe = () => !provider.resources.hasUnapprovedAgentBrowser();
   // Every extension has loaded by session_start, so an IDE that accepts the provider has done so by now.
   let registered = false;
   pi.on("session_start", () => {

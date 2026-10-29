@@ -36,7 +36,7 @@ const openParameters = Type.Object({
   debugging: Type.Optional(Type.Boolean({ description: "Start the WebView2 app at path with its debugging port open, so its window can be attached." })),
   browser: Type.Optional(Type.Union([Type.Literal("chrome"), Type.Literal("msedge"), Type.Literal("firefox")], { description: "Open a new visible browser driven by Playwright; its window takes DOM reads and page actions." })),
   url: Type.Optional(Type.String({ description: "http(s) page the new browser opens." })),
-  profile: Type.Optional(Type.Literal("agent", { description: "YOLO: use the agent's own persistent browser profile, which keeps its logins between sessions. Omit for a disposable profile." })),
+  profile: Type.Optional(Type.Literal("agent", { description: "Persistent agent profile; in Safe the user enables and approves Chromium debugging; in YOLO Chromium's local debugging port permits access by local processes. Firefox agent profiles require YOLO. Omit for a disposable profile." })),
   sandbox: Type.Optional(Type.Object({
     import: Type.Optional(Type.Array(Type.Union([Type.String(), Type.Object({ host: Type.String(), guest: Type.Optional(Type.String()), writable: Type.Optional(Type.Boolean()) }, { additionalProperties: false })]),
       { maxItems: 8, description: "Host folders shared into the sandbox, read-only unless writable." })),

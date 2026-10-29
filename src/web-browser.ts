@@ -146,11 +146,13 @@ export interface WebDownload {
 /** Installed Chrome or Edge launched by Playwright, or Playwright's own Firefox build (setup part firefox). */
 export type WebChannel = "chrome" | "msedge" | "firefox";
 /**
- * Browser launch request. `profile: "agent"` uses the agent's own persistent profile on that machine (YOLO only):
+ * Browser launch request. `profile: "agent"` uses the agent's own persistent profile on that machine:
  * logins made there stay for later sessions; it is never the user's own profile.
  */
 export interface WebLaunchOptions {
   browser?: WebChannel; url?: string; profile?: "agent";
+  /** Internal: launch the owned agent profile normally for an approval-based connection. */
+  approval?: boolean;
   /**
    * Attach to a running Chromium-based browser instead of launching one, embedded ones included: the window's process
    * and title. See the worker's attach for the routes.
@@ -180,6 +182,8 @@ export interface WebOpened {
   pid: number; version: string; url: string; title: string;
   /** How Playwright reached an attached browser. */
   via?: "cdp" | "toggle" | "extension" | "vscode";
+  /** Approval succeeded, but the requested navigation may or may not have reached the page. */
+  navigation_error?: string;
 }
 /** Starts one owned browser; the session binds its native window. */
 export type WebLauncher = (options: WebLaunchOptions, signal?: AbortSignal) => Promise<{ browser: WebBrowser; opened: WebOpened }>;
@@ -412,7 +416,7 @@ export class WebBrowser {
         this.pending.delete(response.id!);
         // Playwright appends a colored call log; keep the plain first part for agents.
         const message = String(response.error?.message ?? "Browser operation failed.").replace(/\x1b\[[0-9;]*m/g, "").split("\nCall log:")[0].trim();
-        if (response.error) request.reject(new WebError(message, response.error.name === "TimeoutError"));
+        if (response.error) request.reject(new WebError(message, response.error.name === "TimeoutError", response.error.name === "ApprovalOutcomeUnknown"));
         else request.resolve(response.value);
       }
     });
@@ -444,12 +448,13 @@ export class WebBrowser {
     const browser = new WebBrowser(child, options.remote?.runner);
     try {
       const opened = await browser.request<WebOpened>("open", options.attach ? { attach: options.attach }
-        : { browser: options.browser ?? "chrome", ...(options.url ? { url: options.url } : {}), ...(options.profile ? { profile: options.profile } : {}) },
+        : { browser: options.browser ?? "chrome", ...(options.url ? { url: options.url } : {}), ...(options.profile ? { profile: options.profile } : {}), ...(options.approval ? { approval: true } : {}) },
         signal, options.attach ? ATTACH_APPROVAL_MS + 30_000 : 60_000);
       if (!Number.isSafeInteger(opened.pid) || opened.pid <= 0) throw new WebError("Browser launch did not report a process id.");
       return { browser, opened };
     } catch (error) {
-      await browser.close().catch(() => undefined);
+      try { await browser.close(); }
+      catch (cleanup) { throw new WebError(`Browser launch failed and cleanup is unconfirmed: ${cleanup instanceof Error ? cleanup.message : String(cleanup)}`, false, true); }
       throw error;
     }
   }
@@ -485,7 +490,7 @@ export class WebBrowser {
     if (!this.alive) return Promise.reject(new WebError("The browser worker is gone. Open a new browser."));
     const id = ++this.serial;
     return new Promise<T>((resolve, reject) => {
-      const lost = (message: string) => { this.pending.delete(id); reject(new WebError(message, false, true)); };
+      const lost = (message: string) => { this.pending.delete(id); settle(); reject(new WebError(message, false, true)); };
       const abort = () => lost("Cancelled after the browser received the request; it may still complete.");
       const timer = setTimeout(() => lost("The browser worker did not answer in time; the request may still complete."), timeoutMs);
       const settle = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
@@ -497,12 +502,13 @@ export class WebBrowser {
 
   /** Close the browser and delete its profile, or detach from an attached one, then wait for the worker to exit. Idempotent. */
   async close(): Promise<void> {
+    let failure: unknown;
     if (this.alive) {
-      await this.request("close", {}, undefined, 30_000).catch(() => undefined);
+      await this.request("close", {}, undefined, 30_000).catch(error => { failure = error; });
       this.child.stdin.end();
     }
     const timer = setTimeout(() => this.child.kill(), 30_000);
     try { await this.exited; } finally { clearTimeout(timer); }
-    if (this.child.exitCode !== 0) throw new WebError(`Browser cleanup is unconfirmed. ${this.stderr.trim()}`.trim());
+    if (failure || this.child.exitCode !== 0) throw new WebError(`Browser cleanup is unconfirmed. ${failure instanceof Error ? failure.message : this.stderr.trim()}`.trim());
   }
 }

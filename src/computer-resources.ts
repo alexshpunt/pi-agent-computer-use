@@ -343,6 +343,10 @@ export class ComputerResources {
   private readonly viewports = new Map<string, Viewport>();
   /** This machine's session once started; reference checks need it synchronously. */
   private local?: ComputerSession;
+  /** A released session left a YOLO profile whose process/port could not be confirmed closed. */
+  private unconfirmedAgentCleanup = false;
+  /** Sessions being released remain visible to the Safe-mode guard until cleanup settles. */
+  private readonly closingSessions = new Set<ComputerSession>();
 
   /** Give an installed app of one machine an opaque reference; paths themselves are not session references. */
   private appRef(machine: string, id: string): string {
@@ -354,6 +358,12 @@ export class ComputerResources {
     private readonly closeSession: () => Promise<ComputerResult>, private readonly openSandbox?: SandboxFactory,
     private readonly startMachine?: MachineFactory, private readonly getMode: () => ComputerMode = () => "yolo") {}
 
+  /** Whether this run has an agent browser with a YOLO debugging port, including one still launching. */
+  hasUnapprovedAgentBrowser(): boolean {
+    return this.unconfirmedAgentCleanup || !!this.local?.hasUnapprovedAgentBrowser() ||
+      [...this.closingSessions].some(session => session.hasUnapprovedAgentBrowser()) ||
+      [...this.sandboxes.values(), ...this.machines.values()].some(environment => environment.session.hasUnapprovedAgentBrowser());
+  }
   /**
    * The session that issued a reference, with its machine. Nothing falls back to this machine: a reference that no
    * session of this computer use holds is refused before anything is sent.
@@ -518,12 +528,18 @@ export class ComputerResources {
       for (const [id, entry] of this.snapshots)
         if (entry.target.window_ref !== undefined ? !this.remoteWindow(entry.target.window_ref) : entry.target.machine === LOCAL_MACHINE) this.retire(id);
       own = await this.closeSession().catch(error => failure(error, this.getMode()));
+      if (this.local?.hasUnapprovedAgentBrowser()) this.unconfirmedAgentCleanup = true;
     } else {
       const machine = this.machines.get(name);
       if (!machine) return report(this.getMode(), [], `${computerSource("machine", name)} was not started.`);
+      this.closingSessions.add(machine.session);
       this.machines.delete(name);
       this.forget(machine.session, name);
-      own = await machine.close().catch(error => failure(error, this.getMode()));
+      try { own = await machine.close().catch(error => failure(error, this.getMode())); }
+      finally {
+        if (machine.session.hasUnapprovedAgentBrowser()) this.unconfirmedAgentCleanup = true;
+        this.closingSessions.delete(machine.session);
+      }
     }
     for (const [ref, app] of this.apps) if (app.machine === name) this.apps.delete(ref);
     return report(this.getMode(), [...parts, [computerSource("machine", name), own]]);
@@ -555,9 +571,12 @@ export class ComputerResources {
     return sandbox;
   }
   private async closeSandbox(sandbox: OpenedSandbox): Promise<ComputerResult> {
+    this.closingSessions.add(sandbox.session);
     this.sandboxes.delete(sandbox.ref);
     this.forget(sandbox.session);
-    await sandbox.close();
+    try { await sandbox.close(); }
+    catch (error) { if (sandbox.session.hasUnapprovedAgentBrowser()) this.unconfirmedAgentCleanup = true; throw error; }
+    finally { this.closingSessions.delete(sandbox.session); }
     return { content: [{ type: "text", text: `Sandbox ${computerSource("sandbox", sandbox.ref)} destroyed. Its windows and observations are gone.` }],
       details: { status: "closed", mode: this.getMode(), sandbox_ref: sandbox.ref } };
   }
