@@ -12,7 +12,9 @@ pi install npm:pi-agent-computer-use
 
 The package carries the Windows runtime, so no driver download or executable config is needed. From WSL it controls the Windows host, not a Linux desktop. See [the bundled runtime](bundled-runtime.md) for platforms and checks.
 
-Optional parts install with `/computer-setup PART [MACHINE]`: `browser`, `firefox`, `perception`, `mxc`, `vscode-bridge` and `machine`. It works with Pi on Windows and in WSL: each part runs as a PowerShell script on the target Windows, locally or over SSH. Everything goes into the Windows user's own folders, and downloads are checked against pinned SHA-256 sums on that Windows before use. An agent installs a part with Insert `{"action":"setup","part":...}` into a machine address, and only after the user explicitly allows that part.
+The driver, Windows Node and remote browser worker are prepared automatically when needed. A configured remote machine also receives the package-compatible driver and worker automatically on first use and after an update. Downloads are checked before use.
+
+Optional parts such as Firefox, perception, MXC and the VS Code bridge install with `/computer-setup PART [MACHINE]`. The user runs the command or explicitly approves that part before the agent installs it. `/computer-setup browser` and `/computer-setup machine <alias> [name]` remain available for manual preparation.
 
 ## Choose a mode
 
@@ -45,7 +47,7 @@ No `.pi/computer-use.json` is needed. An ignored local file in the project can o
 }
 ```
 
-`CUA_DRIVER_PATH` does the same as `command`. `runtime` names a qualified profile from `src/driver.ts`; each profile checks the exact version and SHA-256 of its executable and refuses different bytes before startup. Optional `args` replace `['mcp', '--direct', '--embedded']`, `interop` selects a live WSL interop socket, and `machines` names other machines (see [Work on another machine](computer-resources.md#work-on-another-machine)). These are trusted user settings, never agent tool arguments. Computer use never scans for other installs or updates the driver at startup; close the computer runtime and reload after changing them.
+`CUA_DRIVER_PATH` does the same as `command`. `runtime` names a qualified profile from `src/driver.ts`; normally the executable must match its version and SHA-256. For an experimental driver, set `"driverOverride": true` beside `command`: this trusts those executable bytes and checks the driver identity, protocol and advertised tools instead. Only use an executable you trust. Optional `args` replace `['mcp', '--direct', '--embedded']`, `interop` selects a live WSL interop socket, and `machines` names other machines (see [Work on another machine](computer-resources.md#work-on-another-machine)). These are trusted user settings, never agent tool arguments. Close the computer runtime and reload after changing them.
 
 ## WSL interop
 

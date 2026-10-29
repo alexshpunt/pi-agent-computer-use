@@ -47,9 +47,7 @@ In Codemode, every `computer_*` tool returns a receipt object; branch on `outcom
 
 ## Missing parts
 
-Some parts are optional installs: Windows Node for browsers (`browser`), Playwright's Firefox (`firefox`), Cua perception for `regions` (`perception`, about 420 MB, AGPL-3.0 icon detector), MXC for isolated sessions (`mxc`), the VS Code bridge (`vscode-bridge`) and preparing another machine (`machine <ssh alias> [name]`). A refusal that names `/computer-setup` means one is missing.
-
-Never install on your own. Tell the user what is missing, what it adds, its size and where it goes, and ask them to run `/computer-setup <part> [machine]`. Ask before you start when the task clearly needs such a part, for example another machine or VS Code's browser. Retry the refused step once afterwards.
+The driver, Windows Node and remote browser worker are prepared automatically. Optional parts such as Firefox, perception, MXC and the VS Code bridge still require the user to run `/computer-setup`; ask before using them.
 
 ## Access and cleanup
 
