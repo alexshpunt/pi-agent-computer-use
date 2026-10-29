@@ -198,6 +198,31 @@ test("pending browser input in flight blocks a switch to Safe", async () => {
   expect(f.session.hasUnapprovedAgentBrowser()).toBe(false);
   await f.session.close();
 });
+test("input to a sibling dialog blocks Safe until it completes", async () => {
+  const f = fixture();
+  f.setMode("safe"); await f.session.openBrowser({ browser: "msedge", profile: "agent" });
+  f.setMode("yolo");
+  const dialog = { ...window, window_id: 78, title: "Allow remote debugging?" };
+  const png = await sharp({ create: { width: 40, height: 30, channels: 3, background: "red" } }).png().toBuffer();
+  const image = { type: "image" as const, mimeType: "image/png", data: png.toString("base64") };
+  let release!: () => void;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  f.call.mockImplementation(async name => {
+    if (name === "list_windows") return { content: [], structuredContent: { windows: [window, dialog] } };
+    if (name === "get_window_state") return { content: [image], structuredContent: { pid: dialog.pid, window_id: dialog.window_id,
+      window_bounds: dialog.bounds, screenshot_width: 40, screenshot_height: 30, elements: [] } };
+    if (name === "press_key") { await waiting; return { content: [], structuredContent: { effect: "confirmed" } }; }
+    throw new Error(`Unexpected native call ${name}`);
+  });
+  const windows = await f.session.windows();
+  const ref = (windows.details.state!.windows as { window_ref: string; window_id: number }[]).find(item => item.window_id === 78)!.window_ref;
+  const observed = await f.session.observe(ref);
+  const action = f.session.act({ window_ref: ref, observation_id: observed.details.observation_id!, action: "key", key: "a" });
+  await vi.waitFor(() => expect(f.session.hasUnapprovedAgentBrowser()).toBe(true));
+  release(); await action;
+  expect(f.session.hasUnapprovedAgentBrowser()).toBe(false);
+  await f.session.close();
+});
 test("Safe mode refuses before any Playwright work", async () => {
   const f = fixture();
   const ref = await f.ref();
