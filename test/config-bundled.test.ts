@@ -43,6 +43,23 @@ test("an interop override reaches the runtime lookup and the driver", async () =
   expect(findBundledRuntime).toHaveBeenCalledWith("/run/WSL/7_interop");
 });
 
+test("a legacy automatically installed desktop driver follows the package instead of a stale path", async () => {
+  vi.stubEnv("CUA_DRIVER_PATH", undefined);
+  const config = { command: "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUsePoC/cua-driver-0.37.0-33c4b82b/runtime/cua-driver.exe", runtime: "windows-desktop" };
+  expect(await loadComputerConfig(await workspace(config))).toEqual({ command: runtime.command, bundled: runtime, runtime: "windows-desktop" });
+});
+
+test("an explicitly marked override can select a managed-looking path", async () => {
+  vi.stubEnv("CUA_DRIVER_PATH", undefined);
+  const command = "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUsePoC/cua-driver-0.37.0-33c4b82b/runtime/cua-driver.exe";
+  expect(await loadComputerConfig(await workspace({ command, runtime: "windows-desktop", driverOverride: true }))).toEqual({ command, runtime: "windows-desktop", driverOverride: true });
+  expect(findBundledRuntime).not.toHaveBeenCalled();
+});
+test("a deliberate override is not silently replaced", async () => {
+  vi.stubEnv("CUA_DRIVER_PATH", undefined);
+  const config = { command: "/owned/candidate/cua-driver.exe", runtime: "windows-desktop" };
+  expect(await loadComputerConfig(await workspace(config))).toEqual(config);
+});
 test("a trusted command and its own profile replace the shipped runtime without looking it up", async () => {
   vi.stubEnv("CUA_DRIVER_PATH", undefined);
   const config = { command: "/owned/candidate/cua-driver.exe", runtime: "windows-window-management" };

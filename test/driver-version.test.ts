@@ -75,6 +75,17 @@ test("older profiles refuse capture-bound drag before starting any native peer",
     } finally { await backend.close(); }
   }
 });
+test("an explicit test override can run a different driver version", async () => {
+  await mkdir(".tmp/native-zoom", { recursive: true });
+  const cwd = await mkdtemp(path.resolve(".tmp/native-zoom/override-"));
+  const log = path.join(cwd, "calls.jsonl");
+  const backend = new McpDriver({ command: process.execPath, args: [path.resolve("test/fixtures/detail-driver.mjs"), log, "0.39.0", "advertise"], driverOverride: true });
+  try {
+    const result = await backend.call("get_desktop_state", { max_image_dimension: 500 });
+    expect(result.structuredContent).toBeDefined();
+    expect(await readFile(log, "utf8")).not.toBe("");
+  } finally { await backend.close(); await rm(cwd, { recursive: true, force: true }); }
+});
 test("the qualified pin rejects an older peer before native dispatch", async () => {
   await mkdir(".tmp/native-zoom", {recursive:true});
   const cwd = await mkdtemp(path.resolve(".tmp/native-zoom/version-")); const log = path.join(cwd,"calls.jsonl");

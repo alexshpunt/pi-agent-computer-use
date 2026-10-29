@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test, vi } from "vitest";
@@ -24,6 +24,59 @@ test("a remote command keeps every argument and variable exactly, whatever the r
   expect(() => remoteCommand("/usr/bin/env", [], { "BAD-NAME": "x" })).toThrow(/Invalid environment variable/);
 });
 
+test("remote sandbox selects its machine without resolving the local runtime", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pi-remote-sandbox-"));
+  const config = await import("../src/config.ts");
+  const { sandboxFactory } = await import("../src/machine.ts");
+  const { WindowsSandbox } = await import("../src/sandbox.ts");
+  const failure = new Error("sandbox reached");
+  const local = vi.spyOn(config, "loadComputerConfig").mockRejectedValue(new Error("local runtime unavailable"));
+  const open = vi.spyOn(WindowsSandbox, "open").mockRejectedValue(failure);
+  try {
+    await mkdir(path.join(dir, ".pi"));
+    await writeFile(path.join(dir, ".pi/computer-use.json"), JSON.stringify({ machines: { lab: { ssh: "lab-wsl", command: "/mnt/c/driver.exe" } } }));
+    const factory = sandboxFactory({ settings: () => ({ kernel: "lanczos3", maxLongEdge: 1280, scale: 1, version: 0, route: "cua_native" }) });
+    await expect(factory(dir, { action: "open_sandbox" }, undefined, "lab")).rejects.toBe(failure);
+    expect(local).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledOnce();
+  } finally { local.mockRestore(); open.mockRestore(); await rm(dir, { recursive: true, force: true }); }
+});
+test("browserOverride preserves a single legacy browser path", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pi-machines-partial-"));
+  try {
+    await mkdir(path.join(dir, ".pi"));
+    const node = "/mnt/c/Users/test/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe";
+    const worker = "/home/test/.local/share/pi-computer-use/package";
+    await writeFile(path.join(dir, ".pi/computer-use.json"), JSON.stringify({ command: "/x/cua-driver.exe", machines: {
+      nodeonly: { ssh: "node-alias", node, browserOverride: true },
+      workeronly: { ssh: "worker-alias", package: worker, browserOverride: true },
+    } }));
+    const machines = (await loadComputerConfig(dir)).machines!;
+    expect(machines.nodeonly.node).toBe(node);
+    expect(machines.workeronly.package).toBe(worker);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("a remote machine needs only its trusted SSH alias", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pi-machines-auto-"));
+  try {
+    await mkdir(path.join(dir, ".pi"));
+    await writeFile(path.join(dir, ".pi/computer-use.json"), JSON.stringify({ command: "/x/cua-driver.exe", machines: { lab: { ssh: "lab-wsl" } } }));
+    expect((await loadComputerConfig(dir)).machines?.lab).toEqual({ ssh: "lab-wsl" });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("legacy generated remote paths follow the package, but explicit overrides remain available", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pi-machines-legacy-"));
+  try {
+    await mkdir(path.join(dir, ".pi"));
+    const legacy = { ssh: "lab-wsl", command: "/mnt/c/Users/u/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-33c4b82b/runtime/cua-driver.exe", runtime: "windows-desktop",
+      node: "/mnt/c/Users/u/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe", package: "/home/u/.local/share/pi-computer-use/package" };
+    const write = async (machine: object) => writeFile(path.join(dir, ".pi/computer-use.json"), JSON.stringify({ command: "/x/cua-driver.exe", machines: { lab: machine } }));
+    await write(legacy);
+    expect((await loadComputerConfig(dir)).machines?.lab).toEqual({ ssh: "lab-wsl" });
+    await write({ ...legacy, driverOverride: true, browserOverride: true });
+    expect((await loadComputerConfig(dir)).machines?.lab).toEqual({ ...legacy, driverOverride: true, browserOverride: true });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 test("machines come only from validated configuration", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "pi-machines-"));
   await mkdir(path.join(dir, ".pi"));

@@ -12,7 +12,7 @@ const overview = await sharp(raw).resize(500, 400).png().toBuffer();
 const jpeg = await sharp(raw).extract({ left: 200, top: 160, width: 200, height: 160 }).jpeg().toBuffer();
 const windows = [];
 const server = new Server({ name: "cua-driver", version: process.argv[3] ?? "0.33.2" }, { capabilities: { tools: {} } });
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: process.argv[4] === "advertise" ? [{ name: "get_desktop_state", inputSchema: { type: "object" } }] : [] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
   const cursor = agentCursor(name, args); if (cursor) return cursor;
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
