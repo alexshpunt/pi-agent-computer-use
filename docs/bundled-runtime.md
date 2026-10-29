@@ -6,7 +6,7 @@ The npm package carries one native runtime: Cua Driver 0.38.0 for Windows x64, b
 pi install npm:pi-agent-computer-use
 ```
 
-An update installs a new extension version with its exact runtime. Computer use never updates the driver on its own.
+An extension update selects its matching runtime. Computer use prepares that runtime automatically, including on configured remote machines; it does not select a moving upstream version.
 
 ## Where the files come from
 
@@ -50,4 +50,4 @@ Computer use owns one MCP child. It disables telemetry and update checks, requir
 
 ## Overrides
 
-A trusted `.pi/computer-use.json` (`command`, `runtime`) or `CUA_DRIVER_PATH` overrides the packaged runtime, for example to try another qualified fork build. Each named profile keeps its exact byte and version check. Agent tool arguments can never select an executable or a profile.
+A trusted `.pi/computer-use.json` (`command`, `runtime`) or `CUA_DRIVER_PATH` overrides the packaged runtime. Named profiles normally keep their exact byte and version check. To test a different build, add `"driverOverride": true` beside `command`; this trusts the chosen executable instead of checking its packaged hash, while still checking its identity, protocol and advertised tools. Agent tool arguments can never select an executable or a profile.

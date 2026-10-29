@@ -189,7 +189,7 @@ Ways of working found in real sessions, per app.
 
 ## Browser pages
 
-Web pages run through [Playwright](https://playwright.dev/). The browser window itself, its toolbar, system dialogs and every other application stay native windows. Playwright runs in a small worker on Windows, so browsers need Node.js there: an installed one, or `/computer-setup browser`. When Pi runs on Windows, the worker uses Pi's own Node.
+Web pages run through [Playwright](https://playwright.dev/). The browser window itself, its toolbar, system dialogs and every other application stay native windows. Playwright runs in a small worker on Windows. Computer use uses a compatible Windows Node when available and otherwise prepares one automatically. When Pi runs on Windows, the worker uses Pi's own Node.
 
 `computer_open` with `browser` or `url` launches a visible browser with a disposable profile: Chrome by default, installed Edge, or Playwright's own Firefox (`/computer-setup firefox` once per machine and after updating this package; it cannot be attached to). `profile: "agent"` uses the agent's separate persistent profile on that machine, not the user's default profile; logins and site data in it remain across sessions. Only one browser at a time can use each agent profile. Closing the computer session closes these browsers and deletes disposable profiles, not agent profiles.
 
@@ -239,22 +239,17 @@ Another Windows machine with WSL can be operated over SSH: its windows, displays
 To set one up:
 
 1. Make it reachable through an SSH alias that logs in to its WSL by key, with a known host key.
-2. Run `/computer-setup machine <alias> [name]`. It copies the CUA runtime, a portable Windows Node and the browser worker into the remote user's folders and prints the `machines` entry. Run it again after updating this package.
-3. Add the entry to `.pi/computer-use.json`:
+2. Add the alias to `.pi/computer-use.json`:
 
 ```json
 "machines": {
-  "lab": {
-    "ssh": "lab-wsl",
-    "runtime": "windows-desktop",
-    "command": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/cua-driver-0.37.0-33c4b82b/runtime/cua-driver.exe",
-    "node": "/mnt/c/Users/user/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe",
-    "package": "/home/user/.local/share/pi-computer-use/package"
-  }
+  "lab": { "ssh": "lab-wsl" }
 }
 ```
 
-All paths are on the remote WSL. Without `node` and `package`, the machine works without a browser.
+On first use, computer use prepares the package-compatible driver on the remote machine. It prepares Windows Node and the browser worker when a browser is opened, and uses new verified caches after package updates. Old caches are not replaced while they may be in use. `/computer-setup machine <alias> [name]` can prepare these ahead of time.
+
+Trusted configuration can still specify remote WSL `command`, `runtime`, `node` or `package` overrides. Set `driverOverride: true` to try an experimental driver without the packaged hash check, and `browserOverride: true` to keep explicit browser paths even when they resemble old generated paths. Older generated paths otherwise migrate to automatic defaults; unrelated custom paths remain overrides.
 
 ## Files, clipboard and recording
 

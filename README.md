@@ -148,18 +148,16 @@ Pi packages run with your full system permissions, and this one drives your desk
 
 ### Optional parts
 
-Window control works right after the install. A few parts are extra downloads, and you install them with `/computer-setup`:
+Window control works right after the install. The driver, Windows Node and remote browser worker are prepared automatically when needed. Optional parts are extra downloads installed with `/computer-setup`:
 
 | Part                  | What it's for                                                                                  |
 | --------------------- | ---------------------------------------------------------------------------------------------- |
-| `browser`             | Node.js for Windows, which Playwright browsers need. Skip it if Node is already on Windows.    |
 | `firefox`             | Playwright's own Firefox build. Chrome and Edge work without it.                               |
 | `perception`          | The `regions` view. About 420 MB, and its icon detector is AGPL-3.0.                           |
 | `mxc`                 | Isolated agent sessions. Needs Windows 11 24H2 or newer.                                       |
 | `vscode-bridge`       | VS Code's integrated browser.                                                                  |
-| `machine <ssh alias>` | Another Windows machine with WSL, reached over SSH.                                            |
 
-Add a machine name to install a part there, for example `/computer-setup perception lab`. Everything goes into your Windows user's own folders, and every download is checked against a pinned SHA-256. If a task needs a part you don't have, the agent tells you what's missing and asks before it installs anything.
+Add a machine name to install a part there, for example `/computer-setup perception lab`. Everything goes into your Windows user's own folders, and every download is checked against a pinned SHA-256. If a task needs an optional part you do not have, the agent asks before installing it. A configured remote machine is prepared automatically on first use and when the package changes.
 
 ### Unsigned binaries
 
