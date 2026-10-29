@@ -84,20 +84,44 @@ test("a part installs through PowerShell on the right Windows: interop from WSL,
   expect(viaSsh.ssh).toHaveBeenCalledWith("lab-wsl");
 });
 
-test("setup refuses before any command for an unknown machine, another OS or a machine without its browser worker", async () => {
+test("setup refuses before any command for an unknown machine or unsupported OS", async () => {
   const cwd = await project({ machines: { lab: { ssh: "lab-wsl", command: "/mnt/c/rt/cua-driver.exe" } } });
   const { runner, calls } = fakeRunner();
   const viaSsh = deps("linux", runner);
   await expect(runSetup({ part: "mxc", machine: "nowhere" }, cwd, { deps: viaSsh })).rejects.toThrow(SetupError);
   expect(viaSsh.ssh).not.toHaveBeenCalled();
   await expect(runSetup({ part: "mxc" }, cwd, { deps: deps("linux", runner, false) })).rejects.toThrow(/Pi on Windows or in WSL/);
-  await expect(runSetup({ part: "firefox", machine: "lab" }, cwd, { deps: deps("linux", runner) })).rejects.toThrow(/no browser worker yet/);
   await expect(runSetup({ part: "machine", ssh: "lab-wsl", name: "local" }, cwd, { deps: deps("linux", runner) })).rejects.toThrow(/not local/);
   // Pi on Windows runs the Playwright worker with its own Node.
   expect(await runSetup({ part: "browser" }, cwd, { deps: deps("win32", runner) })).toMatch(/Pi's own Node\. Nothing to install/);
   expect(calls).toEqual([]);
 });
 
+test("explicit machine setup uses the same immutable provisioners", async () => {
+  const cwd = await project();
+  const runtime = await import("../src/remote-runtime.ts");
+  const browser = await import("../src/remote-browser.ts");
+  const prepareDriver = vi.spyOn(runtime, "prepareRemoteRuntime").mockResolvedValueOnce("/managed/driver.exe");
+  const prepareBrowser = vi.spyOn(browser, "prepareRemoteBrowser").mockResolvedValueOnce({ node: "/managed/node.exe", package: "/managed/worker" });
+  const { runner, calls } = fakeRunner();
+  try {
+    await runSetup({ part: "machine", ssh: "lab-wsl", name: "lab" }, cwd, { deps: deps("linux", runner) });
+    expect(prepareDriver).toHaveBeenCalledOnce(); expect(prepareBrowser).toHaveBeenCalledOnce();
+    expect(calls.some(call => call.file === "rm")).toBe(false);
+  } finally { prepareDriver.mockRestore(); prepareBrowser.mockRestore(); }
+});
+test("remote Firefox setup prepares a missing browser worker automatically", async () => {
+  const cwd = await project({ machines: { lab: { ssh: "lab-wsl" } } });
+  const provision = await import("../src/remote-browser.ts");
+  const prepare = vi.spyOn(provision, "prepareRemoteBrowser").mockResolvedValueOnce({ node: "/remote/node.exe", package: "/remote/package" });
+  const calls: { file: string; args: readonly string[] }[] = [];
+  const runner: CommandRunner = { spawn: () => { throw new Error("unexpected spawn"); }, run: async (file, args) => { calls.push({ file, args }); return file === "wslpath" ? "C:\\package\\node_modules\\playwright-core\\cli.js" : ""; } };
+  try {
+    await runSetup({ part: "firefox", machine: "lab" }, cwd, { deps: deps("linux", runner) });
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(calls.some(call => call.file === "/remote/node.exe" && call.args.includes("firefox"))).toBe(true);
+  } finally { prepare.mockRestore(); }
+});
 test("/computer-setup shows the usage, reports progress in the status line and the result or failure as a notification", async () => {
   const commands = new Map<string, { getArgumentCompletions: (prefix: string) => unknown; handler: (args: string, ctx: unknown) => Promise<void> }>();
   const run = vi.fn(async (_request: unknown, _cwd: string, options?: { progress?: (step: string) => void }) => { options?.progress?.("downloading"); return "Installed."; });
@@ -118,6 +142,15 @@ test("/computer-setup shows the usage, reports progress in the status line and t
   expect(ui.setStatus).toHaveBeenLastCalledWith("computer-setup", undefined);
 });
 
+test("a missing Windows Node is installed automatically before browser use", async () => {
+  const { ensureWindowsNode } = await import("../src/windows-node.ts");
+  const node = await import("../src/remote-browser.ts");
+  const prepare = vi.spyOn(node, "prepareWindowsNode").mockResolvedValueOnce("/managed/node.exe");
+  try {
+    expect(await ensureWindowsNode("socket")).toBe("/managed/node.exe");
+    expect(prepare).toHaveBeenCalledOnce();
+  } finally { prepare.mockRestore(); }
+});
 test("browsers use the portable Windows Node from setup first, an installed Node next, and otherwise name the setup step", async () => {
   const fake = (present: string[]) => ({ localAppData: async () => "/mnt/c/Users/u/AppData/Local", exists: async (file: string) => present.includes(file) });
   const portable = "/mnt/c/Users/u/AppData/Local/Programs/PiComputerUse/node-v22.22.2-win-x64/node.exe";
