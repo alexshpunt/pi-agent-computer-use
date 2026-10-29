@@ -1,14 +1,16 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadComputerConfig, readMachineSettings, type MachineConfig } from "./config.ts";
-import { PACKAGED_RUNTIME, fetchRuntime, isWsl, loadBundledRuntime, readRuntimePins } from "./native-runtime.ts";
+import { isWsl } from "./native-runtime.ts";
 import { WINDOWS_POWERSHELL, localRunner, runPowerShell, sshRunner, type CommandRunner } from "./runner.ts";
 import { MXC, PERCEPTION, WINDOWS_NODE } from "./setup-pins.ts";
-import { findWindowsNode } from "./windows-node.ts";
+import { ensureWindowsNode } from "./windows-node.ts";
+import { prepareRemoteBrowser } from "./remote-browser.ts";
+import { prepareRemoteRuntime } from "./remote-runtime.ts";
 
 /** Optional parts and what each adds; `machine` prepares another machine instead of installing on one. */
 export const SETUP_PARTS = [
@@ -157,21 +159,16 @@ async function browser(target: Target, signal?: AbortSignal): Promise<string> {
   return node.installed ? `Installed Windows Node ${WINDOWS_NODE.version} on ${target.label}: ${node.exe}` : `Windows Node is already installed on ${target.label}: ${node.exe}`;
 }
 
-function needsBrowserCopy(target: Target): never {
-  throw new SetupError(`${target.label} has no browser worker yet; prepare it with setup part machine (ssh ${target.machine!.ssh}) first. Nothing was installed.`);
-}
-
 async function firefox(target: Target, signal?: AbortSignal): Promise<string> {
   const cli = path.join(path.dirname(createRequire(import.meta.url).resolve("playwright-core/package.json")), "cli.js");
   let node: string, script: string;
   if (target.machine) {
-    if (!target.machine.node || !target.machine.package) needsBrowserCopy(target);
-    node = target.machine.node;
-    script = await windowsPath(target, `${target.machine.package}/node_modules/playwright-core/cli.js`);
+    const prepared = await prepareRemoteBrowser(target.runner, signal, { node: target.machine.node, package: target.machine.package });
+    node = prepared.node;
+    script = await windowsPath(target, `${prepared.package}/node_modules/playwright-core/cli.js`);
   } else if (target.native) { node = process.execPath; script = cli; }
   else {
-    node = await findWindowsNode(target.interop)
-      .catch(error => { throw new SetupError(`${error instanceof Error ? error.message : error} Firefox needs it too; install browser first.`); });
+    node = await ensureWindowsNode(target.interop, signal);
     script = await windowsPath(target, cli);
   }
   const out = await target.runner.run(node, [script, "install", "firefox"], { timeoutMs: 900_000, ...(signal ? { signal } : {}) });
@@ -179,7 +176,7 @@ async function firefox(target: Target, signal?: AbortSignal): Promise<string> {
 }
 
 async function perception(target: Target, cwd: string, signal?: AbortSignal): Promise<string> {
-  const driver = await windowsPath(target, target.machine ? target.machine.command : (await loadComputerConfig(cwd)).command);
+  const driver = await windowsPath(target, target.machine ? target.machine.command ?? await prepareRemoteRuntime(target.runner, signal) : (await loadComputerConfig(cwd)).command);
   const { name, release, catalog, archive, version } = PERCEPTION;
   const out = await ps(target, `
 $driver = ${psString(driver)}
@@ -277,56 +274,17 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $argv) | Out-Null
   return `Installed the Pi Browser Bridge into ${codeCmd} on ${target.label}. ${argvJson} ${next === undefined ? "already allows" : "now allows"} its proposed API. Quit VS Code fully and start it again; Reload Window does not reread argv.json.`;
 }
 
-/** Stream a local folder into a fresh folder on the remote WSL through tar. */
-async function copyTree(runner: CommandRunner, from: string, to: string): Promise<void> {
-  await runner.run("rm", ["-rf", to]);
-  await runner.run("mkdir", ["-p", to]);
-  await new Promise<void>((resolve, reject) => {
-    const remote = runner.spawn("tar", ["-x", "-f", "-", "-C", to]);
-    const pack = spawn("tar", ["-c", "-f", "-", "-C", from, "."], { stdio: ["ignore", "pipe", "pipe"] });
-    let failed = "";
-    pack.stderr.on("data", chunk => { failed += chunk; });
-    remote.stderr.on("data", chunk => { failed += chunk; });
-    pack.stdout.pipe(remote.stdin);
-    pack.on("error", reject);
-    remote.on("error", reject);
-    remote.on("close", code => code === 0 ? resolve() : reject(new Error(`Copying ${path.basename(from)} failed: ${failed.trim().slice(-500)}`)));
-  });
-}
-
 async function prepareMachine(request: SetupRequest, deps: SetupDeps, progress: Progress, signal?: AbortSignal): Promise<string> {
   const alias = request.ssh;
   if (!alias || !/^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/.test(alias)) throw new SetupError("machine needs the SSH alias of a Windows machine with WSL; nothing was installed.");
   const name = request.name ?? alias;
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name) || name === "local") throw new SetupError("The machine name must be letters, digits, - or _, and not local.");
-  const target: Target = { label: `machine ${name}`, runner: deps.ssh(alias), powershell: WINDOWS_POWERSHELL, native: false, machine: { ssh: alias, command: "" } };
-  const { runner } = target;
-
-  progress("checking the local runtime");
-  const pins = await readRuntimePins();
-  await fetchRuntime(PACKAGED_RUNTIME, pins, signal);
-  const runtime = await loadBundledRuntime(PACKAGED_RUNTIME, pins);
-  progress("copying the driver");
-  const appData = await targetPath(target, await ps(target, "$env:LOCALAPPDATA", 30_000, signal));
-  const folder = `${appData}/Programs/PiComputerUse/cua-driver-${pins.version}-${pins.source.slice(0, 8)}/runtime`;
-  await runner.run("mkdir", ["-p", folder]);
-  const names = Object.keys(pins.files);
-  for (const file of names) await runner.run("dd", ["status=none", `of=${folder}/${file}`], { input: await readFile(path.join(runtime.root, "runtime", file)), timeoutMs: 600_000 });
-  const sums = (await runner.run("sha256sum", names.map(file => `${folder}/${file}`))).trim().split("\n").map(line => line.split(" ")[0]);
-  const bad = names.filter((file, index) => sums[index] !== pins.files[file]);
-  if (bad.length) throw new SetupError(`The copied driver files do not match their pins (${bad.join(", ")}).`);
-
-  progress("installing Windows Node");
-  const node = await targetPath(target, (await installNode(target, signal)).exe);
-  progress("copying the browser worker");
-  const home = (await runner.run("bash", ["-c", 'printf %s "$HOME"'])).trim();
-  const remotePackage = `${home}/.local/share/pi-computer-use/package`;
-  await copyTree(runner, path.join(PACKAGE, "src"), `${remotePackage}/src`);
-  await copyTree(runner, path.dirname(createRequire(import.meta.url).resolve("playwright-core/package.json")), `${remotePackage}/node_modules/playwright-core`);
-  await runner.run("dd", ["status=none", `of=${remotePackage}/package.json`], { input: await readFile(path.join(PACKAGE, "package.json")) });
-
-  const entry = { ssh: alias, runtime: "windows-desktop", command: `${folder}/cua-driver.exe`, node, package: remotePackage };
-  return `Prepared ${alias} for computer use. Add this under "machines" in .pi/computer-use.json:\n${JSON.stringify({ [name]: entry }, null, 2)}`;
+  const runner = deps.ssh(alias);
+  progress("preparing the driver");
+  await prepareRemoteRuntime(runner, signal);
+  progress("preparing the browser worker");
+  await prepareRemoteBrowser(runner, signal);
+  return `Prepared ${alias} for computer use. Add this trusted machine under "machines" in .pi/computer-use.json:\n${JSON.stringify({ [name]: { ssh: alias } }, null, 2)}`;
 }
 
 const tail = (out: string) => {
