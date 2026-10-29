@@ -83,9 +83,22 @@ async function fixture() {
   });
   const resources = new ComputerResources(async () => host, async () => host.close(), openSandbox, start);
   const names = (driver: Driver) => vi.mocked(driver.call).mock.calls.map(([name]) => name);
-  return { resources, hostDriver, remoteDriver, openSandbox, start, machineClose, sandboxClose, names, machineSource: computerSource("machine", "lab") };
+  return { resources, remote, hostDriver, remoteDriver, openSandbox, start, machineClose, sandboxClose, names, machineSource: computerSource("machine", "lab") };
 }
 
+test("Safe remains blocked while a remote YOLO browser is closing", async () => {
+  const f = await fixture();
+  await f.resources.search(address(`${f.machineSource}/windows`), cwd, "");
+  let release!: () => void;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const unsafe = vi.spyOn(f.remote, "hasUnapprovedAgentBrowser").mockReturnValue(true);
+  f.machineClose.mockImplementationOnce(async () => { await waiting; unsafe.mockReturnValue(false); return f.remote.close(); });
+  const closing = f.resources.delete(f.machineSource, cwd);
+  await vi.waitFor(() => expect(f.machineClose).toHaveBeenCalled());
+  expect(f.resources.hasUnapprovedAgentBrowser()).toBe(true);
+  release(); await closing;
+  expect(f.resources.hasUnapprovedAgentBrowser()).toBe(false);
+});
 test("a machine starts on first use; its windows, apps and displays come only from its own driver", async () => {
   const f = await fixture();
   const listed = await f.resources.search(address(`${f.machineSource}/windows`), cwd, "window");
@@ -201,14 +214,14 @@ test("an address no machine issued is refused before anything is sent", async ()
 });
 
 test("a remote browser refuses before launch when that machine's worker copy is stale or missing", async () => {
-  const local = execFileSync("sha256sum", ["src/web-worker.ts", "src/aria-match.ts", "src/web-geometry.ts", require.resolve("playwright-core/package.json")], { encoding: "utf8" });
+  const local = execFileSync("sha256sum", ["src/web-worker.ts", "src/agent-profile-lock.ts", "src/browser-command-line.ts", "src/aria-match.ts", "src/web-geometry.ts", require.resolve("playwright-core/package.json")], { encoding: "utf8" });
   const runner = (output: string | Error): CommandRunner => ({ spawn: vi.fn(), run: vi.fn(async () => {
     if (output instanceof Error) throw output;
     return output;
   }) });
   const current = runner(local);
   await checkRemoteWorker(current, "/pkg", "setup part machine");
-  expect(current.run).toHaveBeenCalledWith("sha256sum", ["/pkg/src/web-worker.ts", "/pkg/src/aria-match.ts", "/pkg/src/web-geometry.ts", "/pkg/node_modules/playwright-core/package.json"], expect.anything());
+  expect(current.run).toHaveBeenCalledWith("sha256sum", ["/pkg/src/web-worker.ts", "/pkg/src/agent-profile-lock.ts", "/pkg/src/browser-command-line.ts", "/pkg/src/aria-match.ts", "/pkg/src/web-geometry.ts", "/pkg/node_modules/playwright-core/package.json"], expect.anything());
   const stale = local.replace(/^[0-9a-f]{64}/, "0".repeat(64));
   await expect(checkRemoteWorker(runner(stale), "/pkg", "setup part machine"))
     .rejects.toThrow(/out of date \(src\/web-worker\.ts\); nothing was launched\. Refresh it from this package with setup part machine/);

@@ -5,7 +5,7 @@ import { registerComputerMode } from "../src/mode.ts";
 import { registerComputerProvider } from "../src/provider.ts";
 
 // Policy is independent of the IDE event bus; real-Pi provider tests cover that boundary.
-vi.mock("../src/provider.ts", () => ({ registerComputerProvider: vi.fn(async () => ({ resources: {}, guide: "", attached: () => true })) }));
+vi.mock("../src/provider.ts", () => ({ registerComputerProvider: vi.fn(async () => ({ resources: { hasUnapprovedAgentBrowser: () => false }, guide: "", attached: () => true })) }));
 
 type Command = { handler(args: string, ctx: ExtensionCommandContext): Promise<void> };
 async function fixture(branch: unknown[] = []) {
@@ -59,6 +59,20 @@ test("a user-selected Safe mode is restored on reload instead of silently fallin
   expect(reloaded.ctx.ui.setStatus).toHaveBeenLastCalledWith("computer-use", "Computer: SAFE");
 });
 
+test("Safe selection is refused while a YOLO agent browser is still open", async () => {
+  const f = await fixture();
+  let open = true;
+  const getMode = registerComputerMode({ registerCommand: (name: string, command: Command) => f.commands.set(name, command),
+    on: (name: string, handler: (event: unknown, ctx: ExtensionCommandContext) => unknown) => f.events.set(name, handler),
+    appendEntry: f.appendEntry } as unknown as ExtensionAPI, undefined, () => !open);
+  await f.commands.get("computer-mode")!.handler("safe", f.ctx);
+  expect(getMode()).toBe("yolo");
+  expect(f.appendEntry).not.toHaveBeenCalled();
+  expect(f.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("close"), "warning");
+  open = false;
+  await f.commands.get("computer-mode")!.handler("safe", f.ctx);
+  expect(getMode()).toBe("safe");
+});
 test("user policy change and branch restore clear frames without exposing a model command", async () => {
   const clear = vi.fn(async () => {}); const f = await fixture();
   const getMode = registerComputerMode({ registerCommand: (name: string, command: Command) => f.commands.set(name, command),

@@ -57,6 +57,14 @@ async function fixture() {
     setBounds(value: typeof liveBounds) { liveBounds = value; } };
 }
 
+test("uncertain YOLO profile cleanup remains a Safe-mode blocker after session release", async () => {
+  const f = await fixture();
+  await f.read();
+  const unsafe = vi.spyOn(f.session, "hasUnapprovedAgentBrowser").mockReturnValue(true);
+  await f.resources.closeAll();
+  unsafe.mockReturnValue(false);
+  expect(f.resources.hasUnapprovedAgentBrowser()).toBe(true);
+});
 test("typed text is sent exactly and descriptor/UI reads do not refresh native grounding", async () => {
   const f = await fixture(), view = await f.read(["ui"]);
   const before = f.native().length;
