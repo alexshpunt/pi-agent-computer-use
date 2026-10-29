@@ -27,7 +27,8 @@ import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type Det
 import type { StateDiff } from "./successor.ts";
 import { combine, evaluateNative, validateWait, type ConditionResult, type WaitResult, type WaitSpec } from "./ui-conditions.ts";
 import { computerSource } from "./computer-address.ts";
-import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
+import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebOpened, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
+import { ATTACH_APPROVAL_MS } from "./browser-command-line.ts";
 import { derivedPng } from "./web-capture.ts";
 import type { Derive } from "./web-geometry.ts";
 
@@ -174,7 +175,7 @@ interface Observation { texts?: Map<string, string>; id: string; tokens: Set<str
 interface WindowState { id: string; nativeId: string; kind: "restore" | "management" }
 /** The unannotated pixels of a window's latest capture with pixels, kept as the baseline of its next pixel comparison. */
 export interface WindowFrame { observation_id: string; png: Buffer; size: { maxLongEdge: number; scale: number } }
-interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation;
+interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; pendingApproval?: boolean; attachingApproval?: boolean; observation?: Observation;
   visualBounds?: ScreenRect;
   /** Size of the window's latest image capture: points of typed input are in its pixels. Outlives the observation. */
   seen?: { width: number; height: number };
@@ -269,6 +270,13 @@ export class ComputerSession {
    * Popup windows of the same process are ordinary native windows; their pages are reached as tabs of this browser.
    */
   private readonly browsers = new Map<string, WebBrowser>();
+  private readonly unapprovedAgentBrowsers = new Set<WebBrowser>();
+  private unapprovedAgentLaunches = 0;
+  /** Input already dispatched to a browser still awaiting Safe approval. */
+  private pendingApprovalInputs = 0;
+  private unconfirmedAgentLaunch = false;
+  /** Safe cannot be selected while a YOLO agent profile has an unauthenticated debugging port. */
+  hasUnapprovedAgentBrowser(): boolean { return this.unconfirmedAgentLaunch || this.unapprovedAgentLaunches > 0 || this.pendingApprovalInputs > 0 || this.unapprovedAgentBrowsers.size > 0; }
 
   private get platform(): NativePlatform { return this.driver.platform ?? "windows"; }
   /** Label sources from a sandbox guest so they never pass for host windows or displays. */
@@ -361,6 +369,9 @@ export class ComputerSession {
     return this.getMode() === "yolo" || entry.owned;
   }
 
+  private inputAllowed(entry: WindowEntry): boolean {
+    return this.allowed(entry) && !(entry.pendingApproval && this.getMode() === "safe");
+  }
   private denied(ref: string): ComputerResult {
     return this.result("refused", "Safe mode allows only windows opened by this session. Only the user can change mode with /computer-mode.",
       undefined, { window_ref: ref });
@@ -475,42 +486,57 @@ export class ComputerSession {
   }
 
   /**
-   * Launch one new visible browser through Playwright with a disposable profile, or in YOLO the agent's persistent
-   * profile, then bind its native window. Closing the session closes this browser and deletes a disposable profile.
-   * attachBrowser covers browsers that already run.
+   * Launch one visible browser with a disposable or persistent agent profile and bind its native window.
+   * Safe agent profiles start normally and attach after approval. Closing the session closes the owned browser.
+   * attachBrowser also covers browsers that already run.
    */
   openBrowser(options: WebLaunchOptions = {}, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted || !this.launchWeb || this.driver.windowLifetime === false)
         return this.result("refused", "Opening a browser needs Windows window lifetime and the Playwright browser backend; nothing was launched.");
-      if (options.profile && this.getMode() !== "yolo")
-        return this.result("refused", "The agent's persistent browser profile keeps logins, so Safe mode allows only disposable profiles. Only the user can select YOLO with /computer-mode.");
+      const approval = options.profile === "agent" && this.getMode() === "safe";
+      if (approval && options.browser === "firefox") return this.result("refused", "Safe agent profiles require a Chromium browser with approval-based remote debugging.");
+      const unapproved = options.profile === "agent" && !approval && options.browser !== "firefox";
+      if (unapproved) this.unapprovedAgentLaunches++;
       let launched: Awaited<ReturnType<WebLauncher>> | undefined;
       try {
-        launched = await this.launchWeb(options, signal);
+        launched = await this.launchWeb(approval ? { ...options, approval: true } : options, signal);
+        if (unapproved) this.unapprovedAgentBrowsers.add(launched.browser);
+        if (unapproved && this.getMode() !== "yolo") throw new Error("Mode changed while the unapproved browser was starting.");
         const { pid } = launched.opened;
         // Chromium creates its native window asynchronously after Playwright sees the first page.
         let windows: Record<string, unknown>[] = [];
-        for (let attempt = 0; attempt < 20 && !windows.length; attempt++) {
+        for (let attempt = 0; attempt < 20 && windows.length !== 1; attempt++) {
           if (attempt) await delay(250, undefined, { signal });
-          windows = ((await this.state("list_windows", { pid }, signal)).windows as Record<string, unknown>[] ?? []).filter(window => window.pid === pid);
+          // A prompt can appear before the browser frame, even as the only window of this process.
+          const frames = ((await this.state("list_windows", { pid }, signal)).windows as Record<string, unknown>[] ?? [])
+            .filter(window => window.pid === pid && typeof window.title === "string" && / - (?:Microsoft\u200b? Edge|Google Chrome|Mozilla Firefox)$/i.test(window.title));
+          const titled = launched.opened.title && frames.filter(window => (window.title as string).startsWith(launched!.opened.title));
+          windows = titled && titled.length === 1 ? titled : frames;
         }
-        if (windows.length !== 1) throw Error(`Expected one native window for browser process ${pid}, found ${windows.length}.`);
+        if (windows.length !== 1) throw Error(`Expected one identifiable browser frame for process ${pid}, found ${windows.length}.`);
         const target = windows[0] as unknown as WindowTarget;
         this.browsers.set(`${target.pid}:${target.window_id}`, launched.browser);
         const entry = await this.register(target, signal);
         if (!entry) throw Error("The browser window lifetime could not be established.");
+        if (unapproved && this.getMode() !== "yolo") throw new Error("Mode changed while the unapproved browser was starting.");
         entry.owned = true;
-        return this.result("observed", `Opened a new visible browser with ${options.profile ? "the agent's persistent profile (logins made in it stay for later sessions)" : "a disposable profile"}. Read its window with dom for page structure, or with image/ui/full for native pixels and Windows UI.`,
+        if (approval) { entry.pendingApproval = true; entry.web = undefined; }
+        return this.result("observed", `Opened a new visible browser with ${options.profile ? "the agent's persistent profile (logins made in it stay for later sessions)" : "a disposable profile"}. ${approval ? "Sign in if needed, enable remote debugging in the browser, then attach this window and approve the connection." : options.profile && options.browser !== "firefox" ? "The local debugging port lets other local processes control this browser and access its sessions." : ""} Read its window with dom for page structure, or with image/ui/full for native pixels and Windows UI.`,
           { operation: "open_browser", ...launched.opened }, { ...this.addressed(entry), opened: true });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        if (!launched) return this.result("refused", `Browser launch failed: ${reason}`, { operation: "open_browser" });
+        if (!launched) {
+          const unknown = error instanceof WebError && error.transport;
+          if (unknown && unapproved) this.unconfirmedAgentLaunch = true;
+          return this.result(unknown ? "unknown" : "refused", `Browser launch failed: ${reason}`, { operation: "open_browser" });
+        }
         for (const [key, browser] of this.browsers) if (browser === launched.browser) this.browsers.delete(key);
         const cleanup = await launched.browser.close().then(() => "confirmed", () => "unconfirmed");
-        return this.result(cleanup === "confirmed" ? "refused" : "unknown", `The browser started but its window could not be bound, so it was closed (cleanup ${cleanup}). ${reason}`,
+        if (cleanup === "confirmed") this.unapprovedAgentBrowsers.delete(launched.browser);
+        return this.result(cleanup === "confirmed" ? "refused" : "unknown", `The browser started but its window could not be bound (cleanup ${cleanup}). ${reason}`,
           { operation: "open_browser", cleanup });
-      }
+      } finally { if (unapproved) this.unapprovedAgentLaunches--; }
     });
   }
   /**
@@ -520,32 +546,59 @@ export class ComputerSession {
    * Closing the session detaches; the browser and its tabs stay open.
    */
   async attachBrowser(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
-    const prepared = await this.queue<ComputerResult | { pid: number; title: string }>(async () => {
+    const prepared = await this.queue<ComputerResult | { pid: number; title: string; owned?: WebBrowser }>(async () => {
       if (signal?.aborted || !this.launchWeb || this.driver.windowLifetime === false)
         return this.result("refused", "Attaching needs Windows window lifetime and the Playwright browser backend; nothing was attached.");
-      if (this.getMode() !== "yolo")
-        return this.result("refused", "Attaching Playwright to an existing browser exposes its signed-in sessions, so Safe mode allows only browsers the session opened. Only the user can select YOLO with /computer-mode.");
       const entry = await this.current(ref, signal);
       if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
       if (entry.web) return this.result("refused", "Playwright already works in this browser; read the window with dom.", undefined, this.addressed(entry));
+      if (entry.owned && entry.pendingApproval) {
+        if (entry.attachingApproval) return this.result("refused", "An approval connection is already pending.");
+        const owned = this.browsers.get(`${entry.target.pid}:${entry.target.window_id}`);
+        if (!owned) return this.result("refused", "The owned browser is no longer available.");
+        entry.attachingApproval = true;
+        return { pid: entry.target.pid, title: "", owned };
+      }
+      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode attaches only to its own agent profile after approval.");
       const windows = (await this.state("list_windows", { pid: entry.target.pid }, signal)).windows as Record<string, unknown>[] ?? [];
       const title = windows.find(window => window.window_id === entry.target.window_id)?.title;
       return { pid: entry.target.pid, title: typeof title === "string" ? title : "" };
     });
     if ("content" in prepared) return prepared;
     let launched: Awaited<ReturnType<WebLauncher>>;
-    try { launched = await this.launchWeb!({ attach: prepared }, signal); }
-    catch (error) { return this.result("refused", `Attaching failed: ${error instanceof Error ? error.message : String(error)}`, { operation: "attach_browser" }); }
+    try {
+      if (prepared.owned) {
+        const opened = await prepared.owned.request<WebOpened>("approve", {}, signal, ATTACH_APPROVAL_MS + 30_000);
+        launched = { browser: prepared.owned, opened };
+      } else launched = await this.launchWeb!({ attach: { pid: prepared.pid, title: prepared.title } }, signal);
+    }
+    catch (error) {
+      const unknown = error instanceof WebError && (error.transport || error.timeout);
+      let cleanup: string | undefined;
+      if (prepared.owned) await this.queue(async () => {
+        const entry = this.entries.get(ref);
+        if (entry) entry.attachingApproval = false;
+        if (unknown) {
+          if (entry) this.browsers.delete(`${entry.target.pid}:${entry.target.window_id}`);
+          cleanup = await prepared.owned!.close().then(() => "confirmed", () => "unconfirmed");
+          this.entries.delete(ref);
+        }
+      });
+      return this.result(unknown ? "unknown" : "refused", "Attaching failed: " + (error instanceof Error ? error.message : String(error))
+        + (cleanup ? ` Owned browser cleanup ${cleanup}.` : ""), { operation: "attach_browser", ...(cleanup ? { cleanup } : {}) });
+    }
     return this.queue(async () => {
       const entry = this.entries.get(ref);
-      if (!entry || entry.web) {
+      if (!entry || entry.web || (!prepared.owned && this.getMode() !== "yolo")) {
         const cleanup = await launched.browser.close().then(() => "confirmed", () => "unconfirmed");
-        return this.result("refused", `The window closed or Playwright attached to it meanwhile, so this attachment was released (detach ${cleanup}).`, { operation: "attach_browser" });
+        return this.result(cleanup === "confirmed" ? "refused" : "unknown", `The window, attachment or access mode changed while attaching; the connection was released (cleanup ${cleanup}).`, { operation: "attach_browser" });
       }
       this.browsers.set(`${entry.target.pid}:${entry.target.window_id}`, launched.browser);
       entry.web = launched.browser;
+      entry.pendingApproval = false;
+      entry.attachingApproval = false;
       const via = { cdp: "its debugging endpoint", toggle: "the remote debugging turned on in the browser", extension: "the Playwright Extension", vscode: "VS Code's browser bridge" }[launched.opened.via ?? "extension"];
-      return this.result("delivered", `Attached Playwright to this browser through ${via}. Read the window with dom for its active tab; every tab is listed there and switch_tab changes the active one. Closing the computer session detaches without closing the browser.`,
+      return this.result(launched.opened.navigation_error ? "unknown" : "delivered", `Attached Playwright to this browser through ${via}. ${launched.opened.navigation_error ? `The requested navigation outcome is unknown: ${launched.opened.navigation_error}. Do not replay it without checking the page. ` : ""}Read the window with dom for its active tab; every tab is listed there and switch_tab changes the active one. ${prepared.owned ? "Closing the computer session closes this owned browser." : "Closing the computer session detaches without closing the browser."}`,
         { operation: "attach_browser", ...launched.opened }, this.addressed(entry));
     });
   }
@@ -1369,7 +1422,7 @@ export class ComputerSession {
     try { entry = await this.current(ref, signal); }
     catch (error) { return this.result("refused", `Window lifetime check failed: ${error instanceof Error ? error.message : String(error)}`); }
     if (!entry) return this.entries.has(ref) ? this.denied(ref) : this.result("refused", "Unknown or closed window. Discover again.");
-    if (!entry.web) return this.result("refused", "DOM is available only in browsers opened or attached with computer_open (attaching is YOLO). Use image/ui/full Reads for other windows.",
+    if (!entry.web) return this.result("refused", "DOM is available in browsers opened or attached with computer_open. A Safe agent profile needs an approved connection first. Use image/ui/full Reads for other windows.",
       undefined, this.addressed(entry));
     return entry;
   }
@@ -1745,7 +1798,8 @@ export class ComputerSession {
         if (browser) {
           this.browsers.delete(key);
           entry.web = undefined; entry.dom = undefined;
-          await browser.close().catch(() => undefined);
+          await browser.close();
+          this.unapprovedAgentBrowsers.delete(browser);
         }
         if (!this.host) {
           if (browser) { this.entries.delete(ref); return this.result("delivered", "The browser this session opened was closed.", undefined, this.addressed(entry)); }
@@ -1993,6 +2047,7 @@ export class ComputerSession {
       if (signal?.aborted) return this.result("refused", "Cancelled before action dispatch.");
       const entry = this.entries.get(action.window_ref);
       if (entry && !this.allowed(entry)) return this.denied(entry.ref);
+      if (entry?.pendingApproval && this.getMode() === "safe") return this.result("refused", "The user must enable and approve this browser connection; Safe mode does not send input to it before approval.");
       const observed = entry?.observation;
       if (!entry || !observed || action.observation_id !== observed.id)
         return this.result("refused", "Stale or missing observation_id/window_ref. Observe again.");
@@ -2072,11 +2127,11 @@ export class ComputerSession {
         let capture = observed.captureId;
         for (const [index, step] of commands.entries()) {
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before the next dispatch.");
-          if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
+          if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached; no more steps dispatched.`);
           if (step.wait_ms) await delay(step.wait_ms, undefined, { signal });
           const current = await this.current(entry.ref, signal);
-          if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
+          if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
           if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
           if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
           // The native capture is single-use: the first step that binds to it spends it, later pixel steps use the window's current mapping.
@@ -2087,7 +2142,7 @@ export class ComputerSession {
           const activityAction = presentationAction(step);
           let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction);
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
-          if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
+          if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
           // Input may change the page, so the window's DOM snapshot retires with its native capture.
           entry.observation = undefined; entry.detail = undefined; entry.dom = undefined;
@@ -2103,9 +2158,20 @@ export class ComputerSession {
           // A sequence stops between steps: its current step finishes and releases its own keys and buttons,
           // and the driver connection survives the cancellation. A single action stays cancellable in flight.
           const nativeSignal = batch ? undefined : signal;
-          const native = await this.driver.call(name, args, nativeSignal);
+          const pendingApprovalInput = !!entry.pendingApproval;
+          if (pendingApprovalInput) this.pendingApprovalInputs++;
+          let native: DriverResult;
+          try {
+            native = await this.driver.call(name, args, nativeSignal);
+            if (pendingApprovalInput && (native.isError || ["unknown", "partial"].includes(String(native.structuredContent?.status)) || ["unknown", "partial"].includes(String(native.structuredContent?.effect))))
+              this.unconfirmedAgentLaunch = true;
+          } catch (error) {
+            // Cancellation or transport loss may leave a scheduled native timeline running after this promise rejects.
+            if (pendingApprovalInput) this.unconfirmedAgentLaunch = true;
+            throw error;
+          } finally { if (pendingApprovalInput) this.pendingApprovalInputs--; }
           row.completion_ms = performance.now() - started;
-          if (!this.allowed(entry) || (!batch && signal?.aborted)) return finish(this.result("unknown",
+          if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) return finish(this.result("unknown",
             "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),
             "In-flight outcome withheld after revocation/cancellation.");
           const state = native.structuredContent ?? {};
@@ -2141,7 +2207,7 @@ export class ComputerSession {
           }
           highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal,
             { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, activityAction, status);
-          if (!this.allowed(entry) || (!batch && signal?.aborted)) {
+          if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
           }
@@ -2251,6 +2317,7 @@ export class ComputerSession {
       const browsers = [...this.browsers.values()];
       this.browsers.clear();
       const cleanup = await Promise.allSettled(browsers.map(browser => browser.close()));
+      browsers.forEach((browser, i) => { if (cleanup[i].status === "fulfilled") this.unapprovedAgentBrowsers.delete(browser); });
       const modes = [...this.replacedModes];
       this.replacedModes.clear();
       const restored = await Promise.allSettled(modes.map(([device, mode]) => this.host!.displayModes.restore(device, mode)));
@@ -2261,7 +2328,7 @@ export class ComputerSession {
       const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);
       if (unrestored.length) return this.result("unknown", `Native runtime released, but restoring the display mode of ${unrestored.join(", ")} failed. Signing out of Windows also restores it.`);
       if (!files) return this.result("unknown", "Native runtime released, but removing the session's file folder failed.");
-      if (failed) return this.result("unknown", `Native runtime released, but cleanup of ${failed} of ${browsers.length} Playwright browsers is unconfirmed.`);
+      if (failed || this.hasUnapprovedAgentBrowser()) return this.result("unknown", `Native runtime released, but browser cleanup is unconfirmed (${failed} of ${browsers.length} managed browsers failed). A YOLO agent browser or its local debugging port may still be open; verify and close it before restarting this session.`);
       return this.result("closed", "Owned computer-use runtime and session-opened browsers released; attached browsers were detached and stay open. Other application documents were not closed or saved.");
     });
   }

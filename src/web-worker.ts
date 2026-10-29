@@ -1,7 +1,8 @@
 // Windows Node worker: one visible Playwright browser with a disposable profile, the agent's persistent one, or a
 // running Chrome/Edge it attached to. EOF closes an owned browser (deleting a disposable profile) or detaches.
 import readline from "node:readline";
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { createServer } from "node:net";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
@@ -9,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, firefox, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
 import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-line.ts";
+import { lockAgentProfile } from "./agent-profile-lock.ts";
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget, WebTimelineEvent } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 import { ariaTreeFromYaml, matchesAriaTemplate } from "./aria-match.ts";
@@ -21,6 +23,12 @@ let context: BrowserContext | undefined;
 let profile: string | undefined;
 /** A running browser this worker attached to; closing only disconnects from it. */
 let attached: Browser | undefined;
+/** The agent-profile Chromium process launched by this worker, not an attached personal browser. */
+let ownedProcess: ChildProcess | undefined;
+let profileGuard: ChildProcess | undefined;
+let ownedVerified = false;
+let approvalDirectory: string | undefined;
+let approvalUrl: string | undefined;
 /**
  * Playwright's own extension relay (the Playwright Extension's connect flow). It is not part of the public API, so it
  * is reached through the bundle's tools export rather than reimplemented here.
@@ -174,17 +182,134 @@ function locate(page: Page, target: WebTarget): Locator {
   return parts.reduce((all, part) => all.and(part));
 }
 
-async function open({ browser, url, profile: kind, attach: target }: WebLaunchOptions) {
+/** Reserve a nonzero loopback port; the browser must prove it owns the endpoint after the reservation is released. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Could not reserve a browser debugging port.");
+  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  return address.port;
+}
+
+function browserExecutable(browser: "chrome" | "msedge"): string {
+  const registry = (createRequire(import.meta.url)("playwright-core/lib/coreBundle") as {
+    registry: { registry: { findExecutable(name: string): { executablePathOrDie(language: string): string } | undefined } }
+  }).registry.registry;
+  const executable = registry.findExecutable(browser)?.executablePathOrDie("javascript");
+  if (!executable) throw new Error("Unsupported browser channel: " + browser);
+  return executable;
+}
+
+/** Start the owned agent profile without Playwright's pipe; only the spawned process may supply the endpoint. */
+async function agentChromium(browser: "chrome" | "msedge", directory: string): Promise<Browser> {
+  const executable = browserExecutable(browser);
+  const port = await freePort();
+  const child = spawn(executable, ["--user-data-dir=" + directory, "--remote-debugging-address=127.0.0.1",
+    "--remote-debugging-port=" + port, "--no-first-run", "--no-default-browser-check",
+    ...(browser === "msedge" ? ["--disable-sync"] : []), "--disable-back-forward-cache", "--window-size=1100,800", "about:blank"],
+    { stdio: ["ignore", "ignore", "pipe"], windowsHide: false });
+  ownedProcess = child;
+  const endpoint = await new Promise<string>((resolve, reject) => {
+    let log = "";
+    const timer = setTimeout(() => finish(new Error("The owned browser did not expose its debugging endpoint.")), 30_000);
+    const finish = (error?: Error, value?: string) => {
+      clearTimeout(timer); child.stderr?.off("data", data); child.off("error", failed); child.off("exit", exited);
+      error ? reject(error) : resolve(value!);
+    };
+    const data = (chunk: Buffer) => {
+      log = (log + chunk.toString()).slice(-16_000);
+      const match = log.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:(\d+)\/devtools\/browser\/[a-zA-Z0-9-]+)/);
+      if (match && Number(match[2]) === port) finish(undefined, match[1]);
+    };
+    const failed = (error: Error) => finish(error);
+    const exited = () => finish(new Error("The browser exited before its debugging endpoint was ready; its profile may already be in use."));
+    child.stderr?.on("data", data); child.once("error", failed); child.once("exit", exited);
+  });
+  const connected = await chromium.connectOverCDP(endpoint);
+  attached = connected;
+  const cdp = await connected.newBrowserCDPSession();
+  try {
+    const { processInfo } = await cdp.send("SystemInfo.getProcessInfo");
+    if (processInfo.find(item => item.type === "browser")?.id !== child.pid)
+      throw new Error("The debugging endpoint does not belong to the browser this session launched.");
+  } finally { await cdp.detach(); }
+  ownedVerified = true;
+  return connected;
+}
+/** Launch normally. The user may sign in before enabling Chrome's approved debugging bridge. */
+async function approvalBrowser(browser: "chrome" | "msedge", directory: string, url?: string) {
+  const child = spawn(browserExecutable(browser), ["--user-data-dir=" + directory, "--no-first-run", "--no-default-browser-check",
+    browser === "chrome" ? "chrome://inspect/#remote-debugging" : "edge://inspect/#remote-debugging"],
+    { stdio: "ignore", windowsHide: false });
+  ownedProcess = child;
+  approvalDirectory = directory;
+  approvalUrl = url;
+  await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+  if (!child.pid) throw new Error("The browser did not report its process id.");
+  return { pid: child.pid, version: "", url: "", title: "" };
+}
+
+/** Connect only to the approval bridge owned by this session's browser process. */
+async function approve() {
+  const child = ownedProcess, directory = approvalDirectory;
+  if (!child?.pid || !directory || child.exitCode !== null || child.signalCode !== null)
+    throw new Error("The owned agent browser is no longer running.");
+  const [portText, wsPath] = (await readFile(path.join(directory, "DevToolsActivePort"), "utf8").catch(() => "")).trim().split("\n");
+  const port = Number(portText);
+  if (!Number.isInteger(port) || port < 1 || port > 65535 || !/^\/devtools\/browser\/[a-zA-Z0-9-]+$/.test(wsPath ?? ""))
+    throw new Error("Enable remote debugging in the agent browser's inspect page before attaching.");
+  const tree = await processTree(child.pid);
+  if (!tree.ports.includes(port)) throw new Error("The approval endpoint is not owned by this browser; turn remote debugging off and on again.");
+  const connected = await chromium.connectOverCDP("ws://127.0.0.1:" + port + wsPath, { timeout: ATTACH_APPROVAL_MS }).catch(error => {
+    const failure = new Error(`Approval outcome is unknown: ${error instanceof Error ? error.message : String(error)}`);
+    failure.name = "ApprovalOutcomeUnknown";
+    throw failure;
+  });
+  // Approval has occurred. Retain the connection immediately so cleanup can always disconnect it.
+  attached = connected;
+  try {
+    const cdp = await connected.newBrowserCDPSession();
+    try {
+      const { processInfo } = await cdp.send("SystemInfo.getProcessInfo");
+      if (processInfo.find(item => item.type === "browser")?.id !== child.pid)
+        throw new Error("The approval endpoint does not belong to the owned browser.");
+    } finally { await cdp.detach().catch(() => undefined); }
+    const owned = connected.contexts()[0];
+    if (!owned) throw new Error("The approved browser exposed no tabs.");
+    context = owned; ownedVerified = true; approvalDirectory = undefined;
+    trackTabs(owned);
+    active = tabs[0] ?? adopt(await owned.newPage());
+    let navigation_error: string | undefined;
+    if (approvalUrl) {
+      const requested = approvalUrl; approvalUrl = undefined;
+      try { await active.page.goto(requested, { waitUntil: "domcontentloaded" }); }
+      catch (error) { navigation_error = (error instanceof Error ? error.message : String(error)).replace(/\x1b\[[0-9;]*m/g, "").split("\nCall log:")[0].trim(); }
+    }
+    return { pid: child.pid, version: connected.version(), url: active.page.url(), title: await active.page.title().catch(() => ""), via: "toggle", ...(navigation_error ? { navigation_error } : {}) };
+  } catch (error) {
+    const failure = new Error(`Approval may have succeeded before attachment failed: ${error instanceof Error ? error.message : String(error)}`);
+    failure.name = "ApprovalOutcomeUnknown";
+    throw failure;
+  }
+}
+async function open({ browser, url, profile: kind, approval, attach: target }: WebLaunchOptions) {
   if (target) return attach(target);
   if (context) throw new Error("This worker already owns a browser.");
   // The agent's persistent profile lives in its own folder per browser and is kept on close; a disposable one is deleted.
   const directory = kind === "agent"
     ? path.join(process.env.LOCALAPPDATA ?? tmpdir(), "PiComputerUse", "browser-profiles", browser ?? "chrome")
     : profile = await mkdtemp(path.join(tmpdir(), "pi-browser-"));
-  if (kind === "agent") await mkdir(directory, { recursive: true });
+  if (kind === "agent") {
+    await mkdir(directory, { recursive: true });
+    profileGuard = await lockAgentProfile(browser ?? "chrome", directory);
+  }
+  if (kind === "agent" && approval && browser !== "firefox") return approvalBrowser(browser ?? "chrome", directory, url);
   // Playwright's default flags trade browser security for test determinism; keep only what an owned pipe/profile needs.
   // Firefox is Playwright's own build, which needs Playwright's own flags.
-  context = browser === "firefox"
+  context = kind === "agent" && browser !== "firefox"
+    ? (await agentChromium(browser ?? "chrome", directory)).contexts()[0]
+    : browser === "firefox"
     ? await firefox.launchPersistentContext(directory, { headless: false, viewport: null }).catch((error: Error) => {
       if (!/Executable doesn't exist/.test(error.message)) throw error;
       throw new Error("Playwright's Firefox is not installed on this machine. Ask the user to install it "
@@ -196,6 +321,7 @@ async function open({ browser, url, profile: kind, attach: target }: WebLaunchOp
         // Playwright's default flags include this one: a page restored from the back-forward cache fires no load events.
         "--disable-sync", "--disable-back-forward-cache", "--window-size=1100,800", "about:blank"],
     });
+  if (!context) throw new Error("The launched browser exposed no default context.");
   trackTabs(context);
   active = tabs[0] ?? adopt(await context.newPage());
   const owner = context.browser();
@@ -645,19 +771,45 @@ async function screenshot({ target, highlight, css }: { target?: WebTarget; high
 }
 
 async function close() {
-  const owned = context, directory = profile, connected = attached;
-  context = undefined; attached = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
+  const owned = context, directory = profile, connected = attached, child = ownedProcess, verified = ownedVerified;
+  context = undefined; attached = undefined; ownedProcess = undefined; ownedVerified = false; approvalDirectory = undefined; approvalUrl = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
+  if (child) {
+    // Only a browser whose CDP identity matches our child may receive Browser.close.
+    if (connected && verified) {
+      const cdp = await connected.newBrowserCDPSession().catch(() => undefined);
+      await cdp?.send("Browser.close").catch(() => undefined);
+    }
+    await connected?.close().catch(() => undefined);
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+      if (connected && verified) await Promise.race([exited, new Promise<void>(resolve => setTimeout(resolve, 5_000))]);
+      if (child.exitCode === null && child.signalCode === null) {
+        if (!child.kill()) throw new Error("The owned browser could not be closed.");
+        await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The owned browser did not exit.")), 5_000))]);
+      }
+    }
   // Closing an attached browser only disconnects: the browser and its tabs stay open.
-  if (connected) await connected.close();
+  } else if (connected) await connected.close();
   else await owned?.close();
   if (directory) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  if (profileGuard) {
+    const guard = profileGuard;
+    profileGuard = undefined;
+    if (guard.exitCode === null && guard.signalCode === null) {
+      const exited = new Promise<void>(resolve => guard.once("exit", () => resolve()));
+      guard.stdin?.end("\n");
+      await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The agent profile lock did not release.")), 5_000))]);
+    }
+  }
   return {};
 }
 
-const operations: Record<string, (args: never) => Promise<unknown>> = { open, snapshot, act, check, screenshot, close };
+const operations: Record<string, (args: never) => Promise<unknown>> = { open, approve, snapshot, act, check, screenshot, close };
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+// A cancelled request may still be running. Never let close overtake an unfinished open or approval.
+let operationsTail: Promise<void> = Promise.resolve();
 input.on("line", line => {
-  void (async () => {
+  operationsTail = operationsTail.then(async () => {
     let id: unknown;
     try {
       const request = JSON.parse(line) as { id: unknown; op: string; args: never };
@@ -669,10 +821,10 @@ input.on("line", line => {
       const failure = error instanceof Error ? error : new Error(String(error));
       process.stdout.write(JSON.stringify({ id, error: { name: failure.name, message: failure.message } }) + "\n");
     }
-  })();
+  });
 });
 input.on("close", () => {
-  close().catch(error => {
+  operationsTail.then(() => close()).catch(error => {
     process.stderr.write(`Owned browser cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
   // An unfinished extension attach keeps Playwright's relay listening; the worker ends with its input either way.

@@ -24,6 +24,8 @@ export async function machineConfig(cwd: string, name: string): Promise<NonNulla
 /** The worker files whose version decides the remote browser's behavior, relative to its package copy. */
 const WORKER_FILES: [string, string][] = [
   ["src/web-worker.ts", fileURLToPath(new URL("./web-worker.ts", import.meta.url))],
+  ["src/agent-profile-lock.ts", fileURLToPath(new URL("./agent-profile-lock.ts", import.meta.url))],
+  ["src/browser-command-line.ts", fileURLToPath(new URL("./browser-command-line.ts", import.meta.url))],
   ["src/aria-match.ts", fileURLToPath(new URL("./aria-match.ts", import.meta.url))],
   ["src/web-geometry.ts", fileURLToPath(new URL("./web-geometry.ts", import.meta.url))],
   ["node_modules/playwright-core/package.json", createRequire(import.meta.url).resolve("playwright-core/package.json")],
