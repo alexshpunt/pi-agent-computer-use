@@ -493,7 +493,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         async tryResolve(request, context) {
           if (!owns(request.path)) return { kind: "not-handled" };
           try {
-            if (request.include !== undefined || request.exclude !== undefined || request.navigation !== undefined || request.caseSensitive || request.wholeWord)
+            if (request.include !== undefined || request.exclude !== undefined || ("navigation" in request && request.navigation !== undefined) || request.caseSensitive || request.wholeWord)
               throw new ComputerRequestError("Computer Search uses native discovery/UI text predicates, not file globs or symbol navigation.");
             const result = await resources.search(resources.address(request.path), context.cwd, request.query, request.limit, context.signal);
             return { kind: "resolved", payload: result };
@@ -519,11 +519,14 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         matches: input => owns(record(input).path),
         execute: (context, input) => refuseComputerEdit(resources, tool, context.sourceFor("path"), record(input)),
       });
-      api.tool("delete").addSemanticHandler({
+      const deleteTool = api.tool("delete");
+      deleteTool.addSemanticHandler({
         matches: input => owns(record(input).path),
         execute: (context, input) => deleteComputer(resources, context.sourceFor("path"), record(input), context.cwd, context.signal),
       });
-      api.tool("delete").describeField("path", COMPUTER_DELETE_HELP);
+      // Field descriptions are additive on newer IDE SDKs; semantic ownership works on both.
+      if ("describeField" in deleteTool && typeof deleteTool.describeField === "function")
+        deleteTool.describeField("path", COMPUTER_DELETE_HELP);
     } })),
   ]);
   return { resources, guide, attached: () => accepted.size === 3 };

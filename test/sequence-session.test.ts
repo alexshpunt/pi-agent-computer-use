@@ -1,22 +1,39 @@
 import sharp from "sharp";
 import { expect, test, vi } from "vitest";
 import { ComputerSession, type Driver, type ComputerMode } from "../src/session.ts";
+import type { WindowObserver } from "../src/native-visuals.ts";
 
-async function fixture() {
+async function fixture(observer?: WindowObserver) {
   const bytes = await sharp({ create: { width: 40, height: 30, channels: 3, background: "red" } }).png().toBuffer();
   const image = { type: "image" as const, mimeType: "image/png", data: bytes.toString("base64") };
-  let mode: ComputerMode = "yolo"; let lifetime = "initial";
+  let mode: ComputerMode = "yolo"; let lifetime = `PiComputerUse.${"a".repeat(32)}:42:1`;
   const driver: Driver = {
     identity: vi.fn(async () => lifetime), close: vi.fn(async () => {}),
     call: vi.fn(async (name) => name === "list_windows" ? { content: [], structuredContent: { windows: [{ pid: 42, window_id: 91 }] } } :
       { content: [image], structuredContent: { pid: 42, window_id: 91, window_bounds: { x: 10, y: 20, width: 40, height: 30 },
         screenshot_width: 40, screenshot_height: 30, screenshot_original_width: 40, screenshot_original_height: 30, elements: [] } }),
   };
-  const session = new ComputerSession(driver, () => mode);
+  const session = new ComputerSession(driver, () => mode, undefined, observer);
   const windows = await session.windows(); const ref = (windows.details.state!.windows as { window_ref: string }[])[0].window_ref;
   return { session, driver, ref, setMode: (value: ComputerMode) => { mode = value; }, replace: () => { lifetime = "replacement"; } };
 }
 
+test("temporal playback emits a bounded completion cue and previews only explicitly returned images", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" })); const f = await fixture(observer);
+  const captured = await f.session.captureSequence({ window_ref: f.ref }, { duration_ms: 1 });
+  expect(captured.details.status).toBe("observed");
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("image");
+  observer.mockClear();
+  const before = vi.mocked(f.driver.call).mock.calls.length;
+  const selected = await f.session.sequenceFrames(captured.details.sequence!.sequence_id, "all", undefined, { as: "sheet" });
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ image: selected.content.find(block => block.type === "image"), action: "frames" });
+  expect(vi.mocked(f.driver.call).mock.calls).toHaveLength(before);
+  f.setMode("safe"); observer.mockClear();
+  expect((await f.session.sequenceFrames(captured.details.sequence!.sequence_id, "all")).details.status).toBe("refused");
+  expect(observer).not.toHaveBeenCalled();
+});
 test("sequence captures no context images, revokes old input, and explicit selection returns read-only frames", async () => {
   const f = await fixture(); const overview = await f.session.observe(f.ref);
   const capture = await f.session.captureSequence({ window_ref: f.ref }, { duration_ms: 1 });

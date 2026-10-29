@@ -25,7 +25,7 @@ export async function connectLive(cwd = process.cwd()) {
   let local: ComputerSession | undefined;
   const resources = new ComputerResources(async () => {
     if (name !== "local") throw new Error("Live checks use only the remote machine.");
-    return local ??= new ComputerSession(new McpDriver(config), () => "yolo", () => images.settings(), undefined, undefined,
+    return local ??= new ComputerSession(new McpDriver(config), () => "yolo", () => images.settings(), undefined,
       (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal), new MachineHost(localRunner(config.interop)));
   }, async () => local ? local.close() : { content: [], details: { status: "closed", mode: "yolo" } },
     sandboxFactory({ settings: () => images.settings() }), machineFactory({ getMode: () => "yolo", settings: () => images.settings() }));

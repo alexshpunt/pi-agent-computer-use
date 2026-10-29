@@ -41,15 +41,20 @@ test("standalone Pi opens two windows with first observations, rejects invented 
     expect(second).toMatchObject({ status: "observed", target: { pid: 42, window_id: 102 } });
     expect(second.window_ref).not.toBe(first.window_ref);
     // The text shows this run's short addresses (LPT-932); the long references stay in the details.
-    expect(getToolResultText(result, "first")).toMatch(/^Window: computer:local\/w1[a-z]{2}\nObservation: computer:local\/o1[a-z]{2}$/m);
+    const sources = [...new Set(getToolResultText(result, "first").match(/computer:local\/[wo]\d+[a-z]{2}\b/g))];
+    expect(sources).toHaveLength(2);
+    expect(sources).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^computer:local\/w\d+[a-z]{2}$/), expect.stringMatching(/^computer:local\/o\d+[a-z]{2}$/),
+    ]));
     expect(getToolExecution(result, "first").isError).toBe(false);
     expect(getToolExecution(result, "stale").isError).toBe(true);
-    expect(getToolResultText(result, "stale")).toContain("Unknown or closed window reference");
+    expect(action(getToolExecutionDetails(getToolExecution(result, "stale")))).toMatchObject({ ok: false, effect: "not-applied" });
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
     expect(calls.filter(call => call.name === "launch_app")).toHaveLength(2);
     expect(calls.filter(call => call.name === "get_window_state")).toHaveLength(2);
     expect(calls.filter(call => call.name === "type_text")).toHaveLength(0);
     expect(calls).toContainEqual({ event: "stdin-eof" });
-    expect(result.tuiRenderedOutput).toContain("computer_open");
+    expect(action(getToolExecutionDetails(getToolExecution(result, "close")))).toMatchObject({ status: "closed", effect: "applied", ok: true });
+    expect(getToolExecution(result, "close").isError).toBe(false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

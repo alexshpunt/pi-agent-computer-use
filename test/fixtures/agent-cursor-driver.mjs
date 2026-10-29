@@ -1,4 +1,4 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -8,9 +8,20 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 const [log, mode] = process.argv.slice(2);
 let glide = 0;
 const server = new Server({ name: "cua-driver", version: "0.33.2" }, { capabilities: { tools: {} } });
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  if (mode === "visuals-retry-discovery" && !existsSync(log)) {
+    appendFileSync(log, JSON.stringify({ name: "discovery_wait", arguments: {} }) + "\n");
+    await new Promise(() => {});
+  }
+  return { tools: mode.startsWith("visuals") ? ["present_agent_activity", "set_agent_visuals"].map(name => ({ name, inputSchema: { type: "object" } })) : [] };
+});
 server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, arguments: args = {} } }) => {
   appendFileSync(log, JSON.stringify({ name, arguments: args }) + "\n");
+  if (name === "set_agent_visuals" && mode === "visuals-retry-configuration" && !existsSync(log + ".configured")) {
+    writeFileSync(log + ".configured", "ready");
+    await new Promise(() => {});
+  }
+  if (name === "set_agent_visuals" && mode === "visuals-refused") return { content: [], isError: true };
   if (name === "set_agent_cursor_motion") {
     if (mode === "refuses") return { content: [{ type: "text", text: "refused" }], isError: true };
     if (mode === "applies") glide = args.glide_duration_ms;

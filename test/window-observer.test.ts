@@ -1,7 +1,8 @@
 import { expect, test, vi } from "vitest";
 import sharp from "sharp";
 import { ComputerSession, type ComputerMode, type Driver } from "../src/session.ts";
-import type { WindowObserver } from "../src/window-overlay.ts";
+import type { WindowObserver } from "../src/native-visuals.ts";
+import { ComputerResources, requireComputerAddress } from "../src/computer-resources.ts";
 
 async function fixture(observer: WindowObserver) {
   let mode: ComputerMode = "yolo"; let marker = 1;
@@ -19,7 +20,7 @@ async function fixture(observer: WindowObserver) {
         const created = { pid: 42, window_id: 101, app_name: "Calculator.exe", title: "Owned", bounds };
         windows.push(created); return { content: [], structuredContent: { pid: 42, windows: [created] } };
       }
-      if (name === "get_window_state") return { content: [png], structuredContent: { ...args, elements: [{ element_token: "root", frame: { x: 30, y: 40, w: 1000, h: 700 }, screenshot_frame: { x: -1, y: -1, w: 500, h: 350 } }, { element_token: "button", frame: { x: 230, y: 240, w: 120, h: 60 }, screenshot_frame: { x: 100, y: 100, w: 60, h: 30 } }], screenshot_width: 500, screenshot_height: 350, window_bounds: bounds } };
+      if (name === "get_window_state") return { content: [args.max_image_dimension === 4096 ? raw : png], structuredContent: { ...args, elements: [{ element_token: "root", role: "Window", frame: { x: 30, y: 40, w: 1000, h: 700 }, screenshot_frame: { x: -1, y: -1, w: 500, h: 350 } }, { element_token: "button", role: "Button", frame: { x: 230, y: 240, w: 120, h: 60 }, screenshot_frame: { x: 100, y: 100, w: 60, h: 30 } }], screenshot_width: args.max_image_dimension === 4096 ? 1000 : 500, screenshot_height: args.max_image_dimension === 4096 ? 700 : 350, window_bounds: bounds } };
       if (name === "zoom") return { content: [jpeg], structuredContent: { width: 200, height: 100 } };
       if (name === "get_desktop_state") return { content: [args.max_image_dimension === 0 ? raw : png], structuredContent: { display: "primary", platform: "windows", screenshot_width: args.max_image_dimension === 0 ? 1000 : 500, screenshot_height: args.max_image_dimension === 0 ? 700 : 350, screenshot_original_width: 1000, screenshot_original_height: 700, screen_width: 1000, screen_height: 700, scale_factor: 1 } };
       if (name === "click" && args.x !== undefined) return { content: [{ type: "text", text: "✅ Posted click to Chromium pid 42 at (231,241) (background, no foreground swap)." }], structuredContent: { path: "post_message", effect: "unverifiable" } };
@@ -35,17 +36,56 @@ async function outside(session: ComputerSession) {
   return (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
 }
 
+test("change reads present only images in the final returned result", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" })); const f = await fixture(observer);
+  const ref = await outside(f.session); const resources = new ComputerResources(async () => f.session, async () => f.session.close());
+  const address = requireComputerAddress(`computer:window/${ref}`);
+  await resources.read(address, process.cwd()); observer.mockClear();
+  const original = f.driver.call;
+  const changed = { type: "image" as const, mimeType: "image/png", data: (await sharp(Buffer.from(f.png.data, "base64"))
+    .composite([{ input: { create: { width: 40, height: 30, channels: 3, background: "red" } }, left: 60, top: 60 }]).png().toBuffer()).toString("base64") };
+  f.driver.call = vi.fn(async (name, args, signal) => { const reply = await original(name, args, signal);
+    return name === "get_window_state" ? { ...reply, content: [changed] } : reply; });
+  const result = await resources.read(address, process.cwd(), ["changes"]);
+  const images = result!.content.filter(block => block.type === "image");
+  expect(result!.details.status).toBe("observed"); expect(images.length).toBeGreaterThan(0);
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ image: images.at(-1) });
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("image.data", changed.data);
+});
+test("cached image reads and UI inspection announce their existing source without recapturing", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" })); const f = await fixture(observer);
+  const ref = await outside(f.session); const resources = new ComputerResources(async () => f.session, async () => f.session.close());
+  const overview = (await resources.read(requireComputerAddress(`computer:window/${ref}`), process.cwd()))!;
+  observer.mockClear(); const before = vi.mocked(f.driver.call).mock.calls.length;
+  const snapshot = requireComputerAddress(`computer:observation/${overview.details.observation_id}`);
+  const reread = (await resources.read(snapshot, process.cwd()))!;
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ image: reread.content.find(block => block.type === "image") });
+  observer.mockClear();
+  const inspected = await resources.read(snapshot, process.cwd(), [`element:inspect,${overview.details.ui!.elements[1].hint}`]);
+  expect(inspected!.details.status).toBe("observed");
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "inspect", region: { x: 230, y: 240, width: 120, height: 60 } } });
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("image");
+  expect(vi.mocked(f.driver.call).mock.calls).toHaveLength(before);
+  observer.mockClear(); const abort = new AbortController(); abort.abort();
+  const cancelled = await resources.read(snapshot, process.cwd(), [`element:text,${overview.details.ui!.elements[1].hint}`], abort.signal);
+  expect(cancelled!.details.status).toBe("refused"); expect(observer).not.toHaveBeenCalled();
+});
 test("overview, requested window zoom and primary-display crop flash their own physical scopes", async () => {
   const observer = vi.fn<WindowObserver>(async () => ({ status: "shown" })); const f = await fixture(observer);
   f.setMode("safe"); const opened = await f.session.open("Calculator");
   expect(opened.details).toMatchObject({ status: "observed", highlight: { status: "shown" } });
-  expect(observer).toHaveBeenCalledWith({ target: { pid: 42, window_id: 101 }, identity: `PiComputerUse.${"a".repeat(32)}:42:1`, bounds: f.bounds }, undefined);
+  expect(observer).toHaveBeenCalledWith({ target: { pid: 42, window_id: 101 }, identity: `PiComputerUse.${"a".repeat(32)}:42:1`, bounds: f.bounds, image: opened.content.find(block => block.type === "image") }, undefined);
   const overview = await f.session.observe(opened.details.window_ref!);
   const detail = await f.session.observe(opened.details.window_ref!, undefined, undefined, {
     image_id: overview.details.agent_image!.image_id as string, x: 10, y: 10, width: 100, height: 70,
   });
   expect(detail.details.status).toBe("observed"); expect(detail.content).toContainEqual(f.jpeg);
-  expect(detail.content[0]).toMatchObject({type:"text",text:expect.stringContaining("Human mark: detail shown; screen region 51,61 200x140.")});
+  expect(detail.details.highlight).toMatchObject({ kind: "detail", status: "shown", region: { x: 51, y: 61, width: 200, height: 140 } });
+  expect(observer.mock.calls[1][0]).toHaveProperty("image", overview.content.find(block => block.type === "image"));
+  expect(observer.mock.calls[2][0]).toHaveProperty("image", f.jpeg);
   expect(observer).toHaveBeenCalledTimes(3);
   expect(observer.mock.calls[2][0]).toMatchObject({ bounds: f.bounds, mark: { kind: "detail", region: { x: 51, y: 61, width: 200, height: 140 } } });
   f.setMode("yolo"); const display = await f.session.observeDisplay("primary");
@@ -63,9 +103,10 @@ test("action marks AX before input and the resolved pixel after dispatch; stale 
   const read = await f.session.observe(ref); observer.mockClear(); events.length = 0;
   const action = { window_ref: ref, observation_id: read.details.observation_id!, action: "click" as const, element_token: "button" };
   expect((await f.session.act(action)).details.status).toBe("delivered");
-  expect(events).toEqual(["mark", "input"]);
+  expect(events).toEqual(["mark", "input", "mark"]);
+  expect(observer.mock.calls[1][0]).toMatchObject({ outcome: "delivered" });
   expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "action", region: { x: 230, y: 240, width: 120, height: 60 } } });
-  expect((await f.session.act(action)).details.status).toBe("refused"); expect(observer).toHaveBeenCalledTimes(1);
+  expect((await f.session.act(action)).details.status).toBe("refused"); expect(observer).toHaveBeenCalledTimes(2);
   const next = await f.session.observe(ref); observer.mockClear();
   await f.session.act({ ...action, observation_id: next.details.observation_id!, element_token: undefined, x: 100, y: 100 });
   expect(observer.mock.calls.at(-1)![0]).toMatchObject({ mark: { kind: "action", point: { x: 231, y: 241 } } });
@@ -77,7 +118,10 @@ test("an ungrounded keyboard action does not invent a focused element, and rende
   observer.mockClear();
   const result = await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "key", key: "return" });
   expect(result.details.status).toBe("delivered"); expect(result.details.highlight).toMatchObject({ status: "unavailable" });
-  expect(result.content[0]).toMatchObject({type:"text",text:expect.stringContaining("Human mark: target unavailable (native_geometry_unavailable).")});
+  expect(result.details.highlight).toMatchObject({ reason: "renderer_unavailable" });
+  expect(observer.mock.calls.at(-1)?.[0]).toMatchObject({ mark: { kind: "action" }, outcome: "delivered" });
+  expect(observer.mock.calls.at(-1)?.[0]).not.toHaveProperty("mark.point");
+  expect(observer.mock.calls.at(-1)?.[0]).not.toHaveProperty("mark.region");
   expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "press_key")).toHaveLength(1);
 });
 test("permission loss or cancellation during an action mark prevents the single native dispatch", async () => {
@@ -98,7 +142,15 @@ test("a refused pixel dispatch cannot turn a plausible native coordinate into an
   } : original(name, args, signal));
   const result = await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "click", x: 100, y: 100 });
   expect(result.details.status).toBe("refused");
-  expect(observer.mock.calls.every(([frame]) => "clear" in frame)).toBe(true);
+  const before = observer.mock.calls[0][0];
+  expect(before).toMatchObject({ target: { pid: 42, window_id: 100 }, identity: expect.any(String),
+    bounds: f.bounds, mark: { kind: "action" }, action: "click" });
+  expect(before).not.toHaveProperty("mark.point");
+  expect(before).not.toHaveProperty("mark.region", expect.anything());
+  expect(before).not.toHaveProperty("outcome");
+  expect(before).not.toHaveProperty("image");
+  expect(observer.mock.calls.at(-1)?.[0]).toMatchObject({ mark: { kind: "action" }, outcome: "refused" });
+  expect(observer.mock.calls.at(-1)?.[0]).not.toHaveProperty("mark.point");
   expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "click")).toHaveLength(1);
 });
 test("Safe denial, pre-cancellation and recycled HWNDs never reach the frame observer", async () => {
@@ -111,6 +163,64 @@ test("Safe denial, pre-cancellation and recycled HWNDs never reach the frame obs
   expect(observer).not.toHaveBeenCalled();
 });
 
+test("snapshot refinement previews the final annotated image and verification emits one completion, not every sample", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" }));
+  const f = await fixture(observer); const ref = await outside(f.session);
+  const read = await f.session.observe(ref); observer.mockClear();
+  const refined = await f.session.observe(ref, undefined, undefined, undefined, {
+    observation_id: read.details.observation_id!, operation: "highlight", hint: read.details.ui!.elements[1].hint,
+  });
+  expect(refined.details.status).toBe("observed");
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "inspect", region: { x: 230, y: 240, width: 120, height: 60 } }, image: refined.content.find(block => block.type === "image") });
+  observer.mockClear();
+  const result = await f.session.waitFor(ref, f.session.waitSpec(ref, { action: "verify", conditions: [{ target: { role: "Button" }, is: "visible" }] }));
+  expect(result.details.verification?.samples).toBe(1);
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "verify" } });
+  expect(observer.mock.calls[0][0]).not.toHaveProperty("image");
+});
+test.each(["after lifetime check", "during sample"] as const)("cancelled verification stays unknown %s and emits no completion", async phase => {
+  const abort = new AbortController(); const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" }));
+  const f = await fixture(observer); const ref = await outside(f.session);
+  if (phase === "after lifetime check") {
+    const identity = f.driver.identity;
+    f.driver.identity = vi.fn<Driver["identity"]>(async (...args) => { const value = await identity(...args); abort.abort(); return value; });
+  } else {
+    const call = f.driver.call;
+    f.driver.call = vi.fn<Driver["call"]>(async (...args) => { const value = await call(...args); if (args[0] === "get_window_state") abort.abort(); return value; });
+  }
+  const result = await f.session.waitFor(ref, f.session.waitSpec(ref, { action: "verify", conditions: [{ target: { role: "Button" }, is: "visible" }] }), abort.signal);
+  expect(result.details).toMatchObject({ status: "observed", verification: { verdict: "unknown", samples: 0, timed_out: false } });
+  expect(result.content.every(block => block.type !== "image")).toBe(true);
+  expect(observer).not.toHaveBeenCalled();
+  expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state")).toHaveLength(phase === "during sample" ? 1 : 0);
+});
+
+test.each(["cancel", "revoke"] as const)("verification completion rechecks %s without exposing a decided result", async change => {
+  const abort = new AbortController(); const observer = vi.fn<WindowObserver>(async () => {
+    if (change === "cancel") abort.abort(); else f.setMode("safe");
+    return { status: "queued" };
+  });
+  const f = await fixture(observer); const ref = await outside(f.session);
+  const result = await f.session.waitFor(ref, f.session.waitSpec(ref, { action: "verify", conditions: [{ target: { role: "Button" }, is: "visible" }] }), abort.signal);
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "verify" }, outcome: "verified" });
+  if (change === "cancel") expect(result.details).toMatchObject({ status: "observed", verification: { verdict: "unknown", samples: 1 } });
+  else { expect(result.details.status).toBe("refused"); expect(result.details).not.toHaveProperty("verification"); }
+  expect(result.content.every(block => block.type !== "image")).toBe(true);
+  expect(vi.mocked(f.driver.call).mock.calls.filter(([name]) => name === "get_window_state")).toHaveLength(1);
+});
+test("a viewport previews its returned crop and marks only the proven physical region", async () => {
+  const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" }));
+  const f = await fixture(observer); const ref = await outside(f.session);
+  await f.session.observe(ref); observer.mockClear();
+  const resources = new ComputerResources(async () => f.session, async () => f.session.close());
+  const read = await resources.view(requireComputerAddress(`computer:window/${ref}/pano`), process.cwd(), { x: 10, y: 10, width: 100, height: 70 });
+  expect(read.details.status).toBe("observed");
+  expect(observer).toHaveBeenCalledTimes(1);
+  expect(observer.mock.calls[0][0]).toMatchObject({ mark: { kind: "detail", region: { x: 51, y: 61, width: 200, height: 140 } }, image: read.content.find(block => block.type === "image") });
+});
 test("renderer failure does not corrupt or replay a valid desktop capture", async () => {
   const observer = vi.fn<WindowObserver>(async () => { throw new Error("render failure"); }); const f = await fixture(observer);
   const read = await f.session.observe(await outside(f.session), undefined, undefined, undefined, undefined, { hints: false });

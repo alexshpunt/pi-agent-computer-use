@@ -130,12 +130,14 @@ test("cancellation during native selected capture withholds pixels and does not 
   expect(result.details).not.toHaveProperty("agent_image");
 });
 
-test("selected-monitor reads clear a primary-only human overlay rather than marking another monitor", async () => {
+test("selected-monitor observations carry the exact physical monitor source and returned image", async () => {
   const f = await fixture(); const observer = vi.fn(async () => ({ status: "shown" as const }));
   const session = new ComputerSession(f.driver, undefined, undefined, observer);
   const listed = await session.displays();
   const ref = (listed.details.state!.displays as { display_ref: string }[])[1].display_ref;
   const view = await session.observeDisplay(ref);
-  expect(view.details.status).toBe("observed"); expect(observer).toHaveBeenCalledWith({ clear: true }, undefined);
-  expect(view.details.highlight).toMatchObject({ status: "unavailable", reason: "selected_display_overlay_unsupported" });
+  expect(view.details.status).toBe("observed");
+  const display = left;
+  expect(observer).toHaveBeenCalledWith({ display: display.display_id, bounds: display.bounds, image: view.content.find(block => block.type === "image") }, undefined);
+  expect(view.details.highlight).toMatchObject({ status: "shown" });
 });

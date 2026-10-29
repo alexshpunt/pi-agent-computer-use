@@ -13,6 +13,7 @@ import { SingleConnectionHttpTransport } from "./http-transport.ts";
 import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts";
 import { verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
+import { NativeVisuals, VisualSettings, type WindowObserver } from "./native-visuals.ts";
 
 /** Foreground input waits until the human has not used the keyboard or mouse for this long (owner choice, LPT-835). */
 const HUMAN_IDLE_MS = 10_000;
@@ -86,8 +87,8 @@ export const WINDOW_RESTORE_RUNTIME = {
 } as const;
 /** Window management plus every earlier native capability; `windows-desktop` selects these bytes. Browser pages use Playwright, not this runtime. */
 export const WINDOW_MANAGEMENT_RUNTIME = {
-  source: "33c4b82b655065327253e771e73c70ff88697074", version: "0.37.0",
-  sha256: "14fee78b3b5a6ac0368d29813cbd2c0bdd43da3ee14a5a4791762ce0f3e3dc03",
+  source: "505d090e1538b9cbe349e579c30006abf1379871", version: "0.38.0",
+  sha256: "a4e68758c1c9403db40f6c9505d1defb551a5badde788f6e0983a1584eac8edc",
 } as const;
 const forkRuntimes = {
   "windows-desktop": WINDOW_MANAGEMENT_RUNTIME,
@@ -119,6 +120,9 @@ const timelineLength = (args: Record<string, unknown>) => {
 };
 /** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
+  private nativeVisualsAvailable = false;
+  private readonly presentation: NativeVisuals;
+  readonly visuals: WindowObserver;
   private client?: Client;
   private transport?: Transport;
   private stderr = "";
@@ -165,7 +169,16 @@ export class McpDriver implements Driver {
   get windowCrop(): boolean { return this.config.runtime === "windows-desktop"; }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
   get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
-  constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2") {
+  constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2",
+    private readonly visualSettings = new VisualSettings()) {
+    this.presentation = new NativeVisuals(async (name, args) => {
+      // Presentation never starts or reconnects a backend, including after close or while startup is pending.
+      if (!this.client || this.connecting) return undefined;
+      if (!this.nativeVisualsAvailable) return false;
+      const result = CallToolResultSchema.parse(await this.client.callTool({ name, arguments: args }, undefined, { timeout: 2000 }));
+      return !result.isError;
+    }, visualSettings);
+    this.visuals = this.presentation.flash;
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort)
       : hostIdentityPeer(config.ssh ? sshRunner(config.ssh) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
@@ -214,18 +227,28 @@ export class McpDriver implements Driver {
         throw new Error(`This backend requires cua-driver ${version}. Requalify before changing the pin.`);
       if (this.envelopes && (client.getServerCapabilities()?.experimental?.["ai.cua.driver.envelopes"] as { version?: unknown } | undefined)?.version !== 1)
         throw new Error("The native fork runtime did not acknowledge its EOF-aware receiver.");
+      const { tools } = await client.listTools({}, { signal, timeout: 15_000 });
+      this.nativeVisualsAvailable = ["present_agent_activity", "set_agent_visuals"].every(name => tools.some(tool => tool.name === name && tool.inputSchema.type === "object"));
       if (this.config.bundled) {
-        const { tools } = await client.listTools({}, { signal, timeout: 15_000 });
         this.nativeTools = new Set(tools.map(tool => tool.name));
         if (this.config.bundled)
           for (const name of ["list_apps", "list_windows", "get_window_state", "get_desktop_state"])
             if (!tools.some(tool => tool.name === name && tool.inputSchema.type === "object"))
               throw new Error(`native_runtime_schema_missing: ${name}`);
       }
-      await this.jumpCursor(client, signal);
+      if (this.nativeVisualsAvailable) {
+        try {
+          const configured = CallToolResultSchema.parse(await client.callTool({ name: "set_agent_visuals", arguments: { ...this.visualSettings.current() } }, undefined, { signal, timeout: 2_000 }));
+          this.nativeVisualsAvailable = !configured.isError;
+        } catch {
+          // Presentation is optional. A renderer/configuration failure must not prevent native input.
+          this.nativeVisualsAvailable = false;
+        }
+      } else await this.jumpCursor(client, signal);
+      signal?.throwIfAborted();
       return client;
     } catch (error) {
-      await this.close();
+      await this.disconnect();
       throw new Error(`Driver startup failed: ${error instanceof Error ? error.message : error}\n${this.stderr}`);
     }
   }
@@ -303,7 +326,9 @@ export class McpDriver implements Driver {
    * connection, so it has none.
    */
   companion(): McpDriver | undefined {
-    return this.config.endpoint ? undefined : new McpDriver(this.config, this.version);
+    if (this.config.endpoint) return undefined;
+    const visuals = new VisualSettings(); visuals.update({ preset: "off" });
+    return new McpDriver(this.config, this.version, visuals);
   }
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
@@ -354,6 +379,13 @@ export class McpDriver implements Driver {
 
   /** EOF owns shutdown; the SDK escalates only for this child if it does not exit. */
   async close(): Promise<void> {
+    this.presentation.close();
+    await this.disconnect();
+  }
+
+  /** Startup cleanup is retryable; only final close disposes presentation and its subscriptions. */
+  private async disconnect(): Promise<void> {
+    this.nativeVisualsAvailable = false;
     const client = this.client;
     const transport = this.transport;
     this.client = undefined;

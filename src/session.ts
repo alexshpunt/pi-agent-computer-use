@@ -15,7 +15,7 @@ import { isCoordinateScroll, scrollReceipt } from "./scroll-actions.ts";
 import { validWindowStatus, windowRestoreStatus } from "./window-restore.ts";
 import { validWindowControlState, windowManagementStatus, type WindowManagementCommand } from "./window-management.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
-import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult } from "./window-overlay.ts";
+import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult, type HighlightMark } from "./native-visuals.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
 import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
@@ -73,6 +73,8 @@ export interface Driver {
   overviewKernel?: CuaVisionSettings["kernel"];
   /** A display-only window read can return one rectangle of the window, encoding only that rectangle. */
   windowCrop?: boolean;
+  /** Human-only native presentation, owned by this driver and never an input route. */
+  visuals?: WindowObserver;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   /**
@@ -90,6 +92,15 @@ export type Action = {
   /** A click or scroll on an element token goes through UI Automation only; the driver refuses when no pattern carries it. */
   uia_only?: boolean;
 } & (InputCommand | { action: "sequence"; sequence: InputStep[] });
+/** Presentation uses only a category identifier, never action payload or execution-route names. */
+function presentationAction(command: InputCommand | WebAction): string {
+  if (command.action === "key" || command.action === "press") return "press_key";
+  if (command.action === "set_value") return "fill";
+  if (command.action === "select_all") return "hotkey";
+  if (command.action === "hold") return command.actions?.length ? "input_timeline" : "hotkey";
+  if (command.action === "timeline") return command.events?.every(event => event.type === "key_down" || event.type === "key_up") ? "hotkey" : "input_timeline";
+  return command.action;
+}
 /** A stored Playwright snapshot of the active tab, with the tab list, any held dialog and events since the previous snapshot. */
 export interface WebDom extends WebPage { truncated: boolean; matches?: number }
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
@@ -164,6 +175,7 @@ interface WindowState { id: string; nativeId: string; kind: "restore" | "managem
 /** The unannotated pixels of a window's latest capture with pixels, kept as the baseline of its next pixel comparison. */
 export interface WindowFrame { observation_id: string; png: Buffer; size: { maxLongEdge: number; scale: number } }
 interface WindowEntry { ref: string; target: WindowTarget; identity: string; owned: boolean; observation?: Observation;
+  visualBounds?: ScreenRect;
   /** Size of the window's latest image capture: points of typed input are in its pixels. Outlives the observation. */
   seen?: { width: number; height: number };
   windowState?: WindowState; dom?: { id: string; page: WebDom }; web?: WebBrowser; detail?: DetailContext; lastAction?: GuideMark; frame?: WindowFrame }
@@ -292,8 +304,7 @@ export class ComputerSession {
 
   constructor(private readonly driver: Driver, private readonly getMode: () => ComputerMode = () => "yolo",
     private readonly settings: () => CuaVisionSettings = () => ({ kernel: "lanczos3", maxLongEdge: DEFAULT_MAX_LONG_EDGE, scale: 1, version: 0, route: "cua_native" }),
-    private readonly observer?: WindowObserver,
-    private readonly retainRaw?: (image: Content) => void,
+    private readonly observer: WindowObserver | undefined = driver.visuals,
     private readonly launchWeb?: WebLauncher,
     /** Display modes, the owned file folder, process health and OCR on this desktop's machine; absent in a sandbox guest. */
     readonly host?: MachineHost) {}
@@ -389,15 +400,25 @@ export class ComputerSession {
       return undefined;
     const identity = await this.driver.identity(target, true, signal);
     if (!identity) return undefined;
+    const visualBounds = screenRect((target as WindowTarget & { bounds?: unknown }).bounds);
     for (const entry of this.entries.values()) {
-      if (entry.target.pid === target.pid && entry.target.window_id === target.window_id && entry.identity === identity) return entry;
+      if (entry.target.pid === target.pid && entry.target.window_id === target.window_id && entry.identity === identity) {
+        if (visualBounds) entry.visualBounds = visualBounds;
+        return entry;
+      }
     }
-    const entry: WindowEntry = { ref: "w-" + randomUUID(), target: { pid: target.pid, window_id: target.window_id }, identity, owned: false,
+    const entry: WindowEntry = { ref: "w-" + randomUUID(), target: { pid: target.pid, window_id: target.window_id }, identity, owned: false, visualBounds,
       web: this.browsers.get(`${target.pid}:${target.window_id}`) };
     this.entries.set(entry.ref, entry);
     return entry;
   }
 
+  /** Source-associated cue only: no UI strings, guessed coordinates, capture or input. */
+  private activity(entry: WindowEntry, mark: HighlightMark, signal?: AbortSignal, image?: Content,
+    outcome?: "delivered" | "refused" | "unknown" | "verified", action?: string): Promise<HighlightResult | undefined> {
+    if (!this.allowed(entry) || signal?.aborted) return Promise.resolve(undefined);
+    return notifyWindowObserver(this.observer, entry.target, entry.identity, entry.visualBounds ?? entry.observation?.bounds, signal, mark, image, action, outcome);
+  }
   private async current(ref: string, signal?: AbortSignal): Promise<WindowEntry | undefined> {
     const entry = this.entries.get(ref);
     if (!entry || !this.allowed(entry)) return undefined;
@@ -630,6 +651,22 @@ export class ComputerSession {
       native: { capture_id: state.capture_id, agent_overlay_capture: state.agent_overlay_capture } };
   }
 
+  /** A temporal cue represents one returned operation; background capture samples stay silent. */
+  private async frameActivity(source: ObservationSource | undefined, image?: Content, signal?: AbortSignal, action = "frames"): Promise<void> {
+    if (!source || signal?.aborted || !this.observer) return;
+    const bounds = screenRect(source.image.native_bounds);
+    if (source.kind === "window") {
+      const entry = this.entries.get(String(source.identity.window_ref));
+      if (entry && this.allowed(entry)) await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
+        { kind: "inspect" }, image, action);
+    } else if (this.getMode() === "yolo") {
+      const display = String(source.identity.display_id ?? "primary");
+      const original = source.image.original_dimensions;
+      const physical = bounds ?? (display === "primary" && original ? { x: 0, y: 0, ...original } : undefined);
+      await notifyHighlight(this.observer, physical ? { display, bounds: physical, mark: { kind: "inspect" },
+        ...(image?.type === "image" ? { image } : {}), action } : undefined, signal);
+    }
+  }
   /** Capture one authorized source into a private bounded resource; no frame grants input or detail authority. */
   captureSequence(target: { window_ref?: string; display?: string }, options: SequenceOptions, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -686,6 +723,8 @@ export class ComputerSession {
         this.sequences.put(sequence);
         const metadata = sequenceMetadata(sequence);
         const complete = ["completed", "frame_limit"].includes(sequence.stop_reason);
+        if (complete) await this.frameActivity(sequence.frames.at(-1)?.source, undefined, signal, "sequence");
+        if (!permitted()) return denied();
         return this.result(complete ? "observed" : "refused", `Sequence ${sequence.stop_reason}: ${sequence.frames.length} frames, ${sequence.skipped_slots.length} skipped slots. No images forwarded; select frames explicitly. Read only; observe again before input.`,
           undefined, { sequence: metadata });
       } catch (error) {
@@ -724,13 +763,17 @@ export class ComputerSession {
               layout.tiles.map((tile, i) => `Tile ${i + 1} (row ${Math.floor(i / layout.columns!) + 1}, column ${i % layout.columns! + 1}): frame ${tile.index} at ${tile.timestamp_ms.toFixed(1)} ms`).join("\n")
             : `Per-pixel ${rendering.as === "max" ? "maximum" : "minimum"} of ${frames.length} frames${crop} (frames ${frames.map(frame => frame.index).join(", ")}); image ${layout.width}x${layout.height}. ` +
               `${rendering.as === "max" ? "Bright" : "Dark"} detail from any frame shows at once, for example text revealed by a moving light.`;
-          return this.result("observed", `${summary}\nRead only; observe again before input.`, undefined, { selected_frames: metadata, rendered_frames: layout },
-            [{ type: "image", mimeType: "image/png", data: png.toString("base64") }]);
+          const image: Content = { type: "image", mimeType: "image/png", data: png.toString("base64") };
+          await this.frameActivity(frames.at(-1)?.source, image, signal);
+          if (!permitted() || signal?.aborted) return denied();
+          return this.result("observed", `${summary}\nRead only; observe again before input.`, undefined, { selected_frames: metadata, rendered_frames: layout }, [image]);
         }
         // Interleave frame labels with their images so both direct calls and Codemode preserve correspondence.
         const result = this.result("observed", `Selected ${frames.length} read-only sequence frames. Their indexes and measured timestamps label the image order.`, undefined,
           { selected_frames: metadata });
         for (const frame of frames) result.content.push({ type: "text", text: `Sequence ${id} · frame ${frame.index} · ${frame.timestamp_ms.toFixed(1)} ms` }, frame.image);
+        await this.frameActivity(frames.at(-1)?.source, frames.at(-1)?.image, signal);
+        if (!permitted() || signal?.aborted) return denied();
         return result;
       } catch {
         if (!permitted()) return denied();
@@ -831,6 +874,8 @@ export class ComputerSession {
       return this.result("refused", `The watch did not start: ${signal?.aborted ? "cancelled" : ended.stop_reason === "stopped" ? "no frame came within 30 s" : ended.stop_reason}.`);
     }
     const size = sequence.frames[0].source.image.dimensions;
+    await this.frameActivity(sequence.frames[0].source, undefined, signal, "watch");
+    if (!this.allowed(entry) || signal?.aborted) { watch.stop.abort(); return this.result("refused", "Watch access revoked or cancelled."); }
     return this.result("observed", `Watching ${watching} at up to ${options.fps} FPS in the background, ${size.width}x${size.height} frames. ` +
       `Act on the window as usual: each action's receipt names its span and frames in this watch. Read the sequence with frames:last for the newest frame; computer_record watch_stop at the sequence returns the contact sheet, change statistics and files. ` +
       `It stops by itself after ${Math.round(options.timeout_ms / 1000)} s or ${WATCH_LIMITS.max_frames} frames, and when the session closes.`,
@@ -902,6 +947,8 @@ export class ComputerSession {
       { sequence: sequenceMetadata(sequence), ...(rendered ? { rendered_frames: rendered } : {}),
         watch: { sequence_id: id, watching: watch.watching, running: false, marks: watch.marks, changed_frames: distinct, ...(written ? { files: written } : {}) } });
     result.content.push(...content);
+    await this.frameActivity(frames.at(-1)?.source, content.find(block => block.type === "image"), undefined, "watch");
+    if (entry ? !this.allowed(entry) : this.getMode() !== "yolo") return this.result("refused", "Watch access revoked; pixels withheld.");
     return result;
   }
   /** Enumerate native Windows monitors in YOLO. References grant read access, never input. */
@@ -1111,9 +1158,9 @@ export class ComputerSession {
         const id = randomUUID(); const context = this.overview(state!, id, true, images);
         if (entry) { if (!context) throw new Error("CUA returned invalid selected-display raster geometry."); entry.detail = context; }
         else this.displayOverview = context;
-        // The installed optional human overlay understands only primary. Clear it for selected monitors rather than drawing on the wrong source.
-        const highlight = await notifyHighlight(this.observer, !entry && context ? { display: "primary", bounds: { x: 0, y: 0, width: context.originalWidth, height: context.originalHeight } } : undefined, signal);
-        if (entry && highlight) highlight.reason = "selected_display_overlay_unsupported";
+        const highlight = await notifyHighlight(this.observer, context ? { display: entry?.native.display_id ?? "primary",
+          bounds: entry?.native.bounds ?? { x: 0, y: 0, width: context.originalWidth, height: context.originalHeight },
+          ...(images[0]?.type === "image" ? { image: images[0] } : {}) } : undefined, signal);
         if (this.getMode() !== "yolo") return denied();
         if (signal?.aborted) { retire(); return this.result("refused", "Cancelled during display frame; pixels withheld."); }
         return this.result("observed", `Native display ${entry?.native.display_id ?? "primary"} overview: ${state!.screenshot_width}x${state!.screenshot_height} local pixels. Read only; zoom uses this image_id. Paint freshness is unverified.`,
@@ -1158,10 +1205,9 @@ export class ComputerSession {
         coordinate_space: "detail_image_pixels", configuration: { ...configuration, route: "adapter_crop_resize" },
         region: { overview: { image_id: overview!.id, dimensions: { width: overview!.width, height: overview!.height }, x: request.x, y: request.y, width: request.width, height: request.height }, native: region },
         native: { resolution: "full", intermediate_pixels: "withheld" }, input: "none" };
-      const highlight = await notifyHighlight(this.observer, entry ? undefined : { display: "primary",
-        bounds: { x: 0, y: 0, width: overview!.originalWidth, height: overview!.originalHeight },
-        mark: { kind: "detail", region: { x: region.left, y: region.top, width: region.width, height: region.height } } }, signal);
-      if (entry && highlight) highlight.reason = "selected_display_overlay_unsupported";
+      const bounds = entry?.native.bounds ?? { x: 0, y: 0, width: overview!.originalWidth, height: overview!.originalHeight };
+      const highlight = await notifyHighlight(this.observer, { display: entry?.native.display_id ?? "primary", bounds,
+        mark: { kind: "detail", region: { x: bounds.x + region.left, y: bounds.y + region.top, width: region.width, height: region.height } }, image: detail.image }, signal);
       if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during frame; pixels withheld.");
       return this.result("observed", `Fresh display ${entry?.native.display_id ?? "primary"} crop: native-local ${region.left},${region.top} ${region.width}x${region.height}, output ${detail.width}x${detail.height}. Read only; no nested crop or input. Paint freshness is unverified.`,
         undefined, { source, agent_image, ...(highlight ? { highlight } : {}) }, [detail.image]);
@@ -1194,7 +1240,7 @@ export class ComputerSession {
       const bounds = screenRect(window.bounds);
       Object.assign(source, this.domained(sourceIdentity(source.identity, null, window.virtual_desktop, this.platform)));
       const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
-        { kind: "detail", region: bounds ? windowRegion(request, overview!.windowMapping, bounds) : undefined });
+        { kind: "detail", region: bounds ? windowRegion(request, overview!.windowMapping, bounds) : undefined }, image);
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Window detail revoked or cancelled during frame; pixels withheld.");
       return this.result("observed", "Fresh native window zoom. CUA owns JPEG padding and geometry. Read only; take a new overview before input or another detail.",
         undefined, { ...this.addressed(entry, window.virtual_desktop), ...(highlight ? { highlight } : {}), source, agent_image: { route: "cua_fresh_window_zoom", coordinate_space: "zoom_image_pixels",
@@ -1203,7 +1249,7 @@ export class ComputerSession {
           output: { width: state.width, height: state.height, bytes: bytes.length, mimeType: image.mimeType, hash: createHash("sha256").update(bytes).digest("hex") }, input: "none" } }, images);
     } catch { return this.result("refused", "Window detail failed; pixels and diagnostics withheld. Observe again."); }
   }
-  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}, quiet = false): Promise<ComputerResult> {
+  private async capture(entry: WindowEntry, signal?: AbortSignal, query?: string, options: UiCaptureOptions = {}, quiet = false, deferPresentation = false): Promise<ComputerResult> {
     validateUiCapture(options);
     // A native capture keeps the page's DOM snapshot: reading changes nothing, so both stay current until input.
     entry.windowState = undefined;
@@ -1263,6 +1309,7 @@ export class ComputerSession {
       const full = [element.label, element.value].filter((item): item is string => typeof item === "string" && item.length > 1024);
       if (full.length && ui.elements[index]) texts.set(ui.elements[index].hint, full.join("\n").slice(0, ELEMENT_TEXT_LIMIT));
     });
+    entry.visualBounds = screenRect(state.window_bounds);
     // Only an image the agent is shown sets the space of its points; successors and other quiet captures keep it.
     if (hasImage && !quiet && typeof state.screenshot_width === "number" && typeof state.screenshot_height === "number") entry.seen = { width: state.screenshot_width, height: state.screenshot_height };
     entry.observation = { id, ui, settings, ...(texts.size ? { texts } : {}),
@@ -1279,15 +1326,19 @@ export class ComputerSession {
     const source = this.source("window", state, { session_id: this.sessionId, window_ref: entry.ref, ...entry.target });
     if (!hasUi) source.semantic_scope = "none";
     if (!hasImage) source.capabilities.detail = "unsupported";
-    // Repeated verification samples do not flash the human frame on every walk.
-    const highlight = quiet ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
+    // Publish only the final operation image, after annotation. Quiet verification samples stay silent.
+    let highlight: HighlightResult | undefined;
     if (!this.allowed(entry)) { entry.observation = undefined; entry.detail = undefined; return this.denied(entry.ref); }
     if (signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Cancelled during window frame; captured data withheld."); }
     const observed = entry.observation!;
     observed.source = source;
-    const extra = { ...this.addressed(entry, state.virtual_desktop), ...(highlight ? { highlight } : {}), observation_id: id,
+    const extra = { ...this.addressed(entry, state.virtual_desktop), observation_id: id,
       source, granularity, captured: { image: hasImage, ui: hasUi } };
-    if (!hasImage) return this.result("observed", `Fresh UI-only window observation: ${ui!.elements.length} UI elements. No pixels or image detail; current hints/tokens only.`, state, { ...extra, ui: structuredClone(ui!) });
+    if (!hasImage) {
+      highlight = quiet || deferPresentation ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal, { kind: "inspect" });
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Observation revoked or cancelled; data withheld.");
+      return this.result("observed", `Fresh UI-only window observation: ${ui!.elements.length} UI elements. No pixels or image detail; current hints/tokens only.`, state, { ...extra, ...(highlight ? { highlight } : {}), ui: structuredClone(ui!) });
+    }
     const raw = images[0];
     if (raw?.type === "image" && Buffer.byteLength(raw.data, "base64") <= 12 * 1024 * 1024) {
       observed.rawImage = raw;
@@ -1302,12 +1353,13 @@ export class ComputerSession {
     const rendered = await annotateUi(raw, annotationUi, observed.width, observed.height, hasUi && (options.hints ?? settings.hints ?? true), undefined, annotationUi.elements,
       { options: settings.guides, action: observed.actionMark });
     if (!this.allowed(entry) || signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Observation revoked or cancelled during annotation; pixels withheld."); }
-    if (rendered.image !== raw) this.retainRaw?.(raw);
+    highlight = quiet || deferPresentation ? undefined : await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal, undefined, rendered.image);
+    if (!this.allowed(entry) || signal?.aborted) { entry.observation = undefined; entry.detail = undefined; return this.result("refused", "Observation revoked or cancelled; pixels withheld."); }
     const metadata = this.imageMetadata([rendered.image], state, settings);
     const message = hasUi
       ? `Fresh full window observation: ${ui!.elements.length} UI elements; ${rendered.annotation.labels.length} image hints. Structure ${ui!.complete === true ? "complete" : ui!.complete === false ? "partial" : "completeness unknown"}; paint freshness is unverified. Hints belong to this observation only.`
       : "Fresh image-only window observation. Accessibility was not collected; no current UI hints/tokens. Pixel input uses this window image; paint freshness is unverified.";
-    return this.result("observed", message, state, { ...extra, ...(ui ? { ui: structuredClone(ui) } : {}),
+    return this.result("observed", message, state, { ...extra, ...(highlight ? { highlight } : {}), ...(ui ? { ui: structuredClone(ui) } : {}),
       agent_image: { ...metadata, ...(rendered.image !== raw ? { route: "cua_native_ui_hints" } : {}), annotation: rendered.annotation, image_id: id } }, [rendered.image]);
   }
 
@@ -1322,9 +1374,10 @@ export class ComputerSession {
     return entry;
   }
 
-  private webFailure(entry: WindowEntry, error: unknown, acting = false): ComputerResult {
+  private async webFailure(entry: WindowEntry, error: unknown, acting = false, signal?: AbortSignal, action?: string): Promise<ComputerResult> {
     const reason = error instanceof Error ? error.message : String(error);
     const uncertain = acting && error instanceof WebError && (error.timeout || error.transport);
+    if (acting) await this.activity(entry, { kind: "action" }, signal, undefined, uncertain ? "unknown" : "refused", action);
     return this.result(uncertain ? "unknown" : "refused", uncertain
       ? `The action may have reached the page. ${reason} Read the window with dom before deciding; never replay it blindly.`
       : `Playwright refused: ${reason}`, undefined, this.addressed(entry));
@@ -1347,6 +1400,8 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("snapshot", options, signal));
+        await this.activity(entry, { kind: "inspect" }, signal);
+        if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Observation revoked or cancelled; DOM withheld.");
         return this.result("observed", "Fresh Playwright aria snapshot. Use [ref=...] values as target.ref while this stays the latest snapshot of the window.",
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
       } catch (error) { return this.webFailure(entry, error); }
@@ -1390,12 +1445,16 @@ export class ComputerSession {
         const plain = Buffer.from(shot.png, "base64");
         const bytes = shot.derive ? await derivedPng(plain, shot.derive) : plain;
         if (bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error("Playwright did not return a PNG.");
+        const image: Content = { type: "image", data: bytes.toString("base64"), mimeType: "image/png" };
+        // CSS boxes do not prove a Windows screen transform. Associate the preview with its window only.
+        await this.activity(entry, { kind: "inspect" }, signal, image);
+        if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Observation revoked or cancelled; pixels withheld.");
         return this.result("observed", `Playwright ${kind === "page" ? "page viewport" : kind === "crop" ? "element" : "highlighted viewport"} screenshot. These are page pixels, not native window coordinates; they grant no input.`,
           { url: shot.url, title: shot.title, ...(shot.box ? { box_css: shot.box } : {}) },
           { ...this.addressed(entry), ...(id !== undefined ? { observation_id: id } : {}), agent_image: { route: "playwright_screenshot", kind, coordinate_space: "page_image_pixels", input_authority: false,
             output: { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), bytes: bytes.length, mimeType: "image/png",
               hash: createHash("sha256").update(bytes).digest("hex") } } },
-          [{ type: "image", data: bytes.toString("base64"), mimeType: "image/png" }]);
+          [image]);
       } catch (error) { return this.webFailure(entry, error); }
     });
   }
@@ -1409,9 +1468,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action));
+        if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}${action.target && action.action !== "evaluate" ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true); }
+      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action)); }
     });
   }
 
@@ -1428,9 +1489,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action));
+        if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}. Check the fresh snapshot below for the page's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true); }
+      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action)); }
     });
   }
 
@@ -1459,7 +1522,14 @@ export class ComputerSession {
       if (!this.allowed(entry)) return this.denied(entry.ref);
       let samples = 0, stable = 0, results: ConditionResult[] = [], last: ComputerResult | undefined;
       entry.dom = undefined; entry.windowState = undefined;
-      const finish = (verdict: WaitResult["verdict"], timedOut: boolean, final: ComputerResult | undefined, why?: string): ComputerResult => {
+      const finish = async (verdict: WaitResult["verdict"], timedOut: boolean, final: ComputerResult | undefined, why?: string): Promise<ComputerResult> => {
+        if (!this.allowed(entry!)) return this.denied(entry!.ref);
+        await this.activity(entry!, { kind: "verify" }, signal, undefined, verdict === "satisfied" ? "verified" : "unknown");
+        if (!this.allowed(entry!)) return this.denied(entry!.ref);
+        if (signal?.aborted) {
+          verdict = "unknown";
+          why = "Cancelled; the last sample does not decide the conditions.";
+        }
         const verification = { verdict, conditions: results, samples, elapsed_ms: Math.round(performance.now() - started), timed_out: timedOut,
           ...(why ? { reason: why } : {}), spec };
         const message = `Verification ${verdict} after ${samples} sample(s) in ${verification.elapsed_ms} ms${timedOut ? " (timed out)" : ""}.${why ? ` ${why}` : ""}`;
@@ -1502,9 +1572,10 @@ export class ComputerSession {
    * The complete text of one element in the current native observation, without another walk. Texts longer
    * than the walk's 1024-character cut come from the same capture, up to 200,000 characters.
    */
-  elementText(ref: string, id: string, hint: string): Promise<ComputerResult> {
+  elementText(ref: string, id: string, hint: string, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      const entry = this.entries.get(ref);
+      if (signal?.aborted) return this.result("refused", "Element text read cancelled.");
+      const entry = await this.current(ref, signal);
       if (!entry) return this.result("refused", "Unknown or closed window. Discover again.");
       if (!this.allowed(entry)) return this.denied(entry.ref);
       const observed = entry.observation;
@@ -1514,6 +1585,9 @@ export class ComputerSession {
       catch (error) { return this.result("refused", (error as Error).message, undefined, this.addressed(entry)); }
       const text = observed.texts?.get(hint) ?? [element.name, element.value].filter(item => item).join("\n");
       const cut = text.length >= ELEMENT_TEXT_LIMIT;
+      const region = observed.frames.get(element.element_token);
+      await this.activity(entry, { kind: "inspect", ...(region ? { region } : {}) }, signal);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Element text access revoked or cancelled.");
       return this.result("observed", `Element ${hint} text from this observation: ${text.length} characters${cut ? ", cut at the 200,000-character limit" : ""}. Page it with offset/limit.`,
         undefined, { ...this.addressed(entry), observation_id: id, element_text: { hint, role: element.role, name: element.name, text, cut } });
     });
@@ -1560,13 +1634,43 @@ export class ComputerSession {
         if (images.length !== 1 || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || (width as number) <= 0 || (height as number) <= 0)
           throw new Error("Driver returned no window image.");
         if (!await this.current(entry.ref, signal) || !this.allowed(entry)) return this.result("refused", "Window changed during capture. Discover again.");
-        const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, state.window_bounds, signal);
-        return this.result("observed", `Full-resolution window pixels: ${width}x${height}.`, undefined,
-          { ...this.addressed(entry, state.virtual_desktop), ...(highlight ? { highlight } : {}) }, images);
+        entry.visualBounds = screenRect(state.window_bounds);
+        return this.result("observed", `Full-resolution window pixels: ${width}x${height}.`, { window_bounds: entry.visualBounds, screenshot_width: width, screenshot_height: height },
+          this.addressed(entry, state.virtual_desktop), images);
       } catch (error) { return this.failed(error, false); }
     });
   }
 
+  /** Present a post-processed observation without recapturing or changing its input authority. */
+  presentObservation(ref: string, result: ComputerResult, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = await this.current(ref, signal);
+      if (!entry || !this.allowed(entry) || signal?.aborted || entry.observation?.id !== result.details.observation_id)
+        return this.result("refused", "Observation source revoked or cancelled; data withheld.");
+      const image = result.content.filter(block => block.type === "image").at(-1);
+      const highlight = await this.activity(entry, { kind: "inspect" }, signal, image);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Observation source revoked or cancelled; data withheld.");
+      return { ...result, details: { ...result.details, ...(highlight ? { highlight } : {}) } };
+    });
+  }
+  /** Present a final viewport image without changing observation/input authority. */
+  presentViewport(ref: string, image: Content, captured: ComputerResult, rect: PixelBox, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = await this.current(ref, signal);
+      if (!entry || !this.allowed(entry) || signal?.aborted) return this.result("refused", "Viewport source revoked or cancelled; pixels withheld.");
+      const bounds = screenRect(captured.details.state?.window_bounds);
+      const observed = entry.observation;
+      const mapping = observed?.mapping;
+      const sameBounds = bounds && observed?.bounds && (["x", "y", "width", "height"] as const).every(key => bounds[key] === observed.bounds![key]);
+      // The earlier AX witnesses must prove the same full-resolution width and native source.
+      const region = sameBounds && mapping && observed?.width && observed.height && mapping.scale * observed.width === captured.details.state?.screenshot_width && mapping.scale * observed.height === captured.details.state?.screenshot_height
+        ? windowRegion({ image_id: "viewport", ...rect }, { ...mapping, scale: 1 }, bounds) : undefined;
+      const highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
+        region ? { kind: "detail", region } : { kind: "inspect" }, image);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Viewport source revoked or cancelled; pixels withheld.");
+      return this.result("observed", "", undefined, highlight ? { highlight } : {});
+    });
+  }
   /**
    * A fresh observation without the human frame, for successors: UI-only by default, or with
    * pixels at a given overview size so they compare with an earlier capture.
@@ -1799,7 +1903,7 @@ export class ComputerSession {
     });
   }
   /** Read fresh window parts for an existing reference. Each mode retires this window's previous observation. */
-  observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions): Promise<ComputerResult> {
+  observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions, deferPresentation = false): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before observation.");
       try {
@@ -1813,7 +1917,7 @@ export class ComputerSession {
           catch (error) { return this.result("refused", (error as Error).message); }
         }
         if (zoom && !known?.detail) return this.result("refused", "Detail needs a current overview. Observe again.");
-        return entry ? ui ? await this.refineUi(entry, ui, signal) : zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query, options) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        return entry ? ui ? await this.refineUi(entry, ui, signal) : zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query, options, false, deferPresentation) : this.result("refused", "Unknown or closed window_ref. Discover again.");
       } catch (error) { return this.failed(error, false); }
     });
   }
@@ -1843,12 +1947,19 @@ export class ComputerSession {
         observed.settings.hints ?? true, request.operation === "highlight" ? request.hint : undefined, observed.ui.elements,
         { options: observed.settings.guides, action: observed.actionMark });
       if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "UI inspection revoked or cancelled; pixels withheld.");
-      if (rendered.image !== observed.rawImage) this.retainRaw?.(observed.rawImage);
+      const selected = request.hint && observed.ui.elements.find(element => element.hint === request.hint);
+      const region = selected && observed.frames.get(selected.element_token);
+      await this.activity(entry, { kind: "inspect", ...(region ? { region } : {}) }, signal, rendered.image);
+      if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "UI inspection revoked or cancelled; pixels withheld.");
       const metadata = this.imageMetadata([rendered.image], { screenshot_width: observed.width, screenshot_height: observed.height }, observed.settings);
       return this.result("observed", `Read-only ${request.operation} of the existing UI snapshot: ${ui.elements.length}/${ui.matches} elements. No native reread or input; pixels are from the original observation.`,
         undefined, { ...this.addressed(entry), observation_id: observed.id, ui, source: observed.source,
           agent_image: { ...metadata, route: "cua_snapshot_ui_hints", annotation: rendered.annotation, image_id: observed.id } }, [rendered.image]);
     }
+    const selected = request.hint && ui.elements.find(element => element.hint === request.hint);
+    const region = selected && observed.frames.get(selected.element_token);
+    await this.activity(entry, { kind: "inspect", ...(region ? { region } : {}) }, signal);
+    if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "UI inspection revoked or cancelled; data withheld.");
     return this.result("observed", `Read-only UI ${request.operation}: ${ui.elements.length}/${ui.matches} matches in the collected snapshot. ${ui.complete === true ? "Native collection reported complete." : "Collection may be partial; absence does not prove nonexistence."}`,
       undefined, { ...this.addressed(entry), observation_id: observed.id, ui });
   }
@@ -1973,7 +2084,8 @@ export class ComputerSession {
           if (args.capture_id !== undefined) capture = undefined;
           // AX bounds are native. Only native click receipts establish an exact pixel action mark.
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
-          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark);
+          const activityAction = presentationAction(step);
+          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction);
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
           if (!this.allowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
@@ -2027,10 +2139,8 @@ export class ComputerSession {
                 basis: target ? "completed_native_token_target" : "completed_native_click_receipt" }
               : { reason: "Native action did not report usable target geometry." };
           }
-          if (status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds) {
-            const point = resolvedPoint;
-            highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, { kind: "action", point });
-          }
+          highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal,
+            { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, activityAction, status);
           if (!this.allowed(entry) || (!batch && signal?.aborted)) {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");

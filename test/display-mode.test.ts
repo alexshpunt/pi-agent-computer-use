@@ -22,7 +22,7 @@ function fixture(remote = false) {
       throw new Error(`Unexpected native call ${name}`);
     }), identity: vi.fn(async () => "unused"), close: vi.fn(async () => {}),
   };
-  const session = new ComputerSession(driver, () => mode, undefined, undefined, undefined, undefined, new MachineHost({ run: vi.fn(), spawn: vi.fn() }, modes));
+  const session = new ComputerSession(driver, () => mode, undefined, undefined, undefined, new MachineHost({ run: vi.fn(), spawn: vi.fn() }, modes));
   const ref = async () => ((await session.displays()).details.state!.displays as { display_ref: string }[])[0].display_ref;
   return { session, modes, driver, ref, current: () => current, setMode(value: ComputerMode) { mode = value; } };
 }

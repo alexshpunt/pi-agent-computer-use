@@ -10,8 +10,9 @@ import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { IsolatedSession } from "./isolated-session.ts";
-import { ComputerSession, type ComputerMode, type Content } from "./session.ts";
+import { ComputerSession, type ComputerMode } from "./session.ts";
 import { WebBrowser } from "./web-browser.ts";
+import type { VisualSettings } from "./native-visuals.ts";
 
 /** The configured machine for a connect command; unknown names refuse before any SSH work. */
 export async function machineConfig(cwd: string, name: string): Promise<NonNullable<ComputerConfig["machines"]>[string]> {
@@ -47,7 +48,7 @@ export async function checkRemoteWorker(runner: CommandRunner, remotePackage: st
  * Each sandbox or isolated agent session gets its own guest driver and session: no host overlay, no browser launch, every guest window is the agent's own.
  * On another machine the sandbox host and its files are reached over SSH, and the guest relays through SSH tunnels.
  */
-export function sandboxFactory(options: { settings: () => CuaVisionSettings; retainRaw?: (image: Content) => void }): SandboxFactory {
+export function sandboxFactory(options: { settings: () => CuaVisionSettings; visuals?: VisualSettings }): SandboxFactory {
   return async (cwd, command, signal, machineName) => {
     let parsed;
     try {
@@ -61,10 +62,10 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; ret
       : await IsolatedSession.open(runnerHost(runner), machine?.command ?? config.command, signal);
     // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
     const driver = new McpDriver({ command: machine?.command ?? config.command, ...(machine?.runtime ?? config.runtime ? { runtime: machine?.runtime ?? config.runtime } : {}),
-      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) });
+      endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) }, undefined, options.visuals);
     try { await waitForGuestDriver(driver, signal); }
     catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
-    const guest = new ComputerSession(driver, () => "yolo", options.settings, undefined, options.retainRaw);
+    const guest = new ComputerSession(driver, () => "yolo", options.settings);
     return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
       close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
   };
@@ -74,12 +75,12 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; ret
  * Another machine's desktop gets its own driver and session over SSH. Safe/YOLO is the user's choice there too;
  * the host overlay is not shown, and browsers start on that machine.
  */
-export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; retainRaw?: (image: Content) => void }): MachineFactory {
+export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings }): MachineFactory {
   return async (cwd, name, signal) => {
     const machine = await machineConfig(cwd, name);
     const refresh = `setup part machine (user: /computer-setup machine ${machine.ssh} ${name})`;
     const runner = sshRunner(machine.ssh);
-    const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh });
+    const driver = new McpDriver({ command: machine.command, ...(machine.runtime ? { runtime: machine.runtime } : {}), ssh: machine.ssh }, undefined, options.visuals);
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
     const launchWeb = machine.node && machine.package
@@ -88,7 +89,7 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
         return WebBrowser.launch({ ...launch, remote: { runner, node: machine.node!, worker: `${machine.package}/src/web-worker.ts` } }, webSignal);
       }
       : undefined;
-    const remote = new ComputerSession(driver, options.getMode, options.settings, undefined, options.retainRaw, launchWeb, new MachineHost(runner));
+    const remote = new ComputerSession(driver, options.getMode, options.settings, undefined, launchWeb, new MachineHost(runner));
     return { ref: name, session: remote,
       describe: source => [`# Machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
         `Browser: ${launchWeb ? "available" : "not configured (node and package)"}`, ...machineGuide(source)].join("\n"),

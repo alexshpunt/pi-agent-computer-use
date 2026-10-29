@@ -158,7 +158,7 @@ function browserFixture() {
   const browser = { close: vi.fn(async () => {}), page } as unknown as WebBrowser;
   const launch = vi.fn<WebLauncher>(async () => ({ browser,
     opened: { pid: target.pid, version: "155", url: "https://example.com", title: "Page", via: "cdp" } }));
-  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, undefined, launch);
+  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, launch);
   const resources = new ComputerResources(async () => session, async () => session.close());
   const window = async () => {
     const ref = ((await resources.search(at("computer:machine/local/windows"), cwd, "Chrome")).details.state!.windows as { window_ref: string }[])[0].window_ref;
@@ -275,7 +275,7 @@ function fixture(outcome: "closed" | "open" | "refused") {
     }),
   };
   const closeWindow = vi.fn(async () => { if (outcome === "closed") open = false; return outcome; });
-  const session = new ComputerSession(driver, () => mode, undefined, undefined, undefined, undefined, { closeWindow, removeFiles: async () => {} } as unknown as MachineHost);
+  const session = new ComputerSession(driver, () => mode, undefined, undefined, undefined, { closeWindow, removeFiles: async () => {} } as unknown as MachineHost);
   const resources = new ComputerResources(async () => session, async () => session.close());
   const window = async () => ((await resources.search(at("computer:machine/local/windows"), cwd, "Editor")).details.state!.windows as { window_ref: string }[])[0].window_ref;
   const remove = (source: string) => deleteComputer(resources, source, { path: source }, cwd);
@@ -328,7 +328,7 @@ test("computer_record video_stop says where it fetched the video in the summary 
   };
   const video = Buffer.from("mp4 bytes");
   const host = { files: async () => ({ windows: "C:\\pi", wsl: "/mnt/c/pi" }), rename: vi.fn(async () => {}), get: vi.fn(async () => video), removeFiles: async () => {} };
-  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, undefined, undefined, host as unknown as MachineHost);
+  const session = new ComputerSession(driver, () => "yolo", undefined, undefined, undefined, host as unknown as MachineHost);
   const resources = new ComputerResources(async () => session, async () => session.close());
   const workspace = await mkdtemp(join(tmpdir(), "pi-record-"));
   const run = (command: Record<string, unknown>) => computerAction(resources, "computer:machine/local", String(command.action), () => at("computer:machine/local"),
