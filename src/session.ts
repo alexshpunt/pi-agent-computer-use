@@ -272,11 +272,11 @@ export class ComputerSession {
   private readonly browsers = new Map<string, WebBrowser>();
   private readonly unapprovedAgentBrowsers = new Set<WebBrowser>();
   private unapprovedAgentLaunches = 0;
-  /** Input already dispatched to a browser still awaiting Safe approval. */
-  private pendingApprovalInputs = 0;
-  private unconfirmedAgentLaunch = false;
+  /** Native input already dispatched under the current policy, including long timelines on dialog windows. */
+  private nativeInputsInFlight = 0;
+  private unconfirmedUnsafeWork = false;
   /** Safe cannot be selected while a YOLO agent profile has an unauthenticated debugging port. */
-  hasUnapprovedAgentBrowser(): boolean { return this.unconfirmedAgentLaunch || this.unapprovedAgentLaunches > 0 || this.pendingApprovalInputs > 0 || this.unapprovedAgentBrowsers.size > 0; }
+  hasUnapprovedAgentBrowser(): boolean { return this.unconfirmedUnsafeWork || this.unapprovedAgentLaunches > 0 || this.nativeInputsInFlight > 0 || this.unapprovedAgentBrowsers.size > 0; }
 
   private get platform(): NativePlatform { return this.driver.platform ?? "windows"; }
   /** Label sources from a sandbox guest so they never pass for host windows or displays. */
@@ -528,7 +528,7 @@ export class ComputerSession {
         const reason = error instanceof Error ? error.message : String(error);
         if (!launched) {
           const unknown = error instanceof WebError && error.transport;
-          if (unknown && unapproved) this.unconfirmedAgentLaunch = true;
+          if (unknown && unapproved) this.unconfirmedUnsafeWork = true;
           return this.result(unknown ? "unknown" : "refused", `Browser launch failed: ${reason}`, { operation: "open_browser" });
         }
         for (const [key, browser] of this.browsers) if (browser === launched.browser) this.browsers.delete(key);
@@ -2158,18 +2158,19 @@ export class ComputerSession {
           // A sequence stops between steps: its current step finishes and releases its own keys and buttons,
           // and the driver connection survives the cancellation. A single action stays cancellable in flight.
           const nativeSignal = batch ? undefined : signal;
-          const pendingApprovalInput = !!entry.pendingApproval;
-          if (pendingApprovalInput) this.pendingApprovalInputs++;
+          const yoloDispatch = this.getMode() === "yolo";
+          this.nativeInputsInFlight++;
           let native: DriverResult;
           try {
             native = await this.driver.call(name, args, nativeSignal);
-            if (pendingApprovalInput && (native.isError || ["unknown", "partial"].includes(String(native.structuredContent?.status)) || ["unknown", "partial"].includes(String(native.structuredContent?.effect))))
-              this.unconfirmedAgentLaunch = true;
+            const effect = String(native.structuredContent?.effect), status = String(native.structuredContent?.status);
+            if (yoloDispatch && ((native.isError && effect !== "refused" && status !== "refused") || ["unknown", "partial"].includes(status) || ["unknown", "partial"].includes(effect)))
+              this.unconfirmedUnsafeWork = true;
           } catch (error) {
             // Cancellation or transport loss may leave a scheduled native timeline running after this promise rejects.
-            if (pendingApprovalInput) this.unconfirmedAgentLaunch = true;
+            if (yoloDispatch) this.unconfirmedUnsafeWork = true;
             throw error;
-          } finally { if (pendingApprovalInput) this.pendingApprovalInputs--; }
+          } finally { this.nativeInputsInFlight--; }
           row.completion_ms = performance.now() - started;
           if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) return finish(this.result("unknown",
             "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),
@@ -2328,7 +2329,7 @@ export class ComputerSession {
       const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);
       if (unrestored.length) return this.result("unknown", `Native runtime released, but restoring the display mode of ${unrestored.join(", ")} failed. Signing out of Windows also restores it.`);
       if (!files) return this.result("unknown", "Native runtime released, but removing the session's file folder failed.");
-      if (failed || this.hasUnapprovedAgentBrowser()) return this.result("unknown", `Native runtime released, but browser cleanup is unconfirmed (${failed} of ${browsers.length} managed browsers failed). A YOLO agent browser or its local debugging port may still be open; verify and close it before restarting this session.`);
+      if (failed || this.hasUnapprovedAgentBrowser()) return this.result("unknown", `Native runtime released, but prior browser or input cleanup is unconfirmed (${failed} of ${browsers.length} managed browsers failed). A browser, local debugging port or scheduled input may still be active; verify before restarting this session.`);
       return this.result("closed", "Owned computer-use runtime and session-opened browsers released; attached browsers were detached and stay open. Other application documents were not closed or saved.");
     });
   }
