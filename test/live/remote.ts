@@ -18,17 +18,17 @@ import { WebBrowser } from "../../src/web-browser.ts";
  * Live checks act on that machine's real desktop: use only new Notepad/Paint documents and synthetic pages.
  * `machine` is where to Insert machine commands such as open; `windows` and `displays` are its discovery addresses.
  */
-export async function connectLive(cwd = process.cwd()) {
+export async function connectLive(cwd = process.cwd(), mode: "safe" | "yolo" = "yolo") {
   const name = process.env.LIVE_MACHINE ?? "lab";
   const images = new CuaImageSettings(() => "bilinear");
   const config = await loadComputerConfig(cwd);
   let local: ComputerSession | undefined;
   const resources = new ComputerResources(async () => {
     if (name !== "local") throw new Error("Live checks use only the remote machine.");
-    return local ??= new ComputerSession(new McpDriver(config), () => "yolo", () => images.settings(), undefined,
+    return local ??= new ComputerSession(new McpDriver(config), () => mode, () => images.settings(), undefined,
       (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal), new MachineHost(localRunner(config.interop)));
   }, async () => local ? local.close() : { content: [], details: { status: "closed", mode: "yolo" } },
-    sandboxFactory({ settings: () => images.settings() }), machineFactory({ getMode: () => "yolo", settings: () => images.settings() }));
+    sandboxFactory({ settings: () => images.settings() }), machineFactory({ getMode: () => mode, settings: () => images.settings() }));
   // A machine starts on its first use; the live checks use the configured one unless LIVE_MACHINE=local.
   const machine = computerSource("machine", name);
   const runner = name === "local" ? localRunner(config.interop) : sshRunner((await machineConfig(cwd, name)).ssh);
