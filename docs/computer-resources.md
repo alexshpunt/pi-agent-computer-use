@@ -9,7 +9,7 @@ Everything else is a `computer_*` tool with typed fields, the same in both modes
 
 Every `computer_*` tool is deferred: a session that never uses the computer pays nothing for them. `tool_search` loads at most 8 best matches per query, so load one group at a time: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`, `computer view viewport`. Computer use turns `tool_search` on.
 
-The `/computer-mode`, `/computer-debug` and `/computer-setup` commands belong to the user. When a part is missing, the refusal names the `/computer-setup` command that installs it; ask the user to run it.
+The `/computer-mode`, `/computer-images`, `/computer-visuals` and `/computer-setup` commands belong to the user. [Native visuals](native-observability.md) describes presentation and capture preferences. When a part is missing, the refusal names the `/computer-setup` command that installs it; ask the user to run it.
 
 The desktop scope is Windows, with Pi running on it directly or in its WSL, on this machine or on another one over SSH. Safe permits windows the session opened and forbids display reads. YOLO also permits existing windows the task needs; it is not OS isolation.
 
@@ -60,7 +60,7 @@ Results show addresses in a short form, `computer:<machine>/<letter><number><tag
 
 Search `computer:machine/<name>/windows` or `/apps` with a title substring or `regex:<pattern>`; sandbox addresses take the same queries. Discovery launches nothing. Search an observation to filter its UI or page lines without another walk.
 
-Read a window for its UI tree and a small overview image. Overviews have a 1280 px long edge by default; add `capture:{"maxLongEdge":...}` to one Read for another size, and `/computer-debug` changes the session default. A fresh Read issues an observation address. Read a display for readonly display pixels (YOLO).
+Read a window for its UI tree and a small overview image. Overviews have a 1280 px long edge by default; add `capture:{"maxLongEdge":...}` to one Read for another size, and `/computer-images` changes the session default. A fresh Read issues an observation address. Read a display for readonly display pixels (YOLO).
 
 | View | Meaning |
 | --- | --- |
@@ -287,4 +287,4 @@ else if (r.outcome === "refused") { /* nothing was sent */ }
 
 Close only task-owned windows. Delete a machine address to release that machine, and `computer:session` to release every machine, browser, sandbox and isolated session this computer use started; Pi's shutdown does the same. This does not close or save the user's documents. The result lists each released part; an uncertain cleanup is `unknown`.
 
-For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide`. To try a worktree, point the package entry in your Pi settings at it, and point it back afterwards.
+For a source checkout, run `npm ci --ignore-scripts --legacy-peer-deps`. When SDK-source testing is needed, link a compatible IDE source version with `npm run dev:ide -- /absolute/path/to/pi-agent-ide`; keep it within this package's dependency range. To try a worktree, point the package entry in your Pi settings at it, and point it back afterwards.

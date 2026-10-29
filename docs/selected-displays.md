@@ -26,4 +26,4 @@ Selected source metadata reports `selected_display` or `selected_display_region`
 
 Safe denies discovery, overview and detail. Revoked or cancelled reads withhold metadata/pixels. Paint freshness remains unverified. No selected-display input, window relocation, virtual-desktop management or concurrent-agent arbitration is added.
 
-The installed optional human-only Qt overlay supports primary and windows, not selected monitors. Selected reads clear its old mark instead of drawing a misleading primary outline. This does not change the returned image or debug viewer.
+[Native visual events](native-observability.md) carry the selected monitor's exact host-global bounds and display identity. A renderer without those capabilities shows no selected-display cue; the returned image is unchanged.
