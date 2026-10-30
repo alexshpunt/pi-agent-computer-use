@@ -9,6 +9,7 @@ import { registerComputerMode } from "./mode.ts";
 import { registerSetupCommand } from "./setup-command.ts";
 import { ComputerSession, type ComputerResult } from "./session.ts";
 import { registerComputerProvider } from "./provider.ts";
+import { fillToolNames, IDE_TOOL_NAMES, STANDALONE_TOOL_NAMES } from "./tool-names.ts";
 import { registerStandaloneTools } from "./standalone-tools.ts";
 import { computerNamespace, registerComputerTools } from "./computer-tools.ts";
 import { registerToolOmission } from "./responses-tools.ts";
@@ -61,8 +62,8 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   pi.on("session_start", () => {
     if (registered) return;
     registered = true;
-    registerComputerTools(pi, provider.resources);
-    if (!provider.attached()) registerStandaloneTools(pi, provider.resources, provider.guide);
+    registerComputerTools(pi, provider.resources, provider.attached() ? IDE_TOOL_NAMES : STANDALONE_TOOL_NAMES);
+    if (!provider.attached()) registerStandaloneTools(pi, provider.resources, fillToolNames(provider.guide, STANDALONE_TOOL_NAMES));
     // Deferred tools are reachable only through tool_search, which Pi registers inactive.
     const active = pi.getActiveTools();
     if (!active.includes("tool_search") && pi.getAllTools().some(tool => tool.name === "tool_search"))
