@@ -63,10 +63,11 @@ Native locators run over the UI Automation tree:
 
 ## Work apart from the human's desktop
 
-- Windows Sandbox — its own focus, pointer, windows and clipboard; starts in 15–20 s; one at a time per machine, and the human's Windows session must be active. The guest has no Notepad.
-- Isolated session — invisible to the human; starts in 15–25 s; several can run at once. Its desktop is 640×480, some apps are missing by name (start them by `path`) and no files are shared.
-- Neither is a security boundary. Their addresses work like a machine's.
-- Another machine acts only there: a `url` such as `127.0.0.1` means that machine. Its Windows session must be active, or screenshots come back white.
+- Windows Sandbox — its own focus, pointer, windows and clipboard; starts in 15–20 s; one at a time per machine, and the human's Windows session must be active. Networking is enabled. The guest has no Notepad.
+- Sandbox runtime and control mappings are automatic and read-only; its private output mapping is writable. `sandbox.import` is read-only unless `writable` is true, and `sandbox.export` is writable.
+- Isolated session — invisible to the human; starts in 15–25 s; several can run at once. Its desktop is 640×480, some apps are missing by name (start them by `path`), and no user folders are shared automatically. Its network policy allows ingress and egress.
+- Both use temporary control channels. Sandbox requires a driver bearer token and mutual identity proof; MXC reverse channels mutually prove their roles before forwarding application bytes. Their foreground UI stayed off the human desktop in verified Windows checks. Neither is qualified as hostile-code containment or protection from a local administrator.
+- Another machine acts only there: a `url` such as `127.0.0.1` means that machine. Its Windows session must be active, or screenshots come back white. Remote control uses the existing SSH connection and temporary loopback forwards.
 
 ## Files and recording
 

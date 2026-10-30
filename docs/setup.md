@@ -26,6 +26,16 @@ Safe hides outside-session windows from discovery and denies their old reference
 
 Switching cannot undo input already dispatched under YOLO. Pending work checks the current policy before dispatch; if the mode changes during a read or input, foreign returned UI state is withheld. Previously received YOLO observations remain in conversation history. Safe does not constrain shell tools, files, network, clipboard, shared app state, or what an authorized app can do.
 
+## Separate desktops and their limits
+
+Windows Sandbox and MXC isolated sessions keep foreground UI on a desktop separate from the human's desktop. Verified Windows checks established that separation for ordinary read and input. They did not qualify either environment to contain hostile code, resist a local administrator or withstand sustained connection flooding.
+
+Windows Sandbox runs with networking enabled. The extension automatically maps its runtime and control configuration read-only and a private output folder writable. A `sandbox.import` folder is read-only unless its `writable` field is true; `sandbox.export` is writable. Guest setup disables Smart App Control only inside the disposable guest, leaving the host policy unchanged. It opens guest TCP ports for the bearer-protected driver and the mutually authenticated identity service. Temporary host relays listen only on OS-chosen loopback ports.
+
+An isolated session is a temporary Windows user session with its own desktop, clipboard and input. Its MXC network policy allows ingress, egress and host-loopback access. Runtime and control files are copied into that user's private ephemeral workspace; no user folder is mapped automatically. Four temporary loopback relay roles connect driver and identity traffic. Each MXC reverse channel completes mutual proof before it forwards application bytes.
+
+A configured remote machine uses its existing SSH connection and temporary loopback forwarding. The extension does not configure a new externally reachable host listener. These authentication checks do not claim that every local guest transport is encrypted.
+
 ## Windows and input
 
 Computer use works through `computer:` addresses: the ordinary Pi Agent IDE Read, Search and Delete tools, or `computer_read`, `computer_search` and `computer_delete` without IDE, plus a `computer_*` tool for each action. The `computer_*` tools are deferred, and `tool_search` is turned on.
