@@ -4,6 +4,7 @@ import path from "node:path";
 import { ComputerRequestError } from "./computer-resources.ts";
 import type { GuestEndpoint } from "./config.ts";
 import type { SandboxHost } from "./sandbox.ts";
+import type { SessionRelay } from "./session-relay.ts";
 
 const SCRIPTS = new URL("../scripts/session/", import.meta.url);
 const SANDBOX_SCRIPTS = new URL("../scripts/sandbox/", import.meta.url);
@@ -13,11 +14,7 @@ const EXEC_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const NETWORK = { egress: { default: "allow" }, ingress: { default: "allow", hostLoopback: "allow" } };
 
 const psString = (value: string) => `'${value.replace(/'/g, "''")}'`;
-const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
-  const timer = setTimeout(() => { signal?.removeEventListener("abort", abort); resolve(); }, ms);
-  const abort = () => { clearTimeout(timer); reject(new Error("Cancelled while starting the isolated session.")); };
-  signal?.addEventListener("abort", abort, { once: true });
-});
+
 
 /**
  * An isolated Windows agent session from Microsoft Execution Containers (MXC `isolation_session`): a fresh agent user
@@ -33,6 +30,7 @@ export class IsolatedSession {
   private wxc?: string;
   private workdir?: { windows: string; unix: string };
   private pids: number[] = [];
+  private relay?: SessionRelay;
   private tunnels: { port: number; close(): void }[] = [];
   private closed = false;
 
@@ -61,6 +59,7 @@ export class IsolatedSession {
   }
 
   private async start(runtimeCommand: string, signal?: AbortSignal): Promise<void> {
+    if (!this.host.reverseRelay) throw new Error("This host cannot start an isolated-session relay.");
     const runtime = await this.host.path(path.dirname(runtimeCommand), "windows");
     if (!/^[A-Za-z]:\\/.test(runtime)) throw new ComputerRequestError("The driver runtime must be on a Windows drive to copy it into the session.");
     const local = (await this.ps("$env:LOCALAPPDATA", signal)).trim();
@@ -82,32 +81,28 @@ export class IsolatedSession {
 
     // The agent user can read only its own workspace: the runtime and scripts go there.
     await this.ps(`Copy-Item -Recurse -Force -LiteralPath ${psString(runtime)} -Destination ${psString(`${workspace}\\runtime`)}`, signal, 120_000);
-    await this.host.writeFile(`${shared}/session-start.ps1`, await readFile(new URL("session-start.ps1", SCRIPTS), "utf8"));
+    for (const name of ["session-start.ps1", "relay-auth.ps1"])
+      await this.host.writeFile(`${shared}/${name}`, await readFile(new URL(name, SCRIPTS), "utf8"));
     await this.host.writeFile(`${shared}/guest-identity-bridge.ps1`, await readFile(new URL("guest-identity-bridge.ps1", SANDBOX_SCRIPTS), "utf8"));
     await this.host.writeFile(`${shared}/window-identity.ps1`, await readFile(IDENTITY_SCRIPT, "utf8"));
-    await this.host.writeFile(`${this.workdir.unix}/host-reverse.ps1`, await readFile(new URL("host-reverse.ps1", SCRIPTS), "utf8"));
-
-    // No stdio redirection: it would inherit the interop pipes and keep this call waiting.
-    await this.ps(`Start-Process powershell.exe -WindowStyle Hidden -ArgumentList ${psString(`-NoProfile -ExecutionPolicy Bypass -File "${windows}\\host-reverse.ps1" -Channels 2 -PortFile "${windows}\\ports.txt"`)}`, signal);
-    let ports: number[] = [];
-    for (let i = 0; i < 40 && ports.length !== 5; i++) {
-      ports = (await this.host.readFile(`${this.workdir.unix}/ports.txt`)).trim().split(/\s+/).filter(Boolean).map(Number);
-      if (ports.length !== 5) await sleep(250, signal);
-    }
-    if (ports.length !== 5) throw new Error("The host relay for the isolated session did not start.");
-    const [driverClient, driverSession, identityClient, identitySession, relayPid] = ports;
-    this.pids.push(relayPid);
+    const keys = { session: this.ref, clientKey: randomBytes(32).toString("hex"), sessionKey: randomBytes(32).toString("hex") };
+    this.relay = await this.host.reverseRelay(this.workdir.unix, keys, signal);
+    const [driverClient, driverSession, identityClient, identitySession] = this.relay.ports;
 
     const token = randomBytes(32).toString("hex");
-    await this.host.writeFile(`${shared}/session.json`, JSON.stringify({ token, hostDriverPort: driverSession, hostIdentityPort: identitySession }));
+    // Only the reverse/session role key enters the agent user's private workspace.
+    await this.host.writeFile(`${shared}/session.json`, JSON.stringify({
+      token, hostDriverPort: driverSession, hostIdentityPort: identitySession, relay: { session: this.ref, key: keys.sessionKey },
+    }));
     await this.phase("start", { version: "1.0.0" }, signal);
     const exec = { version: "1.0.0", process: { commandLine: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${workspace}\\session-start.ps1" -Workspace "${workspace}"`, timeout: EXEC_TIMEOUT_MS } };
     await this.host.writeFile(`${this.workdir.unix}/exec.json`, JSON.stringify(exec));
     const pid = Number((await this.ps(`(Start-Process -FilePath ${psString(this.wxc)} -WindowStyle Hidden -PassThru -ArgumentList ${psString(`--operation exec --container-id ${this.id} "${windows}\\exec.json"`)}).Id`, signal)).trim());
     if (pid > 0) this.pids.push(pid);
 
-    this.tunnels = [await this.host.forward(driverClient, signal), await this.host.forward(identityClient, signal)];
-    this.endpoint = { url: `http://127.0.0.1:${this.tunnels[0].port}/mcp`, token, identityPort: this.tunnels[1].port, domain: "windows-session" };
+    this.tunnels.push(await this.host.forward(driverClient, signal));
+    this.tunnels.push(await this.host.forward(identityClient, signal));
+    this.endpoint = { url: `http://127.0.0.1:${this.tunnels[0].port}/mcp`, token, identityPort: this.tunnels[1].port, relay: { session: this.ref, key: keys.clientKey }, domain: "windows-session" };
   }
 
   /** Stop the session, remove its agent user and workspace, and stop the host relay. Safe to call more than once. */
@@ -116,10 +111,13 @@ export class IsolatedSession {
     this.closed = true;
     for (const tunnel of this.tunnels) tunnel.close();
     this.tunnels = [];
+    const relayClosed = Promise.allSettled([this.relay?.close()]);
     // Stop ends every process in the session; deprovision then removes the agent user and its workspace.
     if (this.id) for (const operation of ["stop", "deprovision"] as const)
       await this.phase(operation, { version: "1.0.0" }).catch(() => undefined);
     if (this.pids.length) await this.ps(`Stop-Process -Id ${this.pids.join(",")} -Force -ErrorAction SilentlyContinue`).catch(() => undefined);
+    const [relayResult] = await relayClosed;
+    if (relayResult.status === "rejected") throw relayResult.reason;
     if (this.workdir) await this.host.remove(this.workdir.unix).catch(() => undefined);
   }
 

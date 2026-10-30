@@ -1,6 +1,26 @@
 import { Agent, request } from "node:http";
+import type { Socket } from "node:net";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { connectRelay, type RelayCredentials } from "./relay-auth.ts";
+
+const AGENT_OPTIONS = { keepAlive: true, maxSockets: 1, maxFreeSockets: 1 };
+
+/** Node calls this asynchronous hook before it assigns a socket or writes HTTP headers. */
+class RelayAgent extends Agent {
+  constructor(private readonly url: URL, private readonly relay: RelayCredentials, private readonly signal: AbortSignal) {
+    super(AGENT_OPTIONS);
+  }
+
+  createConnection(_options: unknown, callback: (error: Error | null, socket?: Socket) => void): void {
+    void connectRelay(Number(this.url.port), this.relay, { channel: "driver", role: "client" }, this.url.hostname, this.signal)
+      .then(socket => {
+        if (this.signal.aborted) { socket.destroy(); callback(new Error("Transport closed.")); return; }
+        callback(null, socket);
+        socket.resume();
+      }, error => callback(error));
+  }
+}
 
 /**
  * MCP over the CUA driver's Streamable-HTTP endpoint on one keep-alive connection.
@@ -10,10 +30,13 @@ export class SingleConnectionHttpTransport implements Transport {
   onclose?: () => void;
   onerror?: (error: Error) => void;
   onmessage?: (message: JSONRPCMessage) => void;
-  private readonly agent = new Agent({ keepAlive: true, maxSockets: 1, maxFreeSockets: 1 });
+  private readonly agent: Agent;
   private closed = false;
+  private readonly abort = new AbortController();
 
-  constructor(private readonly url: URL, private readonly token: string) {}
+  constructor(private readonly url: URL, private readonly token: string, relay?: RelayCredentials) {
+    this.agent = relay ? new RelayAgent(url, relay, this.abort.signal) : new Agent(AGENT_OPTIONS);
+  }
 
   async start(): Promise<void> {}
 
@@ -47,6 +70,7 @@ export class SingleConnectionHttpTransport implements Transport {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.abort.abort();
     this.agent.destroy();
     this.onclose?.();
   }

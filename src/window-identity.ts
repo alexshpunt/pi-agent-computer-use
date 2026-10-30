@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { connect } from "node:net";
+import { connect, type Socket } from "node:net";
+import { connectRelay, type RelayCredentials } from "./relay-auth.ts";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import type { WindowTarget } from "./session.ts";
@@ -37,14 +38,19 @@ export function hostIdentityPeer(runner: CommandRunner): IdentityConnector {
 }
 
 /** Reach an identity peer that a sandbox guest starts for each TCP connection. */
-export function remoteIdentityPeer(port: number, host = "127.0.0.1"): IdentityConnector {
-  return () => new Promise((resolve, reject) => {
-    const socket = connect({ host, port }, () => {
-      socket.off("error", reject);
-      resolve({ input: socket, output: socket, onExit: listener => socket.on("close", listener), kill: () => socket.destroy(), diagnostics: () => "" });
-    });
-    socket.once("error", reject);
-  });
+export function remoteIdentityPeer(port: number, host = "127.0.0.1", relay?: RelayCredentials): IdentityConnector {
+  return async () => {
+    const socket = relay
+      ? await connectRelay(port, relay, { channel: "identity", role: "client" }, host)
+      : await new Promise<Socket>((resolve, reject) => {
+        const socket = connect({ host, port }, () => { socket.off("error", reject); resolve(socket); });
+        socket.once("error", reject);
+      });
+    let diagnostic = "";
+    socket.on("error", error => { diagnostic = error.message; });
+    return { input: socket, output: socket, onExit: listener => socket.on("close", listener),
+      kill: () => socket.destroy(), diagnostics: () => diagnostic };
+  };
 }
 
 /** One owned identity peer binds references to window lifetimes, not just reusable HWNDs. */
