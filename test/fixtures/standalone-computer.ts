@@ -3,6 +3,7 @@ import { ComputerResources } from "../../src/computer-resources.ts";
 import type { ComputerMode, ComputerResult, ComputerSession } from "../../src/session.ts";
 import { registerStandaloneTools } from "../../src/standalone-tools.ts";
 import { registerComputerTools } from "../../src/computer-tools.ts";
+import { STANDALONE_TOOL_NAMES } from "../../src/tool-names.ts";
 
 export const STANDALONE_TOOLS = ["computer_read", "computer_search", "computer_delete", "computer_open", "computer_window", "computer_display", "computer_wait",
   "computer_browser", "computer_files", "computer_clipboard", "computer_record", "computer_click", "computer_hover", "computer_drag", "computer_scroll",
@@ -16,7 +17,7 @@ export function registerFixtureComputerTools(pi: ExtensionAPI, getSession: (cwd:
   closeSession: () => Promise<ComputerResult>, getMode?: () => ComputerMode): ComputerResources {
   const resources = new ComputerResources(getSession, closeSession, undefined, undefined, getMode);
   pi.on("session_start", () => {
-    registerComputerTools(pi, resources);
+    registerComputerTools(pi, resources, STANDALONE_TOOL_NAMES);
     registerStandaloneTools(pi, resources, "Fixture computer guide.");
     pi.setActiveTools([...new Set([...pi.getActiveTools(), ...STANDALONE_TOOLS])]);
   });
