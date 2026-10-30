@@ -50,7 +50,7 @@ If you have [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide), looking 
 
 Computer use is built for an agent you trust with your desktop. In YOLO mode, the default, the agent can read and operate any window you point it at, read whole displays, attach to browsers that are already running and start programs by path. You get the most out of it this way.
 
-YOLO also means the agent can click and type anywhere you could. If a misclick would fuck up something you care about, switch to Safe mode with `/computer-mode safe`, or give the agent a sandbox. In Safe mode the agent only sees and touches windows it opened itself, and it can't read displays or start arbitrary programs. Neither mode isolates anything at the OS level; sandboxes and isolated sessions do that (see below).
+YOLO also means the agent can click and type anywhere you could. If a misclick would fuck up something you care about, switch to Safe mode with `/computer-mode safe`, or give the agent a sandbox. In Safe mode the agent only sees and touches windows it opened itself, and it can't read displays or start arbitrary programs. Safe mode is an ownership policy for this extension, not an OS security boundary. It does not restrict shell tools, files, networking, the clipboard, shared application state or what an authorized app can do.
 
 ### UI structure and screenshots
 
@@ -80,7 +80,7 @@ Input goes to a window by its address and targets an element by a ref from the l
 - run a timeline of timed key, button, mouse and pen events, with raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
 - invoke, select or set values through UI Automation, and open menu items by their labels.
 
-What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input takes the front window, and it pauses whenever you touch the keyboard or mouse. Nothing is posted to windows as messages that an app could silently drop. To keep your desktop untouched, give the agent a sandbox or an isolated session.
+What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input takes the front window, and it pauses whenever you touch the keyboard or mouse. Nothing is posted to windows as messages that an app could silently drop. To keep foreground UI work off the human desktop, use a sandbox or an isolated session.
 
 ### Results and checks
 
@@ -99,10 +99,12 @@ The browser's toolbar, tabs and system dialogs are still ordinary windows, so th
 
 ### Sandboxes, sessions and other machines
 
-- Windows Sandbox gives the agent a throwaway Windows with its own driver. You choose which folders it can see.
-- An isolated agent session is a separate Windows session on the same machine with its own desktop, clipboard and input. Several agents can work at once, each with foreground input, and none of them touches your desktop.
+- Windows Sandbox gives the agent a disposable Windows desktop with networking enabled. The extension maps its runtime and control files read-only and a private output folder writable. Requested imports are read-only unless `writable` is set; `export` is writable.
+- Sandbox setup turns Smart App Control off only inside the disposable guest. The driver requires a bearer token, and the identity service requires mutual proof. Their traffic crosses temporary guest ports and host-loopback relays.
+- An isolated agent session is a temporary Windows user session on the same machine with its own desktop, clipboard and input. Several can run at once. Its network policy allows ingress and egress. Runtime and control files go into the temporary user's private workspace; user folders are not shared automatically.
+- In verified Windows checks, their foreground UI stayed off the human desktop. This is desktop separation, not hostile-code containment or protection from a local administrator.
 - Browsers the agent opens use throwaway profiles that get deleted when the session closes.
-- Another Windows machine with WSL can be controlled over SSH with the same addresses. No ports are opened on either side.
+- Another Windows machine with WSL can be controlled over its existing SSH connection. Temporary loopback listeners and SSH forwards carry control traffic; the extension does not configure a new externally reachable host listener.
 
 ### Files, clipboard and recordings
 
