@@ -84,7 +84,7 @@ The marker check and driver dispatch are separate native operations, not an atom
 
 ## Development
 
-Load exactly one copy of the extension: point its package entry in your Pi settings at the checkout you are working on, and point it back when you are done. Loading the package and a project wrapper together registers every tool twice. In a fresh checkout run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide` to link the IDE SDK.
+Load exactly one copy of the extension: point its package entry in your Pi settings at the checkout you are working on, and point it back when you are done. Loading the package and a project wrapper together registers every tool twice. In a fresh checkout run `npm ci --ignore-scripts --legacy-peer-deps`, then `npm run dev:ide -- /absolute/path/to/pi-agent-ide` to link the IDE SDK. Check that the linked source exports `pi-agent-ide/api/capabilities`; a matching version alone does not establish API availability.
 
 ```bash
 npm run typecheck

@@ -2,6 +2,8 @@
 
 - Load the `computer_*` tools with `tool_search`, one group per query: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`, `computer view viewport`.
 - The `/computer-*` commands belong to the user: when a refusal names one, ask the user to run it.
+- In IDE mode, native discovery of a `computer_*` action or `ide_capability_computer` loads computer-address help into the shared tools. Use the loader for a resource-only workflow. The first associated Codemode call loads that help too; `searchTools`, `describeTool` and `describeNamespace` leave it unloaded.
+- Ordinary file calls and a direct computer-address {read} do not activate schema help. A direct computer-address {read} still works and loads this guide.
 
 ## Addresses
 

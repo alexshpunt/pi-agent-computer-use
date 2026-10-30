@@ -44,7 +44,7 @@ Native capture and input come from our fork of [Cua Driver](https://github.com/t
 
 Every action has its own tool with typed fields: `computer_open`, `computer_click`, `computer_type`, `computer_wait`, `computer_browser` and so on. They stay out of the tool list until the agent looks for them with `tool_search`, so a session that never touches the computer pays nothing for them.
 
-If you have [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide), looking goes through its `read`, `search` and `delete` tools, so the agent uses the same tools for files and windows, and the results show up in the IDE's tool panels. Without the IDE, computer use adds `computer_read`, `computer_search` and `computer_delete` instead. Both modes take the same addresses, return the same results and work from Codemode scripts. Each Pi session picks the mode itself, so you don't configure anything.
+If you have [Pi Agent IDE](https://github.com/alexshpunt/pi-agent-ide), looking goes through its `read`, `search` and `delete` tools, so the agent uses the same tools for files and windows, and the results show up in the IDE's tool panels. Without the IDE, computer use adds `computer_read`, `computer_search` and `computer_delete` instead. Both modes take the same addresses, return the same results and work from Codemode scripts. Each Pi session picks the mode itself, so you don't configure anything. Computer-address help in the shared tools loads on demand too; [Computer resources](docs/computer-resources.md) explains discovery.
 
 ### YOLO and Safe mode
 
