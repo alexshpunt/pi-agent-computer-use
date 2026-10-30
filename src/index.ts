@@ -64,6 +64,8 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     registered = true;
     registerComputerTools(pi, provider.resources, provider.attached() ? IDE_TOOL_NAMES : STANDALONE_TOOL_NAMES);
     if (!provider.attached()) registerStandaloneTools(pi, provider.resources, fillToolNames(provider.guide, STANDALONE_TOOL_NAMES));
+    const namespace = computerNamespace();
+    provider.registerCapabilities(pi.getAllTools().filter(tool => tool.namespace?.name === namespace.name).map(tool => tool.name), namespace);
     // Deferred tools are reachable only through tool_search, which Pi registers inactive.
     const active = pi.getActiveTools();
     if (!active.includes("tool_search") && pi.getAllTools().some(tool => tool.name === "tool_search"))
