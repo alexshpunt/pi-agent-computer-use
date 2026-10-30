@@ -47,7 +47,26 @@ No `.pi/computer-use.json` is needed. An ignored local file in the project can o
 }
 ```
 
-`CUA_DRIVER_PATH` does the same as `command`. `runtime` names a qualified profile from `src/driver.ts`; normally the executable must match its version and SHA-256. For an experimental driver, set `"driverOverride": true` beside `command`: this trusts those executable bytes and checks the driver identity, protocol and advertised tools instead. Only use an executable you trust. Optional `args` replace `['mcp', '--direct', '--embedded']`, `interop` selects a live WSL interop socket, and `machines` names other machines (see [Work on another machine](computer-resources.md#work-on-another-machine)). These are trusted user settings, never agent tool arguments. Close the computer runtime and reload after changing them.
+`CUA_DRIVER_PATH` does the same as `command`. `runtime` names a qualified profile from `src/driver.ts`; normally the executable must match its version and SHA-256. For an experimental driver, set `"driverOverride": true` beside `command`: this trusts those executable bytes and checks the driver identity, protocol and advertised tools instead. Only use an executable you trust. Optional `args` replace `['mcp', '--direct', '--embedded']`, `interop` selects a live WSL interop socket, and `machines` names other machines (see [Other machines](#other-machines)). These are trusted user settings, never agent tool arguments. Close the computer runtime and reload after changing them.
+
+## Other machines
+
+Another Windows machine with WSL can be operated over SSH: its windows, displays, browsers and sandboxes. Only machines named under `machines` in `.pi/computer-use.json` can be reached, by name, never by host or path. Its addresses work like local ones and never act on this machine; a browser `url` such as `127.0.0.1` means that machine. The remote user's Windows session must be active; a disconnected one returns white screenshots. Delete the machine address to stop its driver; its next use starts it again.
+
+To set one up:
+
+1. Make it reachable through an SSH alias that logs in to its WSL by key, with a known host key.
+2. Add the alias to `.pi/computer-use.json`:
+
+```json
+"machines": {
+  "lab": { "ssh": "lab-wsl" }
+}
+```
+
+On first use, computer use prepares the package-compatible driver on the remote machine. It prepares Windows Node and the browser worker when a browser is opened, and uses new verified caches after package updates. Old caches are not replaced while they may be in use. `/computer-setup machine <alias> [name]` can prepare these ahead of time.
+
+Trusted configuration can still specify remote WSL `command`, `runtime`, `node` or `package` overrides. Set `driverOverride: true` to try an experimental driver without the packaged hash check, and `browserOverride: true` to keep explicit browser paths even when they resemble old generated paths. Older generated paths otherwise migrate to automatic defaults; unrelated custom paths remain overrides.
 
 ## WSL interop
 

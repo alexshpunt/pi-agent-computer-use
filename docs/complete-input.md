@@ -23,7 +23,7 @@ Physical letter keys follow the active OS keyboard layout. Use `type_text` for l
 
 A relative drag endpoint is computed from the observed start: `to_x=from_x+dx`, `to_y=from_y+dy`. No global cursor or desktop offset is needed.
 
-The typed tools choose delivery from the target (see [Act on windows](computer-resources.md#act-on-windows)): a click or scroll on an element goes through UI Automation with `uia_only`, and the driver refuses before sending anything when no pattern carries it; the tool then sends the same action as real input. Points, drags, keys and timelines are real input (`delivery_mode: "foreground"`). No route posts window messages.
+The typed tools choose delivery from the target (see [Input](computer-resources.md#input)): a click or scroll on an element goes through UI Automation with `uia_only`, and the driver refuses before sending anything when no pattern carries it; the tool then sends the same action as real input. Points, drags, keys and timelines are real input (`delivery_mode: "foreground"`). No route posts window messages.
 
 ## Bounded sequences
 
@@ -71,5 +71,22 @@ These are adapter/native receipt times, not invented application-event timestamp
 Refusal, unknown/partial outcome, cancellation, access revocation or target lifetime loss stops later steps. Completed steps are not rolled back. Never replay a completed prefix or uncertain in-flight step. Invalid preflight sends nothing and does not consume the overview. Once the first native call is dispatched, the overview is retired for external input, even if the sequence fails.
 
 The native driver owns each gesture's normal key/button release. No separate key-down/up, cross-call button hold, application hover or global release-all is exposed. Held paths use the bundled fork's EOF-aware receiver; adapter cancellation closes its owned transport and attempts native release. A crash or forced process kill cannot guarantee release. Never interpret a timeout as a completed stroke.
+
+## What an action changed
+
+Every action reports what it changed, the way Playwright MCP's incremental snapshots do: `~` changed, `+` added and `-` removed elements, plus URL, title or tab changes, such as `~ 3:a Button "Count 0" → "Count 1"`. Changed and added rows carry the new refs. A locator action compares with the walk that resolved its target; a page action compares Playwright's snapshots before and after.
+
+Every action also compares pixels: on a native window the window's overview pixels, in a viewport only the viewport's pixels, on a browser page Playwright screenshots of the page in CSS pixels. Image 1 is a small copy of the window or page with each changed area outlined and numbered as listed. Before and after crops of the first three areas follow it, with small areas enlarged up to 4x:
+
+```text
+Pixels changed in 2 areas (overview pixels; 0.07% of the window); image 1 outlines and numbers them on the window:
+  1. x=465 y=645 w=24 h=24 (at the input point); images 2 and 3 show x=453 y=633 w=48 h=48 before and after, enlarged 4x
+  2. x=120 y=40 w=300 h=60; images 4 and 5 show x=108 y=28 w=324 h=84 before and after
+Browser chrome outside the page also changed (x=0 y=0 w=1280 h=80, 2 areas): tab strip, address bar or loading state; not listed.
+```
+
+The area at or nearest to the input point comes first, otherwise the largest. In a browser window whose page elements reach UI Automation (Edge does; Chrome often does not), changes above the page, such as a loading tab or the address bar, are summarised in one line. When most of the window or page changed, or a page action navigated to another URL, image 1 is the whole window or page after the action instead of an overview and crops.
+
+This shows a stroke on a canvas or a moved sprite when the UI tree says nothing. Changes under 12 pixels and caret-shaped spots do not count. When the first capture shows no change, it looks again for up to 300 ms, then says `Nothing changed in the UI or the window's pixels within N ms`; check the target before repeating the action. When something changed, it captures until the window settles, for up to 1 second.
 
 See the [operating skill](../.pi/skills/computer-use/SKILL.md).

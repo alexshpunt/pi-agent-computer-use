@@ -42,6 +42,12 @@ The adapter admits one native request at a time and retains one replaceable pend
 
 `highlight.status: queued` records adapter admission, not proof that a person saw pixels. An unavailable renderer does not repeat capture or input. Failed or cancelled startup releases the connection while keeping presentation preferences subscribed for a later attempt. Final session shutdown disposes those subscriptions. Backend refusal and capture exclusion still need qualification on the exact Windows runtime; the adapter alone cannot prove focus, transparency, screenshot exclusion or visual quality.
 
+## Browser screenshots without a flash
+
+A visible Chromium window shrinks for a moment while Chrome takes a screenshot with a clip or scale of its own, so the human would see a flash on every element crop and every page action's pixel comparison. The browser worker therefore takes one plain viewport screenshot, which does not move the window, and the host derives the image from it: an element crop is cut from it at the element's pixels, and the page image used by the change list is scaled to one pixel per CSS pixel (exactly `innerWidth` x `innerHeight`). The image the agent gets and its coordinates stay the same; an element crop is the same size as Chrome's own, and its pixels match except for slight resampling at fractional device pixels.
+
+The worker falls back to Chrome's own screenshot, which can flash, when the derived image would not be exact: an element that is not wholly inside the viewport (for example taller than the window), a pinch-zoomed page, or a page that scrolls or resizes during the capture. In testing Firefox showed no flash with this path.
+
 ## Runtime qualification
 
 Use the exact source and file hashes in [the runtime pins](bundled-runtime.md). Before shipping a native visual runtime, check a real Windows desktop for focus and hit testing, capture exclusion, source changes, multi-monitor geometry, concurrent sessions, reduced motion, cancellation and cleanup. Measure input latency independently of animation and bound idle/active resource use. Keep private desktop recordings in ignored local artifacts.
