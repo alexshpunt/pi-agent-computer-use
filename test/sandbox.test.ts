@@ -32,9 +32,10 @@ test("the sandbox shares only the runtime, its own config, an output folder and 
 });
 
 /** A host whose sandbox launch stops at `failAt`; every script is recorded. */
-async function fakeHost(failAt: "session" | "id", running = false) {
+async function fakeHost(failAt: "session" | "id" | "ready", running = false, failForward?: number) {
   const local = await mkdtemp(path.join(tmpdir(), "pi-sandbox-test-"));
   const scripts: string[] = [];
+  const forwarded: number[] = [], closedForwards: number[] = [];
   const host: SandboxHost = {
     async path(value, to) {
       if (to === "windows") return value.startsWith("/mnt/c/") ? "C:\\" + value.slice(7).replaceAll("/", "\\") : "\\\\wsl.localhost\\Ubuntu" + value.replaceAll("/", "\\");
@@ -44,22 +45,59 @@ async function fakeHost(failAt: "session" | "id", running = false) {
     async powershell(script) {
       scripts.push(script);
       if (script.includes("sandbox=")) return "sandbox=True;wsb=True;missing=;local=C:\\Local\n";
-      if (script.includes("did not start within")) {
+      if (script.includes("Get-Process vmmemWindowsSandbox") && script.includes("Select-Object -First 1")) {
         if (failAt === "id") throw new Error("Cancelled while starting the sandbox.");
         return "11111111-2222-3333-4444-555555555555\n";
       }
-      if (script.includes("user session did not become available")) throw new Error("The sandbox user session did not become available within 120 s.");
+      if (script.includes("cmd.exe /c exit 0")) {
+        if (failAt !== "ready") throw new Error("The sandbox user session did not become available within 120 s.");
+        return "";
+      }
+      if (script.includes(".IpV4Address")) return "172.20.0.2\n";
       if (script.includes("Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) { 'running' }")) return running ? "running\n" : "";
       return "";
     },
     mkdir: async dir => { await mkdir(dir, { recursive: true }); },
     writeFile: (file, content) => writeFile(file, content),
-    readFile: file => readFile(file, "utf8").catch(() => ""),
+    readFile: file => {
+      const relay = /relay-(47800|47802)\.txt$/.exec(file);
+      if (failAt === "ready" && relay) return Promise.resolve(relay[1] === "47800" ? "12001 4242" : "12003 4243");
+      return readFile(file, "utf8").catch(() => "");
+    },
     remove: dir => rm(dir, { recursive: true, force: true }),
-    forward: async port => ({ port, close: () => {} }),
+    forward: async port => {
+      forwarded.push(port);
+      if (forwarded.length === failForward) throw new Error("Fixture forward failure");
+      return { port, close: () => { closedForwards.push(port); } };
+    },
   };
-  return { host, scripts, local };
+  return { host, scripts, local, forwarded, closedForwards };
 }
+
+test("Sandbox provisions a separate identity key and returns it only for the identity endpoint", async () => {
+  const f = await fakeHost("ready");
+  let sandbox: WindowsSandbox | undefined;
+  try {
+    sandbox = await WindowsSandbox.open(f.host, "/mnt/c/runtime/cua-driver.exe", { shares: [] });
+    const config = JSON.parse(await readFile(path.join(f.local, sandbox.ref, "config/identity.json"), "utf8"));
+    expect(config.session).toBe(sandbox.ref);
+    expect(config.key).toMatch(/^[a-f0-9]{64}$/);
+    expect(config.key).not.toBe(sandbox.endpoint?.token);
+    expect(sandbox.endpoint?.identityAuth).toEqual(config);
+    expect(sandbox.endpoint?.relay).toBeUndefined();
+    expect(f.forwarded).toEqual([12001, 12003]);
+  } finally { await sandbox?.close(); await rm(f.local, { recursive: true, force: true }); }
+  expect(f.closedForwards).toEqual([12001, 12003]);
+});
+
+test("a failed identity forward releases the already opened driver tunnel", async () => {
+  const f = await fakeHost("ready", false, 2);
+  try {
+    await expect(WindowsSandbox.open(f.host, "/mnt/c/runtime/cua-driver.exe", { shares: [] })).rejects.toBeInstanceOf(Error);
+    expect(f.closedForwards).toEqual([12001]);
+    expect(await readdir(f.local)).toEqual([]);
+  } finally { await rm(f.local, { recursive: true, force: true }); }
+});
 
 test("a sandbox that fails after launch is stopped and its host folder removed", async () => {
   const { host, scripts, local } = await fakeHost("session");
