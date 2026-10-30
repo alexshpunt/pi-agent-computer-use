@@ -4,6 +4,7 @@ import { connectSearchPlugin, SEARCH_PROTOCOL, SEARCH_API_VERSION } from "pi-age
 import { connectTextEditorPlugin, TEXT_EDITOR_PROTOCOL, TEXT_EDITOR_API_VERSION } from "pi-agent-ide/api/text-editor";
 import type { ResourceResolver } from "pi-agent-ide/api/resource";
 import { connectAgentDocumentation } from "pi-agent-ide/api/documentation";
+import { registerIdeCapability } from "pi-agent-ide/api/capabilities";
 import { readFile } from "node:fs/promises";
 import { ComputerResources, computerResultText, ComputerRequestError, FORCE, LOCAL_MACHINE, type SandboxFactory, type MachineFactory } from "./computer-resources.ts";
 import { computerSource, displaySource, type ComputerAddress } from "./computer-address.ts";
@@ -463,7 +464,8 @@ function nativeBlocks(body: string, result: ComputerResult | undefined, uiOnly: 
  */
 export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cwd: string) => Promise<ComputerSession>,
   closeSession: () => Promise<ComputerResult>, openSandbox?: SandboxFactory, connectMachine?: MachineFactory, getMode?: () => ComputerMode,
-): Promise<{ readonly resources: ComputerResources; readonly guide: string; readonly attached: () => boolean }> {
+): Promise<{ readonly resources: ComputerResources; readonly guide: string; readonly attached: () => boolean;
+  readonly registerCapabilities: (tools: readonly string[], namespace: { name: string; description: string }) => void }> {
   const accepted = new Set<string>();
   const guide = await readFile(new URL("../docs/computer-resources.md", import.meta.url), "utf8");
   connectAgentDocumentation(pi, [{ id: "computer", description: "Windows app windows, displays and browser pages: look with read and search, act with the computer_* tools",
@@ -503,7 +505,6 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         return { kind: "return", result: { content: read.content, isError: read.isError, details: read.details,
           script: { kind: "native", source: read.details.source, blocks: read.canonical } } };
       } });
-      api.describe({ path: computerPathHelp(IDE_TOOL_NAMES), views: computerViewsHelp(IDE_TOOL_NAMES) });
     } })),
     optional(connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       accepted.add("search");
@@ -520,7 +521,6 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         format(payload) { const result = payload as ComputerResult; return { ...result, content: [{ type: "text", text: resources.shorten(presentComputerResult(result)) }] }; },
         toScriptData(payload) { return { kind: "custom", resolverId: "computer", value: (payload as ComputerResult).details }; },
       } });
-      api.describe(COMPUTER_SEARCH_HELP);
     } })),
     optional(connectTextEditorPlugin(pi, { protocol: TEXT_EDITOR_PROTOCOL, apiVersion: TEXT_EDITOR_API_VERSION, id: "computer", setup(api) {
       accepted.add("text-editor");
@@ -542,10 +542,21 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         matches: input => owns(record(input).path),
         execute: (context, input) => deleteComputer(resources, context.sourceFor("path"), record(input), context.cwd, context.signal),
       });
-      // Field descriptions are additive on newer IDE SDKs; semantic ownership works on both.
-      if ("describeField" in deleteTool && typeof deleteTool.describeField === "function")
-        deleteTool.describeField("path", COMPUTER_DELETE_HELP);
     } })),
   ]);
-  return { resources, guide, attached: () => accepted.size === 3 };
+  return { resources, guide, attached: () => accepted.size === 3,
+    registerCapabilities(tools, namespace) {
+      if (accepted.size === 0) return;
+      registerIdeCapability(pi, {
+        version: 1, id: "computer", tools,
+        discovery: { name: "ide_capability_computer", namespace,
+          description: "Use ide_capability_computer to load Computer Use resource syntax for Read, Search and Delete, including installed-app, existing-window and display discovery." },
+        schemas: {
+          ...(accepted.has("read") ? { read: { parameters: { path: computerPathHelp(IDE_TOOL_NAMES), views: computerViewsHelp(IDE_TOOL_NAMES) } } } : {}),
+          ...(accepted.has("search") ? { search: { promptGuidelines: [COMPUTER_SEARCH_HELP] } } : {}),
+          ...(accepted.has("text-editor") ? { delete: { parameters: { path: COMPUTER_DELETE_HELP } } } : {}),
+        },
+      });
+    },
+  };
 }
