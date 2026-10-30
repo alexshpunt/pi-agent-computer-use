@@ -3,6 +3,7 @@ import path from "node:path";
 import { findBundledRuntime, type BundledRuntime } from "./native-runtime.ts";
 import { ADDRESS_KINDS } from "./computer-address.ts";
 import { liveInterop } from "./wsl-interop.ts";
+import type { RelayCredentials } from "./relay-auth.ts";
 
 /** Trusted overrides and an internal verified bundle. No executable or per-window target comes from agent input. */
 export interface ComputerConfig {
@@ -43,6 +44,8 @@ export interface GuestEndpoint {
   url: string;
   token: string;
   identityPort: number;
+  /** Authenticates the reverse relay before driver/identity application bytes. Never read from user config. */
+  relay?: RelayCredentials;
   /** Which kind of guest the driver runs in; a Windows Sandbox when omitted. */
   domain?: "windows-sandbox" | "windows-session";
 }

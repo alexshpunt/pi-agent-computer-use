@@ -181,7 +181,7 @@ export class McpDriver implements Driver {
       return !result.isError;
     }, visualSettings);
     this.visuals = this.presentation.flash;
-    if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort)
+    if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort, "127.0.0.1", config.endpoint.relay)
       : hostIdentityPeer(config.ssh ? sshRunner(config.ssh) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
 
@@ -216,7 +216,7 @@ export class McpDriver implements Driver {
     }
     signal?.throwIfAborted();
     const transport = this.config.endpoint
-      ? new SingleConnectionHttpTransport(new URL(this.config.endpoint.url), this.config.endpoint.token)
+      ? new SingleConnectionHttpTransport(new URL(this.config.endpoint.url), this.config.endpoint.token, this.config.endpoint.relay)
       : await this.stdioTransport();
     this.transport = transport;
     const client = new Client({ name: "pi-agent-computer-use-poc", version: "0.0.0" });

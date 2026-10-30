@@ -6,6 +6,8 @@ import path from "node:path";
 import type { ComputerConfig } from "./config.ts";
 import { ComputerRequestError } from "./computer-resources.ts";
 import { SSH_OPTIONS, powershellOf, runnerFiles, type CommandRunner } from "./runner.ts";
+import { startSessionRelay } from "./session-relay-host.ts";
+import type { SessionRelay, SessionRelayKeys } from "./session-relay.ts";
 
 /** Host-side commands for the sandbox lifecycle; replaced by a fake in tests. */
 export interface SandboxHost {
@@ -20,6 +22,8 @@ export interface SandboxHost {
   remove(path: string): Promise<void>;
   /** Reach a port on the host's loopback from this machine: the same port locally, an SSH tunnel for another machine. */
   forward(port: number, signal?: AbortSignal): Promise<{ port: number; close(): void }>;
+  /** Host-owned Node reverse relay; only needed for MXC, not Sandbox. */
+  reverseRelay?(workdir: string, keys: SessionRelayKeys, signal?: AbortSignal): Promise<SessionRelay>;
 }
 
 /** One host folder shared with the guest. Import is read-only unless requested; export is writable. */
@@ -100,6 +104,7 @@ export function runnerHost(runner: CommandRunner): SandboxHost {
     readFile: file => files.read(file).then(bytes => bytes.toString("utf8").replace(/\r/g, ""), () => ""),
     remove: dir => files.remove(dir),
     forward: async (port, signal) => runner.ssh ? tunnel(runner.ssh, port, signal) : { port, close: () => {} },
+    reverseRelay: (workdir, keys, signal) => startSessionRelay(runner, workdir, keys, signal),
   };
 }
 
