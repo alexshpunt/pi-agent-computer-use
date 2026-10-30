@@ -181,7 +181,7 @@ export class McpDriver implements Driver {
       return !result.isError;
     }, visualSettings);
     this.visuals = this.presentation.flash;
-    if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort, "127.0.0.1", config.endpoint.relay)
+    if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort, "127.0.0.1", config.endpoint.identityAuth ?? config.endpoint.relay)
       : hostIdentityPeer(config.ssh ? sshRunner(config.ssh) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
 

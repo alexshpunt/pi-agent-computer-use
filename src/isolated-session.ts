@@ -7,8 +7,7 @@ import type { SandboxHost } from "./sandbox.ts";
 import type { SessionRelay } from "./session-relay.ts";
 
 const SCRIPTS = new URL("../scripts/session/", import.meta.url);
-const SANDBOX_SCRIPTS = new URL("../scripts/sandbox/", import.meta.url);
-const IDENTITY_SCRIPT = new URL("../scripts/window-identity.ps1", import.meta.url);
+const COMMON_SCRIPTS = new URL("../scripts/", import.meta.url);
 /** The session lives until it is closed; MXC still needs a process timeout for its exec. */
 const EXEC_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const NETWORK = { egress: { default: "allow" }, ingress: { default: "allow", hostLoopback: "allow" } };
@@ -83,8 +82,8 @@ export class IsolatedSession {
     await this.ps(`Copy-Item -Recurse -Force -LiteralPath ${psString(runtime)} -Destination ${psString(`${workspace}\\runtime`)}`, signal, 120_000);
     for (const name of ["session-start.ps1", "relay-auth.ps1"])
       await this.host.writeFile(`${shared}/${name}`, await readFile(new URL(name, SCRIPTS), "utf8"));
-    await this.host.writeFile(`${shared}/guest-identity-bridge.ps1`, await readFile(new URL("guest-identity-bridge.ps1", SANDBOX_SCRIPTS), "utf8"));
-    await this.host.writeFile(`${shared}/window-identity.ps1`, await readFile(IDENTITY_SCRIPT, "utf8"));
+    for (const name of ["window-identity.ps1", "identity-channel.ps1", "identity-channel.cs"])
+      await this.host.writeFile(`${shared}/${name}`, await readFile(new URL(name, COMMON_SCRIPTS), "utf8"));
     const keys = { session: this.ref, clientKey: randomBytes(32).toString("hex"), sessionKey: randomBytes(32).toString("hex") };
     this.relay = await this.host.reverseRelay(this.workdir.unix, keys, signal);
     const [driverClient, driverSession, identityClient, identitySession] = this.relay.ports;

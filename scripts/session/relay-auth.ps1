@@ -21,10 +21,10 @@ function Write-PiRelayFrame($Stream, $Clock, $Frame) {
   $bytes = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $Frame -Compress) + "`n")
   $Stream.Write($bytes, 0, $bytes.Length)
 }
-function Get-PiRelayProof([byte[]]$Key, [string]$Side, [string]$Session, [string]$Channel, [string]$ServerNonce, [string]$ClientNonce) {
+function Get-PiRelayProof([byte[]]$Key, [string]$Side, [string]$Session, [string]$Channel, [string]$ServerNonce, [string]$ClientNonce, [string]$Role = 'session') {
   $mac = [Security.Cryptography.HMACSHA256]::new($Key)
   try {
-    $transcript = ConvertTo-Json -InputObject @('pi-relay', 1, $Side, $Session, $Channel, 'session', $ServerNonce, $ClientNonce) -Compress
+    $transcript = ConvertTo-Json -InputObject @('pi-relay', 1, $Side, $Session, $Channel, $Role, $ServerNonce, $ClientNonce) -Compress
     return (-join ($mac.ComputeHash([Text.Encoding]::UTF8.GetBytes($transcript)) | ForEach-Object { $_.ToString('x2') }))
   } finally { $mac.Dispose() }
 }
