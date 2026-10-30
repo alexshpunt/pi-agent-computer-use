@@ -68,8 +68,13 @@ test("without Pi Agent IDE, tool_search finds the deferred computer tools and th
   expect(getToolResultText(result, "display")).not.toContain("unknown");
   expect(getToolResultText(result, "display")).toContain("Display addresses name their machine");
   expect(getToolResultText(result, "delete")).toContain("Computer closed");
-  expect(getToolResultText(result, "guide")).toMatch(/^# Computer resources/);
+  expect(getToolResultText(result, "guide")).toMatch(/^# Computer\n/);
+  // The guide names the standalone tools, never a placeholder.
+  expect(getToolResultText(result, "guide")).toContain("computer_read");
+  expect(getToolResultText(result, "guide")).not.toMatch(/\{(read|search|delete)\}/);
   expect(getToolResultText(result, "session")).toContain("computer:machine/local");
+  // The guide was read already, so the first computer address does not bring it again.
+  expect(getToolResultText(result, "session")).not.toContain("# Guide: computer");
   expect(getToolResultText(result, "close")).toContain("Computer closed");
 }, 120_000);
 
@@ -77,10 +82,30 @@ test("an IDE that refuses this plugin API version leaves computer use standalone
   const result = await run("incompatible-ide", ["builtin:tool-search", path.join(root, "test/fixtures/incompatible-ide-extension.ts"), computerUse], ["read"], [
     { id: "find", name: "tool_search", arguments: { query: "computer read windows displays" } },
     { id: "session", name: "computer_read", arguments: { path: "computer:session" } },
+    { id: "again", name: "computer_read", arguments: { path: "computer:session" } },
   ]);
-  expect(getToolCallNames(result)).toEqual(["tool_search", "computer_read"]);
+  expect(getToolCallNames(result)).toEqual(["tool_search", "computer_read", "computer_read"]);
   expect(getToolExecution(result, "session").isError, getToolResultText(result, "session")).toBe(false);
   expect(getToolResultText(result, "session")).toContain("computer:machine/local");
+  // As with the IDE, the first read of a computer address brings the guide with the standalone names, and only once.
+  expect(getToolResultText(result, "session")).toContain("# Guide: computer");
+  expect(getToolResultText(result, "session")).toContain("computer_read of a viewport only looks");
+  expect(getToolResultText(result, "again")).not.toContain("# Guide: computer");
+}, 120_000);
+
+test("without Pi Agent IDE, a script's first computer_read brings the guide to the script's own result", async () => {
+  const result = await run("standalone-codemode", [path.join(root, "test/fixtures/codemode-extension.ts"), computerUse], ["codemode"], [
+    // The script prints nothing of what it read; the guide still reaches the model once.
+    { id: "script", name: "codemode", arguments: { code: `await tools.computer_read({ path: "computer:session" }); await tools.computer_read({ path: "computer:session" }); text("read twice");` } },
+    { id: "after", name: "codemode", arguments: { code: `text(await tools.computer_read({ path: "computer:session" }));` } },
+    { id: "close", name: "codemode", arguments: { code: `await tools.computer_delete({ path: "computer:session" }); text("closed");` } },
+  ]);
+  expect(getToolExecution(result, "script").isError, getToolResultText(result, "script")).toBe(false);
+  expect(getToolResultText(result, "script")).toContain("read twice");
+  expect(getToolResultText(result, "script").split("# Guide: computer").length).toBe(2);
+  expect(getToolResultText(result, "script")).toContain("computer_read of a viewport only looks");
+  expect(getToolResultText(result, "after")).toContain("computer:machine/local");
+  expect(getToolResultText(result, "after")).not.toContain("# Guide: computer");
 }, 120_000);
 
 test("with Pi Agent IDE, computer use extends Read, Search and Delete, refuses Write and Insert, and adds only the typed computer tools", async () => {
@@ -110,7 +135,11 @@ test("with Pi Agent IDE, computer use extends Read, Search and Delete, refuses W
       "computer_click", "computer_hover", "computer_drag", "computer_scroll", "computer_type", "computer_press", "computer_select", "computer_timeline"]) expect(loaded).toContain(`- ${tool}:`);
     for (const id of ["session", "close", "delete"])
       expect(getToolExecution(result, id).isError, getToolResultText(result, id)).toBe(false);
-    expect(getToolResultText(result, "session")).toContain("computer:session");
+    expect(getToolResultText(result, "session")).toContain("computer:machine/local");
+    // The first Read of a computer address brings the guide, with the IDE's tool names filled in.
+    expect(getToolResultText(result, "session")).toContain("# Guide: computer");
+    expect(getToolResultText(result, "session")).toContain("read of a viewport only looks");
+    expect(getToolResultText(result, "session")).not.toMatch(/\{(read|search|delete)\}|computer_read/);
     // Write and Insert only name the typed tool that does what they were sent; nothing reaches a machine.
     for (const id of ["insert", "write"]) expect(getToolExecution(result, id).isError).toBe(true);
     expect(getToolResultText(result, "insert")).toContain("Insert does not act on computer resources; nothing was sent. Use computer_open.");
