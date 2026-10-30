@@ -13,16 +13,35 @@ import { diffIsEmpty, type PixelReport, type StateDiff } from "./successor.ts";
 import type { PixelBox } from "./pixel-diff.ts";
 import { computerActionRenderer, computerReadRenderer, computerSearchRenderer } from "./computer-renderers.ts";
 import type { ComputerSession, ComputerResult, ComputerMode, Content } from "./session.ts";
+import { fillToolNames, IDE_TOOL_NAMES, type ComputerToolNames } from "./tool-names.ts";
 
 const owns = (source: unknown): source is string => typeof source === "string" && source.startsWith("computer:");
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const label = (value: unknown) => typeof value === "string" ? value.replace(/[\r\n\t]/g, " ").slice(0, 1024) : "";
 
-/** Agent guidance shared by the IDE plugin and the standalone tools. */
-export const COMPUTER_PATH_HELP = "Read docs:computer for native resources. computer:session, computer:machine/<name> (local, or a configured machine) with its /windows, /apps and /displays, its /display/primary or listed /display/ref, and returned computer:window/ref, observation/id or sequence/id, each running on the machine that issued it; results show short forms such as computer:<machine>/w3qk (o observation, s sequence), and computer:<name> after computer_window name. A viewport that computer_view made is its window's address with its name after it, such as computer:game/pano or computer:<machine>/w3qk/pano; Read shows its image at full resolution, ocr adds its text. Read only looks; the computer_* tools act.";
-export const COMPUTER_VIEWS_HELP = "Computer: image/ui/full; dom alone or dom:{target,boxes,depth,log} on a browser window opened or attached with computer_open returns a fresh Playwright aria snapshot with [ref=...] values of the active tab; log:true adds the retained console/page-error/network history; target is {ref} or locator fields role,name,label,text,placeholder,test_id,css,exact,frames. On a DOM observation: image is a page screenshot, element:crop|highlight,<ref> an element image; Search filters its lines. state alone on a window returns its minimized, maximized, visible and foreground state and bounds without pixels/UI, plus whether the window is hung and its process memory/CPU; computer_window changes them. ocr (alone or with capture options on a window, alone on an observation or a viewport) adds Windows OCR lines with boxes in pixels of that image; use maxLongEdge 3840 or a viewport for small text. aria (alone or with ui capture options, on a window) returns its UI as a Playwright aria snapshot with hints as [ref=...]. changes (alone, or with ui, image or full and capture options, on a window) takes a fresh capture and lists only rows changed, added or removed since that window's previous observation, with the new observation's hints, plus changed pixel areas with before/after crops instead of the full image. regions (alone or with image/full options on a window, alone on its observation) lists icons and text areas found by Cua perception with boxes in overview pixels; click a box centre with computer_click at its x,y. capture:{maxLongEdge,scale,max_elements,max_depth,hints,guides}. element:inspect|scope|highlight|crop|text,hint on a window observation; element:text returns one element's full text. For detail of part of a window, computer_view makes a viewport; region:x,y,width,height applies to display observations only. frames:first|last|all|endpoints|changed or frames:{indexes:[0]} / {from:0,to:2} / {select:'changed'} on a sequence address from computer_record; add as:'sheet' (one tiled image with index/time labels, optional columns) or as:'max'|'min' (one per-pixel composite), with optional region:{x,y,width,height} in frame pixels and maxLongEdge. Detail/frames are readonly; text offset/limit select UI lines, never image cells.";
-export const COMPUTER_SEARCH_HELP = "Search computer:machine/<name>/apps or computer:machine/<name>/windows (local is this machine) for installed-app/permitted-window metadata, or an observation for its collected UI/readonly DOM. Read computer:machine/<name>/displays for monitor metadata. Discovery launches nothing; observation Search performs no new native walk or DOM query. Treat missing matches in a partial projection as unknown.";
-export const COMPUTER_DELETE_HELP = "A computer window address closes that window like its close button (add ?force=true to kill the hung app of a window this session opened); a sandbox, isolated session or machine address releases it; computer:session releases everything computer use started.";
+/** Agent guidance shared by the IDE plugin and the standalone tools, one form per line like the IDE's own field lines. */
+export const computerPathHelp = (names: ComputerToolNames) => [
+  `computer:machine/<name> — a machine, local or configured; /windows and /apps for ${names.search}, /displays, /display/primary and /display/<ref> for display pixels.`,
+  `computer:window/… — a window from ${names.search} or computer_open: UI tree and overview image; computer:<name> after computer_window name.`,
+  `computer:window/…/<viewport> — a viewport from computer_view: its image at full resolution.`,
+  `computer:observation/… — the result of an earlier ${names.read}; computer:sequence/… — frames from computer_record.`,
+  `computer:session — machines, sandboxes, windows and names so far.`,
+  `Results show short forms such as computer:lab/w3qk; docs:computer has the rest.`,
+].join("\n");
+export const computerViewsHelp = (names: ComputerToolNames) => [
+  `On a computer window: full (default), image, ui — pixels and UI, pixels only, UI only.`,
+  `aria — UI as a Playwright aria snapshot with [ref=…].`,
+  `dom[:{target,depth,boxes,log}] — aria snapshot of a browser page opened with computer_open; use alone.`,
+  `state — minimized, maximized, foreground, bounds, hung; use alone.`,
+  `changes — only what changed since the window's previous observation.`,
+  `ocr — Windows OCR lines with boxes; regions — icons and text areas from Cua perception.`,
+  `capture:{maxLongEdge,scale,max_elements,max_depth,hints} — limits of one ${names.read}.`,
+  `element:inspect|scope|highlight|crop|text,<ref> — one element of an observation.`,
+  `region:x,y,w,h — part of a display observation.`,
+  `frames:first|last|all|endpoints|changed or frames:{indexes|from,to,as:sheet|max|min} — frames of a sequence.`,
+].join("\n");
+export const COMPUTER_SEARCH_HELP = "computer:machine/<name>/windows or /apps, or an observation address.";
+export const COMPUTER_DELETE_HELP = "computer:window/… closes that window (?force=true kills its hung app if this session opened it); computer:sandbox/…, computer:machine/<name> and computer:session release what they name.";
 /** Each Insert command the typed tools replaced, by the tool that does it now. */
 const REPLACED: [RegExp, string][] = [
   [/^(click|double_click|right_click|invoke|check|uncheck)$/, "computer_click"], [/^(type_text|type|fill|set_value)$/, "computer_type"],
@@ -447,8 +466,8 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
 ): Promise<{ readonly resources: ComputerResources; readonly guide: string; readonly attached: () => boolean }> {
   const accepted = new Set<string>();
   const guide = await readFile(new URL("../docs/computer-resources.md", import.meta.url), "utf8");
-  connectAgentDocumentation(pi, [{ id: "computer", description: "Native computer resources: look with Read and Search, act with the computer_* tools",
-    markdown: guide,
+  connectAgentDocumentation(pi, [{ id: "computer", description: "Windows app windows, displays and browser pages: look with read and search, act with the computer_* tools",
+    markdown: fillToolNames(guide, IDE_TOOL_NAMES),
     triggers: ["read", "search"].map(tool => ({ tool, resourcePrefixes: ["computer:"] })) }]);
   const resources = new ComputerResources(getSession, closeSession, openSandbox, connectMachine, getMode);
   const describe = (source: string) => resources.describe(source);
@@ -484,8 +503,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
         return { kind: "return", result: { content: read.content, isError: read.isError, details: read.details,
           script: { kind: "native", source: read.details.source, blocks: read.canonical } } };
       } });
-      api.describe({ path: COMPUTER_PATH_HELP,
-        views: COMPUTER_VIEWS_HELP });
+      api.describe({ path: computerPathHelp(IDE_TOOL_NAMES), views: computerViewsHelp(IDE_TOOL_NAMES) });
     } })),
     optional(connectSearchPlugin(pi, { protocol: SEARCH_PROTOCOL, apiVersion: SEARCH_API_VERSION, id: "computer", setup(api) {
       accepted.add("search");

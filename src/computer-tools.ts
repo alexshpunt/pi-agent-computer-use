@@ -1,21 +1,20 @@
-import { Type, type JsonValue, type Static } from "@earendil-works/pi-ai";
+import { StringEnum, Type, type JsonValue, type Static } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ComputerRequestError, refKind, type ComputerResources, type InputPlan, type InputPoint } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
 import { resourceRenderers, typedRenderers } from "./computer-renderers.ts";
 import { parseComputerViews } from "./computer-views.ts";
 import { COMPUTER_DELETE_HELP, computerAction, deleteComputer } from "./provider.ts";
+import { fillToolNames, IDE_TOOL_NAMES, type ComputerToolNames } from "./tool-names.ts";
 
 type Action = Awaited<ReturnType<typeof computerAction>>;
 
 /**
- * The namespace every computer_* tool shares. tool_search indexes its instructions into every tool's search text,
- * so they point to the guide instead of holding it: the guide names every operation and would make all tools match
- * every query equally.
+ * The namespace every computer_* tool shares. It carries no instructions: the guide reaches the agent with the first
+ * read of a computer address in both modes, and tool_search would index instructions into every tool's search text.
  */
 export function computerNamespace() {
-  return { name: "computer", description: "Read and operate Windows app windows, displays and browser pages through computer: addresses",
-    instructions: "Read docs:computer for the guide: with Read in Pi Agent IDE, with computer_read without it." };
+  return { name: "computer", description: "Read and operate Windows app windows, displays and browser pages through computer: addresses" };
 }
 /** Codemode scripts receive the receipt object for every outcome, so they branch on outcome without try/catch. */
 export const receiptSchema = Type.Object({ outcome: Type.String(), effect: Type.String() }, { additionalProperties: true });
@@ -29,14 +28,14 @@ export function actionResult(action: Action) {
 }
 
 const openParameters = Type.Object({
-  at: Type.String({ description: "Where to open: computer:machine/<name> (local is this machine), a computer:sandbox/... address, an app address from Search computer:machine/<name>/apps, or the window address of a running Chromium-based browser or app to attach Playwright to." }),
-  app: Type.Optional(Type.String({ description: "Installed app name as Search computer:machine/<name>/apps lists it, such as Notepad." })),
-  path: Type.Optional(Type.String({ description: "YOLO: absolute Windows path of an .exe to start, such as C:\\Tools\\app.exe." })),
+  at: Type.String({ description: "Where to open: computer:machine/<name>, a computer:sandbox/… address, an app address from {search} of computer:machine/<name>/apps, or the window address of a running Chromium-based browser or app to attach Playwright to." }),
+  app: Type.Optional(Type.String({ description: "Installed app name as {search} of computer:machine/<name>/apps lists it, such as Notepad." })),
+  path: Type.Optional(Type.String({ description: "Absolute Windows path of an .exe to start, such as C:\\Tools\\app.exe." })),
   args: Type.Optional(Type.Array(Type.String(), { maxItems: 32, description: "Command-line arguments for path." })),
   debugging: Type.Optional(Type.Boolean({ description: "Start the WebView2 app at path with its debugging port open, so its window can be attached." })),
-  browser: Type.Optional(Type.Union([Type.Literal("chrome"), Type.Literal("msedge"), Type.Literal("firefox")], { description: "Open a new visible browser driven by Playwright; its window takes DOM reads and page actions." })),
+  browser: Type.Optional(StringEnum(["chrome", "msedge", "firefox"] as const, { description: "Open a new visible browser driven by Playwright; its window takes DOM reads and page actions." })),
   url: Type.Optional(Type.String({ description: "http(s) page the new browser opens." })),
-  profile: Type.Optional(Type.Literal("agent", { description: "Persistent agent profile; in Safe the user enables and approves Chromium debugging; in YOLO Chromium's local debugging port permits access by local processes. Firefox agent profiles require YOLO. Omit for a disposable profile." })),
+  profile: Type.Optional(Type.Literal("agent", { description: "agent — a persistent profile whose logins stay for later sessions. Omit for a disposable profile." })),
   sandbox: Type.Optional(Type.Object({
     import: Type.Optional(Type.Array(Type.Union([Type.String(), Type.Object({ host: Type.String(), guest: Type.Optional(Type.String()), writable: Type.Optional(Type.Boolean()) }, { additionalProperties: false })]),
       { maxItems: 8, description: "Host folders shared into the sandbox, read-only unless writable." })),
@@ -46,7 +45,7 @@ const openParameters = Type.Object({
   webview2_debugging: Type.Optional(Type.Object({
     app: Type.String({ description: "The app's executable file name, such as ms-teams.exe." }),
     enabled: Type.Boolean({ description: "true opens the debugging port from the app's next start, whoever starts it; false turns it off again." }),
-  }, { additionalProperties: false, description: "YOLO: set a WebView2 app's debugging port for its next start on that machine, so its window can be attached; opens nothing. Windows may ask the person there to approve the change." })),
+  }, { additionalProperties: false, description: "Open a WebView2 app's debugging port from its next start on that machine, so its window can be attached; opens nothing. Windows may ask the person there to approve." })),
 }, { additionalProperties: false });
 
 /** The command that opens what computer_open asks for at this address. */
@@ -74,8 +73,8 @@ export function openCommand(address: ComputerAddress, params: Static<typeof open
 }
 
 const windowParameters = Type.Object({
-  window: Type.String({ description: "Window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game." }),
-  action: Type.Union([Type.Literal("move"), Type.Literal("resize"), Type.Literal("maximize"), Type.Literal("minimize"), Type.Literal("focus"), Type.Literal("restore"), Type.Literal("name")],
+  window: Type.String({ description: "Window address from {search}, {read} or a name, such as computer:zinpc/w3qk or computer:game." }),
+  action: StringEnum(["move", "resize", "maximize", "minimize", "focus", "restore", "name"] as const,
     { description: "focus activates a visible window; restore brings a minimized window back and activates it; name gives the window a short address computer:<as>." }),
   as: Type.Optional(Type.String({ description: "name: 1-32 lowercase letters, digits, - or _, starting with a letter, such as game. It resolves until the window closes." })),
   x: Type.Optional(Type.Integer({ description: "move: new left edge in Windows desktop pixels." })),
@@ -96,15 +95,15 @@ export function windowCommand(params: Static<typeof windowParameters>): Record<s
 }
 
 const viewParameters = Type.Object({
-  viewport: Type.String({ description: "Viewport address: a window's name or address with the viewport's name after it, such as computer:game/pano or computer:zinpc/w3qk/pano. The name is 1-32 lowercase letters, digits, - or _, starting with a letter. A new name makes the viewport; the name of an existing one moves or resizes it." }),
-  x: Type.Optional(Type.Integer({ minimum: 0, description: "Left edge in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
-  y: Type.Optional(Type.Integer({ minimum: 0, description: "Top edge in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
-  width: Type.Optional(Type.Integer({ minimum: 1, description: "Width in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
-  height: Type.Optional(Type.Integer({ minimum: 1, description: "Height in pixels of the window's latest image. Required for a new viewport; omit to keep the current one." })),
+  viewport: Type.String({ description: "Viewport address: a window's name or address with the viewport's name after it, such as computer:game/pano or computer:zinpc/w3qk/pano. The name is 1-32 lowercase letters, digits, - or _, starting with a letter. A new name makes the viewport and needs x, y, width and height; for an existing one, give only what changes." }),
+  x: Type.Optional(Type.Integer({ minimum: 0, description: "Left edge in pixels of the window's latest image." })),
+  y: Type.Optional(Type.Integer({ minimum: 0, description: "Top edge in pixels of the window's latest image." })),
+  width: Type.Optional(Type.Integer({ minimum: 1, description: "Width in pixels of the window's latest image." })),
+  height: Type.Optional(Type.Integer({ minimum: 1, description: "Height in pixels of the window's latest image." })),
 }, { additionalProperties: false });
 
 const displayParameters = Type.Object({
-  display: Type.String({ description: "computer:machine/<name>/display/primary, or a display address listed by Read computer:machine/<name>/displays." }),
+  display: Type.String({ description: "computer:machine/<name>/display/primary, or a display address listed by {read} of computer:machine/<name>/displays." }),
   width: Type.Integer({ minimum: 640, maximum: 16384, description: "New width in physical pixels." }),
   height: Type.Integer({ minimum: 480, maximum: 16384, description: "New height in physical pixels." }),
 }, { additionalProperties: false });
@@ -123,10 +122,10 @@ const targetSchema = (description: string) => Type.Union([
 ], { description });
 
 const waitParameters = Type.Object({
-  window: Type.String({ description: "Window address from Search, Read or a name; a browser window checks its active tab." }),
+  window: Type.String({ description: "Window address from {search}, {read} or a name; a browser window checks its active tab." }),
   conditions: Type.Array(Type.Object({
     target: Type.Optional(targetSchema("The element the check applies to; omit for aria on the whole window or page, and for url_contains and title.")),
-    is: Type.Optional(Type.Union([Type.Literal("exists"), Type.Literal("absent"), Type.Literal("visible"), Type.Literal("hidden"), Type.Literal("enabled"), Type.Literal("disabled"), Type.Literal("selected"), Type.Literal("checked"), Type.Literal("unchecked"), Type.Literal("focused")], { description: "State the target is in." })),
+    is: Type.Optional(StringEnum(["exists", "absent", "visible", "hidden", "enabled", "disabled", "selected", "checked", "unchecked", "focused"] as const, { description: "State the target is in." })),
     value: Type.Optional(Type.String({ description: "The target's value (its name if it has none, or a page element's text) equals this." })),
     contains: Type.Optional(Type.String({ description: "The target's value, name or text contains this." })),
     count: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: "Exactly this many elements match the target." })),
@@ -134,7 +133,7 @@ const waitParameters = Type.Object({
     url_contains: Type.Optional(Type.String({ description: "Browser windows: the active tab's URL contains this." })),
     title: Type.Optional(Type.String({ description: "Browser windows: the active tab's title equals this." })),
   }, { additionalProperties: false }), { minItems: 1, maxItems: 16, description: "Every condition must hold. Each takes one check: is, value, contains, count or aria with a target, aria alone, or url_contains or title alone." }),
-  mode: Type.Optional(Type.Union([Type.Literal("wait"), Type.Literal("check")], { description: "wait (default) samples until every condition holds or timeout_ms passes; check takes one sample." })),
+  mode: Type.Optional(StringEnum(["wait", "check"] as const, { description: "wait (default) samples until every condition holds or timeout_ms passes; check takes one sample." })),
   timeout_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "wait: longest wait, default 5000." })),
   interval_ms: Type.Optional(Type.Integer({ minimum: 50, maximum: 5000, description: "wait: time between samples, default 250." })),
   stable: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, description: "wait: consecutive satisfied samples required, default 1." })),
@@ -149,10 +148,19 @@ export function waitCommand(params: Static<typeof waitParameters>): Record<strin
 
 const browserParameters = Type.Object({
   window: Type.String({ description: "Window address of a browser opened with computer_open or attached to it." }),
-  action: Type.Union([Type.Literal("navigate"), Type.Literal("back"), Type.Literal("forward"), Type.Literal("reload"), Type.Literal("wait_load"), Type.Literal("new_tab"), Type.Literal("switch_tab"), Type.Literal("close_tab"), Type.Literal("dialog"), Type.Literal("upload"), Type.Literal("wait_download"), Type.Literal("cancel_download"), Type.Literal("evaluate")], { description: "What to do in the active tab: navigate to url; back, forward or reload; wait_load until the page reaches state; new_tab (optional url) becomes active; switch_tab or close_tab by tab; dialog answers the open JavaScript dialog; upload files into target; wait_download or cancel_download by download; evaluate runs expression." }),
+  action: StringEnum(["navigate", "back", "forward", "reload", "wait_load", "new_tab", "switch_tab", "close_tab", "dialog", "upload", "wait_download", "cancel_download", "evaluate"] as const, { description: [
+    "What to do in the active tab:",
+    "navigate, back, forward, reload — go to url or through history.",
+    "wait_load — wait for a load state.",
+    "new_tab, switch_tab, close_tab — tabs; a new tab becomes active.",
+    "dialog — answer the open JavaScript dialog.",
+    "upload — put files into a file input.",
+    "wait_download, cancel_download — downloads.",
+    "evaluate — run JavaScript in the page.",
+  ].join("\n") }),
   url: Type.Optional(Type.String({ description: "navigate and new_tab: an http(s) URL." })),
   tab: Type.Optional(Type.String({ description: "switch_tab and close_tab: a tab id such as t2 from the snapshot's tab list; close_tab defaults to the active tab." })),
-  state: Type.Optional(Type.Union([Type.Literal("load"), Type.Literal("domcontentloaded"), Type.Literal("networkidle")], { description: "wait_load: load state to reach, default load." })),
+  state: Type.Optional(StringEnum(["load", "domcontentloaded", "networkidle"] as const, { description: "wait_load: load state to reach, default load." })),
   accept: Type.Optional(Type.Boolean({ description: "dialog: accept (true) or dismiss (false)." })),
   text: Type.Optional(Type.String({ description: "dialog: the answer to an accepted prompt." })),
   target: Type.Optional(targetSchema("upload: the file input, or with chooser the element that opens the file chooser; evaluate: the element passed to a function expression.")),
@@ -182,7 +190,12 @@ function fieldsFor(action: string, fields: Record<string, unknown>, allowed: str
 
 const filesParameters = Type.Object({
   machine: machineSchema,
-  action: Type.Union([Type.Literal("put"), Type.Literal("get"), Type.Literal("list")], { description: "put copies a workspace file into this session's folder on the machine; get copies a file from that folder into the workspace; list shows the folder's Windows path and files. Apps there open and save files in that folder; closing the session removes it." }),
+  action: StringEnum(["put", "get", "list"] as const, { description: [
+    "put — copy a workspace file into the folder.",
+    "get — copy a file from the folder into the workspace.",
+    "list — the folder's Windows path and files.",
+    "The folder is removed when the computer session closes.",
+  ].join("\n") }),
   from: Type.Optional(Type.String({ description: "put: workspace file path." })),
   name: Type.Optional(Type.String({ description: "put: file name in the folder, default the name of from; get: the file to copy out." })),
   to: Type.Optional(Type.String({ description: "get: workspace path to write." })),
@@ -199,7 +212,7 @@ export function filesCommand(params: Static<typeof filesParameters>): Record<str
 
 const clipboardParameters = Type.Object({
   machine: machineSchema,
-  action: Type.Union([Type.Literal("read"), Type.Literal("write")], { description: "YOLO only; the clipboard is shared with the user's own apps. read returns its formats and text; write replaces it with text or an image." }),
+  action: StringEnum(["read", "write"] as const, { description: "read — its formats and text.\nwrite — replace it with text or an image." }),
   include_image: Type.Optional(Type.Boolean({ description: "read: also return the clipboard's image as PNG." })),
   text: Type.Optional(Type.String({ description: "write: the text to put on the clipboard." })),
   image: Type.Optional(Type.String({ description: "write: workspace path of an image file to put on the clipboard instead of text." })),
@@ -218,17 +231,24 @@ export function clipboardCommand(params: Static<typeof clipboardParameters>): Re
 }
 
 const recordParameters = Type.Object({
-  at: Type.String({ description: "video_start, video_stop and audio: computer:machine/<name>; sequence: a window or display address; watch: a window address, or a viewport address from computer_view such as computer:game/pano to watch part of a window; watch_stop: the sequence address watch returned." }),
-  action: Type.Union([Type.Literal("video_start"), Type.Literal("video_stop"), Type.Literal("audio"), Type.Literal("sequence"), Type.Literal("watch"), Type.Literal("watch_stop")], { description: "video_start records the machine's main display to video (YOLO) until video_stop or seconds pass; video_stop ends it and can fetch the file; audio records the machine's playback for seconds (YOLO); sequence captures frames of a window or display over duration_ms and returns a sequence address, whose frames Read shows with a frames: view; watch starts capturing a window or viewport in the background and returns a sequence address at once, while the agent keeps acting on the window and each action's receipt names its span and frames in the watch; watch_stop ends a watch and returns a contact sheet with the actions marked, per-frame change statistics and the frames as files." }),
+  at: Type.String({ description: "video_start, video_stop and audio: computer:machine/<name>; sequence: a window or display address; watch: a window or viewport address; watch_stop: the sequence address watch returned." }),
+  action: StringEnum(["video_start", "video_stop", "audio", "sequence", "watch", "watch_stop"] as const, { description: [
+    "video_start — record the machine's main display to video until video_stop or seconds pass.",
+    "video_stop — end the video.",
+    "audio — record the machine's playback for seconds.",
+    "sequence — capture frames of a window or display over duration_ms; {read} shows them with a frames: view.",
+    "watch — capture a window or viewport in the background while acting on it; returns at once.",
+    "watch_stop — end a watch and get its frames with the actions marked.",
+  ].join("\n") }),
   seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 600, description: "video_start: recording limit, 1..600; audio: recording length, 1..300." })),
   to: Type.Optional(Type.String({ description: "video_stop and audio: workspace path to fetch the recorded file into; watch_stop: workspace folder for the frames, default a temporary folder removed when the computer session closes." })),
-  transcribe: Type.Optional(Type.Boolean({ description: "audio: add a speech transcript made by faster-whisper on this machine; it can be wrong." })),
+  transcribe: Type.Optional(Type.Boolean({ description: "audio: add a speech transcript; it can be wrong." })),
   video: Type.Optional(Type.Boolean({ description: "watch_stop: also write watch.webp, an animation of the frames in real time." })),
   duration_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 60000, description: "sequence: capture length." })),
-  fps: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, description: "sequence and watch: frames per second to aim for, default 4 for sequence and 10 for watch; the result reports the rate reached." })),
+  fps: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, description: "sequence and watch: frames per second to aim for, default 4 for sequence and 10 for watch." })),
   max_frames: Type.Optional(Type.Integer({ minimum: 1, maximum: 300, description: "sequence: frame limit, default 40." })),
   timeout_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 300000, description: "sequence: total time limit, at least duration_ms, at most 90000, default 15000; watch: when the watch stops by itself, default 60000." })),
-  maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096, description: "sequence: longest frame edge in pixels; watch: longest frame edge, default 800, at most the viewport's own pixels." })),
+  maxLongEdge: Type.Optional(Type.Integer({ minimum: 64, maximum: 4096, description: "sequence and watch: longest frame edge in pixels; default 800 for watch." })),
   scale: Type.Optional(Type.Number({ minimum: 0.05, maximum: 1, description: "sequence: frame scale instead of maxLongEdge." })),
   region: Type.Optional(Type.Object({ x: Type.Integer({ minimum: 0 }), y: Type.Integer({ minimum: 0 }), width: Type.Integer({ minimum: 1 }), height: Type.Integer({ minimum: 1 }) },
     { additionalProperties: false, description: "sequence: part of the window or display to capture, in its local pixels." })),
@@ -269,11 +289,13 @@ export function recordCommand(params: Static<typeof recordParameters>): RecordRu
   return { command: { action: "audio_record", ...fields } };
 }
 
-const inputWindow = Type.String({ description: "Window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game, or a viewport address from computer_view, such as computer:game/pano." });
-const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest Read (1:a in a window Read, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }). On native windows a target is pressed through UI Automation in the background when it supports that, otherwise with the real pointer.` }));
-const coordinate = (axis: string) => Type.Optional(Type.Number({ minimum: 0, description: `${axis} of a point instead of target: pixels of the window's latest image, pixels of the viewport's image for a viewport address, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front.` }));
-const pointSpace = Type.Optional(Type.Union([Type.Literal("page"), Type.Literal("window")], { description: "Browser windows: page (default) takes refs, locators and CSS points of the page; window takes refs and points of a window Read, such as the browser's own toolbar." }));
-const modifiersField = Type.Optional(Type.Array(Type.Union([Type.Literal("ctrl"), Type.Literal("shift"), Type.Literal("alt"), Type.Literal("win")]), { maxItems: 4, description: "Keys held during the action." }));
+const inputWindow = Type.String({ description: "Window or viewport address from {search}, {read}, a name or computer_view." });
+const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest {read} (1:a in a window {read}, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }).` }));
+const coordinate = (description: string) => Type.Optional(Type.Number({ minimum: 0, description }));
+const pointX = "Point instead of target, with y: pixels of the latest image of the window or viewport, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front.";
+const pointY = "Point instead of target, with x.";
+const pointSpace = Type.Optional(StringEnum(["page", "window"] as const, { description: "Browser windows:\npage (default) — refs, locators and CSS points of the page.\nwindow — refs and points of a window {read}, such as the browser's own toolbar." }));
+const modifiersField = Type.Optional(Type.Array(StringEnum(["ctrl", "shift", "alt", "win"] as const), { maxItems: 4, description: "Keys held during the action." }));
 const locatorTimeout = Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "How long a locator target may take to match one ready element, default 5000." }));
 const PAGE_MODIFIERS: Record<string, string> = { ctrl: "Control", shift: "Shift", alt: "Alt", win: "Meta" };
 
@@ -307,8 +329,8 @@ function holding(modifiers: string[] | undefined, start: number, end: number, ev
 }
 
 const clickParameters = Type.Object({
-  window: inputWindow, target: inputTarget("The element to click"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
-  button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")], { description: "Mouse button, default left." })),
+  window: inputWindow, target: inputTarget("The element to click"), x: coordinate(pointX), y: coordinate(pointY), space: pointSpace,
+  button: Type.Optional(StringEnum(["left", "right", "middle"] as const, { description: "Mouse button, default left." })),
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 3, description: "Clicks: 2 is a double click, 3 a triple click. Default 1." })),
   modifiers: modifiersField, timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
@@ -329,7 +351,7 @@ export function clickPlan(params: Static<typeof clickParameters>): InputPlan {
 }
 
 const hoverParameters = Type.Object({
-  window: inputWindow, target: inputTarget("The element to point at"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
+  window: inputWindow, target: inputTarget("The element to point at"), x: coordinate(pointX), y: coordinate(pointY), space: pointSpace,
   dwell_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: how long the pointer rests there before the result, default 300." })),
   timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
@@ -342,7 +364,7 @@ export function hoverPlan(params: Static<typeof hoverParameters>): InputPlan {
 }
 
 const endpoint = (what: string) => Type.Object({
-  target: Type.Optional(Type.String({ description: `${what}: a ref from the window's latest Read, or a Playwright locator on browser pages.` })),
+  target: Type.Optional(Type.String({ description: `${what}: a ref from the window's latest {read}, or a Playwright locator on browser pages.` })),
   x: Type.Optional(Type.Number({ minimum: 0 })), y: Type.Optional(Type.Number({ minimum: 0 })),
 }, { additionalProperties: false, description: `${what}: a target, or a point (x and y) in pixels of the window's latest image or CSS pixels of a browser page.` });
 const dragParameters = Type.Object({
@@ -350,7 +372,7 @@ const dragParameters = Type.Object({
   via: Type.Optional(Type.Array(Type.Object({ x: Type.Number({ minimum: 0 }), y: Type.Number({ minimum: 0 }) }, { additionalProperties: false }),
     { minItems: 1, maxItems: 254, description: "Points the pointer passes through on the way, in order, for a path rather than a straight line; left button only." })),
   duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: "How long the move takes, default 500." })),
-  button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")], { description: "Button held during the drag, default left." })),
+  button: Type.Optional(StringEnum(["left", "right", "middle"] as const, { description: "Button held during the drag, default left." })),
   modifiers: modifiersField,
 }, { additionalProperties: false });
 
@@ -369,7 +391,7 @@ export function dragPlan(params: Static<typeof dragParameters>): InputPlan {
 }
 
 const scrollParameters = Type.Object({
-  window: inputWindow, target: inputTarget("The element to scroll; omit for the middle of the window or page"), x: coordinate("Left"), y: coordinate("Top"), space: pointSpace,
+  window: inputWindow, target: inputTarget("The element to scroll; omit for the middle of the window or page"), x: coordinate(pointX), y: coordinate(pointY), space: pointSpace,
   delta_x: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches to the right (negative: left)." })),
   delta_y: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches down (negative: up). One notch scrolls about 100 CSS pixels in a browser; apps decide their own distance." })),
   timeout_ms: locatorTimeout,
@@ -461,9 +483,9 @@ const timelineParameters = Type.Object({
   window: inputWindow, space: pointSpace,
   events: Type.Array(Type.Object({
     at_ms: Type.Integer({ minimum: 0, maximum: 120000, description: "Time from the start; never decreases." }),
-    type: Type.Union([Type.Literal("key_down"), Type.Literal("key_up"), Type.Literal("button_down"), Type.Literal("button_up"), Type.Literal("move"), Type.Literal("move_relative"), Type.Literal("wheel"), Type.Literal("pen_down"), Type.Literal("pen_move"), Type.Literal("pen_up")]),
+    type: StringEnum(["key_down", "key_up", "button_down", "button_up", "move", "move_relative", "wheel", "pen_down", "pen_move", "pen_up"] as const),
     key: Type.Optional(Type.String({ description: "key_down, key_up." })),
-    button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle"), Type.Literal("x1"), Type.Literal("x2")], { description: "button_down, button_up; default left." })),
+    button: Type.Optional(StringEnum(["left", "right", "middle", "x1", "x2"] as const, { description: "button_down, button_up; default left." })),
     x: Type.Optional(Type.Number({ minimum: 0, description: "move and pen events: pixels of the window's latest image." })),
     y: Type.Optional(Type.Number({ minimum: 0 })),
     dx: Type.Optional(Type.Integer({ description: "move_relative: raw mouse counts; wheel: notches." })),
@@ -487,15 +509,15 @@ export function timelinePlan(params: Static<typeof timelineParameters>): InputPl
  * Register the typed computer_* tools, one per operation cluster. They are deferred: a
  * tool_search for computer loads them, so sessions that never use the computer pay nothing for them.
  */
-export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResources): void {
+export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResources, names: ComputerToolNames = IDE_TOOL_NAMES): void {
   const namespace = computerNamespace();
   const common = { exposure: "deferred" as const, namespace, outputSchema: receiptSchema };
   const describe = (source: string) => resources.describe(source);
   const rendered = (name: string) => typedRenderers(name, describe);
   pi.registerTool({
     ...common, name: "computer_open", label: "Computer open",
-    description: "Use computer_open to start an app, a Playwright browser, a Windows Sandbox or an isolated session on a machine, or to attach Playwright to a running browser window. The result gives the new window or sandbox address.",
-    parameters: openParameters,
+    description: "Use computer_open to start an app, a Playwright browser, a Windows Sandbox or an isolated session on a machine, or to attach Playwright to a running browser window.",
+    parameters: fillToolNames(openParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_open"),
     async execute(_id, params, signal, _update, ctx) {
@@ -510,7 +532,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   pi.registerTool({
     ...common, name: "computer_window", label: "Computer window",
     description: "Use computer_window to move, resize, maximize, minimize, focus or restore an app window by its address without keys or clicks, or to give it a short name.",
-    parameters: windowParameters,
+    parameters: fillToolNames(windowParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_window"),
     async execute(_id, params, signal, _update, ctx) {
@@ -523,8 +545,8 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_view", label: "Computer view",
-    description: "Use computer_view to make, move or resize a viewport: a named rectangle of a window that follows the window. The result shows the viewport at the window's own resolution. Give its address to the computer_* input tools to act at points of that image and see what changed only there; Read it to look again.",
-    parameters: viewParameters,
+    description: fillToolNames("Use computer_view to work on part of a window: it makes, moves or resizes a viewport, a named rectangle of the window that follows it. Pass the viewport's address to {read} and the computer_* input tools instead of the whole window.", names),
+    parameters: fillToolNames(viewParameters, names),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_view"),
     async execute(_id, params, signal, _update, ctx) {
@@ -535,8 +557,8 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_wait", label: "Computer wait",
-    description: "Use computer_wait to wait until a window's UI or a browser page meets conditions, or to check them once, without sending input. The last sample becomes the window's current observation.",
-    parameters: waitParameters,
+    description: "Use computer_wait to wait until a window's UI or a browser page meets conditions, or to check them once, without sending input.",
+    parameters: fillToolNames(waitParameters, names),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_wait"),
     async execute(_id, params, signal, _update, ctx) {
@@ -544,15 +566,15 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
       return actionResult(await computerAction(resources, params.window, params.mode === "check" ? "verify" : "wait_for", () => {
         command = waitCommand(params);
         const address = resources.address(params.window);
-        if (address.kind !== "window") throw new ComputerRequestError("computer_wait needs a window address from Search, Read or a name.");
+        if (address.kind !== "window") throw new ComputerRequestError(`computer_wait needs a window address from ${names.search}, ${names.read} or a name.`);
         return address;
       }, address => resources.perform(address, ctx.cwd, JSON.stringify(command), signal)));
     },
   });
   pi.registerTool({
     ...common, name: "computer_browser", label: "Computer browser",
-    description: "Use computer_browser to navigate, manage tabs, answer JavaScript dialogs, upload or download files, and run page JavaScript in a browser window. The result shows the page's fresh snapshot.",
-    parameters: browserParameters,
+    description: "Use computer_browser to navigate, manage tabs, answer JavaScript dialogs, upload or download files, and run page JavaScript in a browser window.",
+    parameters: fillToolNames(browserParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     ...rendered("computer_browser"),
     async execute(_id, params, signal, _update, ctx) {
@@ -564,7 +586,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   pi.registerTool({
     ...common, name: "computer_files", label: "Computer files",
     description: "Use computer_files to copy files between the workspace and this session's own folder on a machine, or to list that folder, so apps there can open or save them.",
-    parameters: filesParameters,
+    parameters: fillToolNames(filesParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_files"),
     async execute(_id, params, signal, _update, ctx) {
@@ -577,8 +599,8 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_clipboard", label: "Computer clipboard",
-    description: "Use computer_clipboard to read or replace a machine's clipboard in YOLO mode, with text or an image.",
-    parameters: clipboardParameters,
+    description: "Use computer_clipboard to read or replace a machine's clipboard, with text or an image.",
+    parameters: fillToolNames(clipboardParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     ...rendered("computer_clipboard"),
     async execute(_id, params, signal, _update, ctx) {
@@ -591,8 +613,8 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_record", label: "Computer record",
-    description: "Use computer_record to record a machine's display to video or its playback audio, to capture frames of a window or display over time for motion and animation, or to watch a window or viewport in the background while acting on it, such as panning a panorama or dragging a 3D camera.",
-    parameters: recordParameters,
+    description: "Use computer_record to record a machine's display to video or its playback audio, to capture frames of a window or display over time, or to watch a window or viewport in the background while acting on it.",
+    parameters: fillToolNames(recordParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_record"),
     async execute(_id, params, signal, _update, ctx) {
@@ -622,64 +644,64 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   const inputAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
   pi.registerTool({
     ...common, name: "computer_click", label: "Computer click",
-    description: "Use computer_click to click an element or a point of a window: any button, double or triple clicks, with modifier keys. The result lists what changed.",
-    parameters: clickParameters, annotations: inputAnnotations,
+    description: "Use computer_click to click an element or a point of a window.",
+    parameters: fillToolNames(clickParameters, names), annotations: inputAnnotations,
     ...rendered("computer_click"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "click", () => clickPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_hover", label: "Computer hover",
-    description: "Use computer_hover to rest the pointer on an element or a point without clicking, for tooltips, hover menus and hover states.",
-    parameters: hoverParameters, annotations: inputAnnotations,
+    description: "Use computer_hover to rest the pointer on an element or a point without clicking.",
+    parameters: fillToolNames(hoverParameters, names), annotations: inputAnnotations,
     ...rendered("computer_hover"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "hover", () => hoverPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_drag", label: "Computer drag",
-    description: "Use computer_drag to press a button at one element or point, move to another, optionally through a path, and release there, for sliders, drag and drop and drawing.",
-    parameters: dragParameters, annotations: inputAnnotations,
+    description: "Use computer_drag to press a button at one element or point, move to another, optionally through a path, and release there.",
+    parameters: fillToolNames(dragParameters, names), annotations: inputAnnotations,
     ...rendered("computer_drag"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "drag", () => dragPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_scroll", label: "Computer scroll",
     description: "Use computer_scroll to turn the mouse wheel over an element, a point or the middle of a window or page.",
-    parameters: scrollParameters, annotations: inputAnnotations,
+    parameters: fillToolNames(scrollParameters, names), annotations: inputAnnotations,
     ...rendered("computer_scroll"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "scroll", () => scrollPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_type", label: "Computer type",
-    description: "Use computer_type to type text into a field or the focused element, or to replace a field's value, optionally pressing Enter after it.",
-    parameters: typeParameters, annotations: inputAnnotations,
+    description: "Use computer_type to type text into a field or the focused element, or to replace a field's value.",
+    parameters: fillToolNames(typeParameters, names), annotations: inputAnnotations,
     ...rendered("computer_type"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "type", () => typePlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_press", label: "Computer press",
-    description: "Use computer_press to press a key or shortcut such as Enter or ctrl+s, or to hold keys down for a time.",
-    parameters: pressParameters, annotations: inputAnnotations,
+    description: "Use computer_press to press a key or shortcut, or to hold keys down for a time.",
+    parameters: fillToolNames(pressParameters, names), annotations: inputAnnotations,
     ...rendered("computer_press"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "press", () => pressPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_select", label: "Computer select",
     description: "Use computer_select to choose options in a list or select element, set a checkbox, radio or toggle, or open an app's menu item.",
-    parameters: selectParameters, annotations: inputAnnotations,
+    parameters: fillToolNames(selectParameters, names), annotations: inputAnnotations,
     ...rendered("computer_select"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "select", () => selectPlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_timeline", label: "Computer timeline",
-    description: "Use computer_timeline to play timed key, button, pointer, wheel and pen events in one call, for games, held keys across moves and pressure-sensitive strokes.",
-    parameters: timelineParameters, annotations: inputAnnotations,
+    description: "Use computer_timeline to play timed key, button, pointer, wheel and pen events in one call.",
+    parameters: fillToolNames(timelineParameters, names), annotations: inputAnnotations,
     ...rendered("computer_timeline"),
     async execute(_id, params, signal, _update, ctx) { return input(params.window, "timeline", () => timelinePlan(params), ctx.cwd, signal); },
   });
   pi.registerTool({
     ...common, name: "computer_display", label: "Computer display",
-    description: "Use computer_display to change a display's resolution in YOLO mode, for example to test an app at another size; closing computer use restores it.",
-    parameters: displayParameters,
+    description: "Use computer_display to change a display's resolution; closing computer use restores it.",
+    parameters: fillToolNames(displayParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_display"),
     async execute(_id, params, signal, _update, ctx) {
