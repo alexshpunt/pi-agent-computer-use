@@ -8,6 +8,7 @@ import { ComputerRequestError } from "./computer-resources.ts";
 import { SSH_OPTIONS, powershellOf, runnerFiles, type CommandRunner } from "./runner.ts";
 import { startSessionRelay } from "./session-relay-host.ts";
 import type { SessionRelay, SessionRelayKeys } from "./session-relay.ts";
+import type { RelayCredentials } from "./relay-auth.ts";
 
 /** Host-side commands for the sandbox lifecycle; replaced by a fake in tests. */
 export interface SandboxHost {
@@ -37,7 +38,8 @@ const GUEST_ROOT = "C:\\pi";
 const DRIVER_GUEST_PORT = 47800;
 const IDENTITY_GUEST_PORT = 47802;
 const SCRIPTS = new URL("../scripts/sandbox/", import.meta.url);
-const IDENTITY_SCRIPT = new URL("../scripts/window-identity.ps1", import.meta.url);
+const COMMON_SCRIPTS = new URL("../scripts/", import.meta.url);
+const RELAY_AUTH_SCRIPT = new URL("../scripts/session/relay-auth.ps1", import.meta.url);
 
 const psString = (value: string) => `'${value.replace(/'/g, "''")}'`;
 const xml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -205,9 +207,13 @@ export class WindowsSandbox {
     await this.host.mkdir(`${unix}/out`);
     for (const name of ["guest-setup.ps1", "guest-start.ps1", "guest-identity-bridge.ps1", "host-relay.ps1"])
       await this.host.writeFile(`${unix}/config/${name}`, await readFile(new URL(name, SCRIPTS), "utf8"));
-    await this.host.writeFile(`${unix}/config/window-identity.ps1`, await readFile(IDENTITY_SCRIPT, "utf8"));
+    for (const name of ["window-identity.ps1", "identity-auth.ps1", "identity-channel.ps1", "identity-channel.cs"])
+      await this.host.writeFile(`${unix}/config/${name}`, await readFile(new URL(name, COMMON_SCRIPTS), "utf8"));
+    await this.host.writeFile(`${unix}/config/relay-auth.ps1`, await readFile(RELAY_AUTH_SCRIPT, "utf8"));
     const token = randomBytes(32).toString("hex");
+    const identityAuth = { session: this.ref, key: randomBytes(32).toString("hex") };
     await this.host.writeFile(`${unix}/config/token.txt`, token);
+    await this.host.writeFile(`${unix}/config/identity.json`, JSON.stringify(identityAuth));
     await this.host.writeFile(`${unix}/sandbox.wsb`, sandboxConfig(runtime, `${windows}\\config`, `${windows}\\out`, shares));
 
     // A WindowsSandboxServer started by wsb.exe or WindowsSandbox.exe from WSL/SSH fails; launch through the user's shell
@@ -249,10 +255,10 @@ throw 'The sandbox user session did not become available within 120 s.'`, signal
     await this.ps(`${this.wsb(`exec --id ${this.id} --run-as System -c 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${GUEST_ROOT}\\config\\guest-setup.ps1'`)} *> $null
 ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${GUEST_ROOT}\\config\\guest-start.ps1'`)} *> $null
 ((${this.wsb(`ip --id ${this.id} --raw`)} | Out-String | ConvertFrom-Json).Networks | Select-Object -First 1).IpV4Address`, signal, 120_000)
-      .then(ip => this.startRelays(ip.trim(), token, signal));
+      .then(ip => this.startRelays(ip.trim(), token, identityAuth, signal));
   }
 
-  private async startRelays(ip: string, token: string, signal?: AbortSignal): Promise<void> {
+  private async startRelays(ip: string, token: string, identityAuth: RelayCredentials, signal?: AbortSignal): Promise<void> {
     if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error("The sandbox reported no IPv4 address.");
     const { windows, unix } = this.workdir!;
     const relay = async (guestPort: number): Promise<Relay> => {
@@ -270,8 +276,9 @@ ${this.wsb(`exec --id ${this.id} --run-as ExistingLogin -c 'powershell.exe -NoPr
     this.relays.push(await relay(DRIVER_GUEST_PORT));
     this.relays.push(await relay(IDENTITY_GUEST_PORT));
     // Another machine's relays listen on its loopback; reach them through SSH tunnels.
-    this.tunnels = [await this.host.forward(this.relays[0].port, signal), await this.host.forward(this.relays[1].port, signal)];
-    this.endpoint = { url: `http://127.0.0.1:${this.tunnels[0].port}/mcp`, token, identityPort: this.tunnels[1].port };
+    this.tunnels.push(await this.host.forward(this.relays[0].port, signal));
+    this.tunnels.push(await this.host.forward(this.relays[1].port, signal));
+    this.endpoint = { url: `http://127.0.0.1:${this.tunnels[0].port}/mcp`, token, identityPort: this.tunnels[1].port, identityAuth };
   }
 
   /** Stop the sandbox, its relays and its host folder. Safe to call more than once. */

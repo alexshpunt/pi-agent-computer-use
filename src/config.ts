@@ -46,6 +46,8 @@ export interface GuestEndpoint {
   identityPort: number;
   /** Authenticates the reverse relay before driver/identity application bytes. Never read from user config. */
   relay?: RelayCredentials;
+  /** A Sandbox identity service's own proof credentials; separate from HTTP driver authorization. */
+  identityAuth?: RelayCredentials;
   /** Which kind of guest the driver runs in; a Windows Sandbox when omitted. */
   domain?: "windows-sandbox" | "windows-session";
 }
