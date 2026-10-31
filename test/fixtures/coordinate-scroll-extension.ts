@@ -156,7 +156,11 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const insert = await denied("insert", { path: first, text: JSON.stringify({ action: "scroll", x: 100, y: 80, delta_y: 2, unit: "wheel_detents" }) });
         assert(textOf(insert).includes("computer_scroll"), "Insert refusal named no tool");
       }
-      await ok("delete", { path: "computer:session" });
+      if (scenario === "receipts") {
+        // Unknown YOLO input may still be scheduled, so closing cannot confirm its cleanup.
+        const closed = await denied("delete", { path: "computer:session" });
+        assert(/input cleanup is unconfirmed/.test(textOf(closed)), `Close hid unconfirmed input cleanup: ${textOf(closed)}`);
+      } else await ok("delete", { path: "computer:session" });
       return { content: [{ type: "text" as const, text: `Scroll ${scenario} contract passed` },
         ...(image ? [{ type: "image" as const, data: image.data!, mimeType: image.mimeType! }] : [])], details: { scenario } };
     },

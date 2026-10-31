@@ -29,7 +29,8 @@ text(JSON.stringify({platform:"linux",metadata:rows.length,lifetime:"deferred",l
         assistantMessage([text("Portable admission checked without app launch or input.")]),
       ] }).run("Inspect only synthetic metadata and verify deferred lifetime refusal. Do not launch apps or send input.");
     expect(getToolExecution(result, "portable").isError, getToolResultText(result, "portable")).toBe(false);
-    expect(JSON.parse(getToolResultText(result, "portable").trim().split("\n").at(-1)!)).toMatchObject({ metadata: 2, lifetime: "deferred", launch: "refused" });
+    // The first Computer Use call also appends the computer guide after the script output.
+    expect(JSON.parse(getToolResultText(result, "portable").split("\n").find(line => line.startsWith('{"platform"'))!)).toMatchObject({ metadata: 2, lifetime: "deferred", launch: "refused" });
     expect((getToolExecutionResult(result, "portable") as { content: { type: string }[] }).content.some(block => block.type === "image")).toBe(false);
     const [listed] = nestedCalls(getToolExecutions(result), "portable");
     for (const row of listed.computer.state.windows as { window_ref?: string; unavailable: string[]; source_identity: { domain: string; membership: Record<string, unknown> } }[]) {
