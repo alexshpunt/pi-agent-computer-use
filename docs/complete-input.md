@@ -89,4 +89,4 @@ The area at or nearest to the input point comes first, otherwise the largest. In
 
 This shows a stroke on a canvas or a moved sprite when the UI tree says nothing. Changes under 12 pixels and caret-shaped spots do not count. When the first capture shows no change, it looks again for up to 300 ms, then says `Nothing changed in the UI or the window's pixels within N ms`; check the target before repeating the action. When something changed, it captures until the window settles, for up to 1 second.
 
-See the [operating skill](../.pi/skills/computer-use/SKILL.md).
+See the [operating skill](../skills/computer-use/SKILL.md).

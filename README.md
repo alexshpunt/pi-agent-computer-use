@@ -183,7 +183,7 @@ I use this every day on real tasks, but I can only test the machines, apps and w
 | Document                                                  | Contents                                                              |
 | --------------------------------------------------------- | --------------------------------------------------------------------- |
 | [Computer resources](docs/computer-resources.md)          | The agent guide `docs:computer`: rules the tool fields do not give   |
-| [Operating skill](.pi/skills/computer-use/SKILL.md)       | How the agent observes, plans, acts and verifies                      |
+| [Operating skill](skills/computer-use/SKILL.md)           | How the agent observes, plans, acts and verifies                      |
 | [Complete input](docs/complete-input.md)                  | Keys, pointer, drags, sequences and their limits                      |
 | [Semantic actions](docs/semantic-actions.md)              | UI Automation invoke, select and set value                            |
 | [UI resources and hints](docs/ui-resources.md)            | The native UI tree, hints and local UI operations                     |
