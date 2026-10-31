@@ -34,6 +34,7 @@ test("a dead WSL_INTEROP gives way to the lowest live socket, and nothing live g
   await socket("17_interop");
   await writeFile(path.join(dir, "2_interop"), "not a socket");
   expect(await liveInterop(path.join(dir, "401_interop"), dir)).toBe(first);
-  expect(await liveInterop(undefined, dir)).toBe(first);
+  // An empty value stands for an unset variable; undefined would read this machine's WSL_INTEROP.
+  expect(await liveInterop("", dir)).toBe(first);
   expect(await liveInterop(path.join(dir, "401_interop"), path.join(dir, "missing"))).toBeUndefined();
 });

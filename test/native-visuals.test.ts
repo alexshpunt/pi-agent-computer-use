@@ -95,7 +95,7 @@ async function actionFixture(outcome: "delivered" | "refused" | "unknown" = "del
     identity: vi.fn(async () => frame.identity), close: vi.fn(async () => {}),
     call: vi.fn<Driver["call"]>(async (name, args): Promise<DriverResult> => {
       if (name === "list_windows") return { content: [], structuredContent: { windows: [{
-        ...frame.target, bounds: frame.bounds, app_name: "Fixture.exe", title: "Action fixture",
+        ...frame.target, bounds: frame.bounds, app_name: "Fixture.exe", title: "Action fixture - Google Chrome",
       }] } };
       if (name === "get_window_state") return { content: [png], structuredContent: {
         ...frame.target, window_bounds: frame.bounds, capture_id: "11111111-1111-4111-8111-111111111111",

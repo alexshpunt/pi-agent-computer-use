@@ -5,7 +5,7 @@ import { registerComputerMode } from "../src/mode.ts";
 import { registerComputerProvider } from "../src/provider.ts";
 
 // Policy is independent of the IDE event bus; real-Pi provider tests cover that boundary.
-vi.mock("../src/provider.ts", () => ({ registerComputerProvider: vi.fn(async () => ({ resources: { hasUnapprovedAgentBrowser: () => false }, guide: "", attached: () => true })) }));
+vi.mock("../src/provider.ts", () => ({ registerComputerProvider: vi.fn(async () => ({ resources: { hasUnapprovedAgentBrowser: () => false }, guide: "", attached: () => true, registerCapabilities: vi.fn() })) }));
 
 type Command = { handler(args: string, ctx: ExtensionCommandContext): Promise<void> };
 async function fixture(branch: unknown[] = []) {
