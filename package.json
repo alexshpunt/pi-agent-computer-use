@@ -53,7 +53,7 @@
       "./src/index.ts"
     ],
     "skills": [
-      "./.pi/skills/computer-use"
+      "./skills"
     ],
     "image": "https://raw.githubusercontent.com/alexshpunt/pi-agent-computer-use/develop/assets/banner.png"
   },
@@ -97,7 +97,7 @@
     "native-runtime/win32-x64/runtime/",
     "native-runtime/win32-x64/runtime.source",
     "vscode-browser-bridge/",
-    ".pi/skills/computer-use/",
+    "skills/",
     "docs/",
     "assets/banner.png",
     "LICENSE",
