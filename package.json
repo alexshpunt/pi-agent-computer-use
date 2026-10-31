@@ -70,7 +70,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
-    "pi-agent-ide": "^0.9.1",
+    "pi-agent-ide": "^0.9.2",
     "playwright-core": "1.64.1",
     "sharp": "0.35.5"
   },
