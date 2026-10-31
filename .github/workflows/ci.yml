@@ -1,10 +1,11 @@
+# yamllint disable rule:line-length rule:document-start rule:truthy
 name: CI
 
 on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "release/*"]
   workflow_dispatch:
 
 permissions:
@@ -14,27 +15,46 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "24.19.0"
+  NPM_VERSION: "11.19.0"
+  PI_VERSION: "1.4.0"
+
 jobs:
-  test:
-    name: Typecheck and tests
+  validate:
+    # Branch protection on main requires this check by name.
+    name: Validate
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # A release candidate records the PR merge commit's first parent as its tested base.
+          fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "24"
-          cache: npm
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Setup npm
+        run: npm install --global "npm@${NPM_VERSION}"
+
+      - name: Enforce main release freeze
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          PR_HEAD: ${{ github.head_ref }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node --experimental-strip-types scripts/release/merge-policy.ts
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
       - name: Install Pi
         # Integration tests start the real Pi CLI from PATH.
-        run: npm install --global @earendil-works/pi-coding-agent@1.4.0
+        run: npm install --global "@earendil-works/pi-coding-agent@${PI_VERSION}"
 
       - name: Typecheck
         run: npm run typecheck
@@ -45,3 +65,17 @@ jobs:
       - name: Integration tests
         # Fake MCP drivers stand in for Windows; no desktop or native runtime is used.
         run: npm run test:integration
+
+      - name: Build and install reproducible release candidate
+        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/') && github.base_ref == 'main'
+        run: node --experimental-strip-types scripts/release/build-candidate.ts
+
+      - name: Retain release candidate
+        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/') && github.base_ref == 'main'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-candidate
+          path: .tmp/release/candidate/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

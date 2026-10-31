@@ -194,6 +194,7 @@ I use this every day on real tasks, but I can only test the machines, apps and w
 | [Native visuals](docs/native-observability.md)            | Human controls, previews and presentation safety                       |
 | [Bundled runtime](docs/bundled-runtime.md)                | Native runtime packages and platform boundaries                       |
 | [Setup and modes](docs/setup.md)                          | Install, Safe and YOLO, runtime overrides and window lifetime         |
+| [Releases](docs/releases.md)                              | Promotion, release candidates, publication and first-time setup       |
 
 ## License
 

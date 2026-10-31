@@ -93,6 +93,7 @@
   "files": [
     "src/",
     "scripts/",
+    "!scripts/release/",
     "native/",
     "native-runtime/win32-x64/runtime/",
     "native-runtime/win32-x64/runtime.source",
@@ -100,6 +101,7 @@
     "skills/",
     "docs/",
     "assets/banner.png",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md"
   ]

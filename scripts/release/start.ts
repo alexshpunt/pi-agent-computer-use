@@ -1,0 +1,35 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { insertReleaseNotes } from "./changelog.ts";
+import { activeReleaseBranches } from "./merge-policy.ts";
+import { PACKAGE_NAME, registryUrl, VERSION_PATTERN } from "./package.ts";
+
+const version = process.env.RELEASE_VERSION;
+const notes = process.env.RELEASE_NOTES?.trim();
+if (!version || !VERSION_PATTERN.test(version) || !notes) throw new Error("A stable X.Y.Z version and release notes are required");
+if (process.env.GITHUB_REF !== "refs/heads/main") throw new Error("Start releases from main only");
+const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" }).trim();
+if (activeReleaseBranches(git("ls-remote", "origin", "refs/heads/release/*")).length)
+  throw new Error("Finish or explicitly cancel the existing release before starting another");
+if (git("tag", "--list", `v${version}`)) throw new Error("Version tag already exists");
+const registry = await fetch(registryUrl(version));
+if (registry.status !== 404) throw new Error(`Version already exists or registry unavailable: ${registry.status}`);
+
+const branch = `release/${version}`;
+execFileSync("git", ["switch", "--create", branch], { stdio: "inherit" });
+const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+manifest.version = version;
+writeFileSync("package.json", JSON.stringify(manifest, null, 2) + "\n");
+// The lockfile records the root version twice; dependencies stay exactly as reviewed.
+const lock = JSON.parse(readFileSync("package-lock.json", "utf8")) as { version: string; packages: Record<string, { version?: string }> };
+lock.version = version;
+lock.packages[""]!.version = version;
+writeFileSync("package-lock.json", JSON.stringify(lock, null, 2) + "\n");
+const changelog = readFileSync("CHANGELOG.md", "utf8");
+if (changelog.includes(`## ${version} —`)) throw new Error("Changelog already has this version");
+writeFileSync("CHANGELOG.md", insertReleaseNotes(changelog, `## ${version} — ${new Date().toISOString().slice(0, 10)}`, notes));
+execFileSync("git", ["add", "package.json", "package-lock.json", "CHANGELOG.md"], { stdio: "inherit" });
+execFileSync("git", ["commit", "--message", `chore: prepare ${version} release`], { stdio: "inherit" });
+execFileSync("git", ["push", "origin", branch], { stdio: "inherit" });
+execFileSync("gh", ["pr", "create", "--base", "main", "--head", branch, "--title", `Release ${version}`,
+  "--body", `Validate ${PACKAGE_NAME}@${version} before publication.`], { stdio: "inherit" });
