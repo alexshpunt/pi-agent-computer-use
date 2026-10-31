@@ -1,0 +1,142 @@
+# yamllint disable rule:line-length rule:comments rule:document-start rule:truthy
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Merged release PR number
+        required: true
+        type: string
+      candidate_run:
+        description: Successful CI run for the release PR
+        required: true
+        type: string
+      publish:
+        description: Publish after verifying the candidate (requires npm approval)
+        default: false
+        type: boolean
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  NODE_VERSION: "24.19.0"
+  NPM_VERSION: "11.19.0"
+
+jobs:
+  validate:
+    name: Verify candidate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.candidate.outputs.version }}
+      commit: ${{ steps.candidate.outputs.commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Verify candidate identity and archive
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ inputs.pull_request }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+        run: node --experimental-strip-types scripts/release/promote.ts
+      - name: Retain verified artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-${{ steps.candidate.outputs.version }}
+          path: .tmp/release/promoted/*
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish package
+    needs: validate
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Setup Node and npm registry
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: Install pinned npm
+        # Trusted Publishing needs npm 11.5.1 or newer.
+        run: npm install --global "npm@${NPM_VERSION}"
+      - name: Download verified artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-${{ needs.validate.outputs.version }}
+          path: .tmp/release/promoted
+      - name: Publish exact archive without replacing tags or versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+        run: node --experimental-strip-types scripts/release/publish.ts
+      - name: Create matching GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          tag="v${RELEASE_VERSION}"
+          archive=".tmp/release/promoted/pi-agent-computer-use-${RELEASE_VERSION}.tgz"
+          gh release view "$tag" >/dev/null 2>&1 ||
+            gh release create "$tag" "$archive" --verify-tag --generate-notes --title "Pi Agent Computer Use ${RELEASE_VERSION}"
+
+  finish:
+    name: Synchronize develop and lift release freeze
+    needs: [validate, publish]
+    if: inputs.publish && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Get short-lived repository credentials
+        id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: alexshpunt
+          repositories: pi-agent-computer-use
+          permission-contents: write
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Download verified archive and evidence
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-${{ needs.validate.outputs.version }}
+          path: .tmp/release/promoted
+      - name: Merge main into develop and end freeze
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          git config user.name pi-agent-computer-use-release[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          node --experimental-strip-types scripts/release/finish.ts
