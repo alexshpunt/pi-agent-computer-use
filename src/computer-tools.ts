@@ -73,7 +73,7 @@ export function openCommand(address: ComputerAddress, params: Static<typeof open
 }
 
 const windowParameters = Type.Object({
-  window: Type.String({ description: "Window address from {search}, {read} or a name, such as computer:zinpc/w3qk or computer:game." }),
+  window: Type.String({ description: "Window address from {search}, {read} or a name, such as computer:<machine>/w3qk or computer:game." }),
   action: StringEnum(["move", "resize", "maximize", "minimize", "focus", "restore", "name"] as const,
     { description: "focus activates a visible window; restore brings a minimized window back and activates it; name gives the window a short address computer:<as>." }),
   as: Type.Optional(Type.String({ description: "name: 1-32 lowercase letters, digits, - or _, starting with a letter, such as game. It resolves until the window closes." })),
@@ -95,7 +95,7 @@ export function windowCommand(params: Static<typeof windowParameters>): Record<s
 }
 
 const viewParameters = Type.Object({
-  viewport: Type.String({ description: "Viewport address: a window's name or address with the viewport's name after it, such as computer:game/pano or computer:zinpc/w3qk/pano. The name is 1-32 lowercase letters, digits, - or _, starting with a letter. A new name makes the viewport and needs x, y, width and height; for an existing one, give only what changes." }),
+  viewport: Type.String({ description: "Viewport address: a window's name or address with the viewport's name after it, such as computer:game/pano or computer:<machine>/w3qk/pano. The name is 1-32 lowercase letters, digits, - or _, starting with a letter. A new name makes the viewport and needs x, y, width and height; for an existing one, give only what changes." }),
   x: Type.Optional(Type.Integer({ minimum: 0, description: "Left edge in pixels of the window's latest image." })),
   y: Type.Optional(Type.Integer({ minimum: 0, description: "Top edge in pixels of the window's latest image." })),
   width: Type.Optional(Type.Integer({ minimum: 1, description: "Width in pixels of the window's latest image." })),

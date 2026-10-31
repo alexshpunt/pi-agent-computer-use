@@ -333,7 +333,7 @@ export class ComputerResources {
   private readonly starting = new Map<string, Promise<OpenedMachine>>();
   /** Sandbox launches and machine starts still in progress; a cancelled one finishes its own cleanup before it settles. */
   private readonly opening = new Set<Promise<unknown>>();
-  /** Short aliases of this run's long addresses (computer:zinpc/w3qk). */
+  /** Short aliases of this run's long addresses (computer:<machine>/w3qk). */
   private readonly shorts = new ShortAddresses();
   /** Window names the agent gave, with the window's title when it was named. */
   private readonly names = new Map<string, { window_ref: string; title: string }>();
@@ -394,7 +394,7 @@ export class ComputerResources {
       details: { status: "delivered", mode: this.getMode(), window_ref: ref } };
   }
   /**
-   * Parse an address the agent sent: a long one, a short alias issued in this run (computer:zinpc/w3qk, with the
+   * Parse an address the agent sent: a long one, a short alias issued in this run (computer:<machine>/w3qk, with the
    * observation options of the long form), or a window name (computer:game). Stale aliases and names refuse.
    */
   address(source: string): ComputerAddress {
@@ -420,7 +420,7 @@ export class ComputerResources {
       if (!NAME.test(segments[1])) throw new ComputerRequestError("A viewport name is 1-32 lowercase letters, digits, - or _ and starts with a letter.");
       return requireComputerAddress(viewportSource(this.names.get(segments[0])!.window_ref, segments[1]));
     }
-    // A short window address, or a viewport of one: computer:zinpc/w3qk or computer:zinpc/w3qk/pano.
+    // A short window address, or a viewport of one: computer:<machine>/w3qk or computer:<machine>/w3qk/pano.
     if ((segments.length === 2 || segments.length === 3) && !ADDRESS_KINDS.has(segments[0]) && SHORT_REFERENCE.test(segments[1])) {
       let long: string;
       try { long = this.shorts.resolve(segments[0], segments[1]); }
@@ -979,7 +979,7 @@ export class ComputerResources {
    */
   async view(address: ComputerAddress, cwd: string, given: Partial<PixelBox>, signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind !== "viewport")
-      throw new ComputerRequestError("computer_view needs a viewport address: computer:<window name>/<viewport name> such as computer:game/pano, or a window address with the viewport name after it such as computer:zinpc/w3qk/pano.");
+      throw new ComputerRequestError("computer_view needs a viewport address: computer:<window name>/<viewport name> such as computer:game/pano, or a window address with the viewport name after it such as computer:<machine>/w3qk/pano.");
     const existing = this.viewports.get(viewportSource(address.ref, address.name));
     if (existing) this.viewport(address);
     const place = this.place(address);
@@ -1066,7 +1066,7 @@ export class ComputerResources {
    */
   async input(address: ComputerAddress, cwd: string, plan: InputPlan, signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind !== "window" && address.kind !== "viewport")
-      throw new ComputerRequestError("Give the window address from Search, Read or a name, such as computer:zinpc/w3qk or computer:game, or a viewport address such as computer:game/pano.");
+      throw new ComputerRequestError("Give the window address from Search, Read or a name, such as computer:<machine>/w3qk or computer:game, or a viewport address such as computer:game/pano.");
     // In a viewport, points are pixels of the viewport's image and its pixels show what the action changed.
     const viewport = address.kind === "viewport" ? this.viewport(address) : undefined;
     if (viewport && plan.space !== undefined) throw new ComputerRequestError("space does not apply in a viewport: its points are pixels of the viewport's image.");

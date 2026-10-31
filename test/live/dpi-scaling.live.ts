@@ -4,7 +4,7 @@ import { connectLive, nativeForm, openWindow, text, WINDOWS_POWERSHELL_PATH as P
 
 // LPT-907: on a display scaled above 100%, Windows paints a DPI-unaware window at 96 DPI and stretches it on screen.
 // Its overview must show that stretched window, so UI bounds, OCR boxes and pixel input agree with the image.
-// Run it on a machine scaled above 100% (ZinPC: 150%).
+// Run it on a machine scaled above 100%, for example 150%.
 const live = await connectLive();
 const pids: number[] = [];
 afterAll(async () => { for (const pid of pids) await live.kill(pid); await live.close(); });

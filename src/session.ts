@@ -210,7 +210,7 @@ const appName = (name: string) => name.trim().toLowerCase().replace(/^windows\s+
 /** File name of a Win32 launch path without directory and extension; packaged shell:appsFolder paths have none. */
 const executableName = (path: string) => /^shell:/i.test(path) ? "" : appName(path.split(/[\\/]/).pop() ?? "");
 
-/** Watch captures in flight at once. A third measured no faster on ZinPC: part of each driver call is serial. */
+/** Watch captures in flight at once. A third measured no faster: part of each driver call is serial. */
 const WATCH_CONCURRENCY = 2;
 /** A watch frame the driver cropped to its viewport: the image is the viewport, at most `cap` on its long edge. */
 function nativeCropFrame(state: Record<string, unknown>, images: SequenceFrame["image"][], requested: PixelBox, cap: number, base: ObservationSource) {
