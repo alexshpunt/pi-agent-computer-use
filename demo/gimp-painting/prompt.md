@@ -1,0 +1,7 @@
+Paint a copy of `reference.png` from your workspace in GIMP on the Windows machine `{{machine}}`. It is a copy of the repository's `assets/draw_task.png`: a cartoon robot at a computer, with the lettering "Oh! I can use a computer!". Follow the paint-from-reference skill: read it completely before you start, and use its setup, toolkit and stages.
+
+GIMP is already open and maximized there, with an empty {{canvasWidth}}×{{canvasHeight}} canvas named `canvas.png`. Use that window; don't open another GIMP or another image. The screen is being recorded for a time-lapse, so keep GIMP maximized and in front, and don't open other apps on that machine.
+
+This is a demonstration of what an agent can do with computer use, and you are expected to paint the whole picture yourself with GIMP's tools. A recognizable, stylized copy is a success: the same subject, composition, colours, sketchy style and lettering. Don't stop at a rough block-in, and don't end the task without a finished painting. Take the time you need. Nobody answers questions during this run, so make your own decisions.
+
+When the painting is finished, export it as PNG to `{{exportPath}}`: press `shift+ctrl+e`; in the "Export Image" window, triple-click the Name field, press `ctrl+a`, type that full path and press Enter; then find the "Export Image as PNG" window and click its Export button. Check that `{{exportPath}}` exists, for example with `computer_files` or by the title bar now naming it, then stop.
