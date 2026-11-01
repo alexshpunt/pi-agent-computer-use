@@ -41,7 +41,7 @@ test("computer_window takes exactly the fields of its action", () => {
   expect(windowCommand({ window: "w", action: "resize", width: 800, height: 600 })).toEqual({ action: "resize", width: 800, height: 600, unit: "windows_desktop_pixels" });
   expect(windowCommand({ window: "w", action: "restore" })).toEqual({ action: "restore" });
   expect(() => windowCommand({ window: "w", action: "move", x: 1 })).toThrow("move needs x and y and nothing else.");
-  expect(() => windowCommand({ window: "w", action: "focus", width: 1 })).toThrow("focus takes no coordinates, size or name.");
+  expect(() => windowCommand({ window: "w", action: "minimize", width: 1 })).toThrow("minimize takes no coordinates, size or name.");
   expect(windowCommand({ window: "w", action: "name", as: "game" })).toEqual({ action: "name", as: "game" });
   expect(() => windowCommand({ window: "w", action: "name" })).toThrow("name needs as and nothing else.");
   expect(() => windowCommand({ window: "w", action: "move", x: 1, y: 2, as: "game" })).toThrow("move needs x and y and nothing else.");

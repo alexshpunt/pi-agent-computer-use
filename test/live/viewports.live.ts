@@ -43,7 +43,7 @@ test("a viewport shows its part of the window at full resolution, takes clicks i
     // The hidden console of the form's PowerShell opens through Windows Terminal, which can take the foreground a moment
     // after the form appears; the first real click needs the form in front, so focus it until it stays there.
     for (let attempt = 0; attempt < 10; attempt++) {
-      await live.resources.manageWindow(requireComputerAddress(window), live.cwd, windowCommand({ window, action: "focus" }));
+      await live.resources.manageWindow(requireComputerAddress(window), live.cwd, { action: "focus" });
       await new Promise(resolve => setTimeout(resolve, 500));
       const state = (await live.read(window, ["state"])).details.state as { foreground_at_target?: boolean } | undefined;
       if (state?.foreground_at_target) break;
