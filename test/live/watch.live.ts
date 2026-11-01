@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { afterAll, expect, test } from "vitest";
 import { requireComputerAddress } from "../../src/computer-resources.ts";
-import { dragPlan, windowCommand } from "../../src/computer-tools.ts";
+import { dragPlan } from "../../src/computer-tools.ts";
 import { presentComputerResult } from "../../src/provider.ts";
 import type { ComputerResult } from "../../src/session.ts";
 import { connectLive, openWindow, WINDOWS_POWERSHELL_PATH } from "./remote.ts";
@@ -40,7 +40,7 @@ test("a watch of a viewport sees the panorama move during a drag and stops with 
   try {
     // Windows Terminal on this machine can take the foreground after the form appears; a real drag needs the form in front.
     for (let attempt = 0; attempt < 10; attempt++) {
-      await live.resources.manageWindow(requireComputerAddress(window), live.cwd, windowCommand({ window, action: "focus" }));
+      await live.resources.manageWindow(requireComputerAddress(window), live.cwd, { action: "focus" });
       await new Promise(resolve => setTimeout(resolve, 500));
       const state = (await live.read(window, ["state"])).details.state as { foreground_at_target?: boolean } | undefined;
       if (state?.foreground_at_target) break;
@@ -102,7 +102,7 @@ test("a watch of a viewport in a maximized window keeps its frame rate during a 
   const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, panoramaForm(title, true), `regex:^${title}$`);
   try {
     await new Promise(resolve => setTimeout(resolve, 1500));
-    await live.resources.manageWindow(requireComputerAddress(window), live.cwd, windowCommand({ window, action: "focus" }));
+    await live.resources.manageWindow(requireComputerAddress(window), live.cwd, { action: "focus" });
     const overview = await live.read(window, ["full"]);
     const box = overview.details.ui!.elements.find(e => e.name === "Pano")!.bounds.window_image!;
     const state = overview.details.state as { screenshot_width: number; screenshot_original_width: number };

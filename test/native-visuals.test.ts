@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { NativeVisuals, VisualSettings, notifyHighlight } from "../src/native-visuals.ts";
+import { NativeVisuals, VisualSettings, nativeVisualOptions, notifyHighlight } from "../src/native-visuals.ts";
 import sharp from "sharp";
 import { ComputerSession, type Driver, type DriverResult } from "../src/session.ts";
 import type { InputCommand } from "../src/complete-input.ts";
@@ -84,12 +84,12 @@ test("settings validate before mutation and unavailable native presentation does
 });
 
 
-async function actionFixture(outcome: "delivered" | "refused" | "unknown" = "delivered") {
+async function actionFixture(outcome: "delivered" | "refused" | "unknown" = "delivered", options: { password?: boolean; settings?: VisualSettings } = {}) {
   const png = { type: "image" as const, mimeType: "image/png", data: (await sharp({ create: {
     width: frame.bounds.width, height: frame.bounds.height, channels: 3, background: "white",
   } }).png().toBuffer()).toString("base64") };
   const send = vi.fn(async (_name: string, _args: Record<string, unknown>) => true);
-  const visuals = new NativeVisuals(send);
+  const visuals = new NativeVisuals(send, options.settings);
   const driver: Driver = {
     visuals: visuals.flash, heldKeys: true, heldPaths: true, captureBoundDrag: true, semanticActions: true,
     identity: vi.fn(async () => frame.identity), close: vi.fn(async () => {}),
@@ -100,7 +100,7 @@ async function actionFixture(outcome: "delivered" | "refused" | "unknown" = "del
       if (name === "get_window_state") return { content: [png], structuredContent: {
         ...frame.target, window_bounds: frame.bounds, capture_id: "11111111-1111-4111-8111-111111111111",
         screenshot_width: frame.bounds.width, screenshot_height: frame.bounds.height,
-        elements: [{ element_token: "field", role: "TextBox", frame: { x: 0, y: 60, w: 80, h: 40 } }],
+        elements: [{ element_token: "field", role: "TextBox", frame: { x: 0, y: 60, w: 80, h: 40 }, ...(options.password ? { password: true } : {}) }],
       } };
       if (outcome !== "delivered") return { content: [], structuredContent: { effect: outcome } };
       return { content: [], structuredContent: name === "semantic_action"
@@ -151,10 +151,36 @@ test.each(nativeFamilies)("native $label retains its presentation family before 
     ]);
     for (const args of activities) {
       expect(args.source).toEqual({ ...frame.target, identity: frame.identity, bounds: frame.bounds });
-      expect(Object.keys(args).every(key => ["generation", "kind", "source", "region", "action", "outcome"].includes(key))).toBe(true);
+      expect(Object.keys(args).every(key => ["generation", "kind", "source", "region", "action", "outcome", "typed_text"].includes(key))).toBe(true);
       if (!command.element_token) expect(args).not.toHaveProperty("region");
+      // The human sees what the agent types, before and after the dispatch.
+      expect(args.typed_text).toBe("text" in command ? command.text : undefined);
     }
   } finally { await f.close(); }
+});
+
+test.each([
+  { label: "a password field", options: { password: true } },
+  { label: "typed text turned off", options: { settings: (() => { const settings = new VisualSettings(); settings.update({ typed_text: false }); return settings; })() } },
+])("typed text is not shown for $label", async ({ options }) => {
+  const f = await actionFixture("delivered", options);
+  try {
+    const listed = await f.session.windows();
+    const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+    const read = await f.session.observe(ref); await tick(); f.send.mockClear();
+    const result = await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "set_value", element_token: "field", text: "secret" });
+    await tick();
+    expect(result.details.status).toBe("delivered");
+    const activities = f.send.mock.calls.filter(([name]) => name === "present_agent_activity").map(([, args]) => args);
+    expect(activities).toHaveLength(2);
+    for (const args of activities) expect(args).not.toHaveProperty("typed_text");
+  } finally { await f.close(); }
+});
+
+test("the native renderer gets its own settings without the typed text toggle", () => {
+  const options = new VisualSettings().current();
+  expect(options.typed_text).toBe(true);
+  expect(nativeVisualOptions(options)).toEqual(Object.fromEntries(Object.entries(options).filter(([key]) => key !== "typed_text")));
 });
 
 test.each(["refused", "unknown"] as const)("native keyboard %s keeps its family without replaying input", async outcome => {

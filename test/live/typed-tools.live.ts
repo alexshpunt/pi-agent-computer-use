@@ -8,7 +8,7 @@ import { connectLive, nativeForm, openWindow, WINDOWS_POWERSHELL_PATH } from "./
 const live = await connectLive();
 afterAll(() => live.close());
 const manage = (window: string, fields: Record<string, unknown>) =>
-  live.resources.manageWindow(live.resources.address(window), live.cwd, windowCommand({ window, action: "focus", ...fields } as Parameters<typeof windowCommand>[0]));
+  live.resources.manageWindow(live.resources.address(window), live.cwd, windowCommand({ window, action: "restore", ...fields } as Parameters<typeof windowCommand>[0]));
 const remove = (source: string) => deleteComputer(live.resources, source, { path: source }, live.cwd);
 const gone = async (title: string) => {
   for (let i = 0; i < 20; i++) {
