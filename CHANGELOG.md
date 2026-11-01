@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-11-01
+
+### Action previews
+
+- Activity cards show more detail for keyboard shortcuts, clicks, scrolling, dragging and input timelines.
+- Previews avoid showing printable text when focus is unknown or in password fields. Typed-text visibility still follows `/computer-visuals` settings.
+
 ## 0.1.1 — 2026-11-01
 
 ### Computer input
