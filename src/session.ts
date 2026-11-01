@@ -102,6 +102,38 @@ function presentationAction(command: InputCommand | WebAction): string {
   if (command.action === "timeline") return command.events?.every(event => event.type === "key_down" || event.type === "key_up") ? "hotkey" : "input_timeline";
   return command.action;
 }
+/** Display only bounded input metadata; printable keys can be text and are hidden unless the focus is known safe. */
+function presentationDetail(command: InputCommand | WebAction, safeText = false): string | undefined {
+  const chord = (keys: string[]) => {
+    const last = keys.at(-1);
+    if (!last || !/^(?:[a-z0-9\-=[\];',./\\`]|enter|return|tab|escape|esc|space|backspace|delete|insert|up|down|left|right|arrowup|arrowdown|arrowleft|arrowright|home|end|pageup|pagedown|f(?:[1-9]|1[0-9]|2[0-4])|ctrl|control|shift|alt|win|meta)$/i.test(last)) return undefined;
+    if (keys.slice(0, -1).some(key => !/^(?:ctrl|control|shift|alt|win|meta)$/i.test(key))) return undefined;
+    const modifiers = keys.slice(0, -1);
+    // Ctrl+Alt can be AltGr, which enters printable text on many keyboard layouts.
+    const nonTextModifier = modifiers.some(key => /^(?:ctrl|control|win|meta)$/i.test(key)) && !modifiers.some(key => /^alt$/i.test(key));
+    return safeText || last.length > 1 || nonTextModifier ? keys.join("+") : undefined;
+  };
+  if (command.action === "press") return command.key ? shownTypedText(chord(command.key.split("+"))) : undefined;
+  if (command.action === "key") return command.key ? shownTypedText(chord([...(command.modifiers ?? []), command.key])) : undefined;
+  if (command.action === "hotkey" || command.action === "hold") {
+    const keys = command.keys?.length ? chord(command.keys) : undefined;
+    const actions = command.action === "hold" ? command.actions?.map(action => action.action).join(" → ") : undefined;
+    return shownTypedText([keys, actions].filter(Boolean).join(" + "));
+  }
+  if (command.action === "select_all") return "Ctrl+A";
+  if (command.action === "timeline" && command.events?.length) {
+    const details = command.events.slice(0, 20).map(event => event.key ? (chord([event.key]) ? `${event.type.replaceAll("_", " ")} ${chord([event.key])}` : undefined) : event.type.replaceAll("_", " "));
+    return shownTypedText(details.filter(Boolean).join(" → "));
+  }
+  if (command.action === "scroll" && "direction" in command) return command.direction ? shownTypedText(command.direction) : undefined;
+  if (command.action === "click") {
+    const count = "count" in command ? command.count : "click_count" in command ? command.click_count : undefined;
+    return shownTypedText(`${command.button ?? "left"} click${count && count > 1 ? ` ×${count}` : ""}`);
+  }
+  if (command.action === "double_click" || command.action === "right_click") return command.action.replaceAll("_", " ");
+  if (command.action === "drag") return shownTypedText(`${command.button ?? "left"} drag`);
+  return undefined;
+}
 /** A stored Playwright snapshot of the active tab, with the tab list, any held dialog and events since the previous snapshot. */
 export interface WebDom extends WebPage { truncated: boolean; matches?: number }
 /** Delivery is not a task postcondition. Unknown input is never automatically replayed. */
@@ -426,9 +458,9 @@ export class ComputerSession {
 
   /** Source-associated cue only: no UI strings, guessed coordinates, capture or input. */
   private activity(entry: WindowEntry, mark: HighlightMark, signal?: AbortSignal, image?: Content,
-    outcome?: "delivered" | "refused" | "unknown" | "verified", action?: string): Promise<HighlightResult | undefined> {
+    outcome?: "delivered" | "refused" | "unknown" | "verified", action?: string, typedText?: string): Promise<HighlightResult | undefined> {
     if (!this.allowed(entry) || signal?.aborted) return Promise.resolve(undefined);
-    return notifyWindowObserver(this.observer, entry.target, entry.identity, entry.visualBounds ?? entry.observation?.bounds, signal, mark, image, action, outcome);
+    return notifyWindowObserver(this.observer, entry.target, entry.identity, entry.visualBounds ?? entry.observation?.bounds, signal, mark, image, action, outcome, typedText);
   }
   private async current(ref: string, signal?: AbortSignal): Promise<WindowEntry | undefined> {
     const entry = this.entries.get(ref);
@@ -1428,10 +1460,10 @@ export class ComputerSession {
     return entry;
   }
 
-  private async webFailure(entry: WindowEntry, error: unknown, acting = false, signal?: AbortSignal, action?: string): Promise<ComputerResult> {
+  private async webFailure(entry: WindowEntry, error: unknown, acting = false, signal?: AbortSignal, action?: string, typedText?: string): Promise<ComputerResult> {
     const reason = error instanceof Error ? error.message : String(error);
     const uncertain = acting && error instanceof WebError && (error.timeout || error.transport);
-    if (acting) await this.activity(entry, { kind: "action" }, signal, undefined, uncertain ? "unknown" : "refused", action);
+    if (acting) await this.activity(entry, { kind: "action" }, signal, undefined, uncertain ? "unknown" : "refused", action, typedText);
     return this.result(uncertain ? "unknown" : "refused", uncertain
       ? `The action may have reached the page. ${reason} Read the window with dom before deciding; never replay it blindly.`
       : `Playwright refused: ${reason}`, undefined, this.addressed(entry));
@@ -1522,11 +1554,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
-        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action));
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action), presentationDetail(action));
         if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}${action.target && action.action !== "evaluate" ? " after its actionability checks" : ""}. Check the fresh snapshot below for the application's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action)); }
+      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action), presentationDetail(action)); }
     });
   }
 
@@ -1543,11 +1575,11 @@ export class ComputerSession {
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
       try {
         const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
-        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action));
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action), presentationDetail(action));
         if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
         return this.result("delivered", `Playwright performed ${action.action}. Check the fresh snapshot below for the page's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action)); }
+      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action), presentationDetail(action)); }
     });
   }
 
@@ -2142,9 +2174,11 @@ export class ComputerSession {
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
           const activityAction = presentationAction(step);
           // A password field's text is never shown.
-          const typedElement = ["type_text", "set_value"].includes(step.action)
-            ? observed.ui?.elements.find(element => step.element_token ? element.element_token === step.element_token : element.focused) : undefined;
-          const typedText = ["type_text", "set_value"].includes(step.action) && !typedElement?.password ? shownTypedText(step.text) : undefined;
+          const typedElement = observed.ui?.elements.find(element => step.element_token ? element.element_token === step.element_token : element.focused);
+          const focusedElement = observed.ui?.elements.find(element => element.focused);
+          const typedText = ["type_text", "set_value"].includes(step.action)
+            ? !typedElement?.password ? shownTypedText(step.text) : undefined
+            : presentationDetail(step, !batch && step.action !== "timeline" && !!focusedElement && !focusedElement.password);
           let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction, undefined, typedText);
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
           if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
