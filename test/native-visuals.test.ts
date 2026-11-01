@@ -100,7 +100,7 @@ async function actionFixture(outcome: "delivered" | "refused" | "unknown" = "del
       if (name === "get_window_state") return { content: [png], structuredContent: {
         ...frame.target, window_bounds: frame.bounds, capture_id: "11111111-1111-4111-8111-111111111111",
         screenshot_width: frame.bounds.width, screenshot_height: frame.bounds.height,
-        elements: [{ element_token: "field", role: "TextBox", frame: { x: 0, y: 60, w: 80, h: 40 }, ...(options.password ? { password: true } : {}) }],
+        elements: [{ element_token: "field", role: "TextBox", focused: true, frame: { x: 0, y: 60, w: 80, h: 40 }, ...(options.password ? { password: true } : {}) }],
       } };
       if (outcome !== "delivered") return { content: [], structuredContent: { effect: outcome } };
       return { content: [], structuredContent: name === "semantic_action"
@@ -135,6 +135,58 @@ const nativeFamilies: { label: string; command: InputCommand; family: string; na
   ] }, family: "input_timeline", native: "input_timeline" },
 ];
 
+test("keyboard previews include the requested shortcut", async () => {
+  const f = await actionFixture();
+  try {
+    const listed = await f.session.windows();
+    const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+    const read = await f.session.observe(ref); await tick(); f.send.mockClear();
+    await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "hotkey", keys: ["ctrl", "shift", "f12"] });
+    await tick();
+    const activities = f.send.mock.calls.filter(([name]) => name === "present_agent_activity").map(([, args]) => args);
+    expect(activities).toHaveLength(2);
+    for (const args of activities) {
+      expect(String(args.typed_text).toLowerCase()).toContain("ctrl");
+      expect(String(args.typed_text).toLowerCase()).toContain("shift");
+      expect(String(args.typed_text).toLowerCase()).toContain("f12");
+    }
+  } finally { await f.close(); }
+});
+test.each([
+  { options: { password: true } },
+  { options: { settings: (() => { const s = new VisualSettings(); s.update({ typed_text: false }); return s; })() } },
+])("printable keys are hidden in a protected field or when typed text is disabled", async ({ options }) => {
+  const f = await actionFixture("delivered", options);
+  try {
+    const listed = await f.session.windows();
+    const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+    const read = await f.session.observe(ref); await tick(); f.send.mockClear();
+    await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "key", key: "a" });
+    await tick();
+    const activities = f.send.mock.calls.filter(([name]) => name === "present_agent_activity");
+    expect(activities).toHaveLength(2);
+    for (const [, args] of activities) expect(args).not.toHaveProperty("typed_text");
+  } finally { await f.close(); }
+});
+test("timeline previews include non-text keys and pointer event types", async () => {
+  const f = await actionFixture();
+  try {
+    const listed = await f.session.windows();
+    const ref = (listed.details.state!.windows as { window_ref: string }[])[0].window_ref;
+    const read = await f.session.observe(ref); await tick(); f.send.mockClear();
+    await f.session.act({ window_ref: ref, observation_id: read.details.observation_id!, action: "timeline", events: [
+      { at_ms: 0, type: "key_down", key: "f12" }, { at_ms: 1, type: "key_up", key: "f12" },
+      { at_ms: 2, type: "wheel", dy: 1 },
+    ] });
+    await tick();
+    const activities = f.send.mock.calls.filter(([name]) => name === "present_agent_activity");
+    expect(activities).toHaveLength(2);
+    for (const [, args] of activities) {
+      expect(String(args.typed_text)).toContain("f12");
+      expect(String(args.typed_text)).toContain("wheel");
+    }
+  } finally { await f.close(); }
+});
 test.each(nativeFamilies)("native $label retains its presentation family before and after one dispatch", async ({ command, family, native }) => {
   const f = await actionFixture();
   try {
@@ -154,7 +206,7 @@ test.each(nativeFamilies)("native $label retains its presentation family before 
       expect(Object.keys(args).every(key => ["generation", "kind", "source", "region", "action", "outcome", "typed_text"].includes(key))).toBe(true);
       if (!command.element_token) expect(args).not.toHaveProperty("region");
       // The human sees what the agent types, before and after the dispatch.
-      expect(args.typed_text).toBe("text" in command ? command.text : undefined);
+      if ("text" in command) expect(args.typed_text).toBe(command.text);
     }
   } finally { await f.close(); }
 });
@@ -199,7 +251,18 @@ test.each(["refused", "unknown"] as const)("native keyboard %s keeps its family 
   } finally { await f.close(); }
 });
 
-test.each(["dom", "page"] as const)("browser %s key outcomes use keyboard presentation without forwarding key or target", async route => {
+test.each(["a", "Shift+a", "Control+Alt+a"]) ("browser printable key %s is not exposed when focus is unknown", async key => {
+  const f = await actionFixture();
+  try {
+    const opened = await f.session.openBrowser(); const ref = opened.details.window_ref!;
+    await f.session.observeDom(ref); await tick(); f.send.mockClear();
+    await f.session.actPage(ref, { action: "press", key }); await tick();
+    const activities = f.send.mock.calls.filter(([name]) => name === "present_agent_activity");
+    expect(activities).toHaveLength(1);
+    expect(activities[0][1]).not.toHaveProperty("typed_text");
+  } finally { await f.close(); }
+});
+test.each(["dom", "page"] as const)("browser %s key outcomes include the shortcut without forwarding the target", async route => {
   for (const outcome of ["delivered", "refused", "unknown"] as const) {
     const f = await actionFixture();
     try {
@@ -215,7 +278,7 @@ test.each(["dom", "page"] as const)("browser %s key outcomes use keyboard presen
       expect(f.browser.page).toHaveBeenCalledExactlyOnceWith("act", action, undefined);
       expect(f.send.mock.calls).toEqual([["present_agent_activity", {
         generation: expect.any(Number), kind: "action", source: { ...frame.target, identity: frame.identity, bounds: frame.bounds },
-        action: "press_key", outcome,
+        action: "press_key", outcome, typed_text: action.key,
       }]]);
     } finally { await f.close(); }
   }
