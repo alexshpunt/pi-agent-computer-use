@@ -15,14 +15,20 @@ Run `/computer-visuals` to show the current settings, or choose a preset:
 A JSON patch controls individual categories and rendering preferences:
 
 ```text
-/computer-visuals {"observations":true,"previews":false,"pointer":true,"scroll_drag":true,"keyboard":true,"opacity":0.8,"quality":"balanced","reduced_motion":false}
+/computer-visuals {"observations":true,"previews":false,"pointer":true,"scroll_drag":true,"keyboard":true,"typed_text":true,"opacity":0.8,"quality":"balanced","reduced_motion":false}
 ```
+
+`typed_text` shows the text an action types or sets on its card, while `keyboard` is on. Text going into a field that UI Automation reports as a password is never sent to the renderer. Control characters show as spaces, and only the last 200 characters are sent.
 
 `opacity` is 0..1. `quality` is `performance`, `balanced` or `high`. Preferences are saved on the Pi session branch; navigating to another branch restores its preferences. These commands belong to the human. They do not change Safe/YOLO, capture sizing, input delivery or permission checks.
 
 `/computer-images` controls future captures in this session: `cap 64..4096`, `scale 0.05..1`, `hints on|off`, `guides off|grid|action|all`, or `reset`. Calling it without arguments shows the settings. An individual Read can still override its capture options. Existing images keep their bytes.
 
 ## What a cue means
+
+The agent cursor carries a label: the Pi session's name, or the project folder's name while the session has none. The adapter passes it to the driver process as `CUA_SESSION_LABEL` when the process starts; renaming the session takes effect with the next driver process.
+
+A card stays on screen until the next card replaces it, so consecutive actions do not blink. A card that nothing replaces stays about two seconds and fades out over 500 ms. A clear, a settings change or the end of the session hides it at once.
 
 An overview identifies a captured window or display. A detail cue marks a requested physical region only when the adapter has a proven transform. Inspection and browser cues associate the operation with its native window; a Playwright CSS box does not establish a desktop rectangle. Element inspection uses native element bounds when available.
 
