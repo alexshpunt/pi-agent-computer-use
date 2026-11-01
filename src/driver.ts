@@ -14,10 +14,9 @@ import { SingleConnectionHttpTransport } from "./http-transport.ts";
 import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts";
 import { verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
-import { NativeVisuals, VisualSettings, type WindowObserver } from "./native-visuals.ts";
+import { NativeVisuals, VisualSettings, nativeVisualOptions, type WindowObserver } from "./native-visuals.ts";
+import { reportsHumanStop, type HumanStop } from "./human-stop.ts";
 
-/** Foreground input waits until the human has not used the keyboard or mouse for this long (owner choice, LPT-835). */
-const HUMAN_IDLE_MS = 10_000;
 /** The agent cursor jumps to each action point instead of gliding there. */
 const CURSOR_GLIDE_MS = 1;
 /** Exact Windows CI artifact qualified for held paths; selection is trusted config, never a tool argument. */
@@ -171,16 +170,32 @@ export class McpDriver implements Driver {
   get windowCrop(): boolean { return this.config.runtime === "windows-desktop"; }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
   get overviewKernel(): "bilinear" | "lanczos3" { return ["windows-fast-bilinear", "windows-direct-process", "windows-persistent-wgc", "windows-native-pointer", "windows-coordinate-scroll", "windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? "") ? "bilinear" : "lanczos3"; }
+  /**
+   * The human desktop's stop, shared by the session's drivers of human desktops. A sandbox or an isolated session,
+   * reached through an endpoint, is not a human desktop and has none.
+   */
+  private readonly humanStop?: HumanStop;
+  /** This process reported the stop and refuses all input until it exits; the next call after a resume starts a new one. */
+  private stoppedNatively = false;
+  private stopSubscriptions: (() => void)[] = [];
+
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2",
-    private readonly visualSettings = new VisualSettings()) {
+    private readonly visualSettings = new VisualSettings(), humanStop?: HumanStop, private readonly sessionLabel?: () => string | undefined) {
+    if (!config.endpoint) this.humanStop = humanStop;
     this.presentation = new NativeVisuals(async (name, args) => {
       // Presentation never starts or reconnects a backend, including after close or while startup is pending.
-      if (!this.client || this.connecting) return undefined;
+      if (!this.client || this.connecting || this.stoppedNatively) return undefined;
       if (!this.nativeVisualsAvailable) return false;
       const result = CallToolResultSchema.parse(await this.client.callTool({ name, arguments: args }, undefined, { timeout: 2000 }));
       return !result.isError;
     }, visualSettings);
     this.visuals = this.presentation.flash;
+    if (this.humanStop) this.stopSubscriptions.push(this.humanStop.onResume(() => {
+      if (!this.stoppedNatively) return;
+      this.stoppedNatively = false;
+      // Window identities stay: only the stopped driver process is replaced.
+      void this.closeClient().catch(() => undefined);
+    }));
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort, "127.0.0.1", config.endpoint.identityAuth ?? config.endpoint.relay)
       : hostIdentityPeer(config.ssh ? sshRunner(config.ssh) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
@@ -220,6 +235,10 @@ export class McpDriver implements Driver {
       : await this.stdioTransport();
     this.transport = transport;
     const client = new Client({ name: "pi-agent-computer-use-poc", version: "0.0.0" });
+    // The driver says at once when the human stops input, without waiting for a call.
+    client.fallbackNotificationHandler = async notification => {
+      if (notification.method === "notifications/cua/human_stop") this.reportStop();
+    };
     this.client = client;
     try {
       await client.connect(transport, { signal, timeout: 15_000 });
@@ -241,7 +260,7 @@ export class McpDriver implements Driver {
       }
       if (this.nativeVisualsAvailable) {
         try {
-          const configured = CallToolResultSchema.parse(await client.callTool({ name: "set_agent_visuals", arguments: { ...this.visualSettings.current() } }, undefined, { signal, timeout: 2_000 }));
+          const configured = CallToolResultSchema.parse(await client.callTool({ name: "set_agent_visuals", arguments: nativeVisualOptions(this.visualSettings.current()) }, undefined, { signal, timeout: 2_000 }));
           this.nativeVisualsAvailable = !configured.isError;
         } catch {
           // Presentation is optional. A renderer/configuration failure must not prevent native input.
@@ -280,14 +299,24 @@ export class McpDriver implements Driver {
   }
 
   /**
-   * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks, a 10 s
-   * takeover pause (foreground input refuses while the human used the keyboard or mouse that recently), and launches
-   * with remote-debugging switches, which this adapter allows only through YOLO's open by path and arguments.
+   * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks; three physical
+   * Escape presses stop the agent; agents on one desktop take turns per action; the agent cursor carries the Pi
+   * session's label; and launches with remote-debugging switches, which this adapter allows only through YOLO's open
+   * by path and arguments.
    */
   private driverVariables(): Record<string, string> {
+    const label = this.sessionLabel?.()?.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 28);
     return { CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false",
-      ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1", CUA_HUMAN_IDLE_MS: String(HUMAN_IDLE_MS),
+      ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1",
+      CUA_ESCAPE_STOP: "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
       CUA_DRIVER_ALLOW_DEBUGGING_LAUNCH: "1" };
+  }
+
+  /** The driver reported the human's stop; it refuses everything from now on, so stop this session's desktop work. */
+  private reportStop(): void {
+    if (!this.humanStop) return;
+    this.stoppedNatively = true;
+    this.humanStop.stop();
   }
 
   /** The owned native child; Windows-host control runs through WSL interop, on another machine over SSH. */
@@ -363,6 +392,8 @@ export class McpDriver implements Driver {
       return { content: [], structuredContent: { effect: "refused", code: "held_path_unavailable" }, isError: true };
     if (name === "hold_keys" && !this.heldKeys)
       return { content: [], structuredContent: { effect: "refused", code: "key_hold_unavailable" }, isError: true };
+    if (this.humanStop?.stopped)
+      return { content: [{ type: "text", text: this.humanStop.message() }], structuredContent: { status: "refused", effect: "refused", code: "human_stop", attempted: false }, isError: true };
     const client = await this.connect(signal);
     if (this.nativeTools && !this.nativeTools.has(name))
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
@@ -372,6 +403,7 @@ export class McpDriver implements Driver {
     // every other native call answers well within 15 s.
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
+    if (reportsHumanStop(result as Parameters<typeof reportsHumanStop>[0])) this.reportStop();
     const content: Content[] = [];
     for (const block of result.content) {
       if (block.type === "text") content.push({ type: "text", text: block.text });
@@ -383,11 +415,18 @@ export class McpDriver implements Driver {
   /** EOF owns shutdown; the SDK escalates only for this child if it does not exit. */
   async close(): Promise<void> {
     this.presentation.close();
+    for (const unsubscribe of this.stopSubscriptions.splice(0)) unsubscribe();
     await this.disconnect();
   }
 
   /** Startup cleanup is retryable; only final close disposes presentation and its subscriptions. */
   private async disconnect(): Promise<void> {
+    try { await this.closeClient(); }
+    finally { await this.windowIdentity?.close(); }
+  }
+
+  /** End the driver process; the next call starts a new one. */
+  private async closeClient(): Promise<void> {
     this.nativeVisualsAvailable = false;
     const client = this.client;
     const transport = this.transport;
@@ -396,9 +435,6 @@ export class McpDriver implements Driver {
     this.nativeTools = undefined;
     this.connectedVersion = undefined;
     try { await client?.close(); }
-    finally {
-      try { await transport?.close(); }
-      finally { await this.windowIdentity?.close(); }
-    }
+    finally { await transport?.close(); }
   }
 }
