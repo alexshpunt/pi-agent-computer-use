@@ -25,6 +25,28 @@
 
 Ask your agent to do something on your computer, for example "open Paint and draw a house", "fill in this form in my browser" or "check what the settings window says". It finds the window, reads its controls and screenshot, acts, and reads it again to see whether it worked.
 
+## Demo: an agent paints a picture in GIMP
+
+<p align="center">
+  <img src="images/gimp-demo/timelapse-preview.webp" alt="Time-lapse of a Pi agent painting a cartoon robot at a computer in GIMP, with the reference picture in the corner" width="100%">
+</p>
+
+We give a Pi agent [this reference picture](assets/draw_task.png) and an empty canvas in GIMP on another Windows machine, and ask it to paint a copy. It paints every mark itself with GIMP's tools: filled selections, soft shading inside them, tapered pen strokes for the line art, hatching and hand-drawn lettering. Along the way it compares its canvas with the reference and fixes the biggest differences. The animation above is an 82-minute run of `deepseek-flash`, sped up about 160 times.
+
+We run it with different models. Click a painting to see it next to the reference and watch the full time-lapse:
+
+<!-- gimp-gallery:start -->
+
+<table>
+<tr>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#deepseek-flash-2026-11-01"><img src="demo/gimp-painting/gallery/deepseek-flash-2026-11-01/painting.jpg" width="280" alt="Painting by deepseek/deepseek-flash"></a><br><b>deepseek-flash</b><br>82 min · $0.34</td>
+</tr>
+</table>
+
+<!-- gimp-gallery:end -->
+
+The agent follows a [painting skill](demo/gimp-painting/skill/SKILL.md) that breaks the work into stages and gives it a tested GIMP toolkit. [demo/gimp-painting](demo/gimp-painting/README.md) has the prompt and the script that sets up the machine, records the screen and makes the time-lapse, so you can repeat the run with another model or picture.
+
 ## Summary
 
 Pi Agent Computer Use gives the [Pi coding agent](https://pi.dev/) one interface for every Windows app, browsers included. The agent finds a window, reads its accessibility tree and screenshot, and then types, clicks, drags or runs a browser action. Input always targets the latest thing the agent saw, and every result says what was delivered and what is still unknown.
