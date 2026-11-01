@@ -1,5 +1,4 @@
 import { afterAll, expect, test } from "vitest";
-import { windowCommand } from "../../src/computer-tools.ts";
 import { presentComputerResult } from "../../src/provider.ts";
 import { connectLive, nativeForm, openWindow, WINDOWS_POWERSHELL_PATH } from "./remote.ts";
 
@@ -16,7 +15,7 @@ test("focus moves the foreground between two windows of other apps", async () =>
   try {
     await new Promise(resolve => setTimeout(resolve, 1500));
     for (const [window, title] of [[a, `pi-focus-a-${stamp}`], [b, `pi-focus-b-${stamp}`], [a, `pi-focus-a-${stamp}`]] as const) {
-      const result = await live.resources.manageWindow(live.resources.address(window), live.cwd, windowCommand({ window, action: "focus" }));
+      const result = await live.resources.manageWindow(live.resources.address(window), live.cwd, { action: "focus" });
       expect(result.details.status, presentComputerResult(result)).toBe("delivered");
       expect(await foreground()).toBe(title);
     }

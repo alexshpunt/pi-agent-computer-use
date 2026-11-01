@@ -118,7 +118,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert(!result.isError && semantic(result).effect === "applied", `Valid desktop move failed: ${body(result)}`);
         assert(find(result, "mutation_attempted") === true && find(result, "postcondition_confirmed") === true,
           "Delivered management discarded native completion prefix");
-        for (const command of [{ action: "resize", width: 180, height: 120 }, { action: "focus" }, { action: "maximize" }, { action: "minimize" }]) {
+        for (const command of [{ action: "resize", width: 180, height: 120 }, { action: "maximize" }, { action: "minimize" }]) {
           await control("reset");
           const result = await manage(first, command);
           assert(!result.isError && semantic(result).effect === "applied", `Valid ${command.action} failed: ${body(result)}`);
@@ -130,7 +130,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         const ui = await ok("read", { path: first, views: ["ui"] });
         await stateRead(first);
         await ok("read", { path: reference(ui, "observation") });
-        assert(await count("manage_window") === 6, "Read-only state sent a mutation");
+        assert(await count("manage_window") === 5, "Read-only state sent a mutation");
       } else if (scenario === "admission") {
         const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned management fixture" }), "window");
         await stateRead(external); mode = "safe";
@@ -158,7 +158,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
           const result = await window(bad);
           assert(result.isError, `computer_window accepted ${JSON.stringify(bad)}: ${body(result)}`);
         }
-        await denied("computer_window", { window: "computer:machine/local", action: "focus" });
+        await denied("computer_window", { window: "computer:machine/local", action: "maximize" });
         assert(await count("manage_window") === 0, "Invalid computer_window calls reached native management");
         const moved = await window({ action: "move", x: -20, y: 120 });
         assert(!moved.isError && semantic(moved).effect === "applied" && body(moved).includes("on local"), `computer_window move failed: ${body(moved)}`);
@@ -194,7 +194,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         await denied("computer_select", { window: first, target: "1:a", checked: true, values: ["a"] });
         const external = reference(await ok("search", { path: "computer:machine/local/windows", query: "Unowned management fixture" }), "window");
         mode = "safe";
-        const refused = await window({ action: "focus" }, external);
+        const refused = await window({ action: "maximize" }, external);
         assert(refused.isError && semantic(refused).effect === "not-applied", `Safe mode let computer_window manage a foreign window: ${body(refused)}`);
         mode = "yolo";
       } else if (scenario === "receipts") {
@@ -213,17 +213,17 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
           `Cancellation after native completion discarded the delivered prefix: ${body(cancelled)}`);
       } else {
         await control("minimized");
-        const focus = await denied("computer_window", { window: first, action: "focus" });
-        assert(semantic(focus).effect === "not-applied" && find(focus, "mutation_attempted") === false && await count("restore_window") === 0,
-          "Focus implicitly restored or activated a minimized target");
+        await denied("computer_window", { window: first, action: "focus" });
+        assert(await count("manage_window") === 0 && await count("restore_window") === 0,
+          "Removed focus action reached native management or restored a minimized window");
         const restored = await manage(first, { action: "restore" });
         assert(!restored.isError && semantic(restored).effect === "applied" && find(restored, "restore_requested") === true,
           `Control admission lost existing restore: ${body(restored)}`);
         for (const situation of ["other_desktop", "unknown_desktop"]) {
           await control("reset"); await control(situation);
           const result = await denied("computer_window", { window: first, action: "focus" });
-          assert(semantic(result).effect === "not-applied" && find(result, "mutation_attempted") === false,
-            `${situation} activation implicitly switched desktops`);
+          assert(result.isError && await count("manage_window") === 0,
+            `${situation} accepted the removed focus action or dispatched native management`);
         }
         management = false; await control("reset"); await control("minimized");
         const managementBefore = await count("manage_window");

@@ -80,7 +80,11 @@ Input goes to a window by its address and targets an element by a ref from the l
 - run a timeline of timed key, button, mouse and pen events, with raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
 - invoke, select or set values through UI Automation, and open menu items by their labels.
 
-What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input takes the front window, and it pauses whenever you touch the keyboard or mouse. Nothing is posted to windows as messages that an app could silently drop. To keep foreground UI work off the human desktop, use a sandbox or an isolated session.
+What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input brings its window to the front and runs at once, even while you use the computer. Nothing is posted to windows as messages that an app could silently drop. To keep foreground UI work off the human desktop, use a sandbox or an isolated session.
+
+Press Escape three times within a second to stop every agent on your desktop. Their input stops at once, and they refuse to act until you run `/computer-mode safe` or `/computer-mode yolo` in their sessions. An agent's own Escape doesn't count. Sandboxes and isolated sessions keep running.
+
+Several Pi sessions can use the same desktop. Their actions take turns: a string one agent types or a drag it makes finishes before another agent's next action starts.
 
 ### Results and checks
 
@@ -111,6 +115,8 @@ The browser's toolbar, tabs and system dialogs are still ordinary windows, so th
 Each session has its own folder on the controlled machine for files an app opens or saves. In YOLO mode the agent can also read and write the clipboard, record the screen to video, and record what the machine plays, optionally with a transcript.
 
 ### Computer visuals
+
+The agent's cursor carries the Pi session's name, or the project folder's name until the session has one, so you can tell agents apart. A card beside each action names it and shows the text being typed, except into password fields.
 
 `/computer-visuals` chooses `off`, `subtle` or `full`, with optional image previews when the native driver supports them. A preview shows the final operation image; it does not prove delivery to a model. `/computer-images` changes screenshot size, hints and image guides for future captures.
 
@@ -169,7 +175,7 @@ The Windows binaries aren't code-signed. Signing certificates are hard to get fo
 
 | Command                          | Effect                                                   |
 | -------------------------------- | -------------------------------------------------------- |
-| `/computer-mode safe\|yolo`      | Switch between Safe and YOLO for this session            |
+| `/computer-mode safe\|yolo`      | Switch between Safe and YOLO; also turns computer use on again after Escape stopped it |
 | `/computer-visuals off\|subtle\|full` | Choose native activity cues and image previews          |
 | `/computer-images`              | Show or change capture size, hints and image guides      |
 | `/computer-setup PART [MACHINE]` | Install an optional part; without a part it lists them   |

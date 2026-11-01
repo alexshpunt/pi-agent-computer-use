@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { registerImageSettingsCommand } from "./image-settings-command.ts";
 import { registerVisualSettingsCommand } from "./visual-settings-command.ts";
 import { VisualSettings } from "./native-visuals.ts";
@@ -17,6 +18,7 @@ import { WebBrowser } from "./web-browser.ts";
 import { localRunner } from "./runner.ts";
 import { MachineHost } from "./machine-host.ts";
 import { machineFactory, sandboxFactory } from "./machine.ts";
+import { HumanStop } from "./human-stop.ts";
 
 /**
  * Register native computer resources with ordinary IDE tools when Pi Agent IDE accepts them, otherwise as
@@ -29,14 +31,19 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   registerImageSettingsCommand(pi, images);
   registerVisualSettingsCommand(pi, visuals);
   let canEnterSafe = () => true;
-  const getMode = registerComputerMode(pi, async () => { visuals.clear(); }, () => canEnterSafe());
+  const humanStop = new HumanStop();
+  const getMode = registerComputerMode(pi, async () => { visuals.clear(); }, () => canEnterSafe(), humanStop);
+  let cwdLabel: string | undefined;
+  // The agent cursor names this session, or its project folder until the session has a name.
+  const sessionLabel = () => pi.getSessionName()?.trim() || cwdLabel;
   registerSetupCommand(pi);
   let session: ComputerSession | undefined;
   let loading: Promise<ComputerSession> | undefined;
   async function getSession(cwd: string): Promise<ComputerSession> {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(async config => {
-      const driver = new McpDriver(config, undefined, visuals);
+      cwdLabel = basename(cwd);
+      const driver = new McpDriver(config, undefined, visuals, humanStop, sessionLabel);
       overviewKernel = driver.overviewKernel ?? "lanczos3";
       session = new ComputerSession(driver, getMode, () => images.settings(), undefined,
         driver.platform === "windows" ? (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal) : undefined,
@@ -47,7 +54,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     finally { loading = undefined; }
   }
   const openSandbox = sandboxFactory({ settings: () => images.settings(), visuals });
-  const connectMachine = machineFactory({ getMode, settings: () => images.settings(), visuals });
+  const connectMachine = machineFactory({ getMode, settings: () => images.settings(), visuals, humanStop, sessionLabel });
   const provider = await registerComputerProvider(pi, getSession, async () => {
     const result: ComputerResult = session ? await session.close() : {
       content: [{ type: "text", text: "Not started." }],

@@ -24,7 +24,8 @@
 - Input spends the window's native refs; its change list brings the new ones.
 - On native windows, a ref or locator goes through UI Automation in the background, without the human's pointer or focus. When the app does not react to it, use a point instead.
 - Drags, `computer_hover` and `computer_timeline` are real input: the window comes to the front. `computer_select` and menus run through UI Automation.
-- While the human uses the keyboard or mouse, real input refuses for the time the refusal gives. Wait; never race the human.
+- Real input runs at once, even while the human uses the computer. Another agent's action on the same desktop finishes first.
+- `human_stop`: the human pressed Escape three times. Send no more input, tell the user what you were doing, and wait until they turn computer use on again.
 
 Native locators run over the UI Automation tree:
 
