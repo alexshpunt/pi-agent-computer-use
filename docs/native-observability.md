@@ -18,7 +18,7 @@ A JSON patch controls individual categories and rendering preferences:
 /computer-visuals {"observations":true,"previews":false,"pointer":true,"scroll_drag":true,"keyboard":true,"typed_text":true,"opacity":0.8,"quality":"balanced","reduced_motion":false}
 ```
 
-`typed_text` shows the text an action types or sets on its card, while `keyboard` is on. Text going into a field that UI Automation reports as a password is never sent to the renderer. Control characters show as spaces, and only the last 200 characters are sent.
+Action cards show available key combinations and pointer details. Printable keys are shown only when a native observation identifies a non-password focused element; otherwise they are omitted unless part of a non-text shortcut. `keyboard` and `typed_text` must both be on for keyboard details and typed text. Text going into a field that UI Automation reports as a password is never sent to the renderer. Pointer and scroll details follow their respective visual settings. Control characters show as spaces, and only the last 200 characters are sent.
 
 `opacity` is 0..1. `quality` is `performance`, `balanced` or `high`. Preferences are saved on the Pi session branch; navigating to another branch restores its preferences. These commands belong to the human. They do not change Safe/YOLO, capture sizing, input delivery or permission checks.
 
