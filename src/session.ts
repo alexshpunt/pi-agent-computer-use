@@ -15,7 +15,7 @@ import { isCoordinateScroll, scrollReceipt } from "./scroll-actions.ts";
 import { validWindowStatus, windowRestoreStatus } from "./window-restore.ts";
 import { validWindowControlState, windowManagementStatus, type WindowManagementCommand } from "./window-management.ts";
 import { nativeInput, requestedInputTime, validateInput, type InputCommand, type InputStep } from "./complete-input.ts";
-import { notifyWindowObserver, notifyHighlight, type WindowObserver, type HighlightResult, type HighlightMark } from "./native-visuals.ts";
+import { notifyWindowObserver, notifyHighlight, shownTypedText, type WindowObserver, type HighlightResult, type HighlightMark } from "./native-visuals.ts";
 import { screenRect, elementRegion, windowImageMapping, windowRegion, nativeClickPoint, type ScreenRect } from "./highlight-geometry.ts";
 import { observationSource, sourceIdentity, type ObservationSource, type SourceIdentity, type NativePlatform } from "./observation-source.ts";
 import { actionCapability, type ActionCapability } from "./action-capability.ts";
@@ -1324,7 +1324,8 @@ export class ComputerSession {
     }, signal);
     if (!this.allowed(entry)) return this.denied(entry.ref);
     if (signal?.aborted) return this.result("refused", "Cancelled during observation; captured data withheld.");
-    if (native.isError) return this.result("refused", "Driver refused observation.", native.structuredContent, this.addressed(entry, native.structuredContent?.virtual_desktop));
+    if (native.isError) return this.result("refused", native.structuredContent?.code === "human_stop"
+      ? native.content.filter(c => c.type === "text").map(c => c.text).join("\n") : "Driver refused observation.", native.structuredContent, this.addressed(entry, native.structuredContent?.virtual_desktop));
     if (!native.structuredContent) throw new Error("Driver returned no structured window state.");
     const state = { ...native.structuredContent };
     if (hasImage && typeof state.screenshot_error === "string" && state.screenshot_error.trim()) {
@@ -2140,7 +2141,11 @@ export class ComputerSession {
           // AX bounds are native. Only native click receipts establish an exact pixel action mark.
           const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
           const activityAction = presentationAction(step);
-          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction);
+          // A password field's text is never shown.
+          const typedElement = ["type_text", "set_value"].includes(step.action)
+            ? observed.ui?.elements.find(element => step.element_token ? element.element_token === step.element_token : element.focused) : undefined;
+          const typedText = ["type_text", "set_value"].includes(step.action) && !typedElement?.password ? shownTypedText(step.text) : undefined;
+          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction, undefined, typedText);
           if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
           if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
@@ -2177,12 +2182,13 @@ export class ComputerSession {
             "In-flight outcome withheld after revocation/cancellation.");
           const state = native.structuredContent ?? {};
           const nativeMessage = native.content.filter(c => c.type === "text").map(c => c.text).join("\n");
-          // Foreground input checks for recent physical input before sending anything (CUA_HUMAN_IDLE_MS).
-          const takeover = /human_takeover:/.test(nativeMessage) && (native.isError || state.effect === "refused");
+          // Three physical Escape presses stop input: nothing more is sent, and a running string or timeline stops part way.
+          const stopped = /human_stop:/.test(nativeMessage) || state.code === "human_stop";
+          const stopRefused = stopped && (state.status === "refused" || state.effect === "refused");
           // A real press at a point another window covers is refused by the driver before anything is pressed there.
           const covering = coveringWindow(nativeMessage);
-          const refused = takeover || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
-            "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable"].includes(String(state.code));
+          const refused = stopRefused || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
+            "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable", "input_busy"].includes(String(state.code));
           const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
           const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
             : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
@@ -2207,7 +2213,7 @@ export class ComputerSession {
               : { reason: "Native action did not report usable target geometry." };
           }
           highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal,
-            { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, activityAction, status);
+            { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, activityAction, status, typedText);
           if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) {
             entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
             return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
@@ -2216,7 +2222,7 @@ export class ComputerSession {
           // A click that closed its window, such as OK in a dialog, names the window of the app the driver found in front.
           const after = status === "delivered" ? foregroundAfter(state.foreground_after) : undefined;
           const front = after && `The click closed this window; ${await this.windowName(after, signal)} of the same app is now in front.\n`;
-          const result = this.result(status, takeover ? `Foreground input paused because the human is using the computer: ${nativeMessage.slice(nativeMessage.indexOf("human_takeover:") + 16)}`
+          const result = this.result(status, stopped ? `The human stopped computer use with Escape. ${status === "refused" ? "Nothing was sent." : "Input stopped part way; observe before anything else once computer use is on again."} Do not retry or work around it; tell the human and wait until they turn it on again with /computer-mode.`
             : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
             { ...state, ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
               overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),

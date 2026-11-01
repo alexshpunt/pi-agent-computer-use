@@ -49,7 +49,7 @@ const REPLACED: [RegExp, string][] = [
   [/^(key|hotkey|press)$/, "computer_press"], [/^hold$/, "computer_press with hold_ms"], [/^(scroll|wheel)$/, "computer_scroll"], [/^drag$/, "computer_drag"], [/^(hover|move_pointer)$/, "computer_hover"],
   [/^(select|select_option|menu)$/, "computer_select"], [/^(timeline|sequence)$/, "computer_timeline"],
   [/^(open|open_browser|open_sandbox|open_session|attach_browser|webview2_debugging)$/, "computer_open"],
-  [/^(move|resize|minimize|maximize|focus|restore|name)$/, "computer_window (a pointer move: computer_hover; resize of a display: computer_display)"], [/^(wait_for|verify)$/, "computer_wait"],
+  [/^(move|resize|minimize|maximize|restore|name)$/, "computer_window (a pointer move: computer_hover; resize of a display: computer_display)"], [/^(wait_for|verify)$/, "computer_wait"],
   [/^(navigate|back|forward|reload|wait_load|new_tab|switch_tab|close_tab|dialog|upload|wait_download|cancel_download|evaluate)$/, "computer_browser"],
   [/^(put|get|files)$/, "computer_files"], [/^clipboard_/, "computer_clipboard"], [/^(record_start|record_stop|audio_record)$/, "computer_record"],
   [/^(close|kill)$/, "Delete (kill: Delete with ?force=true)"], [/^setup$/, "/computer-setup, which only the user runs (ask them)"], [/^batch$/, "Codemode: a script that calls the computer_* tools in order"],

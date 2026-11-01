@@ -4,10 +4,17 @@ import type { ScreenRect } from "./highlight-geometry.ts";
 export interface VisualOptions {
   preset: "off" | "subtle" | "full";
   observations: boolean; previews: boolean; pointer: boolean; scroll_drag: boolean; keyboard: boolean;
+  /** Show the text the agent types beside the action; the native renderer never stores it. */
+  typed_text: boolean;
   opacity: number; quality: "performance" | "balanced" | "high"; reduced_motion: boolean;
 }
 const defaults = (): VisualOptions => ({ preset: "full", observations: true, previews: true, pointer: true,
-  scroll_drag: true, keyboard: true, opacity: 0.8, quality: "balanced", reduced_motion: false });
+  scroll_drag: true, keyboard: true, typed_text: true, opacity: 0.8, quality: "balanced", reduced_motion: false });
+/** The settings the native renderer takes; whether typed text is sent at all is decided here. */
+export function nativeVisualOptions(options: VisualOptions): Record<string, unknown> {
+  const { typed_text: _typed, ...native } = options;
+  return native;
+}
 /** Human-owned, session-local presentation preferences. No model tool can write them. */
 export class VisualSettings {
   private value = defaults();
@@ -21,7 +28,7 @@ export class VisualSettings {
     const next = { ...base, ...patch };
     if (!["off", "subtle", "full"].includes(next.preset) || !["performance", "balanced", "high"].includes(next.quality) ||
       !Number.isFinite(next.opacity) || next.opacity < 0 || next.opacity > 1 ||
-      [next.observations, next.previews, next.pointer, next.scroll_drag, next.keyboard, next.reduced_motion].some(v => typeof v !== "boolean"))
+      [next.observations, next.previews, next.pointer, next.scroll_drag, next.keyboard, next.typed_text, next.reduced_motion].some(v => typeof v !== "boolean"))
       throw Error("Invalid visual settings.");
     if (patch.preset === "subtle" && patch.previews === undefined) next.previews = false;
     if (patch.preset === "full" && patch.previews === undefined) next.previews = true;
@@ -40,6 +47,8 @@ interface ActivityPayload {
   image?: Extract<Content, { type: "image" }>;
   action?: string;
   outcome?: "delivered" | "refused" | "unknown" | "verified";
+  /** Text the action types, already free of control characters and at most 200 characters. */
+  typedText?: string;
 }
 export interface WindowFrame extends ActivityPayload { target: WindowTarget; identity: string; bounds: ScreenRect }
 export interface DisplayFrame extends ActivityPayload { display: string; bounds: ScreenRect }
@@ -80,9 +89,16 @@ export async function notifyHighlight(observer: WindowObserver | undefined, fram
   catch { return { status: "unavailable", reason: "renderer_unavailable" }; }
 }
 export function notifyWindowObserver(observer: WindowObserver | undefined, target: WindowTarget | undefined, identity: string | undefined,
-  bounds: unknown, signal?: AbortSignal, mark?: HighlightMark, image?: Content, action?: string, outcome?: ActivityPayload["outcome"]): Promise<HighlightResult | undefined> {
+  bounds: unknown, signal?: AbortSignal, mark?: HighlightMark, image?: Content, action?: string, outcome?: ActivityPayload["outcome"], typedText?: string): Promise<HighlightResult | undefined> {
   return notifyHighlight(observer, target && identity && bounds ? { target: { ...target }, identity, bounds: bounds as ScreenRect,
-    ...(mark ? { mark } : {}), ...(image?.type === "image" ? { image } : {}), ...(action ? { action } : {}), ...(outcome ? { outcome } : {}) } : undefined, signal);
+    ...(mark ? { mark } : {}), ...(image?.type === "image" ? { image } : {}), ...(action ? { action } : {}), ...(outcome ? { outcome } : {}),
+    ...(typedText ? { typedText } : {}) } : undefined, signal);
+}
+
+/** What the card shows of a typed string: control characters become spaces and only the last 200 characters stay. */
+export function shownTypedText(text: string | undefined): string | undefined {
+  const shown = text?.replace(/\p{Cc}+/gu, " ").trim();
+  return shown ? [...shown].slice(-200).join("") : undefined;
 }
 
 /** One native admission in flight and one replaceable pending image. Native owns animation timing. */
@@ -116,7 +132,8 @@ export class NativeVisuals {
     if (mark?.kind !== "action" && !options.observations) return { status: "skipped" };
     const args: Record<string, unknown> = { generation, kind: mark?.kind ?? "overview", source,
       ...(mark?.region ? { region: { ...mark.region } } : {}), ...(mark?.point ? { point: { ...mark.point } } : {}),
-      ...(frame.action ? { action: frame.action } : {}), ...(frame.outcome ? { outcome: frame.outcome } : {}) };
+      ...(frame.action ? { action: frame.action } : {}), ...(frame.outcome ? { outcome: frame.outcome } : {}),
+      ...(mark?.kind === "action" && frame.typedText && options.keyboard && options.typed_text ? { typed_text: frame.typedText } : {}) };
     // Bound transient transport memory. Oversized images still get a source frame, without a preview.
     if (options.previews && image && ["image/png", "image/jpeg"].includes(image.mimeType) && image.data.length <= 4 * 1024 * 1024)
       args.image = { data: image.data, mime_type: image.mimeType };
@@ -139,7 +156,7 @@ export class NativeVisuals {
   }
   private drain(): void {
     if (this.busy || this.closed || this.unavailable) return;
-    const next = this.config ? { name: "set_agent_visuals" as const, args: { ...this.config }, time: performance.now() } : this.pending;
+    const next = this.config ? { name: "set_agent_visuals" as const, args: nativeVisualOptions(this.config), time: performance.now() } : this.pending;
     if (!next) return;
     if (this.config) this.config = undefined; else this.pending = undefined;
     if (next.name === "present_agent_activity" && next.args.kind !== "clear" && performance.now() - next.time > 250) { this.drain(); return; }

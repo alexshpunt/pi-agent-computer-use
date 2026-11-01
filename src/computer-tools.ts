@@ -74,8 +74,8 @@ export function openCommand(address: ComputerAddress, params: Static<typeof open
 
 const windowParameters = Type.Object({
   window: Type.String({ description: "Window address from {search}, {read} or a name, such as computer:<machine>/w3qk or computer:game." }),
-  action: StringEnum(["move", "resize", "maximize", "minimize", "focus", "restore", "name"] as const,
-    { description: "focus activates a visible window; restore brings a minimized window back and activates it; name gives the window a short address computer:<as>." }),
+  action: StringEnum(["move", "resize", "maximize", "minimize", "restore", "name"] as const,
+    { description: "restore brings a minimized window back; name gives the window a short address computer:<as>." }),
   as: Type.Optional(Type.String({ description: "name: 1-32 lowercase letters, digits, - or _, starting with a letter, such as game. It resolves until the window closes." })),
   x: Type.Optional(Type.Integer({ description: "move: new left edge in Windows desktop pixels." })),
   y: Type.Optional(Type.Integer({ description: "move: new top edge in Windows desktop pixels." })),
@@ -531,7 +531,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_window", label: "Computer window",
-    description: "Use computer_window to move, resize, maximize, minimize, focus or restore an app window by its address without keys or clicks, or to give it a short name.",
+    description: "Use computer_window to move, resize, maximize, minimize or restore an app window by its address without keys or clicks, or to give it a short name.",
     parameters: fillToolNames(windowParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_window"),

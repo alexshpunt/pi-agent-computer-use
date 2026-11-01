@@ -23,7 +23,7 @@ export function registerVisualSettingsCommand(pi: ExtensionAPI, settings: Visual
           pi.appendEntry("computer-use-visuals", settings.update(patch));
         }
         const value = settings.current();
-        ctx.ui.notify(`Computer visuals: ${value.preset}. Previews ${value.previews ? "on" : "off"}; ${value.quality} quality; opacity ${Math.round(value.opacity * 100)}%; reduced motion ${value.reduced_motion ? "on" : "off"}.`, "info");
+        ctx.ui.notify(`Computer visuals: ${value.preset}. Previews ${value.previews ? "on" : "off"}; typed text ${value.typed_text ? "on" : "off"}; ${value.quality} quality; opacity ${Math.round(value.opacity * 100)}%; reduced motion ${value.reduced_motion ? "on" : "off"}.`, "info");
       } catch {
         ctx.ui.notify('Use /computer-visuals off|subtle|full, or JSON such as {"previews":false,"reduced_motion":true}. Preferences were not changed.', "warning");
       }

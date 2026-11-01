@@ -1,12 +1,27 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ComputerMode } from "./session.ts";
+import { HumanStop } from "./human-stop.ts";
 
-/** Register a user command, not a model tool. Restore user policy on reload; never start a native runtime here. */
-export function registerComputerMode(pi: ExtensionAPI, clearFrame: () => Promise<void> = async () => {}, canEnterSafe: () => boolean = () => true): () => ComputerMode {
+/**
+ * Register a user command, not a model tool. Restore user policy on reload; never start a native runtime here.
+ * The human's stop (Escape pressed three times) shows as STOPPED until the human selects a mode again.
+ */
+export function registerComputerMode(pi: ExtensionAPI, clearFrame: () => Promise<void> = async () => {}, canEnterSafe: () => boolean = () => true,
+  humanStop = new HumanStop()): () => ComputerMode {
   let mode: ComputerMode = "yolo";
-  const show = (ctx: ExtensionContext) => {
-    if (ctx.hasUI) ctx.ui.setStatus("computer-use", `Computer: ${mode.toUpperCase()}`);
+  let ui: ExtensionContext["ui"] | undefined;
+  const show = (ctx?: ExtensionContext) => {
+    if (ctx) ui = ctx.hasUI ? ctx.ui : undefined;
+    ui?.setStatus("computer-use", humanStop.stopped ? "Computer: STOPPED" : `Computer: ${mode.toUpperCase()}`);
   };
+  humanStop.onStop(() => {
+    show();
+    ui?.notify("Computer use stopped: Escape was pressed three times. Agent input on your desktop is off; /computer-mode safe or /computer-mode yolo turns it on again.", "warning");
+    // Steer a running turn, or wait for the next one: the agent must not keep planning desktop input.
+    pi.sendMessage({ customType: "computer-use-stop", display: true,
+      content: "The human pressed Escape three times and stopped computer use on their desktop. Every computer action on it is refused until they turn it on again with /computer-mode. Do not retry or work around it; tell the human what you were doing and wait." },
+    { deliverAs: "steer" });
+  });
   const restore = async (ctx: ExtensionContext) => {
     mode = "yolo";
     for (const entry of ctx.sessionManager.getBranch()) {
@@ -24,7 +39,7 @@ export function registerComputerMode(pi: ExtensionAPI, clearFrame: () => Promise
   pi.on("session_start", (_event, ctx) => restore(ctx));
   pi.on("session_tree", (_event, ctx) => restore(ctx));
   pi.registerCommand("computer-mode", {
-    description: "Show or select computer UI access: safe (session-opened windows) or yolo (desktop-wide). Not an OS sandbox.",
+    description: "Show or select computer UI access: safe (session-opened windows) or yolo (desktop-wide). Selecting a mode also turns computer use on again after Escape stopped it. Not an OS sandbox.",
     getArgumentCompletions: prefix => ["safe", "yolo"].filter(value => value.startsWith(prefix)).map(value => ({ value, label: value })),
     handler: async (args, ctx) => {
       const selected = args.trim().toLowerCase();
@@ -42,8 +57,17 @@ export function registerComputerMode(pi: ExtensionAPI, clearFrame: () => Promise
         mode = selected;
         await clearFrame();
       }
+      const resumed = selected !== "" && humanStop.stopped;
+      if (resumed) {
+        humanStop.resume();
+        pi.sendMessage({ customType: "computer-use-stop", display: true, content: "The human turned computer use on their desktop on again." }, { deliverAs: "nextTurn" });
+      }
       show(ctx);
-      ctx.ui.notify(`Computer mode: ${mode.toUpperCase()}. ${mode === "safe" ? "Only session-opened windows are allowed." : "Desktop-wide UI access is allowed."} Not an OS sandbox.`, "info");
+      if (humanStop.stopped) {
+        ctx.ui.notify(`Computer mode: STOPPED by Escape (${mode.toUpperCase()} when on). /computer-mode safe or /computer-mode yolo turns it on again.`, "warning");
+        return;
+      }
+      ctx.ui.notify(`Computer mode: ${mode.toUpperCase()}${resumed ? ", on again" : ""}. ${mode === "safe" ? "Only session-opened windows are allowed." : "Desktop-wide UI access is allowed."} Not an OS sandbox.`, "info");
     },
   });
   return () => mode;
