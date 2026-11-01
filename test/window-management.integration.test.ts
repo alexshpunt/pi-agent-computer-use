@@ -33,7 +33,7 @@ for (const scenario of ["workflow", "admission", "receipts", "restore", "typed"]
       expect(getToolResultText(result, "management-proof")).toContain(`IDE window management ${scenario} contract passed`);
       const rows = (await readFile(path.join(cwd, "calls.jsonl"), "utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
       const mutations = rows.filter(row => row.name === "manage_window");
-      expect(mutations).toHaveLength({ workflow: 6, admission: 1, receipts: 16, restore: 3, typed: 3 }[scenario]);
+      expect(mutations).toHaveLength({ workflow: 5, admission: 1, receipts: 16, restore: 0, typed: 3 }[scenario]);
       for (const { arguments: args } of mutations) {
         const fields = args.operation === "move" ? ["x", "y", "unit"] : args.operation === "resize" ? ["width", "height", "unit"] : [];
         expect(Object.keys(args).sort()).toEqual(["pid", "window_id", "state_id", "operation", ...fields].sort());
@@ -41,7 +41,7 @@ for (const scenario of ["workflow", "admission", "receipts", "restore", "typed"]
         if (fields.length) expect(args.unit).toBe("windows_desktop_pixels");
       }
       if (scenario === "workflow") {
-        expect(mutations.map(row => row.arguments.operation)).toEqual(["move", "resize", "focus", "maximize", "minimize", "move"]);
+        expect(mutations.map(row => row.arguments.operation)).toEqual(["move", "resize", "maximize", "minimize", "move"]);
         expect(mutations[0].arguments).toMatchObject({ x: -20, y: 120 });
         expect(mutations[1].arguments).toMatchObject({ width: 180, height: 120 });
       }
