@@ -148,7 +148,7 @@ Each session has its own folder on the controlled machine for files an app opens
 
 The agent's cursor carries the Pi session's name, or the project folder's name until the session has one, so you can tell agents apart. A card beside each action names it and shows the text being typed, except into password fields.
 
-Open `/computer-settings` to change the access mode, Escape stop, screenshot settings and visual preferences in one place. Screenshot settings apply to future captures in this session; visual preferences are saved in the session branch. A preview shows the final operation image; it does not prove delivery to a model. The `/computer-mode`, `/computer-visuals` and `/computer-images` commands remain available.
+Open `/computer-settings` to change the access mode, Escape stop, screenshot settings and visual preferences in one place. Screenshot settings apply to future captures in this session; visual preferences are saved in the session branch. A preview shows the final operation image; it does not prove delivery to a model.
 
 ## Platforms
 
@@ -209,8 +209,6 @@ The Windows binaries aren't code-signed. Signing certificates are hard to get fo
 | -------------------------------- | -------------------------------------------------------- |
 | `/computer-settings`             | Open the unified Computer Use settings panel            |
 | `/computer-mode safe\|yolo`      | Switch between Safe and YOLO; also turns computer use on again after Escape stopped it |
-| `/computer-visuals off\|subtle\|full` | Choose native activity cues and image previews          |
-| `/computer-images`              | Show or change capture size, hints and image guides      |
 | `/computer-setup PART [MACHINE]` | Install an optional part; without a part it lists them   |
 
 ## Feedback and contributions
