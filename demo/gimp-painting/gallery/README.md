@@ -26,7 +26,7 @@ The time-lapse of this run isn't uploaded yet.
 
 ![The reference and the painting by anthropic/claude-opus-5-5](claude-opus-5-5-2026-11-02/comparison.jpg)
 
-The time-lapse of this run isn't uploaded yet.
+https://github.com/user-attachments/assets/e272a1aa-bb8b-44af-964c-752c42a0bfa7
 
 ## gpt-6.1-terra-2026-11-02
 
@@ -34,4 +34,4 @@ The time-lapse of this run isn't uploaded yet.
 
 ![The reference and the painting by openai-codex/gpt-6.1-terra](gpt-6.1-terra-2026-11-02/comparison.jpg)
 
-The time-lapse of this run isn't uploaded yet.
+https://github.com/user-attachments/assets/564263b1-ed17-42c3-919e-c76fa06d5fb8
