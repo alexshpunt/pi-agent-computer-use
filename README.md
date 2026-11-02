@@ -112,7 +112,7 @@ What the agent sees as an element it presses through UI Automation in the backgr
 
 Press Escape three times within a second to stop agents on your desktop that have the shortcut enabled. Their input stops at once, and they refuse to act until you run `/computer-mode safe` or `/computer-mode yolo` in their sessions. An agent's own Escape doesn't count. Sandboxes and isolated sessions keep running.
 
-The shortcut is enabled by default. Open `/computer-settings` to disable or enable it for this project. The panel saves `escapeStop` in `.pi/computer-use.json`; restart Pi and reconnect remote machines for the change to take effect. This setting applies to local and connected human desktops in this Pi session, not other Pi sessions; disabling it removes their triple-Escape emergency stop.
+The shortcut is enabled by default. Open `/computer-settings` to change it globally or for a trusted project. Restart Pi and reconnect remote machines for the change to take effect. The setting applies to local and connected human desktops in this Pi session; disabling it removes their triple-Escape emergency stop.
 
 Several Pi sessions can use the same desktop. Their actions take turns: a string one agent types or a drag it makes finishes before another agent's next action starts.
 
@@ -148,7 +148,7 @@ Each session has its own folder on the controlled machine for files an app opens
 
 The agent's cursor carries the Pi session's name, or the project folder's name until the session has one, so you can tell agents apart. A card beside each action names it and shows the text being typed, except into password fields.
 
-Open `/computer-settings` to change the access mode, Escape stop, screenshot settings and visual preferences in one place. Screenshot settings apply to future captures in this session; visual preferences are saved in the session branch. A preview shows the final operation image; it does not prove delivery to a model.
+Open `/computer-settings` to change the access mode, Escape stop, screenshot settings and visual preferences. Select the edit scope at the top: global settings apply across projects, while settings in a trusted project override individual global values. Select `inherit` to clear an override; for numeric values, enter `inherit`. The selected setting shows its effective value and source. Global preferences are stored in the Pi agent directory as `computer-use-settings.json`; project preferences are stored in `.pi/computer-use-settings.json`. A mode selected with `/computer-mode` remains in effect on its session branch, even when a scoped default differs. Existing session-branch visual preferences remain the fallback where no scoped value is set. An existing `.pi/computer-use.json` `escapeStop` remains a project override until changed in the panel. Screenshot changes affect future captures. A preview shows the final operation image; it does not prove delivery to a model.
 
 ## Platforms
 
