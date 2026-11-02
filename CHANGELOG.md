@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.3 — 2026-11-02
+
+### Computer Use settings
+
+- Open `/computer-settings` to manage access mode, the triple-Escape stop, screenshot options and visual presentation. Choose global or trusted project settings; project overrides can inherit global values.
+- Configure the physical triple-Escape stop globally or per project. It remains enabled by default; changing it requires restarting Pi and reconnecting machines.
+- `/computer-images` and `/computer-visuals` have been replaced by `/computer-settings`. `/computer-mode safe|yolo` remains available for session access and resuming after an Escape stop.
+- Fix resuming after an Escape stop when driver connections or late stop notifications race.
+
+### Demo and documentation
+
+- Add a GIMP painting demo and a gallery of runs from five models. Show the Sol run in the README and as the Pi Packages video preview.
+- Refresh the project artwork and clarify Windows, WSL and potential future Linux and macOS support.
+
 ## 0.1.2 — 2026-11-01
 
 ### Action previews
