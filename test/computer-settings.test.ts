@@ -7,6 +7,8 @@ import { registerComputerMode } from "../src/mode.ts";
 import { CuaImageSettings } from "../src/cua-image-settings.ts";
 import { VisualSettings } from "../src/native-visuals.ts";
 import { HumanStop } from "../src/human-stop.ts";
+import { PreferencesController } from "../src/preferences-controller.ts";
+import { readScopedPreferences } from "../src/scoped-preferences.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
@@ -28,6 +30,13 @@ test("the shortcut setting defaults to enabled and can be saved without losing e
   expect(await readEscapeStop(cwd)).toBe(true);
 });
 
+test("clearing the legacy shortcut override keeps driver and machine configuration", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const file = path.join(cwd, ".pi", "computer-use.json");
+  await writeFile(file, JSON.stringify({ command: "driver", escapeStop: false, machines: { office: { ssh: "office" } } }));
+  await writeEscapeStop(cwd, undefined);
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ command: "driver", machines: { office: { ssh: "office" } } });
+});
 test("the shortcut setting never overwrites an invalid configuration", async () => {
   const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
   const file = path.join(cwd, ".pi", "computer-use.json");
@@ -37,6 +46,34 @@ test("the shortcut setting never overwrites an invalid configuration", async () 
 });
 
 
+test("the panel saves project and global preferences and clears an override", async () => {
+  initTheme("dark", false);
+  const cwd = await workspace(); const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = path.join(cwd, "agent");
+  try {
+    const handlers = new Map<string, (args: string, ctx: ExtensionCommandContext) => Promise<void>>();
+    const pi = { on: vi.fn(), registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }) => handlers.set(name, command.handler), appendEntry: vi.fn(), sendMessage: vi.fn() } as unknown as ExtensionAPI;
+    const stop = new HumanStop(); const mode = registerComputerMode(pi); const images = new CuaImageSettings(); const visuals = new VisualSettings();
+    const preferences = new PreferencesController(images, visuals, mode);
+    registerComputerSettingsCommand(pi, { mode, images, visuals, stop, preferences });
+    let component: Component | undefined;
+    const ctx = { cwd, mode: "tui", hasUI: true, isProjectTrusted: () => true, ui: { notify: vi.fn(), setStatus: vi.fn(), custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
+      component = factory({ terminal: { rows: 35 }, requestRender: () => {} }, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, {}, () => {});
+    } } } as unknown as ExtensionCommandContext;
+    await handlers.get("computer-settings")!("", ctx);
+    const key = (data: string) => component!.handleInput!(data);
+    key("\u001b[B"); key("\r");
+    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBe("yolo"));
+    await new Promise(resolve => setTimeout(resolve, 20)); key("\r");
+    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBe("safe"));
+    key("\r"); await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBeUndefined());
+    key("\u001b[A"); key("\r"); await new Promise(resolve => setTimeout(resolve, 20));
+    key("\u001b[B"); key("\r");
+    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).global.mode).toBe("yolo"));
+    await new Promise(resolve => setTimeout(resolve, 20)); key("\r");
+    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).global.mode).toBe("safe"));
+  } finally { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; }
+});
 test("the panel changes the real settings and respects mode safety", async () => {
   initTheme("dark", false);
   const cwd = await workspace();
