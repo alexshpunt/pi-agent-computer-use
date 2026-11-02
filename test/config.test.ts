@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { loadComputerConfig } from "../src/config.ts";
+import { loadComputerConfig, readMachineSettings } from "../src/config.ts";
 
 // These tests read configuration only; the live WSL interop socket of the machine running them stays out.
 vi.mock("../src/wsl-interop.ts", () => ({ liveInterop: vi.fn(async () => undefined) }));
@@ -17,6 +17,19 @@ async function workspace() {
   owned.push(cwd);
   return cwd;
 }
+
+test("the shortcut setting is read for local and remote desktop drivers", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const file = path.join(cwd, ".pi/computer-use.json");
+  for (const escapeStop of [true, false]) {
+    await writeFile(file, JSON.stringify({ command: "driver", escapeStop }));
+    expect((await loadComputerConfig(cwd)).escapeStop).toBe(escapeStop);
+    expect((await readMachineSettings(cwd)).escapeStop).toBe(escapeStop);
+  }
+  await writeFile(file, JSON.stringify({ command: "driver", escapeStop: "false" }));
+  await expect(loadComputerConfig(cwd)).rejects.toThrow();
+  await expect(readMachineSettings(cwd)).rejects.toThrow();
+});
 
 test("opening has no target-file prerequisite and respects a trusted Driver override", async () => {
   const cwd = await workspace();
