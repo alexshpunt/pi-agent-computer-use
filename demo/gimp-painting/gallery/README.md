@@ -28,6 +28,14 @@ https://github.com/user-attachments/assets/63a2b230-e861-4361-bfec-fe500a58fb5f
 
 https://github.com/user-attachments/assets/e272a1aa-bb8b-44af-964c-752c42a0bfa7
 
+## gpt-6.1-sol-2026-11-02
+
+**openai-codex/gpt-6.1-sol** · 2026-11-02 · 61 min · 69 turns · $1.05 · thinking high · 1928 tool calls
+
+![The reference and the painting by openai-codex/gpt-6.1-sol](gpt-6.1-sol-2026-11-02/comparison.jpg)
+
+https://github.com/user-attachments/assets/efce8341-6564-4a00-8a3a-ff8a6b349a15
+
 ## gpt-6.1-terra-2026-11-02
 
 **openai-codex/gpt-6.1-terra** · 2026-11-02 · 14 min · 44 turns · $0.25 · thinking high · 552 tool calls
