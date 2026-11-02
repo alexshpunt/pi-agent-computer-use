@@ -84,13 +84,14 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
  * Another machine's desktop gets its own driver and session over SSH. Safe/YOLO is the user's choice there too;
  * the host overlay is not shown, and browsers start on that machine.
  */
-export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings; humanStop?: HumanStop; sessionLabel?: () => string | undefined }): MachineFactory {
+export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings; humanStop?: HumanStop; sessionLabel?: () => string | undefined; escapeStop?: (cwd: string) => Promise<boolean | undefined> }): MachineFactory {
   return async (cwd, name, signal) => {
     const machine = await machineConfig(cwd, name);
+    const escapeStop = options.escapeStop ? await options.escapeStop(cwd) : (await readMachineSettings(cwd)).escapeStop;
     const runner = sshRunner(machine.ssh);
     const command = machine.command ?? await prepareRemoteRuntime(runner, signal);
     const runtime = machine.command ? machine.runtime : "windows-desktop";
-    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ssh: machine.ssh }, undefined, options.visuals, options.humanStop, options.sessionLabel);
+    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ...(escapeStop !== undefined ? { escapeStop } : {}), ssh: machine.ssh }, undefined, options.visuals, options.humanStop, options.sessionLabel);
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
     const launchWeb = async (launch: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) => {

@@ -56,6 +56,49 @@ test("the driver stops on the native notification, refuses without reaching the 
   } finally { await driver.close(); }
 });
 
+test("disabling the shortcut prevents Escape from stopping computer use", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "human-stop-")); dirs.push(dir);
+  const log = path.join(dir, "calls.jsonl");
+  const stop = new HumanStop();
+  const driver = new McpDriver({ command: process.execPath, args: [path.resolve("test/fixtures/human-stop-driver.mjs"), log], escapeStop: false }, "0.33.2", undefined, stop);
+  try {
+    const result = await driver.call("press_key", { key: "escape-x3" });
+    expect(result.isError).toBeFalsy();
+    expect(stop.stopped).toBe(false);
+    const records = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line) as Entry);
+    expect(records[0].env?.CUA_ESCAPE_STOP).toBe("0");
+  } finally { await driver.close(); }
+});
+
+test("a delayed refusal from before resume cannot stop the session again", async () => {
+  const { driver, stop, entries } = await start();
+  const stops = vi.fn(); stop.onStop(stops);
+  try {
+    await driver.call("list_windows", {});
+    const pending = driver.call("press_key", { key: "late-stop" }).catch(() => undefined);
+    await until(async () => (await entries()).some(entry => entry.arguments?.key === "late-stop"));
+    stop.stop();
+    stop.resume();
+    await pending;
+    expect(stop.stopped).toBe(false);
+    expect(stops).toHaveBeenCalledTimes(1);
+    expect((await driver.call("list_windows", {})).isError).toBeFalsy();
+  } finally { await driver.close(); }
+});
+
+test("a companion observing the stop is replaced when computer use resumes", async () => {
+  const { driver, stop } = await start();
+  const watcher = driver.companion()!;
+  try {
+    await driver.call("list_windows", {});
+    await watcher.call("press_key", { key: "escape-x3" });
+    expect(stop.stopped).toBe(true);
+    stop.resume();
+    expect((await watcher.call("list_windows", {})).isError).toBeFalsy();
+    expect(stop.stopped).toBe(false);
+  } finally { await watcher.close(); await driver.close(); }
+});
+
 test("a refusal that names the stop is enough when the notification is missed", async () => {
   const { driver, stop } = await start("refuse-only");
   try {

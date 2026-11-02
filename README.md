@@ -19,11 +19,39 @@
 
 [![Pi package](https://img.shields.io/badge/pi-package-6b4fbb)](https://pi.dev/packages/pi-agent-computer-use)
 [![Works with Pi Agent IDE](https://img.shields.io/badge/works%20with-Pi%20Agent%20IDE-2f7d4a)](https://github.com/alexshpunt/pi-agent-ide)
-[![Platform: Windows from WSL](https://img.shields.io/badge/platform-Windows%20from%20WSL-0078d4)](#platforms)
+[![Platform: Windows and WSL](https://img.shields.io/badge/platform-Windows%20and%20WSL-0078d4)](#platforms)
 
 </div>
 
 Ask your agent to do something on your computer, for example "open Paint and draw a house", "fill in this form in my browser" or "check what the settings window says". It finds the window, reads its controls and screenshot, acts, and reads it again to see whether it worked.
+
+## Demo: an agent paints a picture in GIMP
+
+<p align="center">
+  <img src="images/gimp-demo/timelapse-preview.webp" alt="Time-lapse of a Pi agent painting a cartoon robot at a computer in GIMP, with the reference picture in the corner" width="100%">
+</p>
+
+We give a Pi agent [this reference picture](assets/draw_task.png) and an empty canvas in GIMP on another Windows machine, and ask it to paint a copy. It paints every mark itself with GIMP's tools: filled selections, soft shading inside them, tapered pen strokes for the line art, hatching and hand-drawn lettering. Along the way it compares its canvas with the reference and fixes the biggest differences. The animation above is a 61-minute run of `gpt-6.1-sol`, sped up about 120 times.
+
+We run it with different models. Click a painting to see it next to the reference and watch the full time-lapse:
+
+<!-- gimp-gallery:start -->
+
+<table>
+<tr>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#deepseek-flash-2026-11-01"><img src="demo/gimp-painting/gallery/deepseek-flash-2026-11-01/painting.jpg" width="280" alt="Painting by deepseek/deepseek-flash"></a><br><b>deepseek-flash</b><br>82 min · $0.34</td>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#claude-haiku-5-5-2026-11-02"><img src="demo/gimp-painting/gallery/claude-haiku-5-5-2026-11-02/painting.jpg" width="280" alt="Painting by anthropic/claude-haiku-5-5"></a><br><b>claude-haiku-5-5</b><br>27 min · $0.33</td>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#claude-opus-5-5-2026-11-02"><img src="demo/gimp-painting/gallery/claude-opus-5-5-2026-11-02/painting.jpg" width="280" alt="Painting by anthropic/claude-opus-5-5"></a><br><b>claude-opus-5-5</b><br>78 min · $5.04</td>
+</tr>
+<tr>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#gpt-61-sol-2026-11-02"><img src="demo/gimp-painting/gallery/gpt-6.1-sol-2026-11-02/painting.jpg" width="280" alt="Painting by openai-codex/gpt-6.1-sol"></a><br><b>gpt-6.1-sol</b><br>61 min · $1.05</td>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#gpt-61-terra-2026-11-02"><img src="demo/gimp-painting/gallery/gpt-6.1-terra-2026-11-02/painting.jpg" width="280" alt="Painting by openai-codex/gpt-6.1-terra"></a><br><b>gpt-6.1-terra</b><br>14 min · $0.25</td>
+</tr>
+</table>
+
+<!-- gimp-gallery:end -->
+
+The agent follows a [painting skill](demo/gimp-painting/skill/SKILL.md) that breaks the work into stages and gives it a tested GIMP toolkit. [demo/gimp-painting](demo/gimp-painting/README.md) has the prompt and the script that sets up the machine, records the screen and makes the time-lapse, so you can repeat the run with another model or picture.
 
 ## Summary
 
@@ -82,7 +110,9 @@ Input goes to a window by its address and targets an element by a ref from the l
 
 What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input brings its window to the front and runs at once, even while you use the computer. Nothing is posted to windows as messages that an app could silently drop. To keep foreground UI work off the human desktop, use a sandbox or an isolated session.
 
-Press Escape three times within a second to stop every agent on your desktop. Their input stops at once, and they refuse to act until you run `/computer-mode safe` or `/computer-mode yolo` in their sessions. An agent's own Escape doesn't count. Sandboxes and isolated sessions keep running.
+Press Escape three times within a second to stop agents on your desktop that have the shortcut enabled. Their input stops at once, and they refuse to act until you run `/computer-mode safe` or `/computer-mode yolo` in their sessions. An agent's own Escape doesn't count. Sandboxes and isolated sessions keep running.
+
+The shortcut is enabled by default. Open `/computer-settings` to change it globally or for a trusted project. Restart Pi and reconnect remote machines for the change to take effect. The setting applies to local and connected human desktops in this Pi session; disabling it removes their triple-Escape emergency stop.
 
 Several Pi sessions can use the same desktop. Their actions take turns: a string one agent types or a drag it makes finishes before another agent's next action starts.
 
@@ -118,11 +148,13 @@ Each session has its own folder on the controlled machine for files an app opens
 
 The agent's cursor carries the Pi session's name, or the project folder's name until the session has one, so you can tell agents apart. A card beside each action names it and shows the text being typed, except into password fields.
 
-`/computer-visuals` chooses `off`, `subtle` or `full`, with optional image previews when the native driver supports them. A preview shows the final operation image; it does not prove delivery to a model. `/computer-images` changes screenshot size, hints and image guides for future captures.
+Open `/computer-settings` to change the access mode, Escape stop, screenshot settings and visual preferences. Choose Project or Global first. Global settings apply across projects, while settings in a trusted project override individual global values. Select `inherit` to clear an override; for numeric values, enter `inherit`. The selected setting shows its effective value and source. Global preferences are stored in the Pi agent directory as `computer-use-settings.json`; project preferences are stored in `.pi/computer-use-settings.json`. A mode selected with `/computer-mode` remains in effect on its session branch, even when a scoped default differs. Existing session-branch visual preferences remain the fallback where no scoped value is set. An existing `.pi/computer-use.json` `escapeStop` remains a project override until changed in the panel. Screenshot changes affect future captures. A preview shows the final operation image; it does not prove delivery to a model.
 
 ## Platforms
 
 Computer use works on Windows 11 x64, with Pi running on Windows itself or in WSL, on the same machine or on another one over SSH. Linux and macOS aren't supported: window control there isn't verified, so no runtime ships for them and computer use refuses with a clear message. Some features need more: Windows Sandbox needs a Windows edition that has it, and isolated sessions need Windows 11 24H2 or newer.
+
+The extension uses our [Cua Driver fork](https://github.com/alexshpunt/cua), whose driver also targets Linux and macOS. Support for those desktops may be possible, but it needs integration and validation, including for features currently specific to Windows. Contributions and testing on other platforms are very welcome. Please [open an issue](https://github.com/alexshpunt/pi-agent-computer-use/issues), share your findings, or send a pull request.
 
 This is experimental and changes often, so interfaces and behavior may still move around.
 
@@ -175,9 +207,8 @@ The Windows binaries aren't code-signed. Signing certificates are hard to get fo
 
 | Command                          | Effect                                                   |
 | -------------------------------- | -------------------------------------------------------- |
+| `/computer-settings`             | Open the unified Computer Use settings panel            |
 | `/computer-mode safe\|yolo`      | Switch between Safe and YOLO; also turns computer use on again after Escape stopped it |
-| `/computer-visuals off\|subtle\|full` | Choose native activity cues and image previews          |
-| `/computer-images`              | Show or change capture size, hints and image guides      |
 | `/computer-setup PART [MACHINE]` | Install an optional part; without a part it lists them   |
 
 ## Feedback and contributions

@@ -191,7 +191,6 @@ export class McpDriver implements Driver {
     }, visualSettings);
     this.visuals = this.presentation.flash;
     if (this.humanStop) this.stopSubscriptions.push(this.humanStop.onResume(() => {
-      if (!this.stoppedNatively) return;
       this.stoppedNatively = false;
       // Window identities stay: only the stopped driver process is replaced.
       void this.closeClient().catch(() => undefined);
@@ -215,6 +214,7 @@ export class McpDriver implements Driver {
     try {
       const client = await pending;
       signal?.throwIfAborted();
+      if (client !== this.client) throw new Error("Driver connection was replaced after computer use resumed.");
       return client;
     } finally { if (this.connecting === pending) this.connecting = undefined; }
   }
@@ -237,7 +237,7 @@ export class McpDriver implements Driver {
     const client = new Client({ name: "pi-agent-computer-use-poc", version: "0.0.0" });
     // The driver says at once when the human stops input, without waiting for a call.
     client.fallbackNotificationHandler = async notification => {
-      if (notification.method === "notifications/cua/human_stop") this.reportStop();
+      if (this.client === client && notification.method === "notifications/cua/human_stop") this.reportStop();
     };
     this.client = client;
     try {
@@ -308,7 +308,7 @@ export class McpDriver implements Driver {
     const label = this.sessionLabel?.()?.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 28);
     return { CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false",
       ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1",
-      CUA_ESCAPE_STOP: "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
+      CUA_ESCAPE_STOP: this.config.escapeStop === false ? "0" : "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
       CUA_DRIVER_ALLOW_DEBUGGING_LAUNCH: "1" };
   }
 
@@ -360,7 +360,7 @@ export class McpDriver implements Driver {
   companion(): McpDriver | undefined {
     if (this.config.endpoint) return undefined;
     const visuals = new VisualSettings(); visuals.update({ preset: "off" });
-    return new McpDriver(this.config, this.version, visuals);
+    return new McpDriver(this.config, this.version, visuals, this.humanStop, this.sessionLabel);
   }
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
@@ -395,6 +395,8 @@ export class McpDriver implements Driver {
     if (this.humanStop?.stopped)
       return { content: [{ type: "text", text: this.humanStop.message() }], structuredContent: { status: "refused", effect: "refused", code: "human_stop", attempted: false }, isError: true };
     const client = await this.connect(signal);
+    if (this.humanStop?.stopped)
+      return { content: [{ type: "text", text: this.humanStop.message() }], structuredContent: { status: "refused", effect: "refused", code: "human_stop", attempted: false }, isError: true };
     if (this.nativeTools && !this.nativeTools.has(name))
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
     // Since 0.35 the driver shapes window state for models; the adapter needs the full payload with `elements`.
@@ -403,7 +405,7 @@ export class McpDriver implements Driver {
     // every other native call answers well within 15 s.
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
-    if (reportsHumanStop(result as Parameters<typeof reportsHumanStop>[0])) this.reportStop();
+    if (this.client === client && reportsHumanStop(result as Parameters<typeof reportsHumanStop>[0])) this.reportStop();
     const content: Content[] = [];
     for (const block of result.content) {
       if (block.type === "text") content.push({ type: "text", text: block.text });

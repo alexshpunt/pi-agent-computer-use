@@ -12,6 +12,8 @@ export interface ComputerConfig {
   interop?: string;
   runtime?: "windows-held-paths" | "windows-key-holds" | "windows-selected-displays" | "windows-capture-drag" | "windows-shell-desktops" | "windows-single-png" | "windows-semantic-actions" | "windows-fast-bilinear" | "windows-direct-process" | "windows-persistent-wgc" | "windows-native-pointer" | "windows-coordinate-scroll" | "windows-window-restore" | "windows-window-management" | "windows-desktop";
   bundled?: BundledRuntime;
+  /** Install the physical triple-Escape stop hook; enabled by default. */
+  escapeStop?: boolean;
   /** Explicitly trusted experimental driver, with protocol checks instead of packaged-byte checks. */
   driverOverride?: true;
   /** A sandbox guest's driver behind a host loopback relay. Set by the sandbox lifecycle, never read from config files. */
@@ -63,7 +65,8 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)
-    || Object.keys(raw).some(key => !["command", "args", "interop", "runtime", "machines", "driverOverride"].includes(key))
+    || Object.keys(raw).some(key => !["command", "args", "interop", "runtime", "machines", "driverOverride", "escapeStop"].includes(key))
+    || (raw.escapeStop !== undefined && typeof raw.escapeStop !== "boolean")
     || (raw.driverOverride !== undefined && raw.driverOverride !== true)
     || (raw.driverOverride === true && typeof raw.command !== "string")
     || (raw.command !== undefined && (typeof raw.command !== "string" || !raw.command))
@@ -87,21 +90,23 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
   return { command: command || bundled!.command,
     ...(bundled ? { bundled } : {}),
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(interop ? { interop } : {}),
+    ...(raw.escapeStop !== undefined ? { escapeStop: raw.escapeStop as boolean } : {}),
     ...(runtime ? { runtime } : {}), ...(raw.driverOverride === true ? { driverOverride: true as const } : {}),
     ...(raw.machines !== undefined ? { machines: parseMachines(raw.machines) } : {}) };
 }
 
 /** The trusted file's interop socket and machines, without selecting or downloading a runtime. */
-export async function readMachineSettings(cwd: string): Promise<{ interop?: string; machines: Record<string, MachineConfig> }> {
+export async function readMachineSettings(cwd: string): Promise<{ interop?: string; machines: Record<string, MachineConfig>; escapeStop?: boolean }> {
   let raw: unknown = {};
   try { raw = JSON.parse(await readFile(path.join(cwd, ".pi", "computer-use.json"), "utf8")); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
-  const { interop: configured, machines } = raw as Record<string, unknown>;
+  const { interop: configured, machines, escapeStop } = raw as Record<string, unknown>;
+  if (escapeStop !== undefined && typeof escapeStop !== "boolean") throw new Error("Invalid escapeStop in .pi/computer-use.json.");
   const interop = typeof configured === "string" ? configured : await liveInterop();
-  return { ...(interop ? { interop } : {}), machines: machines === undefined ? {} : parseMachines(machines) };
+  return { ...(interop ? { interop } : {}), machines: machines === undefined ? {} : parseMachines(machines), ...(escapeStop !== undefined ? { escapeStop: escapeStop as boolean } : {}) };
 }
 
 /** Paths emitted by the old setup command are package-managed defaults, not permanent user overrides. */

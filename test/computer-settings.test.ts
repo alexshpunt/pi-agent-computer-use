@@ -1,0 +1,114 @@
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, expect, test, vi } from "vitest";
+import { readEscapeStop, registerComputerSettingsCommand, writeEscapeStop } from "../src/computer-settings.ts";
+import { registerComputerMode } from "../src/mode.ts";
+import { CuaImageSettings } from "../src/cua-image-settings.ts";
+import { VisualSettings } from "../src/native-visuals.ts";
+import { HumanStop } from "../src/human-stop.ts";
+import { PreferencesController } from "../src/preferences-controller.ts";
+import { readScopedPreferences, writeScopedPreference } from "../src/scoped-preferences.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { initTheme } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+
+const dirs: string[] = [];
+afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
+async function workspace() { const dir = await mkdtemp(path.join(tmpdir(), "computer-settings-")); dirs.push(dir); return dir; }
+
+test("the shortcut setting defaults to enabled and can be saved without losing existing configuration", async () => {
+  const cwd = await workspace();
+  expect(await readEscapeStop(cwd)).toBe(true);
+  await mkdir(path.join(cwd, ".pi"));
+  const file = path.join(cwd, ".pi", "computer-use.json");
+  await writeFile(file, JSON.stringify({ machines: { office: { ssh: "office" } }, command: "driver" }));
+  await writeEscapeStop(cwd, false);
+  expect(await readEscapeStop(cwd)).toBe(false);
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ machines: { office: { ssh: "office" } }, command: "driver", escapeStop: false });
+  await writeEscapeStop(cwd, true);
+  expect(await readEscapeStop(cwd)).toBe(true);
+});
+
+test("clearing the legacy shortcut override keeps driver and machine configuration", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const file = path.join(cwd, ".pi", "computer-use.json");
+  await writeFile(file, JSON.stringify({ command: "driver", escapeStop: false, machines: { office: { ssh: "office" } } }));
+  await writeEscapeStop(cwd, undefined);
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ command: "driver", machines: { office: { ssh: "office" } } });
+});
+test("the shortcut setting never overwrites an invalid configuration", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const file = path.join(cwd, ".pi", "computer-use.json");
+  await writeFile(file, "invalid json");
+  await expect(writeEscapeStop(cwd, false)).rejects.toThrow();
+  expect(await readFile(file, "utf8")).toBe("invalid json");
+});
+
+
+test("the panel saves project and global preferences and clears an override", async () => {
+  initTheme("dark", false);
+  const cwd = await workspace(); const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = path.join(cwd, "agent");
+  try {
+    const handlers = new Map<string, (args: string, ctx: ExtensionCommandContext) => Promise<void>>();
+    const pi = { on: vi.fn(), registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }) => handlers.set(name, command.handler), appendEntry: vi.fn(), sendMessage: vi.fn() } as unknown as ExtensionAPI;
+    const stop = new HumanStop(); const mode = registerComputerMode(pi); const images = new CuaImageSettings(); const visuals = new VisualSettings();
+    const preferences = new PreferencesController(images, visuals, mode);
+    registerComputerSettingsCommand(pi, { mode, images, visuals, stop, preferences });
+    let component: Component | undefined;
+    let chosen: string | undefined = "Project";
+    const ctx = { cwd, mode: "tui", hasUI: true, isProjectTrusted: () => true, ui: { select: vi.fn(async () => chosen), notify: vi.fn(), setStatus: vi.fn(), custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
+      component = factory({ terminal: { rows: 35 }, requestRender: () => {} }, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, {}, () => {});
+    } } } as unknown as ExtensionCommandContext;
+    await writeScopedPreference(cwd, "project", "cap", 777);
+    images.update({ kernel: images.settings().kernel, maxLongEdge: 777, scale: 1 });
+    await handlers.get("computer-settings")!("", ctx);
+    const key = (data: string) => component!.handleInput!(data);
+    expect(component!.render(90).join("\n")).toContain("777");
+    expect(ctx.ui.select).toHaveBeenCalledOnce();
+    key("\r"); await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBe("safe"));
+    key("\r"); await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBeUndefined());
+    chosen = "Global"; await handlers.get("computer-settings")!("", ctx);
+    expect(component!.render(90).join("\n")).toContain("1280");
+    expect(component!.render(90).join("\n")).not.toContain("777");
+    key("\r"); await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).global.mode).toBe("safe"));
+    chosen = undefined; component = undefined; await handlers.get("computer-settings")!("", ctx); expect(component).toBeUndefined();
+  } finally { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; }
+});
+test("the panel changes the real settings and respects mode safety", async () => {
+  initTheme("dark", false);
+  const cwd = await workspace();
+  const handlers = new Map<string, (args: string, ctx: ExtensionCommandContext) => Promise<void>>();
+  const entries: unknown[] = [];
+  const pi = { on: vi.fn(), registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }) => handlers.set(name, command.handler), appendEntry: (_type: string, data: unknown) => entries.push(data), sendMessage: vi.fn() } as unknown as ExtensionAPI;
+  const stop = new HumanStop();
+  let safeAllowed = false;
+  const mode = registerComputerMode(pi, async () => {}, () => safeAllowed, stop);
+  const images = new CuaImageSettings(); const visuals = new VisualSettings();
+  registerComputerSettingsCommand(pi, { mode, images, visuals, stop });
+  let component: Component | undefined;
+  const ctx = { cwd, mode: "tui", hasUI: true, ui: { notify: vi.fn(), setStatus: vi.fn(), custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
+    component = factory({ terminal: { rows: 35 }, requestRender: () => {} }, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, {}, () => {});
+  } } } as unknown as ExtensionCommandContext;
+  await handlers.get("computer-settings")!("", ctx);
+  const key = (data: string) => component!.handleInput!(data);
+  const settled = () => new Promise(resolve => setTimeout(resolve, 20));
+  key("\r"); await settled();
+  expect(mode()).toBe("yolo");
+  safeAllowed = true; key("\r"); await settled(); expect(mode()).toBe("safe");
+  stop.stop(); expect(stop.stopped).toBe(true);
+  key("\u001b[B"); key("\r"); await settled(); expect(stop.stopped).toBe(false);
+  key("\u001b[B"); key("\r"); await vi.waitFor(async () => expect(await readEscapeStop(cwd)).toBe(false)); await settled();
+  const original = images.settings();
+  key("\u001b[B"); key("\r"); key("\u0015"); key("800"); key("\r"); await settled(); expect(images.settings().maxLongEdge).toBe(800);
+  key("\r"); key("\u0015"); key("63"); key("\r"); await settled(); expect(images.settings().maxLongEdge).toBe(800);
+  key("\u001b[B"); key("\r"); key("\u0015"); key("0.5"); key("\r"); await settled(); expect(images.settings().scale).toBe(0.5);
+  key("\u001b[B"); key("\r"); await settled(); expect(images.settings().hints).toBe(false);
+  key("\u001b[B"); key("\r"); await settled();
+  key("\u001b[B"); key("\r"); await settled(); expect(images.settings().guides).toEqual({ grid: true, action: true });
+  expect(original).toMatchObject({ maxLongEdge: 1280, scale: 1, version: 0 });
+  key("\u001b[B"); key("\r"); await settled(); expect(visuals.current().preset).toBe("off"); expect(entries).toContainEqual(expect.objectContaining({ preset: "off" }));
+  for (let i = 0; i < 10; i++) key("\u001b[B");
+  key("\r"); await settled(); expect(images.settings()).toEqual(original);
+});
