@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/e44e002f-c4a5-4030-ab76-fdc73d2765b5
 
 ![The reference and the painting by anthropic/claude-haiku-5-5](claude-haiku-5-5-2026-11-02/comparison.jpg)
 
-The time-lapse of this run isn't uploaded yet.
+https://github.com/user-attachments/assets/63a2b230-e861-4361-bfec-fe500a58fb5f
 
 ## claude-opus-5-5-2026-11-02
 
