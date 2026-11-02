@@ -2,14 +2,19 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { CuaImageSettings } from "../../src/cua-image-settings.ts";
-import { registerImageSettingsCommand } from "../../src/image-settings-command.ts";
 import { VisualSettings } from "../../src/native-visuals.ts";
-import { registerVisualSettingsCommand } from "../../src/visual-settings-command.ts";
+import { registerVisualPreferences } from "../../src/visual-preferences.ts";
 
-/** Real Pi owns command dispatch, session entries and tree navigation; this fixture only reads the outcome. */
+/** Real Pi owns session entries and tree navigation; fixture commands create and inspect preferences. */
 export default function(pi: ExtensionAPI): void {
   const visuals = new VisualSettings(); const images = new CuaImageSettings();
-  registerVisualSettingsCommand(pi, visuals); registerImageSettingsCommand(pi, images);
+  registerVisualPreferences(pi, visuals);
+  pi.registerCommand("visual-set", {
+    description: "Save test preferences.",
+    handler: async text => {
+      try { pi.appendEntry("computer-use-visuals", visuals.update(JSON.parse(text))); } catch { /* Invalid fixture input must not save. */ }
+    },
+  });
   pi.registerCommand("visual-probe", {
     description: "Save the current test preferences.",
     handler: async (_args, ctx) => {

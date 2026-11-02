@@ -61,7 +61,15 @@ test("the panel changes the real settings and respects mode safety", async () =>
   stop.stop(); expect(stop.stopped).toBe(true);
   key("\u001b[B"); key("\r"); await settled(); expect(stop.stopped).toBe(false);
   key("\u001b[B"); key("\r"); await vi.waitFor(async () => expect(await readEscapeStop(cwd)).toBe(false)); await settled();
+  const original = images.settings();
   key("\u001b[B"); key("\r"); key("\u0015"); key("800"); key("\r"); await settled(); expect(images.settings().maxLongEdge).toBe(800);
-  for (let i = 0; i < 5; i++) key("\u001b[B");
-  key("\r"); await settled(); expect(visuals.current().preset).toBe("off"); expect(entries).toContainEqual(expect.objectContaining({ preset: "off" }));
+  key("\r"); key("\u0015"); key("63"); key("\r"); await settled(); expect(images.settings().maxLongEdge).toBe(800);
+  key("\u001b[B"); key("\r"); key("\u0015"); key("0.5"); key("\r"); await settled(); expect(images.settings().scale).toBe(0.5);
+  key("\u001b[B"); key("\r"); await settled(); expect(images.settings().hints).toBe(false);
+  key("\u001b[B"); key("\r"); await settled();
+  key("\u001b[B"); key("\r"); await settled(); expect(images.settings().guides).toEqual({ grid: true, action: true });
+  expect(original).toMatchObject({ maxLongEdge: 1280, scale: 1, version: 0 });
+  key("\u001b[B"); key("\r"); await settled(); expect(visuals.current().preset).toBe("off"); expect(entries).toContainEqual(expect.objectContaining({ preset: "off" }));
+  for (let i = 0; i < 10; i++) key("\u001b[B");
+  key("\r"); await settled(); expect(images.settings()).toEqual(original);
 });
