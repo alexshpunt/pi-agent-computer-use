@@ -1,28 +1,24 @@
 # Native computer visuals
 
-`/computer-visuals` controls human-only presentation on the machine that executes computer use. Native visuals require a driver advertising both `set_agent_visuals` and `present_agent_activity`. The adapter uses that driver's renderer and theme. It starts no viewer, HTTP listener or separate overlay process.
+`/computer-settings` controls human-only presentation on the machine that executes computer use. Native visuals require a driver advertising both `set_agent_visuals` and `present_agent_activity`. The adapter uses that driver's renderer and theme. It starts no viewer, HTTP listener or separate overlay process.
 
 A driver without these capabilities keeps the legacy cursor behavior described in [complete input](complete-input.md). A version number alone does not enable native presentation.
 
 ## Human controls
 
-Run `/computer-visuals` to show the current settings, or choose a preset:
+Open `/computer-settings` to view the current settings and choose a visual preset:
 
 - `off` disables presentation and discards pending previews.
 - `subtle` keeps activity cues and disables previews by default.
 - `full` enables previews by default.
 
-A JSON patch controls individual categories and rendering preferences:
-
-```text
-/computer-visuals {"observations":true,"previews":false,"pointer":true,"scroll_drag":true,"keyboard":true,"typed_text":true,"opacity":0.8,"quality":"balanced","reduced_motion":false}
-```
+The panel also controls individual categories, opacity, quality and reduced motion.
 
 Action cards show available key combinations and pointer details. Printable keys are shown only when a native observation identifies a non-password focused element; otherwise they are omitted unless part of a non-text shortcut. `keyboard` and `typed_text` must both be on for keyboard details and typed text. Text going into a field that UI Automation reports as a password is never sent to the renderer. Pointer and scroll details follow their respective visual settings. Control characters show as spaces, and only the last 200 characters are sent.
 
-`opacity` is 0..1. `quality` is `performance`, `balanced` or `high`. Preferences are saved on the Pi session branch; navigating to another branch restores its preferences. These commands belong to the human. They do not change Safe/YOLO, capture sizing, input delivery or permission checks.
+`opacity` is 0..1. `quality` is `performance`, `balanced` or `high`. Visual preferences are saved on the Pi session branch; navigating to another branch restores its preferences. Visual settings do not change Safe/YOLO, capture sizing, input delivery or permission checks.
 
-`/computer-images` controls future captures in this session: `cap 64..4096`, `scale 0.05..1`, `hints on|off`, `guides off|grid|action|all`, or `reset`. Calling it without arguments shows the settings. An individual Read can still override its capture options. Existing images keep their bytes.
+The panel controls screenshot size, scale, hints and guides for future captures in this session, and can reset them to defaults. An individual Read can still override its capture options. Existing images keep their bytes.
 
 ## What a cue means
 
