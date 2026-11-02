@@ -77,6 +77,7 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
           ...([ ["observations", "Observation frames"], ["previews", "Image previews"], ["pointer", "Pointer actions"], ["scroll_drag", "Scroll and drag"], ["keyboard", "Keyboard actions"], ["typed_text", "Show typed text"], ["reduced_motion", "Reduced motion"] ] as const).map(([id, label]) => ({ id, label, currentValue: onOff(visual[id]), values: booleanValues, description: "Presentation only. Saved in this session branch." })),
           { id: "quality", label: "Visual quality", currentValue: visual.quality, values: ["performance", "balanced", "high"], description: "Presentation only. Saved in this session branch." },
           { id: "opacity", label: "Visual opacity", currentValue: String(visual.opacity), submenu: numeric("Opacity (0–1)"), description: "Presentation opacity from 0 to 1. Saved in this session branch." },
+          { id: "reset-images", label: "Reset screenshot settings", currentValue: "reset", values: ["reset"], description: "Restore screenshot defaults for this session." },
         ];
         let busy = false;
         const sync = () => {
@@ -100,7 +101,8 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
               const current = options.images.settings();
               if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) throw new Error("Enter a number.");
               options.images.update({ kernel: current.kernel, maxLongEdge: id === "cap" ? Number(value) : current.maxLongEdge, scale: id === "scale" ? Number(value) : current.scale });
-            } else if (id === "hints") options.images.setHints(value === "on");
+            } else if (id === "reset-images") options.images.reset();
+            else if (id === "hints") options.images.setHints(value === "on");
             else if (id === "grid" || id === "action") {
               const guides = options.images.settings().guides;
               options.images.setGuides({ grid: id === "grid" ? value === "on" : !!guides?.grid, action: id === "action" ? value === "on" : !!guides?.action });

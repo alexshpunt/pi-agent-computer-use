@@ -1,6 +1,5 @@
 import { basename } from "node:path";
-import { registerImageSettingsCommand } from "./image-settings-command.ts";
-import { registerVisualSettingsCommand } from "./visual-settings-command.ts";
+import { registerVisualPreferences } from "./visual-preferences.ts";
 import { VisualSettings } from "./native-visuals.ts";
 import { CuaImageSettings } from "./cua-image-settings.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -29,8 +28,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   let overviewKernel: "lanczos3" | "bilinear" = "lanczos3";
   const images = new CuaImageSettings(() => overviewKernel);
   const visuals = new VisualSettings();
-  registerImageSettingsCommand(pi, images);
-  registerVisualSettingsCommand(pi, visuals);
+  registerVisualPreferences(pi, visuals);
   let canEnterSafe = () => true;
   const humanStop = new HumanStop();
   const getMode = registerComputerMode(pi, async () => { visuals.clear(); }, () => canEnterSafe(), humanStop);
