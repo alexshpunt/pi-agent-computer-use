@@ -104,7 +104,9 @@ Input goes to a window by its address and targets an element by a ref from the l
 
 What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input brings its window to the front and runs at once, even while you use the computer. Nothing is posted to windows as messages that an app could silently drop. To keep foreground UI work off the human desktop, use a sandbox or an isolated session.
 
-Press Escape three times within a second to stop every agent on your desktop. Their input stops at once, and they refuse to act until you run `/computer-mode safe` or `/computer-mode yolo` in their sessions. An agent's own Escape doesn't count. Sandboxes and isolated sessions keep running.
+Press Escape three times within a second to stop agents on your desktop that have the shortcut enabled. Their input stops at once, and they refuse to act until you run `/computer-mode safe` or `/computer-mode yolo` in their sessions. An agent's own Escape doesn't count. Sandboxes and isolated sessions keep running.
+
+The shortcut is enabled by default. To disable it for this project, add `"escapeStop": false` to `.pi/computer-use.json` (or create the file with `{"escapeStop": false}`). Set it to `true` or remove it to enable the shortcut again. Restart Pi and reconnect remote machines for changes to take effect. This setting applies to local and connected human desktops in this Pi session, not other Pi sessions; disabling it removes their triple-Escape emergency stop.
 
 Several Pi sessions can use the same desktop. Their actions take turns: a string one agent types or a drag it makes finishes before another agent's next action starts.
 
