@@ -19,7 +19,7 @@
 
 [![Pi package](https://img.shields.io/badge/pi-package-6b4fbb)](https://pi.dev/packages/pi-agent-computer-use)
 [![Works with Pi Agent IDE](https://img.shields.io/badge/works%20with-Pi%20Agent%20IDE-2f7d4a)](https://github.com/alexshpunt/pi-agent-ide)
-[![Platform: Windows from WSL](https://img.shields.io/badge/platform-Windows%20from%20WSL-0078d4)](#platforms)
+[![Platform: Windows and WSL](https://img.shields.io/badge/platform-Windows%20and%20WSL-0078d4)](#platforms)
 
 </div>
 
@@ -31,7 +31,7 @@ Ask your agent to do something on your computer, for example "open Paint and dra
   <img src="images/gimp-demo/timelapse-preview.webp" alt="Time-lapse of a Pi agent painting a cartoon robot at a computer in GIMP, with the reference picture in the corner" width="100%">
 </p>
 
-We give a Pi agent [this reference picture](assets/draw_task.png) and an empty canvas in GIMP on another Windows machine, and ask it to paint a copy. It paints every mark itself with GIMP's tools: filled selections, soft shading inside them, tapered pen strokes for the line art, hatching and hand-drawn lettering. Along the way it compares its canvas with the reference and fixes the biggest differences. The animation above is an 82-minute run of `deepseek-flash`, sped up about 160 times.
+We give a Pi agent [this reference picture](assets/draw_task.png) and an empty canvas in GIMP on another Windows machine, and ask it to paint a copy. It paints every mark itself with GIMP's tools: filled selections, soft shading inside them, tapered pen strokes for the line art, hatching and hand-drawn lettering. Along the way it compares its canvas with the reference and fixes the biggest differences. The animation above is a 61-minute run of `gpt-6.1-sol`, sped up about 120 times.
 
 We run it with different models. Click a painting to see it next to the reference and watch the full time-lapse:
 
