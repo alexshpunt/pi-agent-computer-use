@@ -1,0 +1,12 @@
+{
+  "id": "claude-opus-5-5-2026-11-02",
+  "model": "anthropic/claude-opus-5-5",
+  "thinking": "high",
+  "date": "2026-11-02",
+  "minutes": 78,
+  "cost": 5.04,
+  "turns": 99,
+  "toolCalls": 2232,
+  "canvas": "1200x800",
+  "video": null
+}

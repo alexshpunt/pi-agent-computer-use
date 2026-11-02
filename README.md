@@ -40,6 +40,11 @@ We run it with different models. Click a painting to see it next to the referenc
 <table>
 <tr>
 <td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#deepseek-flash-2026-11-01"><img src="demo/gimp-painting/gallery/deepseek-flash-2026-11-01/painting.jpg" width="280" alt="Painting by deepseek/deepseek-flash"></a><br><b>deepseek-flash</b><br>82 min · $0.34</td>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#claude-haiku-5-5-2026-11-02"><img src="demo/gimp-painting/gallery/claude-haiku-5-5-2026-11-02/painting.jpg" width="280" alt="Painting by anthropic/claude-haiku-5-5"></a><br><b>claude-haiku-5-5</b><br>27 min · $0.33</td>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#claude-opus-5-5-2026-11-02"><img src="demo/gimp-painting/gallery/claude-opus-5-5-2026-11-02/painting.jpg" width="280" alt="Painting by anthropic/claude-opus-5-5"></a><br><b>claude-opus-5-5</b><br>78 min · $5.04</td>
+</tr>
+<tr>
+<td align="center" width="33%"><a href="demo/gimp-painting/gallery/README.md#gpt-6.1-terra-2026-11-02"><img src="demo/gimp-painting/gallery/gpt-6.1-terra-2026-11-02/painting.jpg" width="280" alt="Painting by openai-codex/gpt-6.1-terra"></a><br><b>gpt-6.1-terra</b><br>14 min · $0.25</td>
 </tr>
 </table>
 

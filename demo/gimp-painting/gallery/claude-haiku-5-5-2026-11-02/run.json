@@ -1,0 +1,12 @@
+{
+  "id": "claude-haiku-5-5-2026-11-02",
+  "model": "anthropic/claude-haiku-5-5",
+  "thinking": "high",
+  "date": "2026-11-02",
+  "minutes": 27,
+  "cost": 0.33,
+  "turns": 40,
+  "toolCalls": 895,
+  "canvas": "1200x800",
+  "video": null
+}
