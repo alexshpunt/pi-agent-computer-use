@@ -20,7 +20,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
   const { name, arguments: args } = request.params;
   record({ name, arguments: args });
   if (stopped) return refusal();
-  if (name === "press_key" && args?.key === "escape-x3") {
+  if (name === "press_key" && args?.key === "late-stop") { await new Promise(resolve => setTimeout(resolve, 100)); return refusal(); }
+  if (name === "press_key" && args?.key === "escape-x3" && process.env.CUA_ESCAPE_STOP === "1") {
     stopped = true;
     // The notification is sent as soon as the hook sees the third press; the running call then stops.
     if (mode === "notify") await server.notification({ method: "notifications/cua/human_stop", params: { code: "human_stop" } });
