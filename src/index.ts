@@ -19,6 +19,7 @@ import { localRunner } from "./runner.ts";
 import { MachineHost } from "./machine-host.ts";
 import { machineFactory, sandboxFactory } from "./machine.ts";
 import { HumanStop } from "./human-stop.ts";
+import { registerComputerSettingsCommand } from "./computer-settings.ts";
 
 /**
  * Register native computer resources with ordinary IDE tools when Pi Agent IDE accepts them, otherwise as
@@ -33,6 +34,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   let canEnterSafe = () => true;
   const humanStop = new HumanStop();
   const getMode = registerComputerMode(pi, async () => { visuals.clear(); }, () => canEnterSafe(), humanStop);
+  registerComputerSettingsCommand(pi, { mode: getMode, images, visuals, stop: humanStop });
   let cwdLabel: string | undefined;
   // The agent cursor names this session, or its project folder until the session has a name.
   const sessionLabel = () => pi.getSessionName()?.trim() || cwdLabel;
