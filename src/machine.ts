@@ -84,10 +84,10 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
  * Another machine's desktop gets its own driver and session over SSH. Safe/YOLO is the user's choice there too;
  * the host overlay is not shown, and browsers start on that machine.
  */
-export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings; humanStop?: HumanStop; sessionLabel?: () => string | undefined }): MachineFactory {
+export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings; humanStop?: HumanStop; sessionLabel?: () => string | undefined; escapeStop?: (cwd: string) => Promise<boolean | undefined> }): MachineFactory {
   return async (cwd, name, signal) => {
     const machine = await machineConfig(cwd, name);
-    const { escapeStop } = await readMachineSettings(cwd);
+    const escapeStop = options.escapeStop ? await options.escapeStop(cwd) : (await readMachineSettings(cwd)).escapeStop;
     const runner = sshRunner(machine.ssh);
     const command = machine.command ?? await prepareRemoteRuntime(runner, signal);
     const runtime = machine.command ? machine.runtime : "windows-desktop";
