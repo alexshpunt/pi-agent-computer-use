@@ -157,7 +157,7 @@ function runAgent(prompt: string): Promise<number | null> {
     "--no-skills", "--skill", path.join(repo, "skills/computer-use"), "--skill", path.join(here, "skill"),
     "--no-context-files", "--no-mcp", "--session-dir", path.join(out, "session"),
     // Nobody answers during the run, and the picture must come from the agent's own strokes.
-    "--exclude-tools", "*ask_user*,*wait_for_answers*,*generate_image*,*replicate*,*teleport*,*plannotator*,*show_to_user*,*show_diff_to_user*",
+    "--exclude-tools", "*ask_user*,*wait_for_answers*,*generate_image*,*replicate*,*teleport*,*plannotator*,*show_to_user*,*show_diff_to_user*,compact",
     prompt];
   const child: ChildProcess = spawn("pi", args, { cwd: workspace, stdio: ["ignore", "pipe", "pipe"] });
   child.stdout!.pipe(createWriteStream(path.join(out, "events.jsonl")));
