@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Input, SettingsList, truncateToWidth, type SettingItem, type TuiMouseEvent } from "@earendil-works/pi-tui";
-import type { CuaImageSettings } from "./cua-image-settings.ts";
-import type { VisualSettings, VisualOptions } from "./native-visuals.ts";
+import { CuaImageSettings } from "./cua-image-settings.ts";
+import { VisualSettings, type VisualOptions } from "./native-visuals.ts";
 import type { ComputerMode } from "./session.ts";
 import type { HumanStop } from "./human-stop.ts";
 import type { PreferencesController } from "./preferences-controller.ts";
@@ -60,7 +60,12 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
       if (ctx.mode !== "tui") { ctx.ui.notify("Computer settings require an interactive terminal.", "error"); return; }
       let escapeStop: boolean;
       let scoped: Awaited<ReturnType<PreferencesController["read"]>> | undefined;
-      let scope: "project" | "global" = ctx.isProjectTrusted?.() ? "project" : "global";
+      let scope: "project" | "global" = "project";
+      if (options.preferences) {
+        const choice = await ctx.ui.select("Computer Use settings", ctx.isProjectTrusted() ? ["Project", "Global"] : ["Global"]);
+        if (!choice) return;
+        scope = choice === "Project" ? "project" : "global";
+      }
       try {
         scoped = await options.preferences?.read(ctx);
         escapeStop = scoped ? scoped.effective.escape ?? true : await readEscapeStop(ctx.cwd);
@@ -69,6 +74,9 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
       await ctx.ui.custom<void>((tui, theme, _keys, done) => {
         const image = options.images.settings();
         const visual = options.visuals.current();
+        const defaultImage = new CuaImageSettings().settings();
+        const defaultValues = { mode: "yolo", escape: true, cap: defaultImage.maxLongEdge, scale: defaultImage.scale,
+          hints: true, grid: false, action: false, ...new VisualSettings().current() };
         const numeric = (label: string): SettingItem["submenu"] => (current, finish) => {
           const input = new Input({ prompt: `${label} (or inherit): ` });
           input.setValue(current); input.handleInput("\u0005"); input.focused = true;
@@ -90,30 +98,29 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
           { id: "quality", label: "Visual quality", currentValue: visual.quality, values: ["performance", "balanced", "high"], description: "performance: favor speed. balanced: balance speed and quality. high: favor visual quality." },
           { id: "opacity", label: "Visual opacity", currentValue: String(visual.opacity), submenu: numeric("Opacity (0–1)"), description: "0–1: visual opacity. 0 is transparent; 1 is fully opaque." },
           { id: "reset-images", label: "Reset screenshot settings", currentValue: "reset", values: ["reset"], description: "reset: clear screenshot overrides in the selected scope." },
-          ...(options.preferences ? [{ id: "scope", label: "Edit scope", currentValue: scope, values: ctx.isProjectTrusted() ? ["project", "global"] : ["global"], description: "Choose where changes are saved. Project settings override global settings. Use inherit to clear a project override." }] : []),
         ];
-        if (options.preferences) items.unshift(items.pop()!);
         if (scoped) for (const item of items) {
-          if (item.id === "scope" || item.id === "resume" || item.id === "reset-images") continue;
+          if (item.id === "resume" || item.id === "reset-images") continue;
           if (item.values) item.values = [...item.values, "inherit"];
         }
         const descriptions = new Map(items.map(item => [item.id, item.description ?? ""]));
         let busy = false;
         const sync = () => {
           const current = options.images.settings(); const v = options.visuals.current();
-          if (options.preferences) list.updateValue("scope", scope);
           list.updateValue("mode", options.mode()); list.updateValue("resume", options.stop.stopped ? "stopped" : "on");
           list.updateValue("escape", onOff(escapeStop)); list.updateValue("cap", String(current.maxLongEdge)); list.updateValue("scale", String(current.scale));
           list.updateValue("hints", onOff(current.hints !== false)); list.updateValue("grid", onOff(!!current.guides?.grid)); list.updateValue("action", onOff(!!current.guides?.action));
           for (const key of ["preset", "quality", "opacity"] as const) list.updateValue(key, String(v[key]));
           for (const key of ["observations", "previews", "pointer", "scroll_drag", "keyboard", "typed_text", "reduced_motion"] as const) list.updateValue(key, onOff(v[key]));
           if (scoped) for (const item of items) {
-            if (["scope", "resume", "reset-images"].includes(item.id)) continue;
+            if (["resume", "reset-images"].includes(item.id)) continue;
             const key = item.id as keyof typeof scoped.sources;
             const source = item.id === "mode" && scoped.effective.mode !== undefined && scoped.effective.mode !== options.mode() ? "session" : scoped.sources[key] ?? "default or session";
             item.description = `${descriptions.get(item.id)} Effective: ${item.currentValue} (${source}). Select inherit to clear the ${scope} override.`;
             const stored = scoped[scope][key];
-            list.updateValue(item.id, stored === undefined ? "inherit" : typeof stored === "boolean" ? onOff(stored) : String(stored));
+            const fallback = scope === "global" ? defaultValues[key] : undefined;
+            const value = stored ?? (scope === "global" && key === "previews" && scoped.global.preset === "subtle" ? false : fallback);
+            if (value !== undefined) list.updateValue(item.id, typeof value === "boolean" ? onOff(value) : String(value));
           }
         };
         let unsubscribe = () => {};
@@ -123,8 +130,7 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
         const list = new SettingsList(items, visibleRows, listTheme, (id, value) => {
           busy = true;
           void (async () => {
-            if (id === "scope") { scope = value as "project" | "global"; }
-            else if (options.preferences && id !== "resume") {
+            if (options.preferences && id !== "resume") {
               if (id === "reset-images") {
                 for (const key of ["cap", "scale", "hints", "grid", "action"]) scoped = await options.preferences.set(ctx, scope, key, undefined);
               } else {
@@ -165,7 +171,7 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
         unsubscribe = () => { offStop(); offResume(); };
         return {
           dispose() { unsubscribe(); },
-          render(width: number) { return [truncateToWidth(theme.fg("accent", theme.bold("Computer Use settings")), width), "", ...list.render(width)]; },
+          render(width: number) { return [truncateToWidth(theme.fg("accent", theme.bold(options.preferences ? `Computer Use settings · ${scope === "project" ? "Project" : "Global"}` : "Computer Use settings")), width), "", ...list.render(width)]; },
           invalidate() { list.invalidate(); },
           handleInput(data: string) { if (!busy) list.handleInput(data); tui.requestRender(); },
           handleMouse(event: TuiMouseEvent) { if (busy || event.y < 2) return undefined; return list.handleMouse({ ...event, y: event.y - 2 }); },

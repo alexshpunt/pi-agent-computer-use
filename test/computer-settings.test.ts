@@ -8,7 +8,7 @@ import { CuaImageSettings } from "../src/cua-image-settings.ts";
 import { VisualSettings } from "../src/native-visuals.ts";
 import { HumanStop } from "../src/human-stop.ts";
 import { PreferencesController } from "../src/preferences-controller.ts";
-import { readScopedPreferences } from "../src/scoped-preferences.ts";
+import { readScopedPreferences, writeScopedPreference } from "../src/scoped-preferences.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
@@ -57,21 +57,23 @@ test("the panel saves project and global preferences and clears an override", as
     const preferences = new PreferencesController(images, visuals, mode);
     registerComputerSettingsCommand(pi, { mode, images, visuals, stop, preferences });
     let component: Component | undefined;
-    const ctx = { cwd, mode: "tui", hasUI: true, isProjectTrusted: () => true, ui: { notify: vi.fn(), setStatus: vi.fn(), custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
+    let chosen: string | undefined = "Project";
+    const ctx = { cwd, mode: "tui", hasUI: true, isProjectTrusted: () => true, ui: { select: vi.fn(async () => chosen), notify: vi.fn(), setStatus: vi.fn(), custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
       component = factory({ terminal: { rows: 35 }, requestRender: () => {} }, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, {}, () => {});
     } } } as unknown as ExtensionCommandContext;
+    await writeScopedPreference(cwd, "project", "cap", 777);
+    images.update({ kernel: images.settings().kernel, maxLongEdge: 777, scale: 1 });
     await handlers.get("computer-settings")!("", ctx);
     const key = (data: string) => component!.handleInput!(data);
-    key("\u001b[B"); key("\r");
-    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBe("yolo"));
-    await new Promise(resolve => setTimeout(resolve, 20)); key("\r");
-    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBe("safe"));
+    expect(component!.render(90).join("\n")).toContain("777");
+    expect(ctx.ui.select).toHaveBeenCalledOnce();
+    key("\r"); await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBe("safe"));
     key("\r"); await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).project.mode).toBeUndefined());
-    key("\u001b[A"); key("\r"); await new Promise(resolve => setTimeout(resolve, 20));
-    key("\u001b[B"); key("\r");
-    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).global.mode).toBe("yolo"));
-    await new Promise(resolve => setTimeout(resolve, 20)); key("\r");
-    await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).global.mode).toBe("safe"));
+    chosen = "Global"; await handlers.get("computer-settings")!("", ctx);
+    expect(component!.render(90).join("\n")).toContain("1280");
+    expect(component!.render(90).join("\n")).not.toContain("777");
+    key("\r"); await vi.waitFor(async () => expect((await readScopedPreferences(cwd)).global.mode).toBe("safe"));
+    chosen = undefined; component = undefined; await handlers.get("computer-settings")!("", ctx); expect(component).toBeUndefined();
   } finally { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; }
 });
 test("the panel changes the real settings and respects mode safety", async () => {
