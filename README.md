@@ -154,6 +154,8 @@ Open `/computer-settings` to change the access mode, Escape stop, screenshot set
 
 Computer use works on Windows 11 x64, with Pi running on Windows itself or in WSL, on the same machine or on another one over SSH. Linux and macOS aren't supported: window control there isn't verified, so no runtime ships for them and computer use refuses with a clear message. Some features need more: Windows Sandbox needs a Windows edition that has it, and isolated sessions need Windows 11 24H2 or newer.
 
+The extension uses our [Cua Driver fork](https://github.com/alexshpunt/cua), whose driver also targets Linux and macOS. Support for those desktops may be possible, but it needs integration and validation, including for features currently specific to Windows. Contributions and testing on other platforms are very welcome. Please [open an issue](https://github.com/alexshpunt/pi-agent-computer-use/issues), share your findings, or send a pull request.
+
 This is experimental and changes often, so interfaces and behavior may still move around.
 
 ## Installation
