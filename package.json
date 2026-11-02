@@ -1,6 +1,6 @@
 {
   "name": "pi-agent-computer-use",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Computer use for the Pi coding agent: Windows apps, browsers and desktops through native UI trees, screenshots and real input, as a Pi Agent IDE plugin or standalone tools",
   "keywords": [
     "accessibility",
