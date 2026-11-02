@@ -26,7 +26,7 @@ The source envelope and exact returned bytes appear in existing Vision debug. Th
 
 ## Native settings and limits
 
-Desktop windows and displays use session-local settings: Lanczos3, default long-edge cap 1280 and scale 1. Settings are frozen before each capture. Overview pixels stay native. Only fresh display detail uses adapter crop/resize; no originals are retained and CUA may round below the requested edge.
+Desktop windows and displays use the configured screenshot settings: Lanczos3, default long-edge cap 1280 and scale 1. Settings are frozen before each capture. Overview pixels stay native. Only fresh display detail uses adapter crop/resize; no originals are retained and CUA may round below the requested edge.
 
 Window and display routes use the selected qualified CUA runtime. Arbitrary window reads do not raise or focus that window. Neither route guarantees fresh paint.
 

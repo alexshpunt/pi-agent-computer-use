@@ -16,9 +16,9 @@ The panel also controls individual categories, opacity, quality and reduced moti
 
 Action cards show available key combinations and pointer details. Printable keys are shown only when a native observation identifies a non-password focused element; otherwise they are omitted unless part of a non-text shortcut. `keyboard` and `typed_text` must both be on for keyboard details and typed text. Text going into a field that UI Automation reports as a password is never sent to the renderer. Pointer and scroll details follow their respective visual settings. Control characters show as spaces, and only the last 200 characters are sent.
 
-`opacity` is 0..1. `quality` is `performance`, `balanced` or `high`. Visual preferences are saved on the Pi session branch; navigating to another branch restores its preferences. Visual settings do not change Safe/YOLO, capture sizing, input delivery or permission checks.
+`opacity` is 0..1. `quality` is `performance`, `balanced` or `high`. Scoped visual preferences override older session-branch preferences. Where no scoped value exists, navigating to another branch restores that branch's preference. Visual settings do not change Safe/YOLO, capture sizing, input delivery or permission checks.
 
-The panel controls screenshot size, scale, hints and guides for future captures in this session, and can reset them to defaults. An individual Read can still override its capture options. Existing images keep their bytes.
+The panel controls screenshot size, scale, hints and guides for future captures. Resetting them clears overrides in the selected scope. An individual Read can still override its capture options. Existing images keep their bytes.
 
 ## What a cue means
 
