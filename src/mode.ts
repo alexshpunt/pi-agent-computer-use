@@ -7,7 +7,7 @@ import { HumanStop } from "./human-stop.ts";
  * The human's stop (Escape pressed three times) shows as STOPPED until the human selects a mode again.
  */
 export function registerComputerMode(pi: ExtensionAPI, clearFrame: () => Promise<void> = async () => {}, canEnterSafe: () => boolean = () => true,
-  humanStop = new HumanStop()): (() => ComputerMode) & { select: (args: string, ctx: ExtensionCommandContext) => Promise<void> } {
+  humanStop = new HumanStop()): (() => ComputerMode) & { select: (args: string, ctx: ExtensionCommandContext) => Promise<void>; applyPreference: (value: ComputerMode, ctx: ExtensionContext) => Promise<boolean>; allowsPreference: (value: ComputerMode) => boolean; recordPreference: () => void } {
   let mode: ComputerMode = "yolo";
   let ui: ExtensionContext["ui"] | undefined;
   const show = (ctx?: ExtensionContext) => {
@@ -71,5 +71,16 @@ export function registerComputerMode(pi: ExtensionAPI, clearFrame: () => Promise
     getArgumentCompletions: prefix => ["safe", "yolo"].filter(value => value.startsWith(prefix)).map(value => ({ value, label: value })),
     handler: select,
   });
-  return Object.assign(() => mode, { select });
+  const applyPreference = async (value: ComputerMode, ctx: ExtensionContext): Promise<boolean> => {
+    if (value === "safe" && value !== mode && !canEnterSafe()) {
+      ctx.ui.notify("Close the YOLO agent browser before applying Safe mode.", "warning");
+      return false;
+    }
+    if (value !== mode) { mode = value; await clearFrame(); }
+    show(ctx);
+    return true;
+  };
+  const allowsPreference = (value: ComputerMode) => value !== "safe" || value === mode || canEnterSafe();
+  const recordPreference = () => pi.appendEntry("computer-use-mode", { mode });
+  return Object.assign(() => mode, { select, applyPreference, allowsPreference, recordPreference });
 }

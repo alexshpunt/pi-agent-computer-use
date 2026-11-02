@@ -19,6 +19,8 @@ import { MachineHost } from "./machine-host.ts";
 import { machineFactory, sandboxFactory } from "./machine.ts";
 import { HumanStop } from "./human-stop.ts";
 import { registerComputerSettingsCommand } from "./computer-settings.ts";
+import { PreferencesController } from "./preferences-controller.ts";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /**
  * Register native computer resources with ordinary IDE tools when Pi Agent IDE accepts them, otherwise as
@@ -32,7 +34,19 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
   let canEnterSafe = () => true;
   const humanStop = new HumanStop();
   const getMode = registerComputerMode(pi, async () => { visuals.clear(); }, () => canEnterSafe(), humanStop);
-  registerComputerSettingsCommand(pi, { mode: getMode, images, visuals, stop: humanStop });
+  const preferences = new PreferencesController(images, visuals, getMode);
+  let currentContext: ExtensionContext | undefined;
+  const restorePreferences = async (ctx: ExtensionContext) => {
+    currentContext = ctx;
+    if (!ctx.cwd || !ctx.isProjectTrusted) return;
+    preferences.captureBaseline(ctx);
+    await preferences.apply(ctx, true, true);
+  };
+  pi.on("session_start", (_event, ctx) => restorePreferences(ctx));
+  pi.on("session_tree", (_event, ctx) => restorePreferences(ctx));
+  const scopedEscapeStop = async () => currentContext?.cwd
+    ? (await preferences.read(currentContext)).effective.escape ?? true : undefined;
+  registerComputerSettingsCommand(pi, { mode: getMode, images, visuals, stop: humanStop, preferences });
   let cwdLabel: string | undefined;
   // The agent cursor names this session, or its project folder until the session has a name.
   const sessionLabel = () => pi.getSessionName()?.trim() || cwdLabel;
@@ -43,6 +57,8 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     if (session) return session;
     if (!loading) loading = loadComputerConfig(cwd).then(async config => {
       cwdLabel = basename(cwd);
+      const escapeStop = await scopedEscapeStop();
+      if (escapeStop !== undefined) config.escapeStop = escapeStop;
       const driver = new McpDriver(config, undefined, visuals, humanStop, sessionLabel);
       overviewKernel = driver.overviewKernel ?? "lanczos3";
       session = new ComputerSession(driver, getMode, () => images.settings(), undefined,
@@ -54,7 +70,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     finally { loading = undefined; }
   }
   const openSandbox = sandboxFactory({ settings: () => images.settings(), visuals });
-  const connectMachine = machineFactory({ getMode, settings: () => images.settings(), visuals, humanStop, sessionLabel });
+  const connectMachine = machineFactory({ getMode, settings: () => images.settings(), visuals, humanStop, sessionLabel, escapeStop: scopedEscapeStop });
   const provider = await registerComputerProvider(pi, getSession, async () => {
     const result: ComputerResult = session ? await session.close() : {
       content: [{ type: "text", text: "Not started." }],
