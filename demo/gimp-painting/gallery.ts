@@ -99,7 +99,7 @@ async function render(): Promise<void> {
   await writeFile(path.join(galleryDir, "README.md"), page);
 
   const perRow = 3;
-  const cells = all.map(run => `<td align="center" width="${Math.floor(100 / perRow)}%"><a href="demo/gimp-painting/gallery/README.md#${run.id}"><img src="demo/gimp-painting/gallery/${run.id}/painting.jpg" width="280" alt="Painting by ${run.model}"></a><br><b>${shortModel(run)}</b><br>${run.minutes} min · $${run.cost.toFixed(2)}</td>`);
+  const cells = all.map(run => `<td align="center" width="${Math.floor(100 / perRow)}%"><a href="demo/gimp-painting/gallery/README.md#${run.id.replace(/\./g, "")}"><img src="demo/gimp-painting/gallery/${run.id}/painting.jpg" width="280" alt="Painting by ${run.model}"></a><br><b>${shortModel(run)}</b><br>${run.minutes} min · $${run.cost.toFixed(2)}</td>`);
   const rows = [];
   for (let i = 0; i < cells.length; i += perRow) rows.push(`<tr>\n${cells.slice(i, i + perRow).join("\n")}\n</tr>`);
   const block = [START, "", `<table>\n${rows.join("\n")}\n</table>`, "", END].join("\n");
