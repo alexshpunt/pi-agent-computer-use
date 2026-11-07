@@ -1,16 +1,16 @@
 # Bundled CUA runtime
 
-The npm package carries one native runtime: Cua Driver 0.38.0 for Windows x64, built from source `3e69266e` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists the fork's changes. The `windows-desktop` profile needs no separate driver configuration:
+This source selects one native runtime: Cua Driver 0.38.0 for Windows x64, built from source `db235b24` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork. A package built from this source carries that runtime. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists the fork's changes. The `windows-desktop` profile needs no separate driver configuration:
 
 ```sh
-pi install npm:pi-agent-computer-use
+pi install git:github.com/alexshpunt/pi-agent-computer-use
 ```
 
 An extension update selects its matching runtime. Computer use prepares that runtime automatically, including on configured remote machines; it does not select a moving upstream version.
 
 ## Where the files come from
 
-The files are published as the fork release [`pi-runtime-0.38.0-3e69266e`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.38.0-3e69266e): `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`. They were cross-built with Rust 1.97.1, cargo-xwin 0.23.1 and LLVM 18, with a static CRT and canonical Windows manifest resources. They are not copies of a GitHub Actions artifact.
+The files are published as the fork release [`pi-runtime-0.38.0-db235b24`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.38.0-db235b24): `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`. They were built on GitHub's Windows runner with Rust 1.97.1 and a static CRT.
 
 `src/runtime-pins.json` pins the source, the version, the release URL and the SHA-256 of every file. Before packing, `npm pack` runs `scripts/fetch-runtime.mjs`, which downloads the files into `native-runtime/win32-x64/runtime/` and checks each hash. The directory is not committed to Git.
 
