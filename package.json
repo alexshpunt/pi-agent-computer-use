@@ -74,7 +74,8 @@
     "pi-agent-ide": ">=0.9.8 <1",
     "playwright-core": "1.64.1",
     "proper-lockfile": "4.1.2",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "tsx": "4.23.15"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
