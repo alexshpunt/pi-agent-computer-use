@@ -1,11 +1,14 @@
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import type { CommandRunner } from "./runner.ts";
 import { ATTACH_APPROVAL_MS } from "./browser-command-line.ts";
 import { ensureWindowsNode } from "./windows-node.ts";
 import { RemotePreparationUncertain } from "./remote-provision-error.ts";
 import { locatorSelector } from "./native-locator.ts";
+import { prepareWindowsTsx } from "./windows-tsx.ts";
+import { localRunner } from "./runner.ts";
 
 const run = promisify(execFile);
 
@@ -427,21 +430,25 @@ export class WebBrowser {
    * Spawn the worker with Windows Node (directly on Windows, through interop from WSL) and open the browser.
    * With a remote runner the worker runs on that machine: `node` and `worker` are its WSL paths.
    */
-  static async launch(options: WebLaunchOptions & { interop?: string; remote?: { runner: CommandRunner; node: string; worker: string } }, signal?: AbortSignal): Promise<{ browser: WebBrowser; opened: WebOpened }> {
+  static async launch(options: WebLaunchOptions & { interop?: string; remote?: { runner: CommandRunner; node: string; worker: string; loader?: string } }, signal?: AbortSignal): Promise<{ browser: WebBrowser; opened: WebOpened }> {
     let command = process.execPath;
     let worker = fileURLToPath(new URL("./web-worker.ts", import.meta.url));
     let child: ChildProcessWithoutNullStreams;
     if (options.remote) {
       const { runner } = options.remote;
       worker = (await runner.run("wslpath", ["-w", options.remote.worker], { signal, timeoutMs: 10_000 })).trim();
-      child = runner.spawn(options.remote.node, ["--disable-warning=ExperimentalWarning", worker]);
+      const loader = options.remote.loader ?? await prepareWindowsTsx(runner, signal);
+      child = runner.spawn(options.remote.node, ["--disable-warning=ExperimentalWarning", "--import", loader, worker]);
     } else {
       if (process.platform === "linux") {
         command = await ensureWindowsNode(options.interop, signal).catch((error: Error) => { throw new WebError(error.message, false, error instanceof RemotePreparationUncertain); });
         worker = (await run("wslpath", ["-w", worker], { timeout: 5000 })).stdout.trim();
       } else if (process.platform !== "win32") throw new WebError("The Playwright browser backend runs only on Windows or WSL.");
       signal?.throwIfAborted();
-      child = spawn(command, ["--disable-warning=ExperimentalWarning", worker], {
+      const loader = process.platform === "win32"
+        ? pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href
+        : await prepareWindowsTsx(localRunner(options.interop), signal);
+      child = spawn(command, ["--disable-warning=ExperimentalWarning", "--import", loader, worker], {
         stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
         env: { ...process.env, ...(options.interop ? { WSL_INTEROP: options.interop } : {}) },
       });

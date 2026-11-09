@@ -1,0 +1,8 @@
+{
+  "name": "pi-computer-browser-loader",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "tsx": "4.23.15"
+  }
+}
