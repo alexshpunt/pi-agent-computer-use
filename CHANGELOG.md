@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 — 2026-11-09
+
+### Fixed
+
+- Start browser workers from the installed package on Windows and WSL, including remote machines. The Windows TypeScript loader is installed automatically and reused from a local cache.
+- Recognize Firefox Nightly windows when opening a browser.
+
 ## 0.1.4 — 2026-11-09
 
 ### Changed
