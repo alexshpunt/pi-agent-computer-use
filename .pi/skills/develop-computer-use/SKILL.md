@@ -26,7 +26,7 @@ Do not use a project `.pi/settings.json` override with `extensions: []` plus a p
      pi --mode rpc --no-session --approve --no-mcp --offline
    ```
 
-   Require exit code zero and no extension load errors. The `computer-mode`, `computer-images` and `computer-visuals` commands must each appear once and name the worktree's `src/index.ts`. Missing or duplicate commands are a failure. This checks loading, not native Windows behavior.
+   Require exit code zero and no extension load errors. The `computer-mode`, `computer-settings` and `computer-setup` commands must each appear once and name the worktree's `src/index.ts`. Missing or duplicate commands are a failure. This checks loading, not native Windows behavior.
 7. Only after startup passes, reload with `pi_extension_dev_reload_self` and explicit acceptance of state loss. Put the worktree, the swapped settings line and the exact live verification steps in the continuation. Follow the `pi-feature-verification` skill: exercise the changed behavior, inspect agent-facing results, and capture the real viewport with `inspect_tui` when the result is visible. Do not rely on old runtime state or window references after reload.
 
 ## Restore global loading

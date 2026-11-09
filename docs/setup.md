@@ -14,6 +14,8 @@ The package carries the Windows runtime, so no driver download or executable con
 
 The driver, Windows Node and remote browser worker are prepared automatically when needed. A configured remote machine also receives the package-compatible driver and worker automatically on first use and after an update. Downloads are checked before use.
 
+When Pi runs in WSL, browser startup installs the pinned TypeScript loader with Windows npm into the Windows user's `PiComputerUse` cache. If Windows npm is unavailable, the pinned Windows Node distribution supplies it. First use needs network access; later launches reuse the cache.
+
 Optional parts such as Firefox, perception, MXC and the VS Code bridge install with `/computer-setup PART [MACHINE]`. The user runs the command or explicitly approves that part before the agent installs it. `/computer-setup browser` and `/computer-setup machine <alias> [name]` remain available for manual preparation.
 
 ## Choose a mode
