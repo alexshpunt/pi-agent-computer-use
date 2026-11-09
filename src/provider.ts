@@ -402,7 +402,7 @@ export async function readComputer(resources: ComputerResources, source: string,
   const canonical = nativeBlocks(body, result, uiOnly);
   const truncated = !script && Buffer.byteLength(body) > 24_000;
   const kept = truncated ? fittingLines(body.split("\n"), 24_000 - 300) : [];
-  const preview = truncated ? `${kept.join("\n")}\n[Presentation truncated after ${kept.length} lines. Read again with offset=${start + kept.length + 1} to continue, or narrow with Search. Native script data retains the requested projection.]` : body;
+  const preview = truncated ? `${kept.join("\n")}\n[Presentation truncated after ${kept.length} lines. Read again with offset=${start + kept.length + 1} to continue, or narrow with Search.]` : body;
   return { content: nativeBlocks(preview, result, uiOnly), canonical, isError: result?.isError,
     details: { source: address.source, resolvedBy: "computer", presentationTruncated: truncated, ...(result ? { computer: result.details } : {}) } };
 }
