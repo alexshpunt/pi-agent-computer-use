@@ -69,6 +69,20 @@ test("opening a browser selects the page window instead of an owned browser dial
   expect(opened.details.target?.window_id).toBe(window.window_id);
   await f.session.close();
 });
+test("Firefox Nightly opens its browser window rather than a dialog", async () => {
+  const f = fixture();
+  f.call.mockImplementation(async name => {
+    if (name === "list_windows") return { content: [], structuredContent: { windows: [
+      { ...window, window_id: 78, title: "Translate page?" },
+      { ...window, title: "Attach target — Nightly", app_name: "firefox.exe" },
+    ] } };
+    throw new Error(`Unexpected native call ${name}`);
+  });
+  const opened = await f.session.openBrowser({ browser: "firefox" });
+  expect(opened.details.status).toBe("observed");
+  expect(opened.details.target?.window_id).toBe(window.window_id);
+  await f.session.close();
+});
 test("opening waits when the first visible window is only a browser dialog", async () => {
   const f = fixture();
   let reads = 0;

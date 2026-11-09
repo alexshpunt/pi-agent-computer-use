@@ -13,7 +13,7 @@ const temp = (await live.powershell("$env:TEMP")).trim();
 const tempWsl = (await live.runner.run("wslpath", ["-u", temp])).trim();
 const run = Date.now().toString(36);
 const profiles = [`pi-attach-cdp-${run}`, `pi-attach-ext-${run}`, `pi-attach-toggle-${run}`];
-const CHROME = `${(await live.powershell("$env:LOCALAPPDATA")).trim()}\\Google\\Chrome\\Application\\chrome.exe`;
+const chromeExecutable = async () => (await live.powershell(`$paths = @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe', 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe'); foreach ($path in $paths) { $exe = (Get-ItemProperty -LiteralPath $path -ErrorAction SilentlyContinue).'(default)'; if ($exe -and (Test-Path -LiteralPath $exe)) { $exe; return } }; throw 'Chrome is not registered.'`)).trim();
 const ours = `-match 'pi-attach-(cdp|ext|toggle)-${run}'`;
 const cleanupProfiles = () => live.powershell(`Get-CimInstance Win32_Process -Filter "Name='msedge.exe' or Name='chrome.exe'" | Where-Object { $_.CommandLine ${ours} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep 2; ${profiles.map(p => `Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '${temp}\\${p}'`).join("; ")}`).catch(() => "");
 afterAll(async () => { await live.close(); await cleanupProfiles(); });
@@ -80,7 +80,7 @@ test("Extension: the connection is approved on the extension's page with ordinar
 }, 240_000);
 
 test("Toggle: remote debugging turned on in the running browser, after its Allow prompt", async () => {
-  const window = await openWindow(live, live.machine, CHROME, [...flags(profiles[2]), page("Attach toggle target")], "Attach toggle target");
+  const window = await openWindow(live, live.machine, await chromeExecutable(), [...flags(profiles[2]), page("Attach toggle target")], "Attach toggle target");
   // Turn on chrome://inspect/#remote-debugging the way a person would: a new tab, the address, the switch.
   await click(window, elements => elements.find(e => e.role === "Button" && e.name === "New Tab"));
   const blank = await live.read(window, ["ui"]);
@@ -89,7 +89,7 @@ test("Toggle: remote debugging turned on in the running browser, after its Allow
   expect(typed.details.status, text(typed)).toBe("delivered");
   // Background Enter does not reach Chrome's address bar, and its suggestion popup can hold the foreground; the
   // suggestion that names the address navigates there.
-  await click(window, elements => elements.find(e => e.role === "ListItem" && e.name === "chrome://inspect/#remote-debugging"));
+  await click(window, elements => elements.find(e => e.role === "ListItem" && (e.name === "chrome://inspect/#remote-debugging" || e.name?.startsWith("chrome://inspect/#remote-debugging, "))));
   await click(window, elements => elements.find(e => e.role === "CheckBox" && e.name === "Allow remote debugging for this browser instance"));
 
   // Chrome asks in a window of its own for every client; approve it while the attach waits.
