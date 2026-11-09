@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — 2026-11-09
+
+### Changed
+
+- UIA actions work on elements of embedded browser pages, such as WebView2, whose provider runs in another process than the window. The action refuses without sending input if the element's process no longer matches the snapshot or the element is not inside the target window.
+- The bundled Windows runtime is rebuilt for these controls (Cua Driver 0.38.0, source `db235b24`).
+- pi-agent-ide is a regular dependency (`>=0.9.8 <1`), so Pi installs it with the extension and shares one copy with other extensions.
+
 ## 0.1.3 — 2026-11-02
 
 ### Computer Use settings
