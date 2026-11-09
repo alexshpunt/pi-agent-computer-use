@@ -542,7 +542,9 @@ export class ComputerSession {
           if (attempt) await delay(250, undefined, { signal });
           // A prompt can appear before the browser frame, even as the only window of this process.
           const frames = ((await this.state("list_windows", { pid }, signal)).windows as Record<string, unknown>[] ?? [])
-            .filter(window => window.pid === pid && typeof window.title === "string" && / - (?:Microsoft\u200b? Edge|Google Chrome|Mozilla Firefox)$/i.test(window.title));
+            .filter(window => window.pid === pid && typeof window.title === "string" &&
+              (/ - (?:Microsoft\u200b? Edge|Google Chrome|Mozilla Firefox)$/i.test(window.title) ||
+                options.browser === "firefox" && / — (?:Mozilla Firefox|Nightly)$/i.test(window.title)));
           const titled = launched.opened.title && frames.filter(window => (window.title as string).startsWith(launched!.opened.title));
           windows = titled && titled.length === 1 ? titled : frames;
         }
