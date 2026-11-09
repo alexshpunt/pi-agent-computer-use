@@ -139,9 +139,20 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert((await captures()).length === beforeSlice, "Cached UI line Read performed another native capture");
         await control("large_tree");
         const large = await ok("read", { path: first, views: ["ui"] });
-        const blocks = field(large, "blocks");
-        assert(Array.isArray(blocks) && blocks.some(block => block.type === "text" && block.text.includes("Last collected control")), "Native canonical Read data silently truncated the collected UI");
-        assert(textOf(large).includes("Presentation truncated") || textOf(large).includes("Last collected control"), "UI presentation lost rows without a truncation notice");
+        // A large UI view is shown in pages: the notice names the offset of the rest, and paging
+        // reads the cached observation instead of capturing again.
+        const next = /Read again with offset=(\d+)/.exec(textOf(large))?.[1];
+        assert(next !== undefined || textOf(large).includes("Last collected control"), "UI presentation lost rows without a truncation notice");
+        if (next !== undefined) {
+          const beforeRest = (await captures()).length, observation = reference(large, "observation");
+          let page = large, offset: string | undefined = next;
+          for (let pages = 0; offset !== undefined && !textOf(page).includes("Last collected control") && pages < 20; pages += 1) {
+            page = await ok("read", { path: observation, views: ["ui"], offset: Number(offset) });
+            offset = /(?:Read again with |Continue with )offset=(\d+)/.exec(textOf(page))?.[1];
+          }
+          assert(textOf(page).includes("Last collected control"), "Paging did not reach the last collected control");
+          assert((await captures()).length === beforeRest, "Paging a large UI view captured again");
+        }
         await control("success");
         // Read only looks: frames over time come from computer_record.
         const looked = await denied("read", { path: first, views: ['sequence:{"duration_ms":200,"fps":10,"max_frames":2}'] });
