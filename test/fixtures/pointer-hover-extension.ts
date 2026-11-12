@@ -1,5 +1,5 @@
 import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
 import { registerFixtureComputerTools } from "./standalone-computer.ts";

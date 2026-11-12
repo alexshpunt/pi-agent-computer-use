@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function imageContextFixture(pi: ExtensionAPI): void {

@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { createCodemodeExtension, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import computerUse from "../../src/index.ts";
 

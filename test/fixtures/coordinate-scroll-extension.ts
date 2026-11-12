@@ -1,6 +1,6 @@
 import { addressPattern } from "./addresses.ts";
 import { readFile } from "node:fs/promises";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadComputerConfig } from "../../src/config.ts";
 import { McpDriver } from "../../src/driver.ts";
