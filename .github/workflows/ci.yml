@@ -18,7 +18,7 @@ concurrency:
 env:
   NODE_VERSION: "24.19.0"
   NPM_VERSION: "11.19.0"
-  PI_VERSION: "1.4.0"
+  PI_VERSION: "1.5.2"
 
 jobs:
   validate:
