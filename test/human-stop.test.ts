@@ -21,10 +21,10 @@ async function start(mode: "notify" | "refuse-only" = "notify") {
   const entries = async () => (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line) as Entry);
   return { driver, stop, entries };
 }
-const until = async (check: () => Promise<boolean>) => {
-  for (let i = 0; i < 100; i++) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 10)); }
-  throw new Error("condition not reached");
-};
+// The tests start fixture driver processes, and a resume starts another. On a loaded machine a startup alone can take
+// seconds, so the tests and their waits allow for that.
+vi.setConfig({ testTimeout: 30_000 });
+const until = (check: () => Promise<boolean>) => vi.waitFor(async () => { if (!await check()) throw new Error("condition not reached"); }, { timeout: 15_000, interval: 10 });
 
 test("the driver stops on the native notification, refuses without reaching the process, and a resume starts a new one", async () => {
   const { driver, stop, entries } = await start();
