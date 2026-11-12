@@ -1,4 +1,6 @@
-import { StringEnum, Type, type JsonValue, type Static } from "@earendil-works/pi-ai";
+import type { JsonValue } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
+import { StringEnum } from "./string-enum.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ComputerRequestError, refKind, type ComputerResources, type InputPlan, type InputPoint } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
