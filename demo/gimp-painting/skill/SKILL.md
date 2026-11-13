@@ -46,7 +46,8 @@ Find the canvas rectangle with code instead of guessing it from a picture. In Co
 
 ```js
 const shot = await tools.read({ path: W, views: ['capture:{"granularity":"image","maxLongEdge":1920}'] });
-await tools.write({ path: "gimp-window.png", content: shot });
+if (!shot || shot.type !== "image") throw new Error("Window capture failed");
+await tools.write({ path: "gimp-window.png", image: shot });
 ```
 
 Then in Bash:
@@ -119,7 +120,7 @@ After each stage, compare with the reference (see [Review](#review)) and fix the
 
 ## Your toolkit
 
-Paste this at the top of each painting script in Codemode and set `W` to the GIMP window's address. Every helper checks its receipt and throws at the first refusal or unknown outcome, so a script stops instead of painting blind. Then read the canvas viewport and decide what to do.
+Paste this at the top of each painting script in Codemode and set `W` to the GIMP window's address. The input helpers check each receipt and throw at the first refusal or unknown outcome, so a script stops instead of painting blind. Check the Codemode result for failed IDE calls, including image writes. Then read the canvas viewport and decide what to do.
 
 ```js
 const W = "computer:<machine>/<gimp window>";
@@ -139,7 +140,8 @@ const key = k => ok(tools.computer_press({ window: W, key: k }), "key " + k);
 async function findWindow(title, tries = 15) {
   for (let i = 0; i < tries; i++) {
     const found = await tools.search({ path: MACHINE + "/windows", query: title });
-    const address = /computer:[^\s|]+\/w\w+/.exec(String(found.result));
+    if (found === null) throw new Error("Window search failed");
+    const address = /computer:[^\s|]+\/w\w+/.exec(found);
     if (address) return address[0];
   }
   return undefined;
@@ -229,7 +231,11 @@ const wobble = (pts, amount = 1.5) => pts.map(p => ({ x: p.x + (Math.random() - 
 const place = (pts, x, y, scale, angle = 0) => pts.map(p => ({
   x: x + scale * (p.x * Math.cos(angle) - p.y * Math.sin(angle)), y: y + scale * (p.x * Math.sin(angle) + p.y * Math.cos(angle)) }));
 // Save what the canvas looks like now, for compare.py.
-async function snapshot(file = "snapshot.png") { await tools.write({ path: file, content: await tools.read({ path: V }) }); }
+async function snapshot(file = "snapshot.png") {
+  const shot = await tools.read({ path: V });
+  if (!shot || shot.type !== "image") throw new Error("Canvas capture failed");
+  await tools.write({ path: file, image: shot });
+}
 ```
 
 A typical script then paints one object or one colour:
