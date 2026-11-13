@@ -44,7 +44,7 @@ Every frame reports source geometry and whether it changed from the previous fra
 
 ## Selection and further processing
 
-Choose `all`, `first`, `last`, `endpoints`, `changed`, `{indexes:[0,2]}` or inclusive `{from:1,to:3}`. Indexes refer to captured frames, not sampling slots. Selection keeps temporal order. `changed` compares exact image bytes and geometry; it does not claim semantic relevance. Codemode receives an array of frame metadata and image blocks, suitable for explicit forwarding or further processing. Do not store whole image arrays in Codemode storage.
+Choose `all`, `first`, `last`, `endpoints`, `changed`, `{indexes:[0,2]}` or inclusive `{from:1,to:3}`. Indexes refer to captured frames, not sampling slots. Selection keeps temporal order. `changed` compares exact image bytes and geometry; it does not claim semantic relevance. With Pi Agent IDE, a frame Read in Codemode returns an image block for one frame or `{ type: "images", images }` for several. Standalone `computer_read` also returns selected images, with a note describing the selection. Do not store whole image arrays in Codemode storage.
 
 ## One image of many frames
 
