@@ -9,7 +9,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 const log = process.argv[2];
 const mode = process.argv[3] ?? "notify";
 const record = entry => appendFileSync(log, JSON.stringify(entry) + "\n");
-record({ event: "start", pid: process.pid, env: Object.fromEntries(["CUA_ESCAPE_STOP", "CUA_SHARED_INPUT_LOCK", "CUA_SESSION_LABEL", "CUA_HUMAN_IDLE_MS"].map(name => [name, process.env[name] ?? null])) });
+record({ event: "start", pid: process.pid, env: Object.fromEntries(["CUA_ESCAPE_STOP", "CUA_FOCUS_RETURN", "CUA_SHARED_INPUT_LOCK", "CUA_SESSION_LABEL", "CUA_HUMAN_IDLE_MS"].map(name => [name, process.env[name] ?? null])) });
 let stopped = false;
 const refusal = () => ({ content: [{ type: "text", text: "human_stop: the human pressed Escape three times and stopped agent input." }], isError: true,
   structuredContent: { status: "refused", effect: "refused", code: "human_stop" } });

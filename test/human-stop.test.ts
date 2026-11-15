@@ -33,8 +33,9 @@ test("the driver stops on the native notification, refuses without reaching the 
   try {
     expect((await driver.call("list_windows", {})).isError).toBeFalsy();
     const [first] = await entries();
-    // Three physical Escape presses stop input; agents take turns per action; the cursor names the session; nothing waits for the human.
-    expect(first.env).toEqual({ CUA_ESCAPE_STOP: "1", CUA_SHARED_INPUT_LOCK: "1", CUA_SESSION_LABEL: "Fix the build LPT-1088", CUA_HUMAN_IDLE_MS: null });
+    // Three physical Escape presses stop input; foreground input hands the foreground back to the human's window;
+    // agents take turns per action; the cursor names the session; nothing waits for the human.
+    expect(first.env).toEqual({ CUA_ESCAPE_STOP: "1", CUA_FOCUS_RETURN: "1", CUA_SHARED_INPUT_LOCK: "1", CUA_SESSION_LABEL: "Fix the build LPT-1088", CUA_HUMAN_IDLE_MS: null });
 
     const stopped = await driver.call("press_key", { key: "escape-x3" });
     expect(stopped.structuredContent).toMatchObject({ code: "human_stop", status: "refused" });
