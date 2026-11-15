@@ -108,7 +108,7 @@ Input goes to a window by its address and targets an element by a ref from the l
 - run a timeline of timed key, button, mouse and pen events, with raw relative mouse motion for pointer-locked apps and pen pressure and tilt;
 - invoke, select or set values through UI Automation, and open menu items by their labels.
 
-What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input brings its window to the front and runs at once, even while you use the computer. Nothing is posted to windows as messages that an app could silently drop. To keep foreground UI work off the human desktop, use a sandbox or an isolated session.
+What the agent sees as an element it presses through UI Automation in the background, so your pointer and focus stay put. What it sees only as pixels it clicks with the real mouse, and keys are real key presses: that input brings its window to the front and runs at once, even while you use the computer. When the action is done, the window where you last pressed a key or a mouse button gets the foreground back; the agent's window keeps it only while a menu or popup it opened is still open. Nothing is posted to windows as messages that an app could silently drop. To keep foreground UI work off the human desktop, use a sandbox or an isolated session.
 
 Press Escape three times within a second to stop agents on your desktop that have the shortcut enabled. Their input stops at once, and they refuse to act until you run `/computer-mode safe` or `/computer-mode yolo` in their sessions. An agent's own Escape doesn't count. Sandboxes and isolated sessions keep running.
 
