@@ -300,15 +300,15 @@ export class McpDriver implements Driver {
 
   /**
    * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks; three physical
-   * Escape presses stop the agent; agents on one desktop take turns per action; the agent cursor carries the Pi
-   * session's label; and launches with remote-debugging switches, which this adapter allows only through YOLO's open
-   * by path and arguments.
+   * Escape presses stop the agent; foreground input hands the foreground back to the human's window afterward; agents
+   * on one desktop take turns per action; the agent cursor carries the Pi session's label; and launches with
+   * remote-debugging switches, which this adapter allows only through YOLO's open by path and arguments.
    */
   private driverVariables(): Record<string, string> {
     const label = this.sessionLabel?.()?.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 28);
     return { CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false",
       ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1",
-      CUA_ESCAPE_STOP: this.config.escapeStop === false ? "0" : "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
+      CUA_ESCAPE_STOP: this.config.escapeStop === false ? "0" : "1", CUA_FOCUS_RETURN: "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
       CUA_DRIVER_ALLOW_DEBUGGING_LAUNCH: "1" };
   }
 
