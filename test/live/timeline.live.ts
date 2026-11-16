@@ -44,9 +44,9 @@ test("buttons, held keys and wheel during a hold arrive in order", async () => {
     { at_ms: 520, type: "key_up", key: "w" },
   ]);
   await new Promise(r => setTimeout(r, 500));
-  const events = (await journal()).slice(before).map(e => `${e.type}:${e.button ?? e.key ?? ""}:${e.shift ?? ""}:${e.buttons ?? ""}`);
+  const events = (await journal()).slice(before).map(e => `${e.type}:${e.button ?? e.code ?? ""}:${e.shift ?? ""}:${e.buttons ?? ""}`);
   console.log(events.join(" "));
-  expect(events).toEqual(expect.arrayContaining(["pointerdown:1:true:4", "pointerup:1:true:0", "pointerdown:2:false:2", "pointerup:2:false:0", "keydown:w::0", "keyup:w::0"]));
+  expect(events).toEqual(expect.arrayContaining(["pointerdown:1:true:4", "pointerup:1:true:0", "pointerdown:2:false:2", "pointerup:2:false:0", "keydown:KeyW::0", "keyup:KeyW::0"]));
   const wheel = (await journal()).slice(before).find(e => e.type === "wheel")!;
   expect(wheel).toMatchObject({ buttons: 4 });
   expect(Number(wheel.deltaY)).toBeGreaterThan(0);

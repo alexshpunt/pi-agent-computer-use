@@ -24,7 +24,7 @@ test("ten background clicks alternating between two controls each finish in unde
   const button = centre(elements.find(e => e.role === "Button" && /^Count/.test(e.name ?? "")));
   const field = centre(elements.find(e => e.role === "Edit"));
   const sequence = Array.from({ length: 10 }, (_, i) => ({ action: "click", ...(i % 2 ? field : button) }));
-  const done = await live.insert(`computer:observation/${view.details.observation_id}`, { action: "sequence", sequence, successor: false });
+  const done = await live.insert(`computer:observation/${view.details.observation_id}`, { action: "sequence", sequence });
   expect(done.details.status, text(done)).toBe("delivered");
   type Step = { dispatch_ms: number; completion_ms: number; action_capability: { route: string } };
   const steps = (done.details.state as { sequence: { steps: Step[] } }).sequence.steps;
