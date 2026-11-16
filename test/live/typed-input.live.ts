@@ -16,6 +16,7 @@ const act = async (window: string, plan: InputPlan) => {
   const body = presentComputerResult(result);
   timings.push(`${plan.label}${plan.target ? ` ${plan.target}` : plan.point ? ` ${plan.point.x},${plan.point.y}` : ""}: ${result.details.status} in ${Date.now() - started} ms`);
   console.log(timings.at(-1));
+  if (result.details.status !== "delivered") console.log(body);
   return { result, body };
 };
 const holds = async (window: string, conditions: Parameters<typeof waitCommand>[0]["conditions"]) => {
@@ -24,6 +25,43 @@ const holds = async (window: string, conditions: Parameters<typeof waitCommand>[
 };
 afterAll(() => console.log(timings.join("\n")));
 
+test.each([undefined, "named", "grouped"] as const)("typing through a native ref submits Enter to the same field (%s)", async duplicateField => {
+  const title = `pi-submit-${Date.now()}`, submitted = `${title}-submitted`;
+  const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title, { submitTitle: submitted, duplicateField }), title);
+  const view = await live.read(window, ["full"]);
+  try {
+    const fields = view.details.ui!.elements.filter(e => e.role === "Edit" && (e.name === "Field" || e.name === "Other field"));
+    expect(fields).toHaveLength(duplicateField ? 2 : 1);
+    const targetGroup = view.details.ui!.elements.find(e => e.name === "Target group");
+    const field = duplicateField === "grouped" ? fields.find(e => e.parent_hint === targetGroup?.hint)! : fields.find(e => e.name === "Field")!;
+    expect(field).toBeDefined();
+    const done = await act(window, typePlan({ window, target: field.hint, text: "submitted-value", replace: true, submit: true }));
+    expect(done.result.details.status, done.body).toBe("delivered");
+    const after = await live.read(window, ["full"]);
+    const afterFields = after.details.ui!.elements.filter(e => e.role === "Edit" && (e.name === "Field" || e.name === "Other field"));
+    const afterGroup = after.details.ui!.elements.find(e => e.name === "Target group");
+    const afterField = duplicateField === "grouped" ? afterFields.find(e => e.parent_hint === afterGroup?.hint) : afterFields.find(e => e.name === "Field");
+    expect(afterField?.value).toBe("submitted-value");
+    const values = afterFields.map(e => e.value ?? "");
+    expect(values.filter(value => value === "submitted-value")).toHaveLength(1);
+    expect(values.filter(value => value === "")).toHaveLength(duplicateField ? 1 : 0);
+    expect(after.details.ui!.elements.find(e => e.role === "Window")?.name).toBe(submitted);
+  } finally { await live.kill(view.details.target!.pid); }
+});
+test("a native ref refuses an unidentifiable submit continuation before changing either field", async () => {
+  const title = `pi-submit-refuse-${Date.now()}`;
+  const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title, { submitTitle: `${title}-submitted`, duplicateField: "indistinguishable" }), title);
+  const view = await live.read(window, ["full"]);
+  try {
+    const fields = view.details.ui!.elements.filter(e => e.role === "Edit" && e.name === "Field");
+    expect(fields).toHaveLength(2);
+    const done = await act(window, typePlan({ window, target: fields[0].hint, text: "must-not-be-written", replace: true, submit: true }));
+    expect(done.result.details.status, done.body).toBe("refused");
+    const after = await live.read(window, ["full"]);
+    expect(after.details.ui!.elements.filter(e => e.role === "Edit" && e.name === "Field").map(e => e.value ?? "")).toEqual(["", ""]);
+    expect(after.details.ui!.elements.find(e => e.role === "Window")?.name).toBe(title);
+  } finally { await live.kill(view.details.target!.pid); }
+});
 test("one action vocabulary drives a native window by locator, ref and point", async () => {
   const title = `pi-input-${Date.now()}`;
   const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title), title);
@@ -31,6 +69,9 @@ test("one action vocabulary drives a native window by locator, ref and point", a
     const button = "getByRole('button', { name: /^Count/ })";
     expect((await act(window, clickPlan({ window, target: button }))).result.details.status).toBe("delivered");
     expect(await holds(window, [{ target: "getByRole('button', { name: 'Count 1' })", is: "exists" }])).toBe("satisfied");
+    // Give the real-pointer part its own foreground baseline, rather than a previous test's Paint window.
+    const focused = await live.resources.manageWindow(requireComputerAddress(window), live.cwd, { action: "focus" });
+    expect(focused.details.status, presentComputerResult(focused)).toBe("delivered");
     // A full Read gives the button's place in the image; a later UI-only Read keeps that image as the space of points.
     const full = await live.read(window, ["full"]);
     const element = (full.details.ui as { elements: { hint: string; role: string; name?: string; bounds: { window_image?: { x: number; y: number; width: number; height: number } } }[] })

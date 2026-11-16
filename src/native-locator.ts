@@ -316,6 +316,34 @@ function ariaNodes(ui: Pick<UiResource, "elements">): { roots: AriaNode[]; nodes
   return { roots, nodes };
 }
 
+/** A continuation locator whose stable attributes identify only this hint in the complete observed tree. */
+export function uniqueNativeLocator(ui: UiResource, element: UiElement): string | undefined {
+  if (ui.complete !== true || ui.truncated || ui.projection_truncated) return undefined;
+  const candidates = (item: UiElement): string[] => {
+    const suggested = suggestLocator(item);
+    const role = iso().asLocator("javascript", `internal:role=${ariaRole(item)}[name=${JSON.stringify(accessibleName(item))}s]`);
+    return [...new Set([suggested, role, `${suggested}.and(${role})`])];
+  };
+  const identifies = (locator: string): boolean => {
+    if (locator.length > 2000) return false;
+    const found = queryNative(ui, parseLocator(locator));
+    return found.length === 1 && found[0].hint === element.hint;
+  };
+  const targets = candidates(element);
+  const direct = targets.find(identifies);
+  if (direct) return direct;
+  const byHint = new Map(ui.elements.map(item => [item.hint, item]));
+  const visited = new Set([element.hint]);
+  for (let parent = byHint.get(element.parent_hint ?? ""); parent && !visited.has(parent.hint); parent = byHint.get(parent.parent_hint ?? "")) {
+    visited.add(parent.hint);
+    for (const scope of candidates(parent)) for (const target of targets) {
+      const locator = `${scope}.${target}`;
+      if (identifies(locator)) return locator;
+    }
+  }
+  return undefined;
+}
+
 /** A Playwright locator that names this element, for strict-mode errors and listings. */
 export function suggestLocator(element: UiElement): string {
   const role = ariaRole(element), name = accessibleName(element);

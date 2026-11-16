@@ -21,7 +21,7 @@ import type { WindowFrame } from "./session.ts";
 import { webContentTop, type UiCaptureOptions, type UiElement, type UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
-import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, type ParsedSelector } from "./native-locator.ts";
+import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, uniqueNativeLocator, type ParsedSelector } from "./native-locator.ts";
 
 /** The machine this extension runs on, by its address name. */
 export const LOCAL_MACHINE = "local";
@@ -1073,10 +1073,21 @@ export class ComputerResources {
     const place = this.place(address);
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
     const started = performance.now();
+    // The first step spends native hints. Bind a unique continuation before changing the first target.
+    let follow = plan.then;
+    if (follow && refKind(follow.target) === "hint") {
+      const view = session.inputView(address.ref);
+      const element = this.hinted(view, follow.target as string);
+      const target = uniqueNativeLocator(view.native!.ui!, element);
+      if (!target) return this.stamp(place, { content: [{ type: "text",
+        text: "The native continuation cannot be identified uniquely from this UI tree. Nothing was sent; give an explicit locator or refresh the full window." }],
+        details: { status: "refused", mode: this.getMode(), window_ref: address.ref }, isError: true });
+      follow = { ...follow, target, ...(session.isBrowserWindow(address.ref) && !viewport ? { space: "window" as const } : {}) };
+    }
     let result = await this.inputStep(address.ref, session, plan, cwd, signal, viewport);
     // A follow-up such as Enter after typing runs only after the first part was delivered.
-    if (plan.then && result.details.status === "delivered") {
-      const next = await this.inputStep(address.ref, session, plan.then, cwd, signal, viewport);
+    if (follow && result.details.status === "delivered") {
+      const next = await this.inputStep(address.ref, session, follow, cwd, signal, viewport);
       result = { ...next, content: [...result.content, ...next.content] };
     }
     return this.stamp(place, ComputerResources.watched(result, session.markWatches(address.ref, plan.label, started, performance.now())));

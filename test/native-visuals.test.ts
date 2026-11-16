@@ -34,6 +34,20 @@ test("previews contain the supplied output image and validated physical source, 
   visuals.close();
 });
 
+test("presentation requests fit the native MCP receiver even when the observed PNG is large", async () => {
+  const send = vi.fn(async (_name: string, _args: Record<string, unknown>) => true);
+  const visuals = new NativeVisuals(send);
+  try {
+    await visuals.flash({ ...frame, image: { type: "image", mimeType: "image/png", data: "A".repeat(1_300_000) } });
+    await tick();
+    const [name, args] = send.mock.calls[0];
+    const request = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } });
+    expect(Buffer.byteLength(request, "utf8") + 1).toBeLessThanOrEqual(1024 * 1024);
+    expect(args).toMatchObject({ kind: "overview", source: { pid: frame.target.pid, window_id: frame.target.window_id } });
+    expect(args).not.toHaveProperty("image");
+  } finally { visuals.close(); }
+});
+
 test("invalid or out-of-source geometry is cleared without sending image content", async () => {
   const send = vi.fn(async (_name: string, _args: Record<string, unknown>) => true); const visuals = new NativeVisuals(send);
   const result = await notifyHighlight(visuals.flash, { ...frame, identity: frame.identity.replace(":42:", ":99:") });

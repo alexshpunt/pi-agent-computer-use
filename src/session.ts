@@ -574,7 +574,8 @@ export class ComputerSession {
         if (!launched) {
           const unknown = error instanceof WebError && error.transport;
           if (unknown && unapproved) this.unconfirmedUnsafeWork = true;
-          return this.result(unknown ? "unknown" : "refused", `Browser launch failed: ${reason}`, { operation: "open_browser" });
+          return this.result(unknown ? "unknown" : "refused", `Browser launch failed: ${reason}`, { operation: "open_browser",
+            ...(error instanceof WebError && error.code ? { code: error.code } : {}) });
         }
         for (const [key, browser] of this.browsers) if (browser === launched.browser) this.browsers.delete(key);
         const cleanup = await launched.browser.close().then(() => "confirmed", () => "unconfirmed");

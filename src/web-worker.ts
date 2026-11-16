@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, firefox, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
 import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-line.ts";
-import { lockAgentProfile } from "./agent-profile-lock.ts";
+import { AgentProfileInUseError, lockAgentProfile } from "./agent-profile-lock.ts";
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget, WebTimelineEvent } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 import { ariaTreeFromYaml, matchesAriaTemplate } from "./aria-match.ts";
@@ -772,11 +772,16 @@ async function screenshot({ target, highlight, css }: { target?: WebTarget; high
 
 async function close() {
   const owned = context, directory = profile, connected = attached, child = ownedProcess, verified = ownedVerified;
+  const pageFailures: unknown[] = [];
   context = undefined; attached = undefined; ownedProcess = undefined; ownedVerified = false; approvalDirectory = undefined; approvalUrl = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
   if (child) {
     // Only a browser whose CDP identity matches our child may receive Browser.close.
     if (connected && verified) {
       const cdp = await connected.newBrowserCDPSession().catch(() => undefined);
+      // Flush page-owned storage before Chromium shuts down, and still tear down if a page is already lost.
+      for (const page of owned?.pages() ?? []) {
+        try { await page.close(); } catch (error) { pageFailures.push(error); }
+      }
       await cdp?.send("Browser.close").catch(() => undefined);
     }
     await connected?.close().catch(() => undefined);
@@ -801,6 +806,7 @@ async function close() {
       await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The agent profile lock did not release.")), 5_000))]);
     }
   }
+  if (pageFailures.length) throw new AggregateError(pageFailures, "Owned pages could not be closed cleanly.");
   return {};
 }
 
@@ -819,7 +825,8 @@ input.on("line", line => {
       process.stdout.write(JSON.stringify({ id, value: await operation(request.args) }) + "\n");
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
-      process.stdout.write(JSON.stringify({ id, error: { name: failure.name, message: failure.message } }) + "\n");
+      process.stdout.write(JSON.stringify({ id, error: { name: failure.name, message: failure.message,
+        ...(failure instanceof AgentProfileInUseError ? { code: failure.code } : {}) } }) + "\n");
     }
   });
 });

@@ -9,7 +9,9 @@ afterAll(() => fixture.close());
 const evaluate = async (live: Awaited<ReturnType<typeof connectLive>>, opened: ComputerResult, expression: string) => {
   const dom = await live.read(`computer:window/${opened.details.window_ref}`, ["dom"]);
   const result = await live.insert(`computer:observation/${dom.details.observation_id}`, { action: "evaluate", expression });
-  return text(result);
+  expect(result.details.status, text(result)).toBe("delivered");
+  expect(result.details.dom?.evaluation?.error).toBeUndefined();
+  return result.details.dom?.evaluation?.value;
 };
 
 test("an already-running agent profile is refused before Chromium is launched", async () => {
@@ -20,7 +22,7 @@ test("an already-running agent profile is refused before Chromium is launched", 
     expect(opened.details.status, text(opened)).toBe("observed");
     const duplicate = await second.insert(second.machine, { action: "open_browser", browser: "msedge", profile: "agent", url: `${fixture.base}/other` });
     expect(duplicate.details.status).toBe("refused");
-    expect(text(duplicate)).toMatch(/profile is already in use/i);
+    expect(duplicate.details.state).toMatchObject({ operation: "open_browser", code: "agent_profile_in_use" });
     expect(await evaluate(first, opened, "location.pathname")).not.toContain("/other");
   } finally { await second.close(); await first.close(); }
 });
@@ -62,7 +64,7 @@ test("agent Chromium retains site data after its browser closes", async () => {
   try {
     const opened = await first.insert(first.machine, { action: "open_browser", browser: "msedge", profile: "agent", url: `${fixture.base}/` });
     expect(opened.details.status, text(opened)).toBe("observed");
-    await evaluate(first, opened, `localStorage.setItem("pi-marker", "${marker}")`);
+    expect(await evaluate(first, opened, `localStorage.setItem("pi-marker", "${marker}"), localStorage.getItem("pi-marker")`)).toContain(marker);
   } finally { await first.close(); }
   const second = await connectLive();
   try {
@@ -75,18 +77,22 @@ test("agent Chromium retains site data after its browser closes", async () => {
 test("site data written in the agent profile is still there in the next session", async () => {
   const marker = `pi-${Date.now()}`;
   const first = await connectLive();
-  const opened = await first.insert(first.machine, { action: "open_browser", browser: "chrome", profile: "agent", url: `${fixture.base}/` });
-  expect(opened.details.status, text(opened)).toBe("observed");
-  expect(text(opened)).toMatch(/persistent profile/);
-  await evaluate(first, opened, `localStorage.setItem("pi-marker", "${marker}")`);
-  await first.close();
+  try {
+    const opened = await first.insert(first.machine, { action: "open_browser", browser: "chrome", profile: "agent", url: `${fixture.base}/` });
+    expect(opened.details.status, text(opened)).toBe("observed");
+    const command = await first.powershell(`(Get-CimInstance Win32_Process -Filter "ProcessId=${opened.details.target!.pid}").CommandLine`);
+    expect(command).toContain("PiComputerUse\\browser-profiles\\chrome");
+    expect(await evaluate(first, opened, `localStorage.setItem("pi-marker", "${marker}"), localStorage.getItem("pi-marker")`)).toContain(marker);
+  } finally { await first.close(); }
 
   const second = await connectLive();
-  const again = await second.insert(second.machine, { action: "open_browser", browser: "chrome", profile: "agent", url: `${fixture.base}/` });
-  expect(again.details.status, text(again)).toBe("observed");
-  const stored = await evaluate(second, again, 'localStorage.getItem("pi-marker")');
-  expect(stored).toContain(marker);
-  const disposable = await second.insert(second.machine, { action: "open_browser", browser: "chrome", url: `${fixture.base}/` });
-  expect(await evaluate(second, disposable, 'String(localStorage.getItem("pi-marker"))')).toContain("null");
-  await second.close();
+  try {
+    const again = await second.insert(second.machine, { action: "open_browser", browser: "chrome", profile: "agent", url: `${fixture.base}/` });
+    expect(again.details.status, text(again)).toBe("observed");
+    const stored = await evaluate(second, again, 'localStorage.getItem("pi-marker")');
+    expect(stored).toContain(marker);
+    await evaluate(second, again, 'localStorage.removeItem("pi-marker")');
+    const disposable = await second.insert(second.machine, { action: "open_browser", browser: "chrome", url: `${fixture.base}/` });
+    expect(await evaluate(second, disposable, 'String(localStorage.getItem("pi-marker"))')).toContain("null");
+  } finally { await second.close(); }
 });
