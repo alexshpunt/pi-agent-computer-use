@@ -2,13 +2,11 @@ import { afterAll, expect, test } from "vitest";
 import { readFile, stat } from "node:fs/promises";
 import sharp from "sharp";
 import { connectLive, paintTool, text } from "./remote.ts";
-import { machineConfig } from "../../src/machine.ts";
-import { sshRunner } from "../../src/runner.ts";
 
 // LPT-817: a 10-second recording of a new Paint window shows the drawn stroke. Frames are decoded with
 // the machine's own ffmpeg (the one the driver records with).
 const live = await connectLive();
-const runner = sshRunner((await machineConfig(process.cwd(), process.env.LIVE_MACHINE ?? "lab")).ssh);
+const runner = live.runner;
 let pid = 0;
 afterAll(async () => { if (pid) await live.kill(pid); await live.close(); });
 
@@ -19,9 +17,13 @@ test("a recording of a Paint window plays back the drawn stroke", async () => {
   const window = `computer:window/${opened.details.window_ref}`;
   await paintTool(live, window, "Pencil");
 
-  // open keeps the previous foreground window in front; bring Paint forward so the video starts on its canvas.
-  const front = await live.read(window, ["image"]);
-  await live.insert(`computer:observation/${front.details.observation_id}?delivery=foreground`, { action: "key", key: "escape" });
+  // Desktop video records what is visible. Input returns focus to the human window, so explicitly focus Paint
+  // for both comparison frames instead of assuming that an input command leaves it in front.
+  const focus = async () => {
+    const focused = await live.resources.manageWindow(live.resources.address(window), live.cwd, { action: "focus" });
+    expect(focused.details.status, text(focused)).toBe("delivered");
+  };
+  await focus();
   const started = await live.insert(live.machine, { action: "record_start", seconds: 10 });
   expect(started.details.status, text(started)).toBe("delivered");
   await new Promise(resolve => setTimeout(resolve, 2000));
@@ -29,6 +31,7 @@ test("a recording of a Paint window plays back the drawn stroke", async () => {
   const stroke = await live.insert(`computer:observation/${view.details.observation_id}?delivery=foreground`, { action: "drag",
     from_x: 450, from_y: 380, via: [{ x: 600, y: 470 }, { x: 750, y: 380 }], to_x: 850, to_y: 470, duration_ms: 1500 });
   expect(stroke.details.status, text(stroke)).toBe("delivered");
+  await focus();
   await new Promise(resolve => setTimeout(resolve, 2000));
   const stopped = await live.insert(live.machine, { action: "record_stop", to: ".tmp/m7/recording.mp4" });
   expect(stopped.details.status, text(stopped)).toBe("delivered");

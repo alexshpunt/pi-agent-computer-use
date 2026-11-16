@@ -1,6 +1,8 @@
 import { afterAll, expect, test } from "vitest";
 import { addresses, connectLive, nativeForm, openWindow, serveFixture, text, WINDOWS_POWERSHELL_PATH as POWERSHELL } from "./remote.ts";
 import { computerSource } from "../../src/computer-address.ts";
+import { ComputerRequestError } from "../../src/computer-resources.ts";
+import { UnexpectedLocalSessionError } from "./remote.ts";
 
 // LPT-628: a live capability matrix of every execution surface on one Windows machine, with cross-surface checks.
 // Surfaces: the machine's displays, a background host window, an owned browser, a Windows Sandbox and an isolated
@@ -20,7 +22,11 @@ type Element = { role?: string | null; name?: string | null; hint: string; value
 const field = (elements: Element[]) => elements.find(e => e.role === "Edit");
 /** A refusal is either a refused result or a request error; both send nothing. */
 const outcome = (result: Promise<{ details: { status?: string } }>) =>
-  result.then(r => String(r.details.status), (error: Error) => `error: ${error.message.slice(0, 120)}`);
+  result.then(r => String(r.details.status), (error: Error) => {
+    if (error instanceof ComputerRequestError) return "request-error";
+    if (error instanceof UnexpectedLocalSessionError) return "local-forbidden";
+    throw error;
+  });
 const domainOf = (state: unknown) => [...new Set((JSON.parse(JSON.stringify(state)).windows as { source_identity?: { domain?: string } }[]).map(w => w.source_identity?.domain))];
 
 test("every surface observes and acts only on itself, and refuses resources of the others", async () => {
@@ -53,7 +59,7 @@ test("every surface observes and acts only on itself, and refuses resources of t
   cleanup.push(() => live.insert(session, { action: "close" }));
 
   const surfaces = [
-    { name: "host window", source: live.machine, domain: "windows-remote", delivery: "background" },
+    { name: "host window", source: live.machine, domain: live.domain, delivery: "background" },
     { name: "sandbox", source: sandbox, domain: "windows-sandbox", delivery: "foreground" },
     { name: "session", source: session, domain: "windows-session", delivery: "foreground" },
   ] as const;
@@ -107,9 +113,8 @@ test("every surface observes and acts only on itself, and refuses resources of t
   const nativeOnDom = await outcome(live.write(`computer:observation/${latestDom.details.observation_id}`, "x"));
   matrix.refusals = { dom_on_guest_window: domOnGuest, native_write_on_dom: nativeOnDom };
   refused(domOnGuest); refused(nativeOnDom);
-  // A reference no open surface knows falls to the local host session, which refuses an unknown window. This
-  // harness forbids the local session, so its guard error proves that no open surface resolved the reference.
-  const unclaimed = (value: string) => expect(value).toMatch(/Live checks use only the remote machine/);
+  // An unknown reference is rejected locally; a remote-only run also forbids creating a local fallback.
+  const unclaimed = (value: string) => expect(value).toBe(live.domain === "windows-host" ? "request-error" : "local-forbidden");
   // A second agent cannot use the first agent's window reference.
   const other = await connectLive();
   try {

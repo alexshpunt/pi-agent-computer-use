@@ -46,6 +46,10 @@ beforeAll(async () => {
   if (welcome) await press(`computer:window/${welcome.window_ref}`, "Escape");
   await live.resources.manageWindow(live.resources.address(window), live.cwd, windowCommand({ window, action: "maximize" }));
   await pause(1000);
+  // GTK matches character shortcuts using the target thread's keyboard layout.
+  const state = await live.read(window, ["state"]);
+  const layout = await live.powershell(`Add-Type -Name Keyboard -Namespace PiLive -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr LoadKeyboardLayout(string id, uint flags); [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint t);'; $h = [IntPtr]${state.details.target!.window_id}; $us = [PiLive.Keyboard]::LoadKeyboardLayout("00000409", 0); if (-not [PiLive.Keyboard]::PostMessage($h, 0x50, [IntPtr]::Zero, $us)) { throw "Layout request failed" }; $thread = [PiLive.Keyboard]::GetWindowThreadProcessId($h, [IntPtr]::Zero); for ($i = 0; $i -lt 40; $i++) { $language = [PiLive.Keyboard]::GetKeyboardLayout($thread).ToInt64() -band 0xffff; if ($language -eq 0x409) { break }; Start-Sleep -Milliseconds 50 }; $language`);
+  expect(Number(layout.trim())).toBe(0x409);
   await press(window, "Tab");
   await pause(1000);
   // 1 shows the image at 100% around the old view; shift+J centres it.
