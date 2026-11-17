@@ -240,6 +240,8 @@ async function agentChromium(browser: "chrome" | "msedge", directory: string): P
 /** Launch normally. The user may sign in before enabling Chrome's approved debugging bridge. */
 async function approvalBrowser(browser: "chrome" | "msedge", directory: string, url?: string) {
   const child = spawn(browserExecutable(browser), ["--user-data-dir=" + directory, "--no-first-run", "--no-default-browser-check",
+    // Closing this owned window must not leave background apps or a fresh Edge Startup Boost process.
+    "--disable-background-mode", ...(browser === "msedge" ? ["--disable-features=msEdgeStartupBoost"] : []),
     browser === "chrome" ? "chrome://inspect/#remote-debugging" : "edge://inspect/#remote-debugging"],
     { stdio: "ignore", windowsHide: false });
   ownedProcess = child;
