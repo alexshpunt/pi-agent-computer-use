@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { powershellOf, runPowerShell } from "../../src/runner.ts";
 import { connectLive, serveFixture, text } from "./remote.ts";
 import type { ComputerResult } from "../../src/session.ts";
@@ -56,6 +57,28 @@ const close = async (...sessions: Awaited<ReturnType<typeof connectLive>>[]) => 
   }
 };
 
+// Hold the owned process handle before cleanup so a fast exit cannot hide forced termination.
+const observeBrowserExit = async (live: Awaited<ReturnType<typeof connectLive>>, pid: number) => {
+  const observer = live.runner.spawn(powershellOf(live.runner), ["-NoProfile", "-NonInteractive", "-Command",
+    `$ErrorActionPreference='Stop'; $p=[Diagnostics.Process]::GetProcessById(${pid}); $handle=$p.Handle;
+[Console]::WriteLine('ready');
+if (-not $p.WaitForExit(15000)) { throw 'Owned browser did not exit' }
+[Console]::WriteLine('exit='+$p.ExitCode)`]);
+  let output = "", errors = "";
+  let ready!: () => void;
+  const started = new Promise<void>(resolve => { ready = resolve; });
+  observer.stdout.on("data", chunk => { output += chunk.toString(); if (output.includes("ready")) ready(); });
+  observer.stderr.on("data", chunk => { errors += chunk.toString(); });
+  const ended = once(observer, "exit");
+  await Promise.race([started, ended.then(() => { throw Error(`Browser exit observer failed: ${errors}`); })]);
+  return async () => {
+    const [code] = await ended;
+    expect(code, errors).toBe(0);
+    const browserExit = output.match(/(?:^|\n)exit=(-?\d+)/);
+    expect(browserExit, output).not.toBeNull();
+    expect(Number(browserExit![1])).toBe(0);
+  };
+};
 const evaluate = async (live: Awaited<ReturnType<typeof connectLive>>, opened: ComputerResult, expression: string) => {
   const dom = await live.read(`computer:window/${opened.details.window_ref}`, ["dom"]);
   const result = await live.insert(`computer:observation/${dom.details.observation_id}`, { action: "evaluate", expression });
@@ -89,8 +112,9 @@ test("agent Chromium uses a normal browser debugging connection", async () => {
     expect(await evaluate(live, opened, "String(navigator.webdriver)")).toContain("false");
   } finally { await close(live); }
 });
-test("Safe opens its agent browser without a command-line debugging endpoint", async () => {
+test("Safe opens and cleanly closes its agent browser without a debugging endpoint", async () => {
   const live = await connectLive(process.cwd(), "safe");
+  let exited: (() => Promise<void>) | undefined;
   try {
     const before = (await fixture.journal()).filter(entry => entry.type === "download-served").length;
     const url = `${fixture.base}/download/report.txt`;
@@ -107,7 +131,10 @@ test("Safe opens its agent browser without a command-line debugging endpoint", a
     expect(image.details.status, text(image)).toBe("observed");
     const click = await live.insert(`computer:observation/${image.details.observation_id}`, { action: "click", x: 10, y: 10 });
     expect(click.details.status).toBe("refused");
-  } finally { await close(live); }
+    exited = await observeBrowserExit(live, pid);
+  } finally {
+    try { await close(live); } finally { await exited?.(); }
+  }
 });
 test("agent Chromium retains site data after its browser closes", async () => {
   const marker = `pi-${Date.now()}`;
