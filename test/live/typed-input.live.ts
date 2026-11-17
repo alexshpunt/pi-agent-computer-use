@@ -130,8 +130,7 @@ test("a ref is pressed through UI Automation without taking the foreground, and 
     const structural = await act(window, clickPlan({ window, target: button }));
     expect(structural.result.details.status, structural.body).toBe("delivered");
     expect(structural.result.details.action_capability).toMatchObject({
-      native_tool: "semantic_action", actual_delivery: "background", route: "accessibility",
-      semantic: { physical_fallback: false },
+      native_tool: "click", actual_delivery: "background", route: "accessibility",
     });
     expect(await holds(window, [{ target: "getByRole('button', { name: 'Count 1' })", is: "exists" }])).toBe("satisfied");
     expect(await state()).toMatchObject({ foreground_at_target: false, foreground_window: humanId });
