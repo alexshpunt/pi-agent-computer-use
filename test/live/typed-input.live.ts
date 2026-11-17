@@ -118,6 +118,9 @@ test("a ref is pressed through UI Automation without taking the foreground, and 
   try {
     const foreground = async () => ((await live.read(window, ["state"])).details.state?.state as { foreground_at_target: boolean }).foreground_at_target;
     const refOf = async (pattern: RegExp) => pattern.exec(presentComputerResult(await live.read(window, ["ui"])))![1];
+    const before = await foreground();
+    console.log("semantic click foreground baseline", before);
+    expect(before, "the semantic action must start with the target in the background").toBe(false);
     const button = await refOf(/^([0-9a-z]+:[a-z]+) \| Button \| Count 0/m);
     const structural = await act(window, clickPlan({ window, target: button }));
     expect(structural.result.details.status, structural.body).toBe("delivered");
