@@ -275,16 +275,16 @@ function coveringWindow(message: string): CoveringWindow | undefined {
   try { title = String(JSON.parse(match[4])); } catch { /* A malformed title leaves the window untitled. */ }
   return { window_id: Number(match[1]), pid: Number(match[2]), relation: match[3], title };
 }
-/**
- * Why the driver left the foreground with the target after foreground input (lines starting with `focus_return:`).
- * Otherwise it handed the foreground back to the human's window, or the human's window already had it.
- */
-function focusReturnNote(message: string): string | undefined {
+/** Preserve the native focus-return outcome independently from its explanation. */
+function focusReturn(message: string): { outcome: string; note?: string } | undefined {
   const outcome = /^focus_return: (\w+)/m.exec(message)?.[1];
-  return outcome === "kept_for_popup" ? "This window keeps the foreground while a menu or popup of it is open; the human's window gets it back after an action closes it."
+  if (!outcome || !["kept_for_popup", "kept_for_unconfirmed_read", "human_window_gone", "refused", "restored", "human_moved", "other_window"].includes(outcome)) return undefined;
+  const note = outcome === "kept_for_popup" ? "This window keeps the foreground while its menu or popup is open. Closing it does not confirm that earlier input was read."
+    : outcome === "kept_for_unconfirmed_read" ? "This window keeps the foreground because receiver-read evidence does not cover all inserted input. Nothing was replayed. Observe again before another action."
     : outcome === "human_window_gone" ? "This window keeps the foreground: the human's last window is closed, hidden, minimized or on another desktop."
     : outcome === "refused" ? "Windows kept this window in front instead of handing the foreground back to the human's window."
     : undefined;
+  return { outcome, ...(note ? { note } : {}) };
 }
 
 /** Multi-window UI policy. Native work is queued; ownership and observations are not persisted across reloads. */
@@ -2270,10 +2270,11 @@ export class ComputerSession {
           // A click that closed its window, such as OK in a dialog, names the window of the app the driver found in front.
           const after = status === "delivered" ? foregroundAfter(state.foreground_after) : undefined;
           const front = after && `The click closed this window; ${await this.windowName(after, signal)} of the same app is now in front.\n`;
-          const kept = focusReturnNote(nativeMessage);
+          const returnedFocus = focusReturn(nativeMessage);
+          const kept = returnedFocus?.note;
           const result = this.result(status, stopped ? `The human stopped computer use with Escape. ${status === "refused" ? "Nothing was sent." : "Input stopped part way; observe before anything else once computer use is on again."} Do not retry or work around it; tell the human and wait until they turn it on again with /computer-mode.`
             : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}${kept ? `${kept}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
-            { ...state, ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
+            { ...state, ...(returnedFocus ? { focus_return: returnedFocus.outcome } : {}), ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
               overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
               resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
             ...(native.isError || !native.structuredContent ? {
