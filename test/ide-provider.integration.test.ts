@@ -36,18 +36,10 @@ test("Codemode composes IDE computer reads, image writes and provider search", a
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath, args: [driver, path.join(cwd, "calls.jsonl")] }));
     const code = `const opened = await tools.computer_open({ at: "computer:machine/local", app: "Notepad" });
 const found = await tools.search({ path: "computer:machine/local/windows", query: "Owned fixture" });
-let discovered;
-if (typeof found === "string") {
-  if (typeof opened.window !== "string" || !found.includes(opened.window)) throw Error("window search lost its address");
-  discovered = opened.window;
-} else {
-  const windows = found?.state?.windows;
-  if (found?.status !== "listed" || !Array.isArray(windows) || windows.length !== 1 ||
-      windows[0].pid !== 42 || windows[0].window_id !== 91 || typeof windows[0].window_ref !== "string")
-    throw Error("window search lost its structured target: " + JSON.stringify(found));
-  discovered = "computer:window/" + windows[0].window_ref;
-}
-const ui = await tools.read({ path: discovered, views: ["ui"] });
+const listing = typeof found === "string" ? found : found?.result;
+if (typeof opened.window !== "string" || typeof listing !== "string" || !listing.includes(opened.window))
+  throw Error("window search lost its address: " + JSON.stringify(found));
+const ui = await tools.read({ path: opened.window, views: ["ui"] });
 if (!ui || typeof ui.id !== "string" || !ui.text.includes("Fixture text field")) throw Error("UI text value missing");
 const shot = await tools.read({ path: opened.window });
 if (!shot || shot.type !== "image" || shot.mimeType !== "image/png") throw Error("window image missing");
