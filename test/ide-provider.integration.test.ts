@@ -36,9 +36,7 @@ test("Codemode composes IDE computer reads, image writes and provider search", a
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath, args: [driver, path.join(cwd, "calls.jsonl")] }));
     const code = `const opened = await tools.computer_open({ at: "computer:machine/local", app: "Notepad" });
 const found = await tools.search({ path: "computer:machine/local/windows", query: "Owned fixture" });
-const listing = typeof found === "string" ? found : found?.result;
-if (typeof opened.window !== "string" || typeof listing !== "string" || !listing.includes(opened.window))
-  throw Error("window search lost its address: " + JSON.stringify(found));
+if (typeof found !== "string" || !found.includes(opened.window)) throw Error("window search lost its address");
 const ui = await tools.read({ path: opened.window, views: ["ui"] });
 if (!ui || typeof ui.id !== "string" || !ui.text.includes("Fixture text field")) throw Error("UI text value missing");
 const shot = await tools.read({ path: opened.window });
