@@ -771,8 +771,8 @@ async function screenshot({ target, highlight, css }: { target?: WebTarget; high
 }
 
 async function close() {
-  const owned = context, directory = profile, connected = attached, child = ownedProcess, verified = ownedVerified;
-  const pageFailures: unknown[] = [];
+  const owned = context, directory = profile, connected = attached, child = ownedProcess, verified = ownedVerified, pendingApproval = approvalDirectory;
+  const cleanupFailures: unknown[] = [];
   context = undefined; attached = undefined; ownedProcess = undefined; ownedVerified = false; approvalDirectory = undefined; approvalUrl = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
   if (child) {
     // Only a browser whose CDP identity matches our child may receive Browser.close.
@@ -780,15 +780,31 @@ async function close() {
       const cdp = await connected.newBrowserCDPSession().catch(() => undefined);
       // Flush page-owned storage before Chromium shuts down, and still tear down if a page is already lost.
       for (const page of owned?.pages() ?? []) {
-        try { await page.close(); } catch (error) { pageFailures.push(error); }
+        try { await page.close(); } catch (error) { cleanupFailures.push(error); }
       }
       await cdp?.send("Browser.close").catch(() => undefined);
+    }
+    // Safe has no CDP connection. Ask its owned window to close before considering forced cleanup.
+    if (pendingApproval && child.pid && child.exitCode === null && child.signalCode === null) {
+      const escaped = pendingApproval.replace(/'/g, "''");
+      const script = `$ErrorActionPreference='Stop'
+$p=[Diagnostics.Process]::GetProcessById(${child.pid})
+$handle=$p.Handle
+$command=(Get-CimInstance Win32_Process -Filter "ProcessId=${child.pid}").CommandLine
+if (-not $command -or $command.IndexOf('--user-data-dir=${escaped}', [StringComparison]::OrdinalIgnoreCase) -lt 0) { throw 'The browser profile owner changed' }
+if (-not $p.CloseMainWindow()) { throw 'The owned browser window could not be asked to close' }
+if (-not $p.WaitForExit(5000)) { throw 'The owned browser did not close normally' }
+if ($p.ExitCode -ne 0) { throw 'The owned browser exited abnormally' }`;
+      try {
+        await promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 10_000 });
+      } catch (error) { cleanupFailures.push(error); }
     }
     await connected?.close().catch(() => undefined);
     if (child.pid && child.exitCode === null && child.signalCode === null) {
       const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
-      if (connected && verified) await Promise.race([exited, new Promise<void>(resolve => setTimeout(resolve, 5_000))]);
+      if ((connected && verified) || pendingApproval) await Promise.race([exited, new Promise<void>(resolve => setTimeout(resolve, 5_000))]);
       if (child.exitCode === null && child.signalCode === null) {
+        cleanupFailures.push(new Error("The owned browser required forced termination; profile writes may be incomplete."));
         if (!child.kill()) throw new Error("The owned browser could not be closed.");
         await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The owned browser did not exit.")), 5_000))]);
       }
@@ -806,7 +822,7 @@ async function close() {
       await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The agent profile lock did not release.")), 5_000))]);
     }
   }
-  if (pageFailures.length) throw new AggregateError(pageFailures, "Owned pages could not be closed cleanly.");
+  if (cleanupFailures.length) throw new AggregateError(cleanupFailures, "The owned browser could not be closed cleanly.");
   return {};
 }
 
