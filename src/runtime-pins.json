@@ -1,12 +1,12 @@
 {
   "format": 2,
-  "source": "3cf8455bfbd5b5b20231b4f24de7b6b6ad2c0322",
+  "source": "9f0102ce0641907d95456ecb47c754db47392575",
   "version": "0.52.0",
-  "url": "https://github.com/alexshpunt/cua/releases/download/pi-runtime-0.52.0-3cf8455b/",
+  "url": "https://github.com/alexshpunt/cua/releases/download/pi-runtime-0.52.0-9f0102ce/",
   "files": {
-    "cua-driver.exe": "9041d3940a8bc544c11f3e43382ffbd8e21c6769232400a7afafae29255c9345",
-    "cua-driver-uia.exe": "65ce59450b48f75fdae860077ff00e37eaa4e791406b46b294fb818abc3dee7d",
-    "cua-cursor-theme.exe": "55ec300750eebf48763a7f6c9c41a034558939ead4fd65c5fd75a94e6a96a44f",
+    "cua-driver.exe": "2d8d0bdf3f254368df39c0affebeeef4b9943298cb7f17596cf08cf605e7c993",
+    "cua-driver-uia.exe": "0b2f1225ceea7f52036cc451b296f9cd85b407b4ab5522cecd007c6d791b620f",
+    "cua-cursor-theme.exe": "1986d347295d7ea793437a2f3ecdab4363b570e39e7ef2189e61f5e77a69b6b7",
     "LICENSE.md": "d0a32419a44fa38d5023d1431dfcbedd1457eb5e7b2e6c7c87ca064facb41b41",
     "THIRD_PARTY_NOTICES.md": "804dfb37a4abda1ba2747d8caa782f67a62ba5e49f1f780b818695b4afa87d20"
   }
