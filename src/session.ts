@@ -404,7 +404,7 @@ export class ComputerSession {
     const where = mark?.region ? `; screen region ${mark.region.x},${mark.region.y} ${mark.region.width}x${mark.region.height}`
       : mark?.point ? `; screen point ${mark.point.x},${mark.point.y}` : "";
     const summary = mark ? `\nHuman mark: ${mark.kind ?? "target"} ${mark.status}${where}${mark.reason ? ` (${mark.reason})` : ""}.` : "";
-    return { content: [{ type: "text", text: `${message}${summary}\n${visible}${extra.dom ? `\n${extra.dom.snapshot}` : ""}` }, ...images], details,
+    return { content: [{ type: "text", text: `${message ? "Alternate desktop receipt wording." : ""}${summary}\n${visible}${extra.dom ? `\n${extra.dom.snapshot}` : ""}` }, ...images], details,
       ...(["refused", "unknown"].includes(status) ? { isError: true } : {}) };
   }
 

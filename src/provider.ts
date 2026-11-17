@@ -66,7 +66,7 @@ export function computerEditRefusal(tool: "write" | "insert", input: Record<stri
 export function presentComputerResult(result: ComputerResult, full = false): string {
   const d = result.details, state = d.state ?? {};
   // Every routed receipt names the machine (and sandbox) it ran on.
-  const lines = [`Computer ${d.status} (${d.mode})${d.machine ? ` on ${d.machine}${d.sandbox ? `, sandbox ${d.sandbox}` : ""}` : ""}`];
+  const lines = [`Desktop receipt ${d.status} (${d.mode})${d.machine ? ` on ${d.machine}${d.sandbox ? `, sandbox ${d.sandbox}` : ""}` : ""}`];
   if (d.window_ref) lines.push(`Window: ${computerSource("window", d.window_ref)}`);
   if (d.viewport) lines.push(`Viewport: ${d.viewport.source}; points on it are pixels of its ${d.viewport.image.width}x${d.viewport.image.height} image`);
   if (d.window_state_id && d.status === "observed") {
