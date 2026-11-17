@@ -93,7 +93,10 @@ async function draw(events: Event[]) {
 /** Dark pixels across a row at each fraction of a stroke, in pixels of a full-resolution capture. */
 async function widths(x0: number, x1: number, y: number, fractions: number[]) {
   const view = await live.read(window, ["image", 'capture:{"maxLongEdge":3840}']);
-  const png = Buffer.from((view.content.find(block => block.type === "image") as { data: string }).data, "base64");
+  expect(view.details.status, text(view)).toBe("observed");
+  const image = view.content.find(block => block.type === "image") as { data: string } | undefined;
+  expect(image, text(view)).toBeDefined();
+  const png = Buffer.from(image!.data, "base64");
   const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true });
   const scale = info.width / overviewWidth;
   return fractions.map(fraction => {
