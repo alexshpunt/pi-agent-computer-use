@@ -111,29 +111,40 @@ test("one action vocabulary drives a native window by locator, ref and point", a
   } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
 });
 
-// LPT-942: what the agent sees structurally is pressed structurally; without a pattern the same call uses the real pointer.
+// LPT-942: structural refs use UIA; a ref without a pattern uses the real pointer.
 test("a ref is pressed through UI Automation without taking the foreground, and a ref without a pattern gets the real pointer", async () => {
   const title = `pi-route-${Date.now()}`;
   const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title), title);
+  let human: string | undefined;
   try {
-    const foreground = async () => ((await live.read(window, ["state"])).details.state?.state as { foreground_at_target: boolean }).foreground_at_target;
+    const state = async () => (await live.read(window, ["state"])).details.state?.state as { foreground_at_target: boolean; foreground_window: number };
     const refOf = async (pattern: RegExp) => pattern.exec(presentComputerResult(await live.read(window, ["ui"])))![1];
-    const before = await foreground();
-    console.log("semantic click foreground baseline", before);
-    expect(before, "the semantic action must start with the target in the background").toBe(false);
+    human = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(`${title}-human`), `${title}-human`);
+    const humanId = (await live.read(human, ["state"])).details.target!.window_id;
+    const focused = await live.resources.manageWindow(requireComputerAddress(human), live.cwd, { action: "focus" });
+    expect(focused.details.status, presentComputerResult(focused)).toBe("delivered");
+    // App launch can legitimately leave the target foreground after earlier unread input.
+    // Establish the background precondition without claiming that input was read.
+    expect(await state()).toMatchObject({ foreground_at_target: false, foreground_window: humanId });
     const button = await refOf(/^([0-9a-z]+:[a-z]+) \| Button \| Count 0/m);
     const structural = await act(window, clickPlan({ window, target: button }));
     expect(structural.result.details.status, structural.body).toBe("delivered");
-    expect(structural.body).not.toContain("real pointer");
+    expect(structural.result.details.action_capability).toMatchObject({
+      native_tool: "semantic_action", actual_delivery: "background", route: "accessibility",
+      semantic: { physical_fallback: false },
+    });
     expect(await holds(window, [{ target: "getByRole('button', { name: 'Count 1' })", is: "exists" }])).toBe("satisfied");
-    // UI Automation pressed the button in the background: the window never came to the front.
-    expect(await foreground()).toBe(false);
+    expect(await state()).toMatchObject({ foreground_at_target: false, foreground_window: humanId });
     const field = await refOf(/^([0-9a-z]+:[a-z]+) \| Edit \| Field/m);
     const real = await act(window, clickPlan({ window, target: field }));
-    expect(real.result.details.status, real.body).not.toBe("refused");
-    expect(real.body).toContain("No UI Automation pattern of the target carried this click, so this call used the real pointer.");
+    expect(real.result.details.status, real.body).toBe("delivered");
+    expect(real.result.details.action_capability).toMatchObject({
+      native_tool: "click", requested_delivery: "foreground", actual_delivery: "foreground",
+    });
+    expect((await state()).foreground_at_target).toBe(true);
   } finally {
     await deleteComputer(live.resources, `${window}?force=true`, { path: `${window}?force=true` }, live.cwd);
+    if (human) await deleteComputer(live.resources, `${human}?force=true`, { path: `${human}?force=true` }, live.cwd);
   }
 });
 
