@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, firefox, type Browser, type BrowserContext, type Dialog, type Download, type FrameLocator, type Locator, type Page } from "playwright-core";
 import { ATTACH_APPROVAL_MS, parseBrowserCommandLine } from "./browser-command-line.ts";
-import { lockAgentProfile } from "./agent-profile-lock.ts";
+import { AgentProfileInUseError, lockAgentProfile } from "./agent-profile-lock.ts";
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget, WebTimelineEvent } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 import { ariaTreeFromYaml, matchesAriaTemplate } from "./aria-match.ts";
@@ -240,6 +240,8 @@ async function agentChromium(browser: "chrome" | "msedge", directory: string): P
 /** Launch normally. The user may sign in before enabling Chrome's approved debugging bridge. */
 async function approvalBrowser(browser: "chrome" | "msedge", directory: string, url?: string) {
   const child = spawn(browserExecutable(browser), ["--user-data-dir=" + directory, "--no-first-run", "--no-default-browser-check",
+    // Closing this owned window must not leave background apps or a fresh Edge Startup Boost process.
+    "--disable-background-mode", ...(browser === "msedge" ? ["--disable-features=msEdgeStartupBoost"] : []),
     browser === "chrome" ? "chrome://inspect/#remote-debugging" : "edge://inspect/#remote-debugging"],
     { stdio: "ignore", windowsHide: false });
   ownedProcess = child;
@@ -771,19 +773,40 @@ async function screenshot({ target, highlight, css }: { target?: WebTarget; high
 }
 
 async function close() {
-  const owned = context, directory = profile, connected = attached, child = ownedProcess, verified = ownedVerified;
+  const owned = context, directory = profile, connected = attached, child = ownedProcess, verified = ownedVerified, pendingApproval = approvalDirectory;
+  const cleanupFailures: unknown[] = [];
   context = undefined; attached = undefined; ownedProcess = undefined; ownedVerified = false; approvalDirectory = undefined; approvalUrl = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
   if (child) {
     // Only a browser whose CDP identity matches our child may receive Browser.close.
     if (connected && verified) {
       const cdp = await connected.newBrowserCDPSession().catch(() => undefined);
+      // Flush page-owned storage before Chromium shuts down, and still tear down if a page is already lost.
+      for (const page of owned?.pages() ?? []) {
+        try { await page.close(); } catch (error) { cleanupFailures.push(error); }
+      }
       await cdp?.send("Browser.close").catch(() => undefined);
+    }
+    // Safe has no CDP connection. Ask its owned window to close before considering forced cleanup.
+    if (pendingApproval && child.pid && child.exitCode === null && child.signalCode === null) {
+      const escaped = pendingApproval.replace(/'/g, "''");
+      const script = `$ErrorActionPreference='Stop'
+$p=[Diagnostics.Process]::GetProcessById(${child.pid})
+$handle=$p.Handle
+$command=(Get-CimInstance Win32_Process -Filter "ProcessId=${child.pid}").CommandLine
+if (-not $command -or $command.IndexOf('--user-data-dir=${escaped}', [StringComparison]::OrdinalIgnoreCase) -lt 0) { throw 'The browser profile owner changed' }
+if (-not $p.CloseMainWindow()) { throw 'The owned browser window could not be asked to close' }
+if (-not $p.WaitForExit(5000)) { throw 'The owned browser did not close normally' }
+if ($p.ExitCode -ne 0) { throw 'The owned browser exited abnormally' }`;
+      try {
+        await promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 10_000 });
+      } catch (error) { cleanupFailures.push(error); }
     }
     await connected?.close().catch(() => undefined);
     if (child.pid && child.exitCode === null && child.signalCode === null) {
       const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
-      if (connected && verified) await Promise.race([exited, new Promise<void>(resolve => setTimeout(resolve, 5_000))]);
+      if ((connected && verified) || pendingApproval) await Promise.race([exited, new Promise<void>(resolve => setTimeout(resolve, 5_000))]);
       if (child.exitCode === null && child.signalCode === null) {
+        cleanupFailures.push(new Error("The owned browser required forced termination; profile writes may be incomplete."));
         if (!child.kill()) throw new Error("The owned browser could not be closed.");
         await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The owned browser did not exit.")), 5_000))]);
       }
@@ -801,6 +824,7 @@ async function close() {
       await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The agent profile lock did not release.")), 5_000))]);
     }
   }
+  if (cleanupFailures.length) throw new AggregateError(cleanupFailures, "The owned browser could not be closed cleanly.");
   return {};
 }
 
@@ -819,7 +843,8 @@ input.on("line", line => {
       process.stdout.write(JSON.stringify({ id, value: await operation(request.args) }) + "\n");
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
-      process.stdout.write(JSON.stringify({ id, error: { name: failure.name, message: failure.message } }) + "\n");
+      process.stdout.write(JSON.stringify({ id, error: { name: failure.name, message: failure.message,
+        ...(failure instanceof AgentProfileInUseError ? { code: failure.code } : {}) } }) + "\n");
     }
   });
 });

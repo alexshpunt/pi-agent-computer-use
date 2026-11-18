@@ -300,7 +300,7 @@ export class McpDriver implements Driver {
 
   /**
    * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks; three physical
-   * Escape presses stop the agent; foreground input hands the foreground back to the human's window afterward; agents
+   * Escape presses stop the agent; supported receiver-read evidence permits foreground return; agents
    * on one desktop take turns per action; the agent cursor carries the Pi session's label; and launches with
    * remote-debugging switches, which this adapter allows only through YOLO's open by path and arguments.
    */

@@ -46,6 +46,10 @@ beforeAll(async () => {
   if (welcome) await press(`computer:window/${welcome.window_ref}`, "Escape");
   await live.resources.manageWindow(live.resources.address(window), live.cwd, windowCommand({ window, action: "maximize" }));
   await pause(1000);
+  // GTK matches character shortcuts using the target thread's keyboard layout.
+  const state = await live.read(window, ["state"]);
+  const layout = await live.powershell(`Add-Type -Name Keyboard -Namespace PiLive -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr LoadKeyboardLayout(string id, uint flags); [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint t);'; $h = [IntPtr]${state.details.target!.window_id}; $us = [PiLive.Keyboard]::LoadKeyboardLayout("00000409", 0); if (-not [PiLive.Keyboard]::PostMessage($h, 0x50, [IntPtr]::Zero, $us)) { throw "Layout request failed" }; $thread = [PiLive.Keyboard]::GetWindowThreadProcessId($h, [IntPtr]::Zero); for ($i = 0; $i -lt 40; $i++) { $language = [PiLive.Keyboard]::GetKeyboardLayout($thread).ToInt64() -band 0xffff; if ($language -eq 0x409) { break }; Start-Sleep -Milliseconds 50 }; $language`);
+  expect(Number(layout.trim())).toBe(0x409);
   await press(window, "Tab");
   await pause(1000);
   // 1 shows the image at 100% around the old view; shift+J centres it.
@@ -89,7 +93,10 @@ async function draw(events: Event[]) {
 /** Dark pixels across a row at each fraction of a stroke, in pixels of a full-resolution capture. */
 async function widths(x0: number, x1: number, y: number, fractions: number[]) {
   const view = await live.read(window, ["image", 'capture:{"maxLongEdge":3840}']);
-  const png = Buffer.from((view.content.find(block => block.type === "image") as { data: string }).data, "base64");
+  expect(view.details.status, text(view)).toBe("observed");
+  const image = view.content.find(block => block.type === "image") as { data: string } | undefined;
+  expect(image, text(view)).toBeDefined();
+  const png = Buffer.from(image!.data, "base64");
   const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true });
   const scale = info.width / overviewWidth;
   return fractions.map(fraction => {

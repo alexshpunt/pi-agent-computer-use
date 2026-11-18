@@ -23,7 +23,8 @@
 
 - Input spends the window's native refs; its change list brings the new ones.
 - On native windows, a ref or locator goes through UI Automation in the background, without the human's pointer or focus. When the app does not react to it, use a point instead.
-- Drags, `computer_hover` and `computer_timeline` are real input: the window comes to the front, and afterward the human's window gets the foreground back unless a menu or popup of the window is still open. `computer_select` and menus run through UI Automation.
+- Drags, `computer_hover` and `computer_timeline` use real input. On Windows, automatic foreground return requires supported read evidence covering every inserted event; unconfirmed input prevents that return. `computer_hover` and coordinate scrolling do not automatically restore focus or move the pointer back. `computer_select` and menus run through UI Automation.
+- When a receipt reports unconfirmed input, observe the target before another action. Do not replay the input to obtain confirmation.
 - Real input runs at once, even while the human uses the computer. Another agent's action on the same desktop finishes first.
 - `human_stop`: the human pressed Escape three times. Send no more input, tell the user what you were doing, and wait until they turn computer use on again.
 

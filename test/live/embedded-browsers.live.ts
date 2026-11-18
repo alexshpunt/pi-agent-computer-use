@@ -28,7 +28,7 @@ async function portableVsCode() {
 [ -f app/Code.exe ] || python3 -c "import zipfile;zipfile.ZipFile('code.zip').extractall('app')"
 mkdir -p app/data; rm -f app/data/argv.json`], { timeoutMs: 600_000 });
   // The same installer a user runs: the extension, and its proposed API allowed in that VS Code's argv.json.
-  await runSetup({ part: "vscode-bridge", machine: "lab", code: `${root}/app/bin/code.cmd`, argv: `${root}/app/data/argv.json` }, process.cwd());
+  await runSetup({ part: "vscode-bridge", ...(process.env.LIVE_MACHINE === "local" ? {} : { machine: process.env.LIVE_MACHINE ?? "lab" }), code: `${root}/app/bin/code.cmd`, argv: `${root}/app/data/argv.json` }, process.cwd());
 }
 
 /** Read the attached page, then navigate it to the fixture and fill its field through Playwright. */
