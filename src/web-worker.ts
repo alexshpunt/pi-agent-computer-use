@@ -824,7 +824,9 @@ if ($p.ExitCode -ne 0) { throw 'The owned browser exited abnormally' }`;
       await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The agent profile lock did not release.")), 5_000))]);
     }
   }
-  if (cleanupFailures.length) throw new AggregateError(cleanupFailures, "The owned browser could not be closed cleanly.");
+  const mode = directory ? "disposable" : pendingApproval ? "safe" : child ? "persistent" : "other";
+  if (child) process.stderr.write(`LPT1558_CLOSE ${JSON.stringify({ mode, pid: child.pid, exit: child.exitCode, signal: child.signalCode })}\n`);
+  if (cleanupFailures.length) throw new AggregateError(cleanupFailures, `The owned browser (${mode}, pid ${child?.pid}) could not be closed cleanly: ${cleanupFailures.map(error => String(error)).join("; ")}`);
   return {};
 }
 

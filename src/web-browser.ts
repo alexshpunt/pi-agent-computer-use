@@ -518,6 +518,7 @@ export class WebBrowser {
     }
     const timer = setTimeout(() => this.child.kill(), 30_000);
     try { await this.exited; } finally { clearTimeout(timer); }
+    if (this.stderr.includes("LPT1558_CLOSE") || failure || this.child.exitCode !== 0) console.error("LPT1558_WORKER_CLOSE", { worker: this.child.pid, exit: this.child.exitCode, signal: this.child.signalCode, stderr: this.stderr, failure });
     if (failure || this.child.exitCode !== 0) throw new WebError(`Browser cleanup is unconfirmed. ${failure instanceof Error ? failure.message : this.stderr.trim()}`.trim());
   }
 }
