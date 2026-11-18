@@ -69,7 +69,8 @@ if (-not $p.WaitForExit(15000)) { throw 'Owned browser did not exit' }
   const started = new Promise<void>(resolve => { ready = resolve; });
   observer.stdout.on("data", chunk => { output += chunk.toString(); if (output.includes("ready")) ready(); });
   observer.stderr.on("data", chunk => { errors += chunk.toString(); });
-  const ended = once(observer, "exit");
+  // The exit code in stdout can arrive after the child emits exit.
+  const ended = once(observer, "close");
   await Promise.race([started, ended.then(() => { throw Error(`Browser exit observer failed: ${errors}`); })]);
   return async () => {
     const [code] = await ended;

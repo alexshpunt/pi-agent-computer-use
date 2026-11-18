@@ -53,10 +53,11 @@ test("successor observations keep pixel coordinates for 20 calls and expire on r
   const click = await live.insert(`computer:observation/${overview.details.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 });
   expect(click.details.status, text(click)).toBe("delivered");
   expect(click.details.successor?.observation_id).toBeTruthy();
-  // Change bounds outside the provider, so it must detect the stale successor itself.
+  // Resize outside the provider so CUA must reject the capture before sending the click.
   await live.powershell(`Add-Type 'using System;using System.Runtime.InteropServices;public static class W{[DllImport("user32.dll")]public static extern bool SetProcessDpiAwarenessContext(IntPtr v);[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);}'; if (-not [W]::SetProcessDpiAwarenessContext([IntPtr]-4)) { throw "DPI awareness was not set" }; $h=(Get-Process -Id ${pid}).MainWindowHandle; if (-not [W]::MoveWindow($h,100,100,1300,900,$true)) { throw "Resize failed" }`);
   const expired = await live.insert(`computer:observation/${click.details.successor!.observation_id}?delivery=foreground`, { action: "click", x: 900, y: 700 });
-  expect(expired.details.status).toBe("refused");
+  expect(expired.details.status, text(expired)).toBe("refused");
+  expect(expired.details.state, text(expired)).toMatchObject({ code: "capture_frame_mismatch", effect: "refused" });
   const resized = await live.read(window, ["image"]);
   const before = overview.details.state!.window_bounds as { width: number; height: number };
   const after = resized.details.state!.window_bounds as { width: number; height: number };
