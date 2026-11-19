@@ -98,6 +98,22 @@ test("coordinate scroll is an explicit trusted artifact profile, never an implic
   }
 });
 
+test("machines in the agent directory reach every project, and a project machine of the same name replaces one", async () => {
+  const agentDir = await workspace();
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+  const cwd = await workspace();
+  await writeFile(path.join(agentDir, "computer-use.json"), JSON.stringify({ machines: { lab: { ssh: "lab-wsl" }, pc: { ssh: "pc-wsl" } } }));
+  expect((await readMachineSettings(cwd)).machines).toEqual({ lab: { ssh: "lab-wsl" }, pc: { ssh: "pc-wsl" } });
+  vi.stubEnv("CUA_DRIVER_PATH", "/driver.exe");
+  expect((await loadComputerConfig(cwd)).machines).toEqual({ lab: { ssh: "lab-wsl" }, pc: { ssh: "pc-wsl" } });
+  await mkdir(path.join(cwd, ".pi"));
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ machines: { lab: { ssh: "other-wsl" } } }));
+  expect((await readMachineSettings(cwd)).machines).toEqual({ lab: { ssh: "other-wsl" }, pc: { ssh: "pc-wsl" } });
+  // The global file holds machines only: the driver always comes from the package.
+  await writeFile(path.join(agentDir, "computer-use.json"), JSON.stringify({ machines: {}, command: "/old/cua-driver.exe" }));
+  await expect(readMachineSettings(cwd)).rejects.toThrow("only \"machines\"");
+});
+
 // LPT-967: without a configured socket, the live one found on the machine is used; a configured socket stays as given.
 test("an unconfigured interop socket is the live one; a configured one is kept", async () => {
   const { liveInterop } = await import("../src/wsl-interop.ts");

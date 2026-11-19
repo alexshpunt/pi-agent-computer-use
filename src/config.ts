@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { findBundledRuntime, type BundledRuntime } from "./native-runtime.ts";
 import { ADDRESS_KINDS } from "./computer-address.ts";
 import { liveInterop } from "./wsl-interop.ts";
@@ -92,7 +93,31 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(interop ? { interop } : {}),
     ...(raw.escapeStop !== undefined ? { escapeStop: raw.escapeStop as boolean } : {}),
     ...(runtime ? { runtime } : {}), ...(raw.driverOverride === true ? { driverOverride: true as const } : {}),
-    ...(raw.machines !== undefined ? { machines: parseMachines(raw.machines) } : {}) };
+    ...await mergedMachines(raw.machines) };
+}
+
+/** The user's own machines, for every project: `machines` in computer-use.json of the Pi agent directory. */
+export function globalComputerConfigFile(): string {
+  return path.join(getAgentDir(), "computer-use.json");
+}
+async function readGlobalMachines(): Promise<Record<string, MachineConfig>> {
+  const file = globalComputerConfigFile();
+  let raw: unknown;
+  try { raw = JSON.parse(await readFile(file, "utf8")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error(`Invalid ${file}: it must be JSON with only "machines".`);
+  }
+  // Only machines are global: the driver itself always comes from the package, and other settings have their own global store.
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some(key => key !== "machines"))
+    throw new Error(`Invalid ${file}: it must be JSON with only "machines".`);
+  const { machines } = raw as { machines?: unknown };
+  return machines === undefined ? {} : parseMachines(machines);
+}
+/** Global machines, with a project machine of the same name taking its place. */
+async function mergedMachines(project: unknown): Promise<{ machines?: Record<string, MachineConfig> }> {
+  const machines = { ...await readGlobalMachines(), ...(project === undefined ? {} : parseMachines(project)) };
+  return Object.keys(machines).length ? { machines } : {};
 }
 
 /** The trusted file's interop socket and machines, without selecting or downloading a runtime. */
@@ -106,7 +131,7 @@ export async function readMachineSettings(cwd: string): Promise<{ interop?: stri
   const { interop: configured, machines, escapeStop } = raw as Record<string, unknown>;
   if (escapeStop !== undefined && typeof escapeStop !== "boolean") throw new Error("Invalid escapeStop in .pi/computer-use.json.");
   const interop = typeof configured === "string" ? configured : await liveInterop();
-  return { ...(interop ? { interop } : {}), machines: machines === undefined ? {} : parseMachines(machines), ...(escapeStop !== undefined ? { escapeStop: escapeStop as boolean } : {}) };
+  return { ...(interop ? { interop } : {}), machines: (await mergedMachines(machines)).machines ?? {}, ...(escapeStop !== undefined ? { escapeStop: escapeStop as boolean } : {}) };
 }
 
 /** Paths emitted by the old setup command are package-managed defaults, not permanent user overrides. */

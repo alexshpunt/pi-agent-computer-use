@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadComputerConfig, readMachineSettings, type MachineConfig } from "./config.ts";
+import { globalComputerConfigFile, loadComputerConfig, readMachineSettings, type MachineConfig } from "./config.ts";
 import { isWsl } from "./native-runtime.ts";
 import { WINDOWS_POWERSHELL, localRunner, runPowerShell, sshRunner, type CommandRunner } from "./runner.ts";
 import { MXC, PERCEPTION, WINDOWS_NODE } from "./setup-pins.ts";
@@ -124,7 +124,7 @@ async function resolveTarget(cwd: string, machine: string | undefined, deps: Set
   const settings = await readMachineSettings(cwd);
   if (machine && machine !== "local") {
     const config = settings.machines[machine];
-    if (!config) throw new SetupError(`No machine named ${machine} is configured in .pi/computer-use.json; nothing was installed.`);
+    if (!config) throw new SetupError(`No machine named ${machine} is configured in .pi/computer-use.json or ${globalComputerConfigFile()}; nothing was installed.`);
     return { label: `machine ${machine}`, runner: deps.ssh(config.ssh), powershell: WINDOWS_POWERSHELL, native: false, machine: config };
   }
   if (deps.platform === "win32") return { label: "this machine", runner: deps.local(), powershell: "powershell.exe", native: true };
