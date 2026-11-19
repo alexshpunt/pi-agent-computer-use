@@ -12,7 +12,7 @@ const { readRuntimePins } = await import("../src/native-runtime.ts");
 
 const hash = "0".repeat(64);
 const valid = { format: 2, source: "a".repeat(40), version: "0.37.0", url: "https://example.invalid/release/",
-  files: Object.fromEntries(["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"].map(name => [name, hash])) };
+  files: Object.fromEntries(["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "cua-spacesd.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md", "cua-spacesd-LICENSE.txt", "cua-spacesd-THIRD_PARTY_NOTICES.md"].map(name => [name, hash])) };
 afterEach(() => { pinsText = ""; });
 
 test("valid format-2 pins are accepted", async () => {
@@ -26,6 +26,7 @@ test.each([
   ["a plain HTTP URL", { ...valid, url: "http://example.invalid/release/" }],
   ["a URL without a trailing slash", { ...valid, url: "https://example.invalid/release" }],
   ["a missing companion", { ...valid, files: Object.fromEntries(Object.entries(valid.files).filter(([name]) => name !== "cua-driver-uia.exe")) }],
+  ["no cua-spacesd", { ...valid, files: Object.fromEntries(Object.entries(valid.files).filter(([name]) => name !== "cua-spacesd.exe")) }],
   ["an extra file", { ...valid, files: { ...valid.files, "extra.dll": hash } }],
   ["a malformed hash", { ...valid, files: { ...valid.files, "cua-driver.exe": "not-a-hash" } }],
 ])("pins with %s are refused before any download", async (_case, pins) => {

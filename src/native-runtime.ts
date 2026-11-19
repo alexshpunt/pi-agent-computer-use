@@ -28,7 +28,9 @@ export interface BundledRuntime {
   files: Record<string, string>;
 }
 
-const REQUIRED = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"];
+/** Every runtime carries cua-spacesd beside the driver, so background work such as live window streams never finds it missing. */
+export const REQUIRED = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "cua-spacesd.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md",
+  "cua-spacesd-LICENSE.txt", "cua-spacesd-THIRD_PARTY_NOTICES.md"];
 /** Where the package carries its runtime: `native-runtime/win32-x64/runtime/<files>`. */
 export const PACKAGED_RUNTIME = fileURLToPath(new URL("../native-runtime/win32-x64", import.meta.url));
 
