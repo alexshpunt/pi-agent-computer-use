@@ -22,7 +22,9 @@
 ## Input
 
 - Input spends the window's native refs; its change list brings the new ones.
-- On native windows, a ref or locator goes through UI Automation in the background, without the human's pointer or focus. When the app does not react to it, use a point instead.
+- On native windows, a ref or locator goes through UI Automation in the background, without the human's pointer or focus. Browser pages take refs and locators through Playwright, also without them.
+- Act on every element through a ref or locator first: `computer_click`, `computer_select`, `computer_type` with a target, `computer_scroll` on an element. Use a point, keys or a drag only after three structured attempts on that element left the app unchanged, when the latest read has no element for the target, or for canvases, drawing and games.
+- Remember for the rest of the session which apps react to structured input and which do not. In an app where structured input left the app unchanged, use points and keys from the start.
 - Drags, `computer_hover` and `computer_timeline` use real input. On Windows, automatic foreground return requires supported read evidence covering every inserted event; unconfirmed input prevents that return. `computer_hover` and coordinate scrolling do not automatically restore focus or move the pointer back. `computer_select` and menus run through UI Automation.
 - When a receipt reports unconfirmed input, observe the target before another action. Do not replay the input to obtain confirmation.
 - Real input runs at once, even while the human uses the computer. Another agent's action on the same desktop finishes first.
