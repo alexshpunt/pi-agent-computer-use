@@ -5,10 +5,43 @@ import { expect, test, vi } from "vitest";
 import { computerSource } from "../src/computer-address.ts";
 import { ComputerResources, requireComputerAddress, type OpenedSandbox } from "../src/computer-resources.ts";
 import { ComputerSession, type Driver } from "../src/session.ts";
-import { WindowsSandbox, sandboxConfig, sandboxOptions, type SandboxHost } from "../src/sandbox.ts";
+import { WindowsSandbox, sandboxConfig, sandboxOptions, waitForGuestDriver, type SandboxHost } from "../src/sandbox.ts";
 
 const cwd = "/synthetic-sandbox-fixture";
 const address = requireComputerAddress;
+
+// LPT-1657: before the guest connects its relay, a request hangs until its 15 s timeout. Attempts are cut after 5 s,
+// so a guest that comes up is answered within seconds; the last 15 s stay one long attempt.
+test("waiting for a guest driver cuts silent attempts short and returns once the guest answers", async () => {
+  vi.useFakeTimers();
+  try {
+    const limits: number[] = [];
+    let up = false;
+    const driver = {
+      call: (_name: string, _args: Record<string, unknown>, signal?: AbortSignal) => new Promise<{ isError?: boolean }>((resolve, reject) => {
+        const started = Date.now();
+        if (up) { resolve({}); return; }
+        signal?.addEventListener("abort", () => { limits.push(Date.now() - started); reject(new Error("aborted")); }, { once: true });
+      }),
+      close: async () => {},
+    };
+    const waited = waitForGuestDriver(driver, undefined, 60_000);
+    await vi.advanceTimersByTimeAsync(13_000);
+    up = true;
+    await vi.advanceTimersByTimeAsync(6_000);
+    await expect(waited).resolves.toBeUndefined();
+    // Attempts start at 0, 6 and 12 s; the guest is up at 13 s and the attempt at 18 s answers.
+    expect(limits).toEqual([5_000, 5_000, 5_000]);
+
+    limits.length = 0; up = false;
+    const silent = waitForGuestDriver(driver, undefined, 60_000);
+    const refused = expect(silent).rejects.toThrow("did not answer within 60 s");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await refused;
+    expect(limits.slice(0, -1).every(limit => limit === 5_000)).toBe(true);
+    expect(limits.at(-1)).toBeGreaterThan(5_000);
+  } finally { vi.useRealTimers(); }
+});
 
 test("open_sandbox file channels default to read-only imports and one writable export", () => {
   expect(sandboxOptions({ action: "open_sandbox", import: ["C:\\data\\inputs", { host: "/mnt/c/repo", guest: "D:\\repo", writable: true }], export: "C:\\out" }).shares).toEqual([

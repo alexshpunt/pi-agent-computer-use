@@ -1,6 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -12,7 +11,7 @@ import type { ComputerConfig } from "./config.ts";
 import { WindowIdentity, hostIdentityPeer, remoteIdentityPeer } from "./window-identity.ts";
 import { SingleConnectionHttpTransport } from "./http-transport.ts";
 import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts";
-import { verifyBundledRuntime } from "./native-runtime.ts";
+import { sha256Files, verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
 import { NativeVisuals, VisualSettings, nativeVisualOptions, type WindowObserver } from "./native-visuals.ts";
 import { reportsHumanStop, type HumanStop } from "./human-stop.ts";
@@ -206,6 +205,7 @@ export class McpDriver implements Driver {
   }
 
   private connecting?: Promise<Client>;
+  private runtimeChecked = false;
 
   private async connect(signal?: AbortSignal): Promise<Client> {
     signal?.throwIfAborted();
@@ -221,13 +221,18 @@ export class McpDriver implements Driver {
 
   private async start(signal?: AbortSignal): Promise<Client> {
     if (signal?.aborted) throw new Error("Cancelled before Driver startup.");
-    if (this.config.bundled) {
-      if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
-      await verifyBundledRuntime(this.config.bundled, signal);
-    } else if (this.forkRuntime && !this.config.driverOverride) {
-      const hash = this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
-        : createHash("sha256").update(await readFile(this.config.command)).digest("hex");
-      if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
+    // Every local start checks the executable it runs. A guest driver runs the copy its session took at startup and
+    // only reconnects, every second until the guest answers, so its host bytes are checked once.
+    if (!(this.config.endpoint && this.runtimeChecked)) {
+      if (this.config.bundled) {
+        if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
+        await verifyBundledRuntime(this.config.bundled, signal, this.config.interop);
+      } else if (this.forkRuntime && !this.config.driverOverride) {
+        const hash = this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
+          : (await sha256Files([this.config.command], signal, this.config.interop))[0];
+        if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
+      }
+      this.runtimeChecked = true;
     }
     signal?.throwIfAborted();
     const transport = this.config.endpoint

@@ -61,9 +61,10 @@ export class IsolatedSession {
     if (!this.host.reverseRelay) throw new Error("This host cannot start an isolated-session relay.");
     const runtime = await this.host.path(path.dirname(runtimeCommand), "windows");
     if (!/^[A-Za-z]:\\/.test(runtime)) throw new ComputerRequestError("The driver runtime must be on a Windows drive to copy it into the session.");
-    const local = (await this.ps("$env:LOCALAPPDATA", signal)).trim();
+    // One PowerShell start costs 1.5 to 2.5 s from WSL: read the folder and check for MXC together.
+    const [local, installed] = (await this.ps("$env:LOCALAPPDATA; Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'PiComputerUse\\mxc\\wxc-exec.exe')", signal)).trim().split("\n").map(line => line.trim());
     this.wxc = `${local}\\PiComputerUse\\mxc\\wxc-exec.exe`;
-    if ((await this.ps(`Test-Path -LiteralPath ${psString(this.wxc)}`, signal)).trim() !== "True")
+    if (installed !== "True")
       throw new ComputerRequestError(`MXC is not installed on this machine (${this.wxc}). Ask the user to install it with /computer-setup mxc, then open the session again.`);
     const windows = `${local}\\PiComputerUse\\sessions\\${this.ref}`;
     this.workdir = { windows, unix: await this.host.path(`${local}\\PiComputerUse\\sessions`, "unix").then(parent => `${parent}/${this.ref}`) };
