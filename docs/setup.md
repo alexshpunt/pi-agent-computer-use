@@ -63,12 +63,12 @@ No `.pi/computer-use.json` is needed. An ignored local file in the project can o
 
 ## Other machines
 
-Another Windows machine with WSL can be operated over SSH: its windows, displays, browsers and sandboxes. Only machines named under `machines` in `.pi/computer-use.json` can be reached, by name, never by host or path. Its addresses work like local ones and never act on this machine; a browser `url` such as `127.0.0.1` means that machine. The remote user's Windows session must be active; a disconnected one returns white screenshots. Delete the machine address to stop its driver; its next use starts it again.
+Another Windows machine with WSL can be operated over SSH: its windows, displays, browsers and sandboxes. Only machines named under `machines` in `computer-use.json` of the Pi agent directory (`~/.pi/agent/computer-use.json`, for every project) or of a project's `.pi/` folder can be reached, by name, never by host or path. Its addresses work like local ones and never act on this machine; a browser `url` such as `127.0.0.1` means that machine. The remote user's Windows session must be active; a disconnected one returns white screenshots. Delete the machine address to stop its driver; its next use starts it again.
 
 To set one up:
 
 1. Make it reachable through an SSH alias that logs in to its WSL by key, with a known host key.
-2. Add the alias to `.pi/computer-use.json`:
+2. Add the alias to `~/.pi/agent/computer-use.json` to reach the machine from every project, or to a project's `.pi/computer-use.json` for that project only. The global file holds only `machines`; a project machine of the same name replaces the global one.
 
 ```json
 "machines": {

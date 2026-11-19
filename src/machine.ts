@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { loadComputerConfig, readMachineSettings, type ComputerConfig } from "./config.ts";
+import { globalComputerConfigFile, loadComputerConfig, readMachineSettings, type ComputerConfig } from "./config.ts";
 import { prepareRemoteRuntime } from "./remote-runtime.ts";
 import { prepareRemoteBrowser } from "./remote-browser.ts";
 import { RemotePreparationUncertain } from "./remote-provision-error.ts";
@@ -21,7 +21,7 @@ import type { HumanStop } from "./human-stop.ts";
 /** The configured machine for a connect command; unknown names refuse before any SSH work. */
 export async function machineConfig(cwd: string, name: string): Promise<NonNullable<ComputerConfig["machines"]>[string]> {
   const machine = (await readMachineSettings(cwd)).machines[name];
-  if (!machine) throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json.`);
+  if (!machine) throw new ComputerRequestError(`No machine named ${name} is configured in .pi/computer-use.json or ${globalComputerConfigFile()}.`);
   return machine;
 }
 
