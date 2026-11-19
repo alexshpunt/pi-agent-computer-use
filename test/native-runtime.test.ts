@@ -4,8 +4,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
 import {
-  cacheWindowsRuntime, executionTarget, fetchRuntime, loadBundledRuntime, readRuntimePins, verifyBundledRuntime, type RuntimePins,
+  cacheWindowsRuntime, executionTarget, fetchRuntime, loadBundledRuntime, readRuntimePins, verifyBundledRuntime, windowsDrivePath, type RuntimePins,
 } from "../src/native-runtime.ts";
+import { McpDriver } from "../src/driver.ts";
 
 const NAMES = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"];
 const owned: string[] = [];
@@ -172,6 +173,39 @@ test("after a pin change fetchRuntime keeps the earlier download aside and downl
   await fetchRuntime(directory, release(servedFirst.url, "a".repeat(40)).pins);
   await fetchRuntime(directory, pins);
   expect((await readdir(directory)).sort()).toEqual(["runtime", "runtime-aaaaaaaa", "runtime-aaaaaaaa-2", "runtime-bbbbbbbb", "runtime.source"]);
+});
+
+// LPT-1657: from WSL, Windows hashes runtime files on a Windows drive; reading them through the drive mount took
+// about 25 s per driver executable.
+test("a WSL path on a Windows drive maps to its Windows path; other paths stay with Node", () => {
+  expect(windowsDrivePath("/mnt/c/Users/me/AppData/Local/PiComputerUse/cua-driver.exe")).toBe("C:\\Users\\me\\AppData\\Local\\PiComputerUse\\cua-driver.exe");
+  expect(windowsDrivePath("/mnt/d")).toBe("D:\\");
+  for (const file of ["/root/dev/runtime/cua-driver.exe", "/mnt/wsl/file", "/mnt/cd/file", "C:\\x.exe"]) expect(windowsDrivePath(file)).toBeUndefined();
+});
+
+test("a guest driver checks its host runtime once across reconnects; a local driver checks every start", async () => {
+  const { root, pins } = await installedRuntime();
+  const runtime = await loadBundledRuntime(root, pins);
+  const driverFile = path.join(root, "runtime", "cua-driver.exe");
+  const failure = async (driver: McpDriver) => {
+    try { await driver.call("list_windows", {}); return "answered"; }
+    catch (error) { await driver.close().catch(() => undefined); return error instanceof Error ? error.message : String(error); }
+  };
+  // The endpoint answers 404: every connect fails after the runtime check, as before a guest driver is up.
+  const refused = await assetServer({});
+  const guest = new McpDriver({ command: runtime.command, bundled: runtime,
+    endpoint: { url: new URL("/mcp", refused.url).href, token: "t", identityPort: 9, domain: "windows-session" } });
+  expect(await failure(guest)).not.toMatch(/native_runtime/);
+  await writeFile(driverFile, "changed");
+  expect(await failure(guest)).not.toMatch(/native_runtime/);
+  await guest.close();
+
+  await writeFile(driverFile, release().bytes["cua-driver.exe"]!);
+  const local = new McpDriver({ command: runtime.command, bundled: runtime });
+  expect(await failure(local)).not.toMatch(/native_runtime/);
+  await writeFile(driverFile, "changed");
+  expect(await failure(local)).toMatch("native_runtime_hash_mismatch: cua-driver.exe");
+  await local.close();
 });
 
 test("a download of the pinned source that was changed afterwards is not replaced", async () => {

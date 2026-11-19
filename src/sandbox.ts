@@ -138,19 +138,26 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener("abort", abort, { once: true });
 });
 
+const GUEST_ATTEMPT_MS = 5_000;
 /** Wait until the guest driver answers; it starts a few seconds after the guest session. */
 export async function waitForGuestDriver(driver: { call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ isError?: boolean }>; close(): Promise<void> },
   signal?: AbortSignal, timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let last = "";
   while (Date.now() < deadline) {
+    // Until the guest connects its relay, an attempt waits out the full request timeout of 15 s. Short attempts notice
+    // the guest within seconds; the last 15 s go to one long attempt for a guest that answers slowly.
+    const remaining = deadline - Date.now();
+    const limit = new AbortController();
+    const timer = setTimeout(() => limit.abort(new Error("The guest driver did not answer this attempt.")), remaining > 15_000 ? GUEST_ATTEMPT_MS : remaining);
     try {
-      if (!(await driver.call("list_windows", {}, signal)).isError) return;
+      if (!(await driver.call("list_windows", {}, signal ? AbortSignal.any([signal, limit.signal]) : limit.signal)).isError) return;
       last = "list_windows failed";
     } catch (error) {
+      signal?.throwIfAborted();
       last = error instanceof Error ? error.message : String(error);
       await driver.close().catch(() => undefined);
-    }
+    } finally { clearTimeout(timer); }
     await sleep(1000, signal);
   }
   throw new Error(`The sandbox driver did not answer within ${timeoutMs / 1000} s. ${last}`);

@@ -26,8 +26,7 @@ async function fakeHost(options: { installed?: boolean; failAt?: "provision" | "
     },
     async powershell(script) {
       scripts.push(script);
-      if (script === "$env:LOCALAPPDATA") return "C:\\Local\n";
-      if (script.startsWith("Test-Path")) return options.installed === false ? "False\n" : "True\n";
+      if (script.startsWith("$env:LOCALAPPDATA;") && script.includes("wxc-exec.exe")) return `C:\\Local\r\n${options.installed === false ? "False" : "True"}\r\n`;
       const phase = /--operation (\w+)/.exec(script)?.[1];
       if (phase && !script.includes("Start-Process")) {
         phases.push(phase);
