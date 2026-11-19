@@ -294,7 +294,7 @@ export function recordCommand(params: Static<typeof recordParameters>): RecordRu
 const inputWindow = Type.String({ description: "Window or viewport address from {search}, {read}, a name or computer_view." });
 const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest {read} (1:a in a window {read}, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }).` }));
 const coordinate = (description: string) => Type.Optional(Type.Number({ minimum: 0, description }));
-const pointX = "Point instead of target, with y: pixels of the latest image of the window or viewport, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front.";
+const pointX = "Point instead of target, with y: pixels of the latest image of the window or viewport, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front. Use a point when a target cannot do the action.";
 const pointY = "Point instead of target, with x.";
 const pointSpace = Type.Optional(StringEnum(["page", "window"] as const, { description: "Browser windows:\npage (default) — refs, locators and CSS points of the page.\nwindow — refs and points of a window {read}, such as the browser's own toolbar." }));
 const modifiersField = Type.Optional(Type.Array(StringEnum(["ctrl", "shift", "alt", "win"] as const), { maxItems: 4, description: "Keys held during the action." }));

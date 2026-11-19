@@ -18,7 +18,7 @@ Work in this order: find the window, read it, plan, act, check.
 ## Plan and act
 
 - Know the target, the expected effect and the stopping point before any input.
-- Prefer a locator or a ref. Use a point for controls without UI, canvases and games.
+- Act through a locator or a ref first. Use a point, keys or a drag after three structured attempts left the app unchanged, for controls without UI, canvases and games, and from the start in an app that ignored structured input earlier in the session.
 - Never replace a refusal with global input, another backend or a browser script.
 - Stop at navigation, a new dialog, a changed layout or an effect that needs a new decision.
 - Put several known steps into one Codemode script that checks each receipt and stops at a refusal or an unknown outcome.
