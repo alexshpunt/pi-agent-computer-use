@@ -664,7 +664,7 @@ export class ComputerResources {
       const windows = [...this.titles].filter(([ref]) => this.holdsWindow(ref) && this.shorts.issued(computerSource("window", ref)))
         .map(([ref, title]) => `- ${computerSource("window", ref)} | ${title}`);
       const sandboxes = [...this.sandboxes.values()].map(sandbox => `- ${computerSource("sandbox", sandbox.ref)} on ${computerSource("machine", sandbox.machine ?? LOCAL_MACHINE)}`);
-      return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in .pi/computer-use.json starts on its first use). Every window, display, observation and sequence address belongs to the machine that issued it, and every receipt names that machine:",
+      return ["# Computer use", "Machines (computer:machine/local is this one; a machine configured under machines in ~/.pi/agent/computer-use.json or the project's .pi/computer-use.json starts on its first use). Every window, display, observation and sequence address belongs to the machine that issued it, and every receipt names that machine:",
         ...machines, ...(sandboxes.length ? ["Sandboxes and isolated sessions:", ...sandboxes] : []),
         ...(names.length ? ["Window names (computer_window name adds one):", ...names] : []),
         ...(viewports.length ? ["Viewports (computer_view makes, moves and resizes them; Delete removes one):", ...viewports] : []),
