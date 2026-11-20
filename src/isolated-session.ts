@@ -1,8 +1,10 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { Agent, request as httpRequest } from "node:http";
 import path from "node:path";
 import { ComputerRequestError } from "./computer-resources.ts";
 import type { GuestEndpoint } from "./config.ts";
+import type { HighlightFrame } from "./native-visuals.ts";
 import type { SandboxHost } from "./sandbox.ts";
 import type { SessionRelay } from "./session-relay.ts";
 
@@ -13,6 +15,51 @@ const EXEC_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const NETWORK = { egress: { default: "allow" }, ingress: { default: "allow", hostLoopback: "allow" } };
 
 const psString = (value: string) => `'${value.replace(/'/g, "''")}'`;
+/** Discovery file for tile hosts, in each session's host folder %LOCALAPPDATA%\PiComputerUse\sessions\<ref>\. */
+export const STREAM_FILE = "stream.json";
+
+/**
+ * Sends the agent's window activity (observations and actions with their screen point) to the session's stream hub,
+ * so tile hosts can draw the agent cursor and its current action. Never images or typed text. Latest wins: while one
+ * post is in flight only the newest frame waits.
+ */
+export class ActivityPublisher {
+  private readonly agent = new Agent({ keepAlive: true, maxSockets: 1 });
+  private pending?: string;
+  private busy = false;
+  private closed = false;
+  private readonly port: number;
+  private readonly token: string;
+  constructor(port: number, token: string) { this.port = port; this.token = token; }
+
+  readonly observe = (frame: HighlightFrame): void => {
+    if (this.closed || "clear" in frame || !("target" in frame)) return;
+    const { mark } = frame;
+    this.pending = JSON.stringify({ pid: frame.target.pid, bounds: frame.bounds,
+      kind: mark?.kind ?? "overview", ...(mark?.point ? { point: mark.point } : {}), ...(mark?.region ? { region: mark.region } : {}),
+      ...(frame.action ? { action: frame.action } : {}), ...(frame.outcome ? { outcome: frame.outcome } : {}) });
+    this.drain();
+  };
+
+  private drain(): void {
+    if (this.busy || this.closed || !this.pending) return;
+    const body = this.pending;
+    this.pending = undefined;
+    this.busy = true;
+    // The response and the request can both report an end; only the first one frees the slot.
+    let finished = false;
+    const done = () => { if (finished) return; finished = true; this.busy = false; this.drain(); };
+    const request = httpRequest({ host: "127.0.0.1", port: this.port, path: "/v1/activity", method: "POST", agent: this.agent, timeout: 2000,
+      headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json", "content-length": Buffer.byteLength(body) } },
+    response => { response.resume(); response.once("end", done); response.once("error", done); });
+    // Presentation is optional: a missing hub never affects the agent's action.
+    request.once("error", done);
+    request.once("timeout", () => request.destroy());
+    request.end(body);
+  }
+
+  close(): void { this.closed = true; this.pending = undefined; this.agent.destroy(); }
+}
 
 
 /**
@@ -31,7 +78,11 @@ export class IsolatedSession {
   private pids: number[] = [];
   private relay?: SessionRelay;
   private tunnels: { port: number; close(): void }[] = [];
+  private publisher?: ActivityPublisher;
   private closed = false;
+
+  /** Report the agent's window activity to the session's stream hub; a no-op when the session has none. */
+  readonly activity = (frame: HighlightFrame): void => { this.publisher?.observe(frame); };
 
   private constructor(private readonly host: SandboxHost) {}
 
@@ -85,14 +136,16 @@ export class IsolatedSession {
       await this.host.writeFile(`${shared}/${name}`, await readFile(new URL(name, SCRIPTS), "utf8"));
     for (const name of ["window-identity.ps1", "identity-channel.ps1", "identity-channel.cs"])
       await this.host.writeFile(`${shared}/${name}`, await readFile(new URL(name, COMMON_SCRIPTS), "utf8"));
-    const keys = { session: this.ref, clientKey: randomBytes(32).toString("hex"), sessionKey: randomBytes(32).toString("hex") };
+    const stream = { spacesd: randomBytes(32).toString("hex"), viewer: randomBytes(32).toString("hex") };
+    const keys = { session: this.ref, clientKey: randomBytes(32).toString("hex"), sessionKey: randomBytes(32).toString("hex"), stream };
     this.relay = await this.host.reverseRelay(this.workdir.unix, keys, signal);
-    const [driverClient, driverSession, identityClient, identitySession] = this.relay.ports;
+    const [driverClient, driverSession, identityClient, identitySession, , streamSession] = this.relay.ports;
 
     const token = randomBytes(32).toString("hex");
-    // Only the reverse/session role key enters the agent user's private workspace.
+    // Only the reverse/session role key and the stream service's own token enter the agent user's private workspace.
     await this.host.writeFile(`${shared}/session.json`, JSON.stringify({
       token, hostDriverPort: driverSession, hostIdentityPort: identitySession, relay: { session: this.ref, key: keys.sessionKey },
+      stream: { token: stream.spacesd, hostPort: streamSession },
     }));
     await this.phase("start", { version: "1.0.0" }, signal);
     const exec = { version: "1.0.0", process: { commandLine: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${workspace}\\session-start.ps1" -Workspace "${workspace}"`, timeout: EXEC_TIMEOUT_MS } };
@@ -103,12 +156,21 @@ export class IsolatedSession {
     this.tunnels.push(await this.host.forward(driverClient, signal));
     this.tunnels.push(await this.host.forward(identityClient, signal));
     this.endpoint = { url: `http://127.0.0.1:${this.tunnels[0].port}/mcp`, token, identityPort: this.tunnels[1].port, relay: { session: this.ref, key: keys.clientKey }, domain: "windows-session" };
+    if (this.relay.streamPort) {
+      // Tile hosts on the host machine find every session's stream here; the folder is the host user's own.
+      await this.host.writeFile(`${this.workdir.unix}/${STREAM_FILE}`, JSON.stringify({ version: 1, session: this.ref, agentUser: this.user ?? null,
+        url: `ws://127.0.0.1:${this.relay.streamPort}/v1/stream`, token: stream.viewer }, null, 2));
+      const hub = await this.host.forward(this.relay.streamPort, signal);
+      this.tunnels.push(hub);
+      this.publisher = new ActivityPublisher(hub.port, stream.viewer);
+    }
   }
 
   /** Stop the session, remove its agent user and workspace, and stop the host relay. Safe to call more than once. */
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.publisher?.close();
     for (const tunnel of this.tunnels) tunnel.close();
     this.tunnels = [];
     const relayClosed = Promise.allSettled([this.relay?.close()]);

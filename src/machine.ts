@@ -15,7 +15,7 @@ import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "
 import { IsolatedSession } from "./isolated-session.ts";
 import { ComputerSession, type ComputerMode } from "./session.ts";
 import { WebBrowser, WebError } from "./web-browser.ts";
-import type { VisualSettings } from "./native-visuals.ts";
+import type { VisualSettings, WindowObserver } from "./native-visuals.ts";
 import type { HumanStop } from "./human-stop.ts";
 
 /** The configured machine for a connect command; unknown names refuse before any SSH work. */
@@ -74,7 +74,10 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
       endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) }, undefined, options.visuals);
     try { await waitForGuestDriver(driver, signal); }
     catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
-    const guest = new ComputerSession(driver, () => "yolo", options.settings);
+    // An isolated session's stream hub also gets the agent's window activity, for the agent cursor on its tiles.
+    const activity = sandbox instanceof IsolatedSession ? sandbox.activity : undefined;
+    const observer: WindowObserver = activity ? (frame, observed) => { activity(frame); return driver.visuals(frame, observed); } : driver.visuals;
+    const guest = new ComputerSession(driver, () => "yolo", options.settings, observer);
     return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
       close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
   };

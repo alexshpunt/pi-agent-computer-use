@@ -32,7 +32,7 @@ process.stdin.on("data", (chunk: Buffer) => {
     starting = createSessionRelay(keys);
     void starting.then(async relay => {
       if (stopping) { await relay.close(); return; }
-      process.stdout.write(JSON.stringify({ ports: relay.ports }) + "\n");
+      process.stdout.write(JSON.stringify({ ports: relay.ports, ...(relay.streamPort ? { streamPort: relay.streamPort } : {}) }) + "\n");
     }).catch(() => stop(1));
   } catch { void stop(1); }
 });

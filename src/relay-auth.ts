@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { connect, type Socket } from "node:net";
 
 export interface RelayCredentials { session: string; key: string }
-export interface RelayContext { channel: "driver" | "identity"; role: "client" | "session" }
+export interface RelayContext { channel: "driver" | "identity" | "stream"; role: "client" | "session" }
 export const RELAY_AUTH_TIMEOUT_MS = 3000;
 const HEX = /^[a-f0-9]{64}$/;
 const MAX_FRAME = 512;
