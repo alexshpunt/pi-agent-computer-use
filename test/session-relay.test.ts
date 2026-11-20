@@ -76,6 +76,25 @@ test("successive driver requests keep the same authenticated native TCP connecti
   }
 });
 
+test("the stream channel pairs its own client and session peers and refuses driver proofs", async () => {
+  const k = keys(); const relay = await createSessionRelay(k);
+  const sockets: Socket[] = [];
+  try {
+    expect(relay.streamPort).toBeUndefined();
+    await expect(connectRelay(relay.ports[4], { session: k.session, key: k.clientKey }, { channel: "driver", role: "client" })).rejects.toBeInstanceOf(Error);
+    const session = await connectRelay(relay.ports[5], { session: k.session, key: k.sessionKey }, { channel: "stream", role: "session" }); sockets.push(session);
+    const client = await connectRelay(relay.ports[4], { session: k.session, key: k.clientKey }, { channel: "stream", role: "client" }); sockets.push(client);
+    // The session spare learns from one marker byte that a client took it, before any client bytes.
+    const marked = once(session, "data"); session.resume();
+    client.write("hub-bytes");
+    const first = (await marked)[0] as Buffer;
+    expect(first[0]).toBe(1);
+    const reply = once(client, "data"); client.resume();
+    session.write("spacesd-bytes");
+    expect(String((await reply)[0])).toBe("spacesd-bytes");
+  } finally { sockets.forEach(s => s.destroy()); await relay.close(); }
+});
+
 test("a valid key cannot substitute a different session, role or channel", async () => {
   const k = keys(); const relay = await createSessionRelay(k);
   try {
