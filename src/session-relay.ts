@@ -1,31 +1,42 @@
 import { createServer, type AddressInfo, type Server, type Socket } from "node:net";
-import { acceptRelaySocket, validateRelayCredentials, type RelayContext } from "./relay-auth.ts";
+import { acceptRelaySocket, connectRelay, validateRelayCredentials, type RelayContext } from "./relay-auth.ts";
+import { createStreamHub, type StreamHub } from "./session-stream.ts";
 
-export interface SessionRelayKeys { session: string; clientKey: string; sessionKey: string }
+/** `stream` starts the session's window stream hub: `spacesd` authorizes it in the session, `viewer` admits tile hosts. */
+export interface SessionRelayKeys { session: string; clientKey: string; sessionKey: string; stream?: { spacesd: string; viewer: string } }
 export interface SessionRelay {
-  /** driver client/session, then identity client/session. All are host loopback ports. */
-  ports: [number, number, number, number];
+  /** driver client/session, identity client/session, then stream client/session. All are host loopback ports. */
+  ports: [number, number, number, number, number, number];
+  /** The stream hub's host loopback port, when keys.stream was given. */
+  streamPort?: number;
   close(): Promise<void>;
 }
+
+const CHANNELS = ["driver", "identity", "stream"] as const;
+const HEX = /^[a-f0-9]{64}$/;
+const PAIRED = Buffer.from([1]);
 
 /** One isolated session's reverse relay. Only authenticated peers enter independent bounded channel queues. */
 export async function createSessionRelay(keys: SessionRelayKeys,
   options: { authenticationTimeoutMs?: number; maxPending?: number } = {}): Promise<SessionRelay> {
   validateRelayCredentials({ session: keys.session, key: keys.clientKey });
   validateRelayCredentials({ session: keys.session, key: keys.sessionKey });
+  if (keys.stream && !(HEX.test(keys.stream.spacesd) && HEX.test(keys.stream.viewer))) throw new Error("Invalid stream credentials.");
   const limit = options.maxPending ?? 32;
   const servers: Server[] = [];
   const sockets = new Set<Socket>();
+  let hub: StreamHub | undefined;
   let closed = false;
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => closing ??= (async () => {
     closed = true;
+    await hub?.close().catch(() => undefined);
     for (const socket of sockets) socket.destroy();
     await Promise.all(servers.map(server => new Promise<void>(resolve => server.close(() => resolve()))));
   })();
   const ports: number[] = [];
   try {
-    for (const channel of ["driver", "identity"] as const) {
+    for (const channel of CHANNELS) {
       const queues = { client: [] as Socket[], session: [] as Socket[] };
       const detectEnd = (socket: Socket) => socket.read(0);
       const pair = () => {
@@ -36,6 +47,8 @@ export async function createSessionRelay(keys: SessionRelayKeys,
           const destroy = () => { client.destroy(); session.destroy(); };
           client.once("close", destroy); session.once("close", destroy);
           client.once("error", destroy); session.once("error", destroy);
+          // A stream spare learns it was taken from this byte; the session keeps only untaken spares waiting.
+          if (channel === "stream") session.write(PAIRED);
           client.pipe(session); session.pipe(client);
         }
       };
@@ -70,6 +83,11 @@ export async function createSessionRelay(keys: SessionRelayKeys,
         ports.push((server.address() as AddressInfo).port);
       }
     }
-    return { ports: ports as SessionRelay["ports"], close };
+    if (keys.stream) {
+      const auth = { session: keys.session, key: keys.clientKey };
+      hub = await createStreamHub({ session: keys.session, spacesdToken: keys.stream.spacesd, viewerToken: keys.stream.viewer,
+        connect: signal => connectRelay(ports[4], auth, { channel: "stream", role: "client" }, "127.0.0.1", signal) });
+    }
+    return { ports: ports as SessionRelay["ports"], ...(hub ? { streamPort: hub.port } : {}), close };
   } catch (error) { await close(); throw error; }
 }
