@@ -8,7 +8,7 @@ import {
 } from "../src/native-runtime.ts";
 import { McpDriver } from "../src/driver.ts";
 
-const NAMES = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"];
+const NAMES = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "cua-spacesd.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md", "cua-spacesd-LICENSE.txt", "cua-spacesd-THIRD_PARTY_NOTICES.md"];
 const owned: string[] = [];
 const servers: Server[] = [];
 afterEach(async () => {
