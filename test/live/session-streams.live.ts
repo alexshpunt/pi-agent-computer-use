@@ -48,7 +48,11 @@ test("isolated sessions stream their windows to a tile host at the requested rat
     const session = computerSource("sandbox", result.details.sandbox_ref!);
     opened.push(session);
     const ref = result.details.sandbox_ref!;
-    const discovery = JSON.parse(await live.runner.run("bash", ["-c", `cat /mnt/c/Users/*/AppData/Local/PiComputerUse/sessions/${ref}/stream.json`]));
+    // Claim this test session before opening any windows. A desktop tile host also watches stream.json and
+    // may request native size; the hub correctly uses the largest cap across viewers.
+    const discovery = JSON.parse(await live.runner.run("bash", ["-c",
+      'set -eu; set -- /mnt/c/Users/*/AppData/Local/PiComputerUse/sessions/"$1"/stream.json; test "$#" -eq 1; mv -- "$1" "$1.live-test"; cat -- "$1.live-test"',
+      "session-streams.live.ts", ref]));
     expect(discovery).toMatchObject({ version: 1, session: ref, url: expect.stringMatching(/^ws:\/\/127\.0\.0\.1:\d+\/v1\/stream$/) });
     hubs.push({ session: ref, url: discovery.url, token: discovery.token });
     for (let w = 0; w < PER_SESSION; w++) windows.push(await openWindow(live, session, WINDOWS_POWERSHELL_PATH, ticker(`Ticker ${s}-${w}`), `Ticker ${s}-${w}`));
@@ -88,6 +92,7 @@ test("isolated sessions stream their windows to a tile host at the requested rat
   const tickers = report.windows.filter((w: { title: string }) => w.title.startsWith("Ticker"));
   expect(tickers).toHaveLength(SESSIONS * PER_SESSION);
   for (const w of tickers) {
+    expect(w.negotiatedMaxDimension, w.title).toBe(MAX_DIMENSION);
     expect(w.firstFrameMs, w.title).toBeGreaterThanOrEqual(0);
     expect(w.maxFrameDimension, w.title).toBeLessThanOrEqual(MAX_DIMENSION);
     expect(Math.max(w.width, w.height), w.title).toBe(MAX_DIMENSION);

@@ -38,6 +38,10 @@ for (const hub of config.hubs) {
     }
     const message = JSON.parse(event.data);
     if (message.type === "activity") activity.push({ session: hub.session, ...message });
+    if (message.type === "stream" && message.state === "open") {
+      const entry = windows.get(`${hub.session}/${message.window}`);
+      if (entry) entry.negotiatedMaxDimension = message.maxDimension;
+    }
     if (message.type === "error") errors.push(`${hub.session}: ${message.message}`);
     if (message.type !== "windows" && message.type !== "hello") return;
     for (const window of message.windows) {
