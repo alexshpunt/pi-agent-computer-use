@@ -76,6 +76,6 @@ From another machine, set `LIVE_MACHINE=zinpc` to measure the SSH route to a con
 
 ## Limits
 
-- spacesd ignores `maxDimension` on Windows today, so frames come at the window's own size (LPT-1721). Isolated session windows are at most 1024x768.
+- On Windows, spacesd scales H.264 frames to the requested `maxDimension` and the encoder's size limits. It does not resize the window. Use the frame header for encoded dimensions and `bounds` for coordinates in the session desktop. Isolated session windows are at most 1024×768.
 - Input through a stream is not supported: streams are view-only.
 - spacesd's own cursor overlay window exists in the session (full screen, transparent). It does not appear in window captures.
