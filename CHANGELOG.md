@@ -4,6 +4,7 @@
 
 ### Added
 
+- Isolated sessions show their windows as live tiles on the human's desktop layer, above the wallpaper and under the icons and all windows; Ctrl+Alt+Space raises them over all windows. The tile host is built on the machine at the first session and exits with the last one. See [Session tiles](docs/session-tiles.md).
 - Isolated sessions stream their windows to the host machine for live session tiles: cua-spacesd runs in the session, and a stream hub on host loopback serves H.264 frames, the window list and the agent's activity to tile hosts. See [Session window streams](docs/session-streams.md).
 
 ## 0.1.5 — 2026-11-09
