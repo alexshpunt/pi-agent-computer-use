@@ -61,6 +61,19 @@ Messages to the hub, JSON text:
 
 The hub opens one capture per window and gives it the highest rate and size its viewers ask for. A viewer's first frame of a window is a keyframe; a viewer that falls more than 4 MiB behind skips to the next keyframe. In a browser or WebView2, `VideoDecoder` from WebCodecs decodes the payloads (`codec: "avc1.42E01F"`, Annex B input).
 
+## Measure an agent window read
+
+A fresh `Read` with the `image` view takes one driver capture and checks the window's lifetime before and after it. It does not use the tile stream, even when a tile is already subscribed.
+
+Run the read latency check on the Windows machine's WSL for a same-host measurement. Install this repository's locked dependencies and set up the isolated-session runtime first. The check runs a real Pi with a scripted model, opens its own isolated session and Notepad window, and takes five warm-up reads followed by ten measured reads. It fails if any local 320 px read takes 150 ms or more. Session startup and teardown are outside the samples.
+
+```sh
+LIVE_MACHINE=local PI_COMPUTER_PI_COMMAND="$PWD/node_modules/.bin/pi" \
+  npm run test:live -- test/live/window-read-latency.live.ts
+```
+
+From another machine, set `LIVE_MACHINE=zinpc` to measure the SSH route to a configured `zinpc` machine. The check reports the SSH timings without applying the same-host limit. Set `LIVE_READ_MAX_LONG_EDGE=4096` to measure a full-size window.
+
 ## Limits
 
 - spacesd ignores `maxDimension` on Windows today, so frames come at the window's own size (LPT-1721). Isolated session windows are at most 1024x768.
