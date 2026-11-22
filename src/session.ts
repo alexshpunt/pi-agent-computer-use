@@ -2010,15 +2010,20 @@ export class ComputerSession {
       try {
         const known = this.entries.get(ref);
         if (known && !this.allowed(known)) return this.denied(ref);
-        const entry = await this.current(ref, signal);
-        if (known && !this.allowed(known)) return this.denied(ref);
         if ((ui && (zoom || query !== undefined || options)) || (zoom && (query !== undefined || options))) return this.result("refused", "Choose native overview, zoom, or a local UI operation; do not combine them.");
         if (options) {
           try { validateUiCapture(options); }
           catch (error) { return this.result("refused", (error as Error).message); }
         }
+        // Capture already checks the same lifetime before and after the native call.
+        // A second preflight would repeat a relay round trip without protecting any additional operation.
+        const entry = ui || zoom ? await this.current(ref, signal) : known;
+        if (known && !this.allowed(known)) return this.denied(ref);
         if (zoom && !known?.detail) return this.result("refused", "Detail needs a current overview. Observe again.");
-        return entry ? ui ? await this.refineUi(entry, ui, signal) : zoom ? await this.windowDetail(entry, zoom, signal) : await this.capture(entry, signal, query, options, false, deferPresentation) : this.result("refused", "Unknown or closed window_ref. Discover again.");
+        if (!entry) return this.result("refused", "Unknown or closed window_ref. Discover again.");
+        if (ui) return await this.refineUi(entry, ui, signal);
+        if (zoom) return await this.windowDetail(entry, zoom, signal);
+        return await this.capture(entry, signal, query, options, false, deferPresentation);
       } catch (error) { return this.failed(error, false); }
     });
   }
