@@ -64,6 +64,35 @@ test("image-only skips the walk, retires old hints and grounds one pixel action"
   expect(inputs(f.driver)).toHaveLength(1);
 });
 
+test("a fresh image checks the window lifetime once on each side of capture", async () => {
+  const f = await fixture();
+  const steps: string[] = [];
+  const identity = vi.mocked(f.driver.identity!);
+  const call = f.driver.call.bind(f.driver);
+  identity.mockImplementation(async () => { steps.push("identity"); return "same-window"; });
+  f.driver.call = async (name, args, signal) => { steps.push(name); return call(name, args, signal); };
+
+  expect((await f.observe("image")).details.status).toBe("observed");
+  expect(steps).toEqual(["identity", "get_window_state", "identity"]);
+
+  steps.length = 0;
+  identity.mockImplementationOnce(async () => { steps.push("identity"); return "different-window"; });
+  const stale = await f.observe("image");
+  expect(stale.details.status).toBe("refused");
+  expect(steps).toEqual(["identity"]);
+  expect(stale.content.some(block => block.type === "image")).toBe(false);
+});
+
+test("a window replaced during image capture cannot return pixels or an input grant", async () => {
+  const f = await fixture();
+  vi.mocked(f.driver.identity!).mockResolvedValueOnce("same-window").mockResolvedValue("different-window");
+  const stale = await f.observe("image");
+  expect(f.driver.call).toHaveBeenCalledWith("get_window_state", expect.anything(), undefined);
+  expect(stale.details.status).toBe("refused");
+  expect(stale.details).not.toHaveProperty("observation_id");
+  expect(stale.content.some(block => block.type === "image")).toBe(false);
+});
+
 test("UI-only returns no pixels or old image geometry and permits current hints", async () => {
   const f = await fixture(); const first = await f.observe(); const ui = await f.observe("ui");
   expect(ui.details.status).toBe("observed");
