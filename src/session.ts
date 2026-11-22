@@ -2204,7 +2204,8 @@ export class ComputerSession {
           if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
           // Input may change the page, so the window's DOM snapshot retires with its native capture.
           entry.observation = undefined; entry.detail = undefined; entry.dom = undefined;
-          const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length);
+          const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length) ||
+            (step.action === "timeline" && step.events?.some(event => event.type !== "key_down" && event.type !== "key_up"));
           if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
           const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
             ...(step.via ? { via_points: step.via.length } : {}), ...(step.actions ? { actions: step.actions.map(pointer => { const { via, ...compact } = pointer; return { ...compact, ...(via ? { via_points: via.length } : {}) }; }) } : {}) };
@@ -2246,9 +2247,16 @@ export class ComputerSession {
           const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
             : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
             : isCoordinateScroll(step) && (delivery_mode !== "foreground" || !scrollReceipt(step, state)));
-          const status = refused ? "refused" : uncertain || inconsistent ? "unknown" : "delivered";
+          // A headless MXC session can accept pointer events without moving the cursor or reaching the target.
+          // A UIA element action is not pointer input, even when exposed as a click.
+          const isolatedPointerUnconfirmed = !refused && !uncertain && pointerAction &&
+            this.driver.sourceDomain === "windows-session" && state.effect !== "confirmed" &&
+            !(uia_only || (step.element_token && state.route === "accessibility"));
+          const status = refused ? "refused" : uncertain || inconsistent || isolatedPointerUnconfirmed ? "unknown" : "delivered";
+          const receipt = isolatedPointerUnconfirmed && state.code === undefined ? { ...state, code: "isolated_pointer_unconfirmed" } : state;
+          const pointerNote = isolatedPointerUnconfirmed ? "Windows did not confirm pointer input in this isolated session. Read the window before retrying." : "";
           row.status = status; inFlight = false;
-          const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, state);
+          const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, receipt);
           row.action_capability = capability;
           if (status === "delivered") trace.completed++;
           const resolvedPoint = status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds
@@ -2278,8 +2286,8 @@ export class ComputerSession {
           const returnedFocus = focusReturn(nativeMessage);
           const kept = returnedFocus?.note;
           const result = this.result(status, stopped ? `The human stopped computer use with Escape. ${status === "refused" ? "Nothing was sent." : "Input stopped part way; observe before anything else once computer use is on again."} Do not retry or work around it; tell the human and wait until they turn it on again with /computer-mode.`
-            : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}${kept ? `${kept}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}Observe again to verify application state.${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
-            { ...state, ...(returnedFocus ? { focus_return: returnedFocus.outcome } : {}), ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
+            : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}${kept ? `${kept}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}${pointerNote || "Observe again to verify application state."}${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
+            { ...receipt, ...(returnedFocus ? { focus_return: returnedFocus.outcome } : {}), ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
               overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
               resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
             ...(native.isError || !native.structuredContent ? {
@@ -2289,7 +2297,7 @@ export class ComputerSession {
             // Pixel-only input keeps the overview usable: the next call checks the window size instead of capturing again.
             if (status === "delivered" && this.driver.windowManagement && observed.bounds && commands.every(item => item.element_token === undefined && !isSemanticAction(item.action)))
               entry.observation = { ...observed, captureId: undefined, pixelsOnly: true };
-            return finish(result, status === "delivered" ? "" : `Stopped after native ${status}; later steps were not dispatched.`);
+            return finish(result, status === "delivered" ? "" : `${pointerNote ? `${pointerNote} ` : ""}Later steps were not dispatched after ${status}.`);
           }
         }
         throw new Error("No complete input step.");

@@ -1234,7 +1234,7 @@ export class ComputerResources {
     if (!structural || result.details.status !== "refused" || capability?.background !== "unavailable") return result;
     // A ref acted on a capture without the viewport's pixels; its retry point is in the window's latest image.
     const again = await this.nativeStep(window, session, { ...retry(), real: true }, cwd, signal, box ? viewport : undefined);
-    return { ...again, content: [{ type: "text", text: `No UI Automation pattern of the target carried this ${plan.label}, so this call used the real pointer.` }, ...again.content],
+    return { ...again, content: [{ type: "text", text: `No UI Automation pattern of the target carried this ${plan.label}, so this call ${again.details.status === "delivered" ? "used the real pointer" : "attempted real pointer input"}.` }, ...again.content],
       ...(viewport ? { details: { ...again.details, viewport: again.details.viewport ?? result.details.viewport } } : {}) };
   }
 
