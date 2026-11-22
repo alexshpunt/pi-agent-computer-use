@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -109,6 +110,35 @@ test("the agent's window activity reaches the stream hub without images or typed
     expect(posts[0].auth).toBe(`Bearer ${f.relayKeys[0].stream!.viewer}`);
     expect(posts[0].body).toEqual({ pid: 7, bounds: { x: 10, y: 20, width: 300, height: 200 }, kind: "action", point: { x: 100, y: 50 }, action: "click", outcome: "delivered" });
   } finally { await session.close(); await new Promise<void>(resolve => hub.close(() => resolve())); }
+});
+
+test("a streaming session starts the machine's tile host without waiting for it, and names its state", async () => {
+  const f = await fakeHost();
+  const calls: { host: SandboxHost; local: string; sessions: string[] }[] = [];
+  let finish!: (state: "started") => void;
+  const session = await IsolatedSession.open(f.host, "/mnt/c/runtime/cua-driver.exe", undefined, { tileHost: (host, local) => {
+    const sessions = path.join(f.root, "Local/PiComputerUse/sessions");
+    calls.push({ host, local, sessions: readdirSync(sessions).filter(ref => existsSync(path.join(sessions, ref, "stream.json"))) });
+    return new Promise(resolve => { finish = resolve; });
+  } });
+  try {
+    expect(calls).toHaveLength(1);
+    expect(calls[0].host).toBe(f.host);
+    expect(calls[0].local).toBe("C:\\Local");
+    // The tiles find the session through its stream.json, which exists before the host starts.
+    expect(calls[0].sessions).toEqual([session.ref]);
+    expect(session.describe("computer:sandbox/x")).toContain("Live tiles on the human's desktop: starting.");
+    finish("started");
+    await new Promise(resolve => setImmediate(resolve));
+    expect(session.describe("computer:sandbox/x")).toContain("Live tiles on the human's desktop: shown under all windows");
+  } finally { await session.close(); }
+
+  const failing = await fakeHost();
+  const broken = await IsolatedSession.open(failing.host, "/mnt/c/runtime/cua-driver.exe", undefined, { tileHost: async () => { throw new Error("csc is missing"); } });
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    expect(broken.describe("computer:sandbox/y")).toContain("Live tiles on the human's desktop: unavailable (csc is missing).");
+  } finally { await broken.close(); }
 });
 
 test("a failed second forward closes the first tunnel and relay before removing the session", async () => {
