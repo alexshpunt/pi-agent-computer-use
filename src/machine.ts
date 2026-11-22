@@ -13,6 +13,7 @@ import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
 import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { IsolatedSession } from "./isolated-session.ts";
+import { startTileHost } from "./tile-host.ts";
 import { ComputerSession, type ComputerMode } from "./session.ts";
 import { WebBrowser, WebError } from "./web-browser.ts";
 import type { VisualSettings, WindowObserver } from "./native-visuals.ts";
@@ -67,7 +68,7 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
     const commandPath = machine ? machine.command ?? await prepareRemoteRuntime(runner, signal) : config!.command;
     const runtime = machine ? machine.command ? machine.runtime : "windows-desktop" : config!.runtime;
     const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), commandPath, parsed, signal)
-      : await IsolatedSession.open(runnerHost(runner), commandPath, signal);
+      : await IsolatedSession.open(runnerHost(runner), commandPath, signal, { tileHost: startTileHost });
     // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
     const override = machine ? machine.driverOverride : config!.driverOverride;
     const driver = new McpDriver({ command: commandPath, ...(runtime ? { runtime } : {}), ...(override ? { driverOverride: true as const } : {}),
