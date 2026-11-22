@@ -7,6 +7,7 @@ import type { GuestEndpoint } from "./config.ts";
 import type { HighlightFrame } from "./native-visuals.ts";
 import type { SandboxHost } from "./sandbox.ts";
 import type { SessionRelay } from "./session-relay.ts";
+import type { TileHostStarter } from "./tile-host.ts";
 
 const SCRIPTS = new URL("../scripts/session/", import.meta.url);
 const COMMON_SCRIPTS = new URL("../scripts/", import.meta.url);
@@ -79,16 +80,20 @@ export class IsolatedSession {
   private relay?: SessionRelay;
   private tunnels: { port: number; close(): void }[] = [];
   private publisher?: ActivityPublisher;
+  private tiles: { state: "off" | "starting" | "started" | "running" | "failed"; error?: string } = { state: "off" };
   private closed = false;
 
   /** Report the agent's window activity to the session's stream hub; a no-op when the session has none. */
   readonly activity = (frame: HighlightFrame): void => { this.publisher?.observe(frame); };
 
-  private constructor(private readonly host: SandboxHost) {}
+  private constructor(private readonly host: SandboxHost, private readonly tileHost?: TileHostStarter) {}
 
-  /** Provision and start a session with a running driver; on any failure everything started is removed again. */
-  static async open(host: SandboxHost, runtimeCommand: string, signal?: AbortSignal): Promise<IsolatedSession> {
-    const session = new IsolatedSession(host);
+  /**
+   * Provision and start a session with a running driver; on any failure everything started is removed again.
+   * `tileHost` starts the machine's session tile host once the session streams; the session never waits for it.
+   */
+  static async open(host: SandboxHost, runtimeCommand: string, signal?: AbortSignal, options: { tileHost?: TileHostStarter } = {}): Promise<IsolatedSession> {
+    const session = new IsolatedSession(host, options.tileHost);
     try { await session.start(runtimeCommand, signal); }
     catch (error) { await session.close(); throw error; }
     return session;
@@ -163,6 +168,12 @@ export class IsolatedSession {
       const hub = await this.host.forward(this.relay.streamPort, signal);
       this.tunnels.push(hub);
       this.publisher = new ActivityPublisher(hub.port, stream.viewer);
+      if (this.tileHost) {
+        // The tiles are a view for the human: a failed build or start is reported in describe(), never fails the session.
+        this.tiles = { state: "starting" };
+        void this.tileHost(this.host, local).then(state => { this.tiles = { state }; },
+          error => { this.tiles = { state: "failed", error: error instanceof Error ? error.message : String(error) }; });
+      }
     }
   }
 
@@ -187,6 +198,9 @@ export class IsolatedSession {
   describe(source: string): string {
     return [`# Isolated Windows session`, `Address: ${source}`, `Agent user: ${this.user ?? "unknown"}`,
       "A separate Windows session for the agent on this machine (MXC isolation_session): its own desktop, clipboard and input, invisible to the human. Several can run at once.",
-      "Search this address for its windows. computer_open at this address starts an app in it; Delete removes it."].join("\n");
+      "Search this address for its windows. computer_open at this address starts an app in it; Delete removes it.",
+      ...(this.tiles.state === "off" ? [] : [this.tiles.state === "failed" ? `Live tiles on the human's desktop: unavailable (${this.tiles.error}).`
+        : this.tiles.state === "starting" ? "Live tiles on the human's desktop: starting."
+        : "Live tiles on the human's desktop: shown under all windows; Ctrl+Alt+Space raises them over all windows."])].join("\n");
   }
 }
