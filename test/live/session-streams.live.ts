@@ -11,6 +11,8 @@ import { connectLive, openWindow, text, WINDOWS_POWERSHELL_PATH } from "./remote
 const live = await connectLive();
 const SESSIONS = Number(process.env.STREAM_SESSIONS ?? 3), PER_SESSION = Number(process.env.STREAM_WINDOWS ?? 2);
 const FPS = Number(process.env.STREAM_FPS ?? 10), SECONDS = Number(process.env.STREAM_SECONDS ?? 30);
+// Smaller than the ticker's 480×320 window, including at 100% DPI.
+const MAX_DIMENSION = 240;
 const opened: string[] = [];
 afterAll(async () => { for (const session of opened) await live.insert(session, { action: "close" }).catch(() => undefined); await live.close(); });
 
@@ -59,7 +61,7 @@ test("isolated sessions stream their windows to a tile host at the requested rat
   probe.stdout.on("data", (chunk: Buffer) => { output += chunk; });
   probe.stderr.on("data", (chunk: Buffer) => process.stderr.write(chunk));
   const done = new Promise(resolve => probe.once("close", resolve));
-  probe.stdin.end(JSON.stringify({ hubs, seconds: SECONDS, warmup: 5, maxFps: FPS, maxDimension: 640, include: "^(Ticker|.*Notepad)",
+  probe.stdin.end(JSON.stringify({ hubs, seconds: SECONDS, warmup: 5, maxFps: FPS, maxDimension: MAX_DIMENSION, include: "^(Ticker|.*Notepad)",
     record: { title: "Ticker 0-0", file: "/tmp/pi-stream-ticker.h264" } }));
 
   await new Promise(resolve => setTimeout(resolve, 5000));
@@ -85,7 +87,12 @@ test("isolated sessions stream their windows to a tile host at the requested rat
   expect(report.errors).toEqual([]);
   const tickers = report.windows.filter((w: { title: string }) => w.title.startsWith("Ticker"));
   expect(tickers).toHaveLength(SESSIONS * PER_SESSION);
-  for (const w of tickers) expect(w.fps, w.title).toBeGreaterThanOrEqual(Math.min(5, FPS * 0.8));
+  for (const w of tickers) {
+    expect(w.firstFrameMs, w.title).toBeGreaterThanOrEqual(0);
+    expect(w.maxFrameDimension, w.title).toBeLessThanOrEqual(MAX_DIMENSION);
+    expect(Math.max(w.width, w.height), w.title).toBe(MAX_DIMENSION);
+    expect(w.fps, w.title).toBeGreaterThanOrEqual(Math.min(5, FPS * 0.8));
+  }
   const idle = report.windows.find((w: { title: string }) => /Notepad/.test(w.title));
   // An unchanged window still shows: its first frame is a keyframe, then it costs close to nothing.
   expect(idle.firstFrameMs, "the idle window's first frame").toBeGreaterThan(0);

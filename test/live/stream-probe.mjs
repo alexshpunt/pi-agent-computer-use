@@ -29,6 +29,7 @@ for (const hub of config.hubs) {
       const now = performance.now();
       entry.firstFrameMs ??= Math.round(now - entry.subscribedAt);
       entry.width = header.width; entry.height = header.height;
+      entry.maxFrameDimension = Math.max(entry.maxFrameDimension ?? 0, header.width, header.height);
       if (header.keyframe) entry.keyframes++;
       if (now >= measureFrom) { entry.frames++; entry.bytes += bytes.length - 4 - length; entry.times.push(now); }
       if (recording === undefined && config.record && include.test(entry.title) && entry.title.includes(config.record.title) && header.keyframe) recording = entry.key;
