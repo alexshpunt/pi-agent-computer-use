@@ -98,12 +98,55 @@ canvas {
 .cursor svg { width: 100%; height: 100%; }
 .cursor path { fill: var(--accent); stroke: white; stroke-width: 1.2; stroke-linejoin: round; }
 
-#hint {
+/* A tile that comes into view, such as on a layer switch, fades in at its place instead of moving there. */
+.tile.appear { transition: box-shadow 0.2s ease; animation: tile-in 0.2s ease; }
+@keyframes tile-in { from { opacity: 0; transform: scale(0.97); } }
+
+/* Layers and hotkeys, centred under the tiles; readable over any wallpaper. */
+#footer {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  color: rgb(235 237 242 / 0.75);
-  font-size: 13px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: rgb(24 26 31 / 0.82);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(255 255 255 / 0.08);
+  color: rgb(235 237 242 / 0.85);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-#hint:empty { display: none; }
+#footer[hidden] { display: none; }
+
+.dots { display: flex; gap: 6px; }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(235 237 242 / 0.3);
+}
+
+.dot.shown { background: rgb(235 237 242 / 0.95); }
+.dot.busy { box-shadow: 0 0 0 2px var(--accent); }
+
+.keys {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.1);
+  color: rgb(235 237 242 / 0.95);
+}
+
+.separator { width: 1px; height: 14px; background: rgb(255 255 255 / 0.2); }
+
+.app {
+  flex: none;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.6;
+}

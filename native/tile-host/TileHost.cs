@@ -88,9 +88,11 @@ namespace PiComputerUse.TileHost
         public string PageDirectory;
         public string DataDirectory;
         public string LogFile;
-        public uint HotkeyModifiers = Native.MOD_CONTROL | Native.MOD_ALT;
-        public Keys HotkeyKey = Keys.Space;
-        public string HotkeyText = "Ctrl+Alt+Space";
+        /// <summary>Raises the tiles over all windows and puts them back.</summary>
+        public Hotkey Overlay = Hotkey.Parse("Ctrl+Alt+Space");
+        /// <summary>Show the next or previous layer of tiles. Not Ctrl+Alt+arrows: Intel graphics drivers rotate the screen on them.</summary>
+        public Hotkey NextLayer = Hotkey.Parse("Ctrl+Alt+PageDown");
+        public Hotkey PreviousLayer = Hotkey.Parse("Ctrl+Alt+PageUp");
         public int IdleExitSeconds = 20;
         /// <summary>Chromium switches for the tile page: no network or component work a local page never needs.</summary>
         public string BrowserArguments = "--disable-background-networking --disable-component-update --no-pings --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,SpareRendererForSitePerProcess --autoplay-policy=no-user-gesture-required";
@@ -120,17 +122,27 @@ namespace PiComputerUse.TileHost
                 {
                     if (!int.TryParse(value, out options.IdleExitSeconds) || options.IdleExitSeconds < 0) throw new ArgumentException("--idle-exit needs a number of seconds: " + value + ".");
                 }
-                else if (name == "--hotkey") options.SetHotkey(value);
+                else if (name == "--hotkey") options.Overlay = Hotkey.Parse(value);
+                else if (name == "--next-layer-hotkey") options.NextLayer = Hotkey.Parse(value);
+                else if (name == "--previous-layer-hotkey") options.PreviousLayer = Hotkey.Parse(value);
                 else if (name == "--browser-args") options.BrowserArguments = value;
                 else throw new ArgumentException("Unknown option " + name + ".");
             }
             return options;
         }
+    }
 
-        /// <summary>A hotkey such as "Ctrl+Alt+Space" or "Win+Shift+F12"; "none" turns it off.</summary>
-        void SetHotkey(string text)
+    /// <summary>A global hotkey such as "Ctrl+Alt+Space" or "Win+Shift+F12"; "none" turns it off.</summary>
+    sealed class Hotkey
+    {
+        public uint Modifiers;
+        public Keys Key;
+        public string Text;
+        public bool Off { get { return Key == Keys.None; } }
+
+        public static Hotkey Parse(string text)
         {
-            if (text.Equals("none", StringComparison.OrdinalIgnoreCase)) { HotkeyKey = Keys.None; HotkeyText = "none"; return; }
+            if (text.Equals("none", StringComparison.OrdinalIgnoreCase)) return new Hotkey { Key = Keys.None, Text = "none" };
             uint modifiers = 0;
             var key = Keys.None;
             foreach (var part in text.Split('+'))
@@ -144,9 +156,7 @@ namespace PiComputerUse.TileHost
                 else throw new ArgumentException("Invalid hotkey " + text + ".");
             }
             if (key == Keys.None || modifiers == 0) throw new ArgumentException("A hotkey needs at least one modifier and one key: " + text + ".");
-            HotkeyModifiers = modifiers;
-            HotkeyKey = key;
-            HotkeyText = text;
+            return new Hotkey { Modifiers = modifiers, Key = key, Text = text };
         }
     }
 
@@ -185,6 +195,7 @@ namespace PiComputerUse.TileHost
         public string url;
         public string token;
         public string agentUser;
+        public long created;
         public int port;
     }
 
@@ -206,7 +217,10 @@ namespace PiComputerUse.TileHost
         DateTime lastPageRestart = DateTime.MinValue;
         bool scanning;
         bool overlay;
-        bool hotkey;
+        /// <summary>The hotkeys by their RegisterHotKey id (index + 1), and whether each is registered.</summary>
+        readonly Hotkey[] hotkeys;
+        readonly bool[] registered;
+        const int OverlayHotkey = 1, NextLayerHotkey = 2, PreviousLayerHotkey = 3;
         IntPtr reorderHook;
         Native.WinEventProc reorderCallback;
         readonly List<IntPtr> windowHooks = new List<IntPtr>();
@@ -218,10 +232,13 @@ namespace PiComputerUse.TileHost
             this.options = options;
             this.instance = instance;
             messages = new MessageWindow(this);
-            if (options.HotkeyKey != Keys.None)
+            hotkeys = new[] { options.Overlay, options.NextLayer, options.PreviousLayer };
+            registered = new bool[hotkeys.Length];
+            for (var i = 0; i < hotkeys.Length; i++)
             {
-                hotkey = Native.RegisterHotKey(messages.Handle, 1, options.HotkeyModifiers | Native.MOD_NOREPEAT, (uint)options.HotkeyKey);
-                Log.Write(hotkey ? "hotkey " + options.HotkeyText : "hotkey " + options.HotkeyText + " is taken by another program");
+                if (hotkeys[i].Off) continue;
+                registered[i] = Native.RegisterHotKey(messages.Handle, i + 1, hotkeys[i].Modifiers | Native.MOD_NOREPEAT, (uint)hotkeys[i].Key);
+                Log.Write("hotkey " + hotkeys[i].Text + (registered[i] ? "" : " is taken by another program"));
             }
             // The tiles stay right under the icons when another program, such as a wallpaper app, reorders Progman's children.
             reorderCallback = OnReorder;
@@ -276,9 +293,15 @@ namespace PiComputerUse.TileHost
             Recreate("the tile page restarts");
         }
 
-        internal void OnHotkey()
+        internal void OnHotkey(int id)
         {
             if (tiles == null) return;
+            if (id == NextLayerHotkey || id == PreviousLayerHotkey)
+            {
+                tiles.Post(json.Serialize(new Dictionary<string, object> { { "type", "layer" }, { "step", id == NextLayerHotkey ? 1 : -1 } }));
+                return;
+            }
+            if (id != OverlayHotkey) return;
             overlay = !overlay;
             Log.Write(overlay ? "overlay on" : "overlay off");
             if (overlay) tiles.ShowOverlay(); else tiles.Attach();
@@ -344,6 +367,8 @@ namespace PiComputerUse.TileHost
                         url = data["url"] as string,
                         token = data["token"] as string,
                         agentUser = data.ContainsKey("agentUser") ? data["agentUser"] as string : null,
+                        // When the session opened: the page orders the sessions' tiles by it.
+                        created = (long)(File.GetCreationTimeUtc(file) - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds,
                     };
                     Uri uri;
                     if (info.session == null || info.token == null || !Uri.TryCreate(info.url, UriKind.Absolute, out uri) || uri.Host != "127.0.0.1") continue;
@@ -353,7 +378,7 @@ namespace PiComputerUse.TileHost
                 // A file whose hub does not answer belongs to a Pi process that ended without closing its session.
                 if (Answers(info.port)) found.Add(info);
             }
-            return found.OrderBy(s => s.session, StringComparer.Ordinal).ToList();
+            return found.OrderBy(s => s.created).ThenBy(s => s.session, StringComparer.Ordinal).ToList();
         }
 
         static bool Answers(int port)
@@ -391,8 +416,14 @@ namespace PiComputerUse.TileHost
             tiles.Post(json.Serialize(new Dictionary<string, object>
             {
                 { "type", "sessions" },
-                { "sessions", sessions.Select(s => new Dictionary<string, object> { { "session", s.session }, { "url", s.url }, { "token", s.token }, { "agentUser", s.agentUser } }).ToList() },
-                { "hotkey", hotkey ? options.HotkeyText : null },
+                { "sessions", sessions.Select(s => new Dictionary<string, object> { { "session", s.session }, { "url", s.url }, { "token", s.token }, { "agentUser", s.agentUser }, { "created", s.created } }).ToList() },
+                // The page names only the hotkeys that work.
+                { "hotkeys", new Dictionary<string, object>
+                {
+                    { "overlay", registered[OverlayHotkey - 1] ? hotkeys[OverlayHotkey - 1].Text : null },
+                    { "nextLayer", registered[NextLayerHotkey - 1] ? hotkeys[NextLayerHotkey - 1].Text : null },
+                    { "previousLayer", registered[PreviousLayerHotkey - 1] ? hotkeys[PreviousLayerHotkey - 1].Text : null },
+                } },
             }));
         }
 
@@ -403,7 +434,7 @@ namespace PiComputerUse.TileHost
             if (reorderHook != IntPtr.Zero) Native.UnhookWinEvent(reorderHook);
             foreach (var hook in windowHooks) if (hook != IntPtr.Zero) Native.UnhookWinEvent(hook);
             coverCheck.Stop();
-            if (hotkey) Native.UnregisterHotKey(messages.Handle, 1);
+            for (var i = 0; i < registered.Length; i++) if (registered[i]) Native.UnregisterHotKey(messages.Handle, i + 1);
             if (tiles != null) tiles.Destroy();
             messages.DestroyHandle();
             base.ExitThreadCore();
@@ -412,7 +443,7 @@ namespace PiComputerUse.TileHost
         internal void Shutdown() { ExitThread(); }
     }
 
-    /// <summary>A hidden top-level window: it gets broadcasts (TaskbarCreated, display changes) and the hotkey.</summary>
+    /// <summary>A hidden top-level window: it gets broadcasts (TaskbarCreated, display changes) and the hotkeys.</summary>
     sealed class MessageWindow : NativeWindow
     {
         static readonly uint TaskbarCreated = Native.RegisterWindowMessage("TaskbarCreated");
@@ -430,7 +461,7 @@ namespace PiComputerUse.TileHost
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == Native.WM_HOTKEY) host.OnHotkey();
+            if (m.Msg == Native.WM_HOTKEY) host.OnHotkey(m.WParam.ToInt32());
             else if (TaskbarCreated != 0 && m.Msg == (int)TaskbarCreated) host.Recreate("Explorer restarted");
             else if (m.Msg == Native.WM_DISPLAYCHANGE || (m.Msg == Native.WM_SETTINGCHANGE && m.WParam.ToInt32() == Native.SPI_SETWORKAREA)) host.OnDisplayChange();
             else if (m.Msg == Native.WM_ENDSESSION && m.WParam != IntPtr.Zero) host.Shutdown();
