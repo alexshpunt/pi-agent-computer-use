@@ -1,6 +1,6 @@
 # Session window streams
 
-Every isolated session streams its windows to the machine that hosts it, outside the agent's tool calls and outside the model's context. A tile host, such as the desktop-layer session tiles, shows them live.
+Every isolated session streams its windows to the machine that hosts it, outside the agent's tool calls and outside the model's context. A tile host, such as the desktop-layer [session tiles](session-tiles.md), shows them live.
 
 ## How it works
 
