@@ -87,8 +87,8 @@ async function fakeSpacesd(options: { holdUpgrade?: Promise<void>; failOpen?: nu
   };
 }
 
-async function hubFor(spacesd: Awaited<ReturnType<typeof fakeSpacesd>>): Promise<StreamHub> {
-  const hub = await createStreamHub({ session: "is-test", spacesdToken: SPACESD, viewerToken: VIEWER, connect: spacesd.connect });
+async function hubFor(spacesd: Awaited<ReturnType<typeof fakeSpacesd>>, accept?: (pid: number) => boolean): Promise<StreamHub> {
+  const hub = await createStreamHub({ session: "is-test", spacesdToken: SPACESD, viewerToken: VIEWER, connect: spacesd.connect, ...(accept ? { accept } : {}) });
   cleanups.push(() => hub.close());
   return hub;
 }
@@ -219,6 +219,28 @@ test("the agent's activity names the window it happened in and a closed window e
   tile.send({ type: "subscribe", window: "w-b" });
   await until(() => tile.messages.some(m => m.type === "error"));
   expect(tile.messages.find(m => m.type === "error")!.message).toMatch(/No window w-b/);
+});
+
+// LPT-1809: in a sandbox other agents share, an agent's tiles show only the windows of the apps it started.
+test("a hub of a shared desktop shows only the agent's own processes, and a process it starts later after its next activity", async () => {
+  const spacesd = await fakeSpacesd();
+  const mine = new Set([7]);
+  const hub = await hubFor(spacesd, pid => mine.has(pid));
+  const tile = await viewer(hub);
+  await until(() => tile.messages.some(m => m.type === "windows"), "the window list");
+  expect((tile.messages.find(m => m.type === "windows")!.windows as { id: string }[]).map(window => window.id)).toEqual(["w-a"]);
+  tile.send({ type: "subscribe", window: "w-b" });
+  await until(() => tile.messages.some(m => m.type === "error"), "the refusal");
+  expect(spacesd.media).toEqual([]);
+
+  // The agent starts the process of w-b and looks at it: the next window list includes it.
+  mine.add(8);
+  const post = await fetch(`http://127.0.0.1:${hub.port}/v1/activity`, { method: "POST", headers: { authorization: `Bearer ${VIEWER}` },
+    body: JSON.stringify({ pid: 8, kind: "overview", bounds: { x: 400, y: 20, width: 200, height: 100 } }) });
+  expect(post.status).toBe(204);
+  await until(() => tile.messages.filter(m => m.type === "windows").length === 2, "the new list");
+  expect((tile.messages.filter(m => m.type === "windows").at(-1)!.windows as { id: string }[]).map(window => window.id)).toEqual(["w-a", "w-b"]);
+  expect(tile.messages.find(m => m.type === "activity")).toMatchObject({ window: "w-b", pid: 8 });
 });
 
 test("a viewer that leaves while its window's media socket opens leaves no capture running", async () => {
