@@ -65,10 +65,12 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
     } catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
     const machine = machineName ? await machineConfig(cwd, machineName) : undefined;
     const config = machine ? undefined : await loadComputerConfig(cwd);
+    // Zones come from this project's settings and apply when this agent starts the sandbox.
+    const zones = !!parsed && (machine ? (await readMachineSettings(cwd)).sandbox : config!.sandbox)?.zones === true;
     const runner = machine ? sshRunner(machine.ssh) : localRunner(config!.interop);
     const commandPath = machine ? machine.command ?? await prepareRemoteRuntime(runner, signal) : config!.command;
     const runtime = machine ? machine.command ? machine.runtime : "windows-desktop" : config!.runtime;
-    const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), commandPath, parsed, signal)
+    const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), commandPath, { ...parsed, zones }, signal)
       : await IsolatedSession.open(runnerHost(runner), commandPath, signal, { tileHost: startTileHost });
     // The endpoint selects the guest transport; ssh only makes the runtime hash check read the machine's own bytes.
     const override = machine ? machine.driverOverride : config!.driverOverride;
@@ -82,21 +84,22 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
     // Agents share the one Windows Sandbox: each sees only the apps it starts, and input takes turns through the guest's lease.
     const shared = sandbox instanceof WindowsSandbox && sandbox.endpoint ? sandbox.endpoint : undefined;
     const lease = shared ? new GuestInputLease({ connect: signal => connectLoopback(shared.leasePort, signal), token: shared.token, agent: sandbox.ref }) : undefined;
-    // Each agent works in its own zone of the guest screen; with every zone taken, it gets the machine's main desktop.
+    // With zones on, each agent works in its own zone of the guest screen; with every zone taken, it gets the machine's
+    // main desktop. The sandbox decides: the agent that started it chose whether its zones are on.
     let zone: ScreenZone | undefined;
     if (lease) {
-      let seat: ScreenZone | "full";
+      let seat: ScreenZone | "full" | "off";
       try { seat = await joinZones(lease, signal); }
       catch (error) { lease.close(); await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
       if (seat === "full") {
         lease.close(); await driver.close().catch(() => undefined); await sandbox.close();
         throw new SandboxFullError(MAX_ZONES);
       }
-      zone = seat;
+      if (seat !== "off") zone = seat;
     }
     const guest = new ComputerSession(driver, () => "yolo", options.settings, observer, undefined, undefined, shared ? { lease, launchedOnly: true, zone } : {});
-    // Tiles of this agent's sandbox windows, when the sandbox runs on this machine: its stream hub runs in this process.
-    if (shared && !machineName) await (sandbox as WindowsSandbox).showTiles(pid => guest.ownsProcess(pid), startTileHost, signal)
+    // Tiles of this agent's sandbox windows on the desktop of the sandbox's machine; its stream hub runs in this process.
+    if (shared) await (sandbox as WindowsSandbox).showTiles(pid => guest.ownsProcess(pid), startTileHost, signal)
       .catch(async error => { lease?.close(); await guest.close().catch(() => undefined); await sandbox.close(); throw error; });
     return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source) + (zone ? `\n${zoneText(zone)} This session's windows stay inside it; zones change as agents join and leave.` : ""),
       ...(machineName ? { machine: machineName } : {}),
@@ -108,7 +111,7 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
  * Join the shared sandbox's screen zones. The guest lease service starts last and compiles its code first, so right
  * after the sandbox starts it may not listen yet: connection failures are retried for a while.
  */
-async function joinZones(lease: GuestInputLease, signal?: AbortSignal, timeoutMs = 30_000): Promise<ScreenZone | "full"> {
+async function joinZones(lease: GuestInputLease, signal?: AbortSignal, timeoutMs = 30_000): Promise<ScreenZone | "full" | "off"> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try { return await lease.join(signal); }

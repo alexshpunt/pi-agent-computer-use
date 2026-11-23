@@ -7,10 +7,11 @@
 //   C: release                S: released | held <reason>
 //   C: claim <pid>            S: claimed | taken      (a process belongs to the first agent that claims it)
 //   C: state                  S: state holder=<agent|-> sticky=<0|1> waiting=<n> seated=<n>
-//   C: join                   S: zone <x> <y> <width> <height> <index> <count> <screen width> <screen height> | full <count>
+//   C: join                   S: zone <x> <y> <width> <height> <index> <count> <screen width> <screen height> | full <count> | off
 //   C: zone                   S: zone ... (as join) | none
 //   C: leave                  (the server closes the connection; the zone goes at once)
-// join gives the agent its own zone of the guest screen (guest-zones.cs), at most PiZones.MaxSeats agents; zone tells
+// When the sandbox was started with zones on (Run's screenZones), join gives the agent its own zone of the guest screen
+// (guest-zones.cs), at most PiZones.MaxSeats agents; without them it answers off and no window is moved. zone tells
 // its current zone, which changes as agents join and leave. Rectangles are physical guest pixels of the work area.
 // A connection that closes without leave keeps its agent's zone for 10 s, so the agent gets it back when it reconnects.
 // The holder keeps the lease after release while the foreground thread shows transient UI (a menu, mouse capture,
@@ -70,6 +71,8 @@ public static class PiInputLease
     static bool sticky;
     static DateTime stickySince;
     static int stickyMs = 15000;
+    /// Whether agents get screen zones; set once by Run.
+    static bool zones;
 
     /// Why the guest's input is not idle right now, or null when it is.
     public static string Transient()
@@ -263,7 +266,7 @@ public static class PiInputLease
                 else if (line == "release") writer.WriteLine(Release(agent));
                 else if (line == "state") writer.WriteLine(State());
                 else if (line.StartsWith("claim ")) writer.WriteLine(Claim(agent, line.Substring(6)));
-                else if (line == "join") writer.WriteLine(PiZones.Join(agent.Name, agent) ?? "full " + PiZones.Seated);
+                else if (line == "join") writer.WriteLine(!zones ? "off" : PiZones.Join(agent.Name, agent) ?? "full " + PiZones.Seated);
                 else if (line == "zone") writer.WriteLine(PiZones.ZoneOf(agent.Name) ?? "none");
                 else if (line == "leave") { left = true; return; }
                 else return;
@@ -279,11 +282,12 @@ public static class PiInputLease
     }
 
     /// Serve leases until the process ends. Each connection gets its own thread; agents are few.
-    public static void Run(int port, string token, int stickyMilliseconds)
+    public static void Run(int port, string token, int stickyMilliseconds, bool screenZones)
     {
         if (token == null || token.Length < 32) throw new ArgumentException("A lease token of at least 32 characters is required.");
         stickyMs = stickyMilliseconds;
-        PiZones.Start();
+        zones = screenZones;
+        if (zones) PiZones.Start();
         TcpListener listener = new TcpListener(IPAddress.Any, port);
         listener.Start();
         while (true)
