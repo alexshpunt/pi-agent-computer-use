@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test, vi } from "vitest";
 import { computerSource, displaySource } from "../src/computer-address.ts";
-import { ComputerRequestError, ComputerResources, requireComputerAddress, type OpenedMachine, type OpenedSandbox } from "../src/computer-resources.ts";
+import { ComputerRequestError, ComputerResources, SandboxFullError, requireComputerAddress, type OpenedMachine, type OpenedSandbox } from "../src/computer-resources.ts";
 import { loadComputerConfig } from "../src/config.ts";
 import { checkRemoteWorker } from "../src/machine.ts";
 import { presentComputerResult } from "../src/provider.ts";
@@ -191,6 +191,18 @@ test("an unknown machine refuses, and closing a machine releases it, its referen
   // A stale remote window address never reaches this host's desktop.
   await expect(f.resources.read(address(computerSource("window", ref)), cwd, ["ui"])).rejects.toThrow(/Unknown or closed window reference[\s\S]*nothing was sent/);
   expect(f.names(f.hostDriver)).toEqual([]);
+});
+
+test("with every zone of the shared sandbox taken, open_sandbox gives the machine's main desktop and says why", async () => {
+  const f = await fixture();
+  f.openSandbox.mockRejectedValueOnce(new SandboxFullError(4));
+  const opened = await f.resources.perform(address(f.machineSource), cwd, JSON.stringify({ action: "open_sandbox", export: "C:\\out" }));
+  expect(opened.details).toMatchObject({ status: "delivered", machine: "lab" });
+  expect(opened.details.sandbox_ref).toBeUndefined();
+  expect(opened.content[0]).toMatchObject({ text: expect.stringMatching(/^Sandbox full: The shared sandbox already has 4 agents[\s\S]*main desktop instead: computer:machine\/lab\.[\s\S]*folders are not shared/) });
+  // The main desktop is the machine's own session, as its address gives it.
+  const listed = await f.resources.search(address(`${f.machineSource}/windows`), cwd, "window");
+  expect(listed.details.status).toBe("listed");
 });
 
 test("closing the computer session releases every machine, the local one included, and reports each", async () => {
