@@ -40,10 +40,10 @@ const openParameters = Type.Object({
   profile: Type.Optional(Type.Literal("agent", { description: "agent — a persistent profile whose logins stay for later sessions. Omit for a disposable profile." })),
   sandbox: Type.Optional(Type.Object({
     import: Type.Optional(Type.Array(Type.Union([Type.String(), Type.Object({ host: Type.String(), guest: Type.Optional(Type.String()), writable: Type.Optional(Type.Boolean()) }, { additionalProperties: false })]),
-      { maxItems: 8, description: "Host folders shared into the sandbox, read-only unless writable." })),
-    export: Type.Optional(Type.String({ description: "One host folder the sandbox can write to." })),
-  }, { additionalProperties: false, description: "Open a disposable Windows Sandbox on that machine, apart from the user's desktop; pass {} for no shared folders." })),
-  isolated_session: Type.Optional(Type.Boolean({ description: "Open an isolated agent session on that machine, with its own desktop and foreground input." })),
+      { maxItems: 8, description: "Host folders shared into the sandbox, read-only unless writable. Without guest, each appears under C:\\pi\\agents\\<sandbox>\\import." })),
+    export: Type.Optional(Type.String({ description: "One host folder the sandbox can write to; it appears as C:\\pi\\agents\\<sandbox>\\export." })),
+  }, { additionalProperties: false, description: "Open the machine's Windows Sandbox, apart from the user's desktop, or join it when another agent already opened it; pass {} for no shared folders." })),
+  isolated_session: Type.Optional(Type.Boolean({ description: "Open an isolated agent session on that machine, with its own desktop and keyboard. It has no mouse: use a sandbox for clicks, drags and hover." })),
   webview2_debugging: Type.Optional(Type.Object({
     app: Type.String({ description: "The app's executable file name, such as ms-teams.exe." }),
     enabled: Type.Boolean({ description: "true opens the debugging port from the app's next start, whoever starts it; false turns it off again." }),

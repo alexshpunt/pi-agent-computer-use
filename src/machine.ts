@@ -11,8 +11,9 @@ import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
 import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
-import { WindowsSandbox, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
+import { WindowsSandbox, connectLoopback, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { IsolatedSession } from "./isolated-session.ts";
+import { GuestInputLease } from "./input-lease.ts";
 import { startTileHost } from "./tile-host.ts";
 import { ComputerSession, type ComputerMode } from "./session.ts";
 import { WebBrowser, WebError } from "./web-browser.ts";
@@ -75,12 +76,18 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
       endpoint: sandbox.endpoint, ...(machine ? { ssh: machine.ssh } : {}) }, undefined, options.visuals);
     try { await waitForGuestDriver(driver, signal); }
     catch (error) { await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
-    // An isolated session's stream hub also gets the agent's window activity, for the agent cursor on its tiles.
-    const activity = sandbox instanceof IsolatedSession ? sandbox.activity : undefined;
+    // The stream hub of a session's or this agent's sandbox tiles also gets the agent's window activity, for the agent cursor.
+    const activity = sandbox.activity;
     const observer: WindowObserver = activity ? (frame, observed) => { activity(frame); return driver.visuals(frame, observed); } : driver.visuals;
-    const guest = new ComputerSession(driver, () => "yolo", options.settings, observer);
+    // Agents share the one Windows Sandbox: each sees only the apps it starts, and input takes turns through the guest's lease.
+    const shared = sandbox instanceof WindowsSandbox && sandbox.endpoint ? sandbox.endpoint : undefined;
+    const lease = shared ? new GuestInputLease({ connect: signal => connectLoopback(shared.leasePort, signal), token: shared.token, agent: sandbox.ref }) : undefined;
+    const guest = new ComputerSession(driver, () => "yolo", options.settings, observer, undefined, undefined, shared ? { lease, launchedOnly: true } : {});
+    // Tiles of this agent's sandbox windows, when the sandbox runs on this machine: its stream hub runs in this process.
+    if (shared && !machineName) await (sandbox as WindowsSandbox).showTiles(pid => guest.ownsProcess(pid), startTileHost, signal)
+      .catch(async error => { lease?.close(); await guest.close().catch(() => undefined); await sandbox.close(); throw error; });
     return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
-      close: async () => { try { await guest.close(); } finally { await sandbox.close(); } } };
+      close: async () => { try { await guest.close(); } finally { lease?.close(); await sandbox.close(); } } };
   };
 }
 

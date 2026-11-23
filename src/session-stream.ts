@@ -40,6 +40,11 @@ export interface StreamHubOptions {
   viewerToken: string;
   /** A fresh authenticated byte stream to the session's cua-spacesd. */
   connect(signal?: AbortSignal): Promise<Socket>;
+  /**
+   * Which processes' windows viewers see, on a desktop several agents share; every window when omitted. The answer may
+   * change: the hub checks again whenever the agent reports activity, such as the first look at a window it opened.
+   */
+  accept?(pid: number): boolean;
 }
 export interface StreamHub { port: number; close(): Promise<void> }
 
@@ -94,11 +99,14 @@ export async function createStreamHub(options: StreamHubOptions): Promise<Stream
   let listChanged = false;
 
   const broadcast = (message: unknown) => { const text = JSON.stringify(message); for (const viewer of viewers) viewer.ws.send(text); };
-  const list = () => [...windows.values()].sort((a, b) => a.z - b.z).map(({ epoch: _, ...window }) => window);
+  const shown = (window: StreamWindow) => !options.accept || options.accept(window.pid);
+  const list = () => [...windows.values()].filter(shown).sort((a, b) => a.z - b.z).map(({ epoch: _, ...window }) => window);
+  /** The shown windows last announced; a changed answer of accept is announced on the next activity. */
+  let announced = "";
   const announceWindows = () => {
     if (listChanged) return;
     listChanged = true;
-    setImmediate(() => { listChanged = false; broadcast({ type: "windows", windows: list() }); });
+    setImmediate(() => { listChanged = false; const windows = list(); announced = windows.map(window => window.id).join(); broadcast({ type: "windows", windows }); });
   };
 
   /** One HTTP/2 connection carries every RPC; a broken one is replaced on the next call. */
@@ -271,7 +279,8 @@ export async function createStreamHub(options: StreamHubOptions): Promise<Stream
       return;
     }
     if (message.type === "unsubscribe") { viewer.subscriptions.delete(window); media.get(window)?.update(); return; }
-    if (!windows.has(window)) { viewer.ws.send(JSON.stringify({ type: "error", message: `No window ${window} in this session.` })); return; }
+    const target = windows.get(window);
+    if (!target || !shown(target)) { viewer.ws.send(JSON.stringify({ type: "error", message: `No window ${window} in this session.` })); return; }
     if (message.type === "keyframe") {
       const subscription = viewer.subscriptions.get(window);
       if (subscription) { subscription.needKeyframe = true; media.get(window)?.requestKeyframe(); }
@@ -318,7 +327,8 @@ export async function createStreamHub(options: StreamHubOptions): Promise<Stream
       || [body.action, body.outcome].some(value => value !== undefined && (typeof value !== "string" || value.length > 64))) return false;
     const near = (a: Rect, b: Rect) => Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2 && Math.abs(a.width - b.width) <= 2 && Math.abs(a.height - b.height) <= 2;
     const inside = (r: Rect, p: { x: number; y: number }) => p.x >= r.x && p.y >= r.y && p.x < r.x + r.width && p.y < r.y + r.height;
-    const own = [...windows.values()].filter(window => window.pid === pid).sort((a, b) => a.z - b.z);
+    if (options.accept && list().map(window => window.id).join() !== announced) announceWindows();
+    const own = [...windows.values()].filter(window => window.pid === pid && shown(window)).sort((a, b) => a.z - b.z);
     // An element action has a region and no point: the agent cursor goes to the element's centre.
     const at = (point as { x: number; y: number } | undefined)
       ?? (region && body.kind === "action" ? { x: Math.round(region.x + region.width / 2), y: Math.round(region.y + region.height / 2) } : undefined);
