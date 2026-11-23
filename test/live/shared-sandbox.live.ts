@@ -11,6 +11,8 @@ import { connectWebSocket } from "../../src/ws-lite.ts";
 
 // LPT-1809: several agents on one machine work in the one shared Windows Sandbox. Each opens its own form, they click
 // and drag at the same time, a menu one agent opened survives another agent's click, and agents never see each other's windows.
+// The guest scripts are copied into the sandbox when it starts, and agents join a running one: to check a change to
+// scripts/sandbox, wait until the shared sandbox has stopped (10 minutes after its last agent) or stop it with wsb stop.
 const AGENTS = 4;
 const agents = await Promise.all(Array.from({ length: AGENTS }, () => connectLive()));
 afterAll(async () => { await Promise.all(agents.map(agent => agent.close())); });
