@@ -146,11 +146,12 @@ test("the lease client joins the zones, reads its zone and joins again after a l
   expect(await lease.claim(70)).toBe(true);
   expect(await lease.zone()).toMatchObject({ count: 2 });
   sockets[0].destroy();
-  await vi.waitFor(() => expect(lines).toContain("zone"));
-  await new Promise(resolve => setTimeout(resolve, 20));
-  // A new connection claims the processes again and joins again before the request.
+  // After a lost connection the client connects again at once: it claims its processes again and joins again. A
+  // request sent before that could still go out on the closing connection and fail.
+  await vi.waitFor(() => expect(lines.filter(line => line === "join")).toHaveLength(2));
+  expect(lines.slice(-3)).toEqual([`auth ${"t".repeat(64)} agent-1`, "claim 70", "join"]);
   expect(await lease.zone()).toMatchObject({ count: 3 });
-  expect(lines.slice(-4)).toEqual([`auth ${"t".repeat(64)} agent-1`, "claim 70", "join", "zone"]);
+  expect(lines.at(-1)).toBe("zone");
   seats = 4;
   expect(await lease.join()).toBe("full");
   // Closing leaves for good, so the guest frees the zone at once instead of keeping it for a reconnect.
