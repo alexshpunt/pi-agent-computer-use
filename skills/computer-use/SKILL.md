@@ -12,7 +12,7 @@ Work in this order: find the window, read it, plan, act, check.
 - Use a window the task already has. Open a new one only when the task needs it, and never repeat a launch whose outcome is unknown.
 - Read the whole window before acting: the app, its dialogs, controls and layout, and where the task stops.
 - Duplicate labels are separate elements: tell them apart by parent, role, enabled state and bounds.
-- When the work must not touch the human's desktop, use a Windows Sandbox. Every agent on the machine works in the same one: each sees only the apps it starts there, keeps them in its own zone of the screen, and input waits for its turn. When the zone moves, the next action says so and sends nothing: Read the window again. Use an isolated session only for work without the pointer, since its desktop has no mouse.
+- When the work must not touch the human's desktop, use a Windows Sandbox. Every agent on the machine works in the same one: each sees only the apps it starts there, windows may overlap, and input waits for its turn. If the `open_sandbox` result names a screen zone, keep your windows there; when the zone moves, the next action says so and sends nothing: Read the window again. Use an isolated session only for work without the pointer, since its desktop has no mouse.
 - When overviews of a large display are too dense, work through a viewport, or ask the user before lowering the display's resolution.
 
 ## Plan and act
