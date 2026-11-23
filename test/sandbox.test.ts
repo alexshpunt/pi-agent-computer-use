@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -68,16 +69,17 @@ test("the sandbox maps only the runtime, its config and an output folder; agents
  * A Windows host whose shared sandbox folder is a real temporary folder. `failAt` stops a launch; `foreign` runs a
  * sandbox computer use did not start; `stale` reports the first shared state found as stale. Every PowerShell script is recorded.
  */
-async function fakeHost(options: { failAt?: "session" | "id"; foreign?: boolean; stale?: boolean; failForward?: number } = {}) {
+async function fakeHost(options: { failAt?: "session" | "id"; foreign?: boolean; stale?: boolean; failForward?: number; failPublish?: boolean } = {}) {
   const local = await mkdtemp(path.join(tmpdir(), "pi-sandbox-test-"));
   const shared = path.join(local, "shared");
   const scripts: string[] = [];
-  const forwarded: number[] = [], closedForwards: number[] = [];
+  const forwarded: number[] = [], closedForwards: number[] = [], published: number[] = [], closedPublished: number[] = [];
   let launched = 0, stale = options.stale === true;
   const host: SandboxHost = {
     async path(value, to) {
       if (to === "windows") return value.startsWith("/mnt/c/") ? "C:\\" + value.slice(7).replaceAll("/", "\\") : "\\\\wsl.localhost\\Ubuntu" + value.replaceAll("/", "\\");
       if (value === "C:\\Local\\PiComputerUse\\sandboxes") return local;
+      if (value === "C:\\Local\\PiComputerUse\\sessions") return path.join(local, "sessions");
       throw new Error(`unexpected path ${value}`);
     },
     async powershell(script) {
@@ -112,8 +114,12 @@ async function fakeHost(options: { failAt?: "session" | "id"; foreign?: boolean;
       if (forwarded.length === options.failForward) throw new Error("Fixture forward failure");
       return { port, close: () => { closedForwards.push(port); } };
     },
+    // Another machine's loopback port for a port of this one, as a reverse SSH tunnel gives it.
+    publish: async port => {
+      if (options.failPublish) throw new Error("remote port forwarding failed for listen port 0");
+      published.push(port); return { port: port + 30_000, close: () => { closedPublished.push(port); } }; },
   };
-  return { host, scripts, local, shared, forwarded, closedForwards, launched: () => launched, cleanup: () => rm(local, { recursive: true, force: true }) };
+  return { host, scripts, local, shared, forwarded, closedForwards, published, closedPublished, launched: () => launched, cleanup: () => rm(local, { recursive: true, force: true }) };
 }
 const runtime = "/mnt/c/runtime/cua-driver.exe";
 
@@ -166,6 +172,52 @@ test("an agent does not attach to a sandbox another version of computer use star
     expect(f.launched()).toBe(0);
     expect(await readdir(path.join(f.shared, "agents"))).toEqual([]);
   } finally { await f.cleanup(); }
+});
+
+// LPT-1830: screen zones are off unless the agent that starts the sandbox turns them on; later agents follow it.
+test("the starting agent's zones setting reaches the guest, and later agents follow the running sandbox", async () => {
+  for (const zones of [undefined, true]) {
+    const f = await fakeHost();
+    let first: WindowsSandbox | undefined, second: WindowsSandbox | undefined;
+    try {
+      first = await WindowsSandbox.open(f.host, runtime, { shares: [], ...(zones ? { zones } : {}) });
+      second = await WindowsSandbox.open(f.host, runtime, { shares: [], zones: !zones });
+      expect(await readFile(path.join(f.shared, "config", "zones.txt"), "utf8")).toBe(zones ? "on" : "off");
+    } finally { await first?.close(); await second?.close(); await f.cleanup(); }
+  }
+});
+
+// LPT-1830: a sandbox on another machine shows its tiles there: the hub in this process is published on that machine's loopback.
+test("tiles publish this agent's stream hub on the sandbox's machine and stop publishing when the agent leaves", async () => {
+  const f = await fakeHost();
+  let sandbox: WindowsSandbox | undefined;
+  try {
+    sandbox = await WindowsSandbox.open(f.host, runtime, { shares: [] });
+    const started: string[] = [];
+    await sandbox.showTiles(() => true, async (_host, local) => { started.push(local); return "started"; });
+    expect(started).toEqual(["C:\\Local"]);
+    expect(f.published).toHaveLength(1);
+    const stream = JSON.parse(await readFile(path.join(f.local, "sessions", sandbox.ref, "stream.json"), "utf8")) as { url: string };
+    // The tile host on that machine connects to the published port, not to this process's own.
+    expect(stream.url).toBe(`ws://127.0.0.1:${f.published[0] + 30_000}/v1/stream`);
+    await sandbox.close();
+    expect(f.closedPublished).toEqual(f.published);
+    expect(existsSync(path.join(f.local, "sessions", sandbox.ref))).toBe(false);
+  } finally { await sandbox?.close(); await f.cleanup(); }
+});
+
+// Tiles are optional: a machine whose SSH server refuses the reverse tunnel still gives the agent its sandbox.
+test("a refused reverse tunnel leaves the sandbox without tiles and says why", async () => {
+  const f = await fakeHost({ failPublish: true });
+  let sandbox: WindowsSandbox | undefined;
+  try {
+    sandbox = await WindowsSandbox.open(f.host, runtime, { shares: [] });
+    const started: string[] = [];
+    await sandbox.showTiles(() => true, async (_host, local) => { started.push(local); return "started"; });
+    expect(started).toEqual([]);
+    expect(existsSync(path.join(f.local, "sessions", sandbox.ref))).toBe(false);
+    expect(sandbox.describe("computer:sandbox/x")).toContain("Live tiles of this session's windows on the human's desktop: unavailable (remote port forwarding failed for listen port 0).");
+  } finally { await sandbox?.close(); await f.cleanup(); }
 });
 
 // Killing the sandbox client and server leaves the VM running, and Windows then refuses a new sandbox.

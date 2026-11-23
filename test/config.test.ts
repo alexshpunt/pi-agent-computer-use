@@ -31,6 +31,25 @@ test("the shortcut setting is read for local and remote desktop drivers", async 
   await expect(readMachineSettings(cwd)).rejects.toThrow();
 });
 
+// LPT-1830: screen zones of the shared sandbox are off unless the project turns them on.
+test("the sandbox zones setting is read for local and remote sandboxes, and is off when absent", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const file = path.join(cwd, ".pi/computer-use.json");
+  await writeFile(file, JSON.stringify({ command: "driver" }));
+  expect((await loadComputerConfig(cwd)).sandbox).toBeUndefined();
+  expect((await readMachineSettings(cwd)).sandbox).toBeUndefined();
+  for (const zones of [true, false]) {
+    await writeFile(file, JSON.stringify({ command: "driver", sandbox: { zones } }));
+    expect((await loadComputerConfig(cwd)).sandbox).toEqual({ zones });
+    expect((await readMachineSettings(cwd)).sandbox).toEqual({ zones });
+  }
+  for (const sandbox of [{ zones: "on" }, { zones: true, size: 4 }, [true]]) {
+    await writeFile(file, JSON.stringify({ command: "driver", sandbox }));
+    await expect(loadComputerConfig(cwd)).rejects.toThrow();
+    await expect(readMachineSettings(cwd)).rejects.toThrow();
+  }
+});
+
 test("opening has no target-file prerequisite and respects a trusted Driver override", async () => {
   const cwd = await workspace();
   vi.stubEnv("CUA_DRIVER_PATH", "C:\\Trusted\\cua-driver.exe");
