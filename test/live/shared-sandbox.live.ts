@@ -171,7 +171,8 @@ test("agents share one sandbox, see only their own windows and never interleave 
   expect(await state(second)).toBe(`count:${ROUNDS + 1} menu:0 drag:${DRAGS}`);
 
   // An agent that leaves its menu open does not block the others forever: after 15 s its menu is cancelled.
-  expect((await click(first, editMenu)).details.status).toBe("delivered");
+  const reopened = await click(first, editMenu);
+  expect(reopened.details.status, presentComputerResult(reopened)).toBe("delivered");
   const revoking = await click(second, countButton);
   expect(revoking.details.status, presentComputerResult(revoking)).toBe("delivered");
   expect(waited(revoking)).toBeGreaterThanOrEqual(14_000);
@@ -179,8 +180,22 @@ test("agents share one sandbox, see only their own windows and never interleave 
   expect(await state(first)).toBe(`count:${ROUNDS} menu:2 drag:${DRAGS}`);
   expect(await state(second)).toBe(`count:${ROUNDS + 2} menu:0 drag:${DRAGS}`);
 
-  // One agent leaving keeps the sandbox for the others.
+  // One agent leaving keeps the sandbox for the others. The zones are laid out again (LPT-1820). The agents joined at
+  // once, in any order: when agent 1 sat after agent 0, its zone moves one quarter back, and its first action learns
+  // the new zone and sends nothing; otherwise its zone stays and nothing interrupts it.
+  const QUARTERS = ["the top-left quarter", "the top-right quarter", "the bottom-left quarter", "the bottom-right quarter"];
+  // Its place in the join order, from the zone it got when it joined: the first joiner got the whole screen.
+  const SEATS: [string, number][] = [["the whole screen", 0], ["the left half", 0], ["the right half", 1], ...QUARTERS.map((name, index): [string, number] => [name, index])];
+  const seat = (result: (typeof opened)[number]) => SEATS.find(([name]) => text(result).includes(`Screen zone: ${name}`))?.[1] ?? -1;
+  const [firstSeat, secondSeat] = [seat(opened[0]), seat(opened[1])];
+  expect([firstSeat, secondSeat].every(index => index >= 0), `${text(opened[0])}\n${text(opened[1])}`).toBe(true);
   expect((await first.live.insert(first.sandbox, { action: "close" })).details.status).toBe("closed");
-  expect((await click(second, countButton)).details.status).toBe("delivered");
+  const relaid = await click(second, countButton);
+  if (firstSeat < secondSeat) {
+    expect(relaid.details.status, presentComputerResult(relaid)).toBe("refused");
+    expect(text(relaid)).toContain(`Screen zone: ${QUARTERS[secondSeat - 1]}`);
+    expect((await click(second, await center(second, element => element.role === "Button" && element.name === "Count"))).details.status).toBe("delivered");
+  } else expect(relaid.details.status, presentComputerResult(relaid)).toBe("delivered");
+  console.log(`agent 0 sat in seat ${firstSeat}, agent 1 in seat ${secondSeat}`);
   expect(await state(second)).toBe(`count:${ROUNDS + 3} menu:0 drag:${DRAGS}`);
 });
