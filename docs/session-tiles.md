@@ -1,10 +1,10 @@
 # Session tiles
 
-While agents work in isolated sessions, the human sees their windows live as tiles on the Windows desktop: above the wallpaper, under the desktop icons and under every normal window. A hotkey raises the same tiles over all windows and the next press puts them back.
+While agents work in isolated sessions or the shared Windows Sandbox, the human sees their windows live as tiles on the Windows desktop: above the wallpaper, under the desktop icons and under every normal window. A hotkey raises the same tiles over all windows and the next press puts them back.
 
 ## What the human sees
 
-- One tile per app window or dialog of every open isolated session on the machine, from every Pi process. A tile has a caption with the agent user, the app, the window title and the agent's current action, and shows the window at most at its own pixel size.
+- One tile per app window or dialog of every open isolated session on the machine, and of every app an agent started in the shared Windows Sandbox, from every Pi process. Each agent in the sandbox is its own session there, with its own caption and colour. A tile has a caption with the agent user, the app, the window title and the agent's current action, and shows the window at most at its own pixel size.
 - The agent's cursor appears in the tile where the agent last observed or acted, for a few seconds after each action, and the tile's outline lights up in the agent's colour.
 - The tiles fill the work area in rows, like a photo gallery: all tiles of a row are equally tall and as wide as their windows' shapes need; a window smaller than its row shows at its own size. Sessions keep the order they opened in, and a session's windows the order they appeared in.
 - When the tiles would get smaller than 45 % of their windows, the rest of the windows go to further layers, split about evenly. A footer under the tiles shows a dot per layer, filled for the one on screen and ringed in an agent's colour while that agent acts on that layer. **Ctrl+Alt+PageDown** and **Ctrl+Alt+PageUp** show the next and the previous layer.

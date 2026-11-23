@@ -18,6 +18,10 @@ isolated session (agent user)                    host machine (the human's user)
 
 Nothing is captured until a tile host subscribes to a window. A window that does not change sends almost nothing.
 
+### Agents in the shared Windows Sandbox
+
+The sandbox guest runs one `cua-spacesd` on its loopback, with its own token, and the guest forwards a TCP port to it; a host relay on a loopback port reaches that port, like the driver's. Every agent in the sandbox runs its own stream hub in its Pi process and writes its own `stream.json` under `%LOCALAPPDATA%\PiComputerUse\sessions\<sandbox>\`. The hub lists and streams only the windows of processes that agent started, so each agent's tiles show only its own apps. A process the agent starts appears with the agent's next observation or action. The hub runs in Pi, so tiles show for a sandbox on the machine Pi runs on; a sandbox on another machine has none.
+
 ## Find the sessions
 
 Each session writes `stream.json` to its folder in the human's profile, `%LOCALAPPDATA%\PiComputerUse\sessions\<session>\stream.json`, and the folder is removed when the session closes:
