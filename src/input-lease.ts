@@ -55,8 +55,11 @@ export interface InputLease {
   acquire(signal?: AbortSignal): Promise<LeaseGrant>;
   /** Claim a process for this session; false when another session on the desktop already claimed it. Claims end with the session. */
   claim(pid: number, signal?: AbortSignal): Promise<boolean>;
-  /** Take a zone of the shared screen; "full" when MAX_ZONES agents already have one. A lost connection joins again. */
-  join?(signal?: AbortSignal): Promise<ScreenZone | "full">;
+  /**
+   * Take a zone of the shared screen; "full" when MAX_ZONES agents already have one, "off" when the sandbox was started
+   * without zones. A lost connection joins again.
+   */
+  join?(signal?: AbortSignal): Promise<ScreenZone | "full" | "off">;
   /** This session's current zone; undefined when it has none, such as after a reconnect found every zone taken. */
   zone?(signal?: AbortSignal): Promise<ScreenZone | undefined>;
   close(): void;
@@ -121,10 +124,11 @@ export class GuestInputLease implements InputLease {
     });
   }
 
-  join(signal?: AbortSignal): Promise<ScreenZone | "full"> {
+  join(signal?: AbortSignal): Promise<ScreenZone | "full" | "off"> {
     return this.serial(async () => {
       const reply = await this.request(await this.open(signal), "join");
       if (/^full \d+$/.test(reply)) return "full";
+      if (reply === "off") return "off";
       const zone = parseZone(reply);
       if (!zone) throw new Error(`Unexpected lease reply: ${reply.slice(0, 80)}`);
       this.joined = true;

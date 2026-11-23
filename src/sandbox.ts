@@ -27,6 +27,8 @@ export interface SandboxHost {
   remove(path: string): Promise<void>;
   /** Reach a port on the host's loopback from this machine: the same port locally, an SSH tunnel for another machine. */
   forward(port: number, signal?: AbortSignal): Promise<{ port: number; close(): void }>;
+  /** Reach a port on this machine's loopback from the host's loopback: the same port locally, a reverse SSH tunnel for another machine. */
+  publish(port: number, signal?: AbortSignal): Promise<{ port: number; close(): void }>;
   /** Host-owned Node reverse relay; only needed for MXC, not Sandbox. */
   reverseRelay?(workdir: string, keys: SessionRelayKeys, signal?: AbortSignal): Promise<SessionRelay>;
 }
@@ -36,7 +38,11 @@ export interface SandboxHost {
  * guest folder it goes under the agent's own folder C:\pi\agents\<sandbox ref>\, so agents in one sandbox never collide.
  */
 export interface SandboxShare { host: string; guest?: string; writable: boolean; kind: "import" | "export" }
-export interface SandboxOptions { shares: SandboxShare[] }
+export interface SandboxOptions {
+  shares: SandboxShare[];
+  /** When this agent starts the sandbox: give each agent its own zone of the guest screen. Agents that join follow the running sandbox. */
+  zones?: boolean;
+}
 
 /** A host relay port that reaches one guest port, with the relay process to stop. */
 interface Relay { port: number; pid: number }
@@ -44,7 +50,7 @@ interface Relay { port: number; pid: number }
 /** What the agents attached to the shared sandbox read from its host folder; written once by the agent that starts it. */
 interface SharedState {
   /** Bumped when agents of this version cannot use a sandbox an earlier version started. */
-  version: 3;
+  version: 4;
   id: string;
   token: string;
   identityAuth: RelayCredentials;
@@ -190,6 +196,7 @@ export function runnerHost(runner: CommandRunner): SandboxHost {
     readFile: file => files.read(file).then(bytes => bytes.toString("utf8").replace(/\r/g, ""), () => ""),
     remove: dir => files.remove(dir),
     forward: async (port, signal) => runner.ssh ? tunnel(runner.ssh, port, signal) : { port, close: () => {} },
+    publish: async (port, signal) => runner.ssh ? reverseTunnel(runner.ssh, port, signal) : { port, close: () => {} },
     reverseRelay: (workdir, keys, signal) => startSessionRelay(runner, workdir, keys, signal),
   };
 }
@@ -201,6 +208,8 @@ async function tunnel(alias: string, remotePort: number, signal?: AbortSignal): 
     server.on("error", reject);
   });
   const child = spawn("ssh", [...SSH_OPTIONS, "-N", "-o", "ExitOnForwardFailure=yes", "-L", `127.0.0.1:${local}:127.0.0.1:${remotePort}`, alias], { stdio: "ignore" });
+  // A failed spawn sets exitCode, which the loop below reports; without a listener it would end Pi.
+  child.on("error", () => undefined);
   const close = () => { if (child.exitCode === null) child.kill(); };
   for (let i = 0; i < 100; i++) {
     if (child.exitCode !== null) throw new Error("The SSH tunnel to the sandbox did not start.");
@@ -214,6 +223,37 @@ async function tunnel(alias: string, remotePort: number, signal?: AbortSignal): 
   }
   close();
   throw new Error("The SSH tunnel to the sandbox did not start.");
+}
+
+/**
+ * Forward a port that SSH picks on the remote machine's loopback to a port on this machine's loopback. SSH reports the
+ * port it picked on stderr ("Allocated port N for remote forward to ...").
+ */
+async function reverseTunnel(alias: string, localPort: number, signal?: AbortSignal): Promise<{ port: number; close(): void }> {
+  const child = spawn("ssh", [...SSH_OPTIONS, "-N", "-o", "ExitOnForwardFailure=yes", "-o", "LogLevel=INFO", "-R", `127.0.0.1:0:127.0.0.1:${localPort}`, alias],
+    { stdio: ["ignore", "ignore", "pipe"] });
+  const close = () => { if (child.exitCode === null) child.kill(); };
+  const port = await new Promise<number>((resolve, reject) => {
+    let text = "";
+    const fail = (message: string) => { clearTimeout(timer); signal?.removeEventListener("abort", abort); close(); reject(new Error(message)); };
+    const abort = () => fail("Cancelled while starting the sandbox.");
+    const timer = setTimeout(() => fail("The reverse SSH tunnel for the sandbox tiles did not start within 15 s."), 15_000);
+    signal?.addEventListener("abort", abort, { once: true });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      text += chunk;
+      const match = /Allocated port (\d+) for remote forward/.exec(text);
+      if (!match) return;
+      clearTimeout(timer); signal?.removeEventListener("abort", abort);
+      // Keep draining stderr so SSH never blocks on a full pipe.
+      child.stderr.removeAllListeners("data"); child.stderr.resume();
+      resolve(Number(match[1]));
+    });
+    child.once("exit", () => fail(`The reverse SSH tunnel for the sandbox tiles did not start: ${text.trim().slice(0, 300)}`));
+    // Without a listener, a failed spawn (no ssh) would be an uncaught error that ends Pi.
+    child.on("error", error => fail(`The reverse SSH tunnel for the sandbox tiles did not start: ${error.message}`));
+  });
+  return { port, close };
 }
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -279,8 +319,9 @@ export class WindowsSandbox {
   /**
    * Show this agent's sandbox windows as tiles on the human's desktop, like an isolated session's: a stream hub in this
    * process serves only the windows of processes `accept` names, and the machine's tile host finds it through
-   * stream.json in the host user's own folder. The hub runs in this Pi process, so tiles need the sandbox's machine to be
-   * this one. A failed tile host start is reported by describe() and never fails the sandbox.
+   * stream.json in the host user's own folder. The hub runs in this Pi process; when the sandbox runs on another machine,
+   * a reverse SSH tunnel brings it to that machine's loopback, where its tile host connects. A failed tunnel or tile host
+   * start is reported by describe() and never fails the sandbox.
    */
   async showTiles(accept: (pid: number) => boolean, tileHost: TileHostStarter, signal?: AbortSignal): Promise<void> {
     const endpoint = this.endpoint, local = this.localAppData;
@@ -288,24 +329,36 @@ export class WindowsSandbox {
     const viewer = randomBytes(32).toString("hex");
     this.hub = await createStreamHub({ session: this.ref, spacesdToken: endpoint.spacesdToken, viewerToken: viewer, accept,
       connect: connectSignal => connectLoopback(endpoint.streamPort, connectSignal) });
+    // Tiles are optional: a reverse tunnel the other machine refuses, such as with its sshd's AllowTcpForwarding local,
+    // leaves the sandbox usable without them.
+    let published: { port: number; close(): void };
+    try { published = await this.host.publish(this.hub.port, signal); }
+    catch (error) {
+      signal?.throwIfAborted();
+      await this.hub.close().catch(() => undefined);
+      this.hub = undefined;
+      this.tiles = { state: "failed", error: error instanceof Error ? error.message : String(error) };
+      return;
+    }
+    this.tunnels.push(published);
     const folder = `${await this.host.path(`${local}\\PiComputerUse\\sessions`, "unix")}/${this.ref}`;
     await this.host.mkdir(folder);
     this.streamFolder = folder;
     await this.host.writeFile(`${folder}/${STREAM_FILE}`, JSON.stringify({ version: 1, session: this.ref, agentUser: this.ref,
-      url: `ws://127.0.0.1:${this.hub.port}/v1/stream`, token: viewer }, null, 2));
+      url: `ws://127.0.0.1:${published.port}/v1/stream`, token: viewer }, null, 2));
     this.publisher = new ActivityPublisher(this.hub.port, viewer);
     signal?.throwIfAborted();
     this.tiles = { state: "starting" };
     void tileHost(this.host, local).then(state => { this.tiles = { state }; },
       error => { this.tiles = { state: "failed", error: error instanceof Error ? error.message : String(error) }; });
   }
-  private constructor(private readonly host: SandboxHost, shares: readonly SandboxShare[]) {
+  private constructor(private readonly host: SandboxHost, shares: readonly SandboxShare[], private readonly zones: boolean) {
     this.guestShares = shares.map(share => ({ ...share, guest: guestFolder(share, this.ref) }));
   }
 
   /** Attach to the machine's shared sandbox, starting it when none runs. Any failure leaves nothing of this agent behind. */
   static async open(host: SandboxHost, runtimeCommand: string, options: SandboxOptions, signal?: AbortSignal): Promise<WindowsSandbox> {
-    const sandbox = new WindowsSandbox(host, options.shares);
+    const sandbox = new WindowsSandbox(host, options.shares, options.zones === true);
     try { await sandbox.attach(runtimeCommand, signal); }
     catch (error) { await sandbox.close(); throw error; }
     return sandbox;
@@ -373,7 +426,7 @@ throw 'Another agent is still starting the shared sandbox; try again in a few mi
   private parseState(text: string): SharedState {
     let state: SharedState | undefined;
     try { state = JSON.parse(text) as SharedState; } catch { /* Reported below. */ }
-    if (state && state.version !== 3) throw new ComputerRequestError("The shared sandbox was started by another version of computer use, so this agent cannot use it. "
+    if (state && state.version !== 4) throw new ComputerRequestError("The shared sandbox was started by another version of computer use, so this agent cannot use it. "
       + `It stops ${IDLE_SECONDS / 60} minutes after its last agent leaves; open the sandbox again after that. Nothing was changed.`);
     if (state && typeof state.id === "string" && state.relays?.lease?.port > 0 && state.relays?.stream?.port > 0) return state;
     throw new Error("The shared sandbox's state is unreadable.");
@@ -406,6 +459,7 @@ throw 'Another agent is still starting the shared sandbox; try again in a few mi
       const spacesdToken = randomBytes(32).toString("hex");
       await this.host.writeFile(`${unix}/config/spacesd-token.txt`, spacesdToken);
       await this.host.writeFile(`${unix}/config/identity.json`, JSON.stringify(identityAuth));
+      await this.host.writeFile(`${unix}/config/zones.txt`, this.zones ? "on" : "off");
       await this.host.writeFile(`${unix}/sandbox.wsb`, sandboxConfig(runtime, `${windows}\\config`, `${windows}\\out`));
 
       // A WindowsSandboxServer started by wsb.exe or WindowsSandbox.exe from WSL/SSH fails; launch through the user's shell
@@ -456,7 +510,7 @@ ${this.wsb(`exec --id ${id} --run-as ExistingLogin -c 'powershell.exe -NoProfile
         }
         throw new Error("The host relay did not start.");
       };
-      const state: SharedState = { version: 3, id, token, identityAuth, runtime, startedAt, spacesdToken,
+      const state: SharedState = { version: 4, id, token, identityAuth, runtime, startedAt, spacesdToken,
         relays: { driver: await relay(DRIVER_GUEST_PORT), identity: await relay(IDENTITY_GUEST_PORT), lease: await relay(LEASE_GUEST_PORT), stream: await relay(STREAM_GUEST_PORT) },
         watchdog: { key: randomBytes(16).toString("hex"), pid: 0 } };
       await this.host.writeFile(`${unix}/sandbox.json`, JSON.stringify(state));
