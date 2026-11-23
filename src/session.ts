@@ -25,6 +25,7 @@ import { WEBVIEW2_DEBUGGING, type MachineHost, type ProcessHealth, type TextLine
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import type { StateDiff } from "./successor.ts";
+import { STICKY_SECONDS, type InputLease, type LeaseGrant } from "./input-lease.ts";
 import { combine, evaluateNative, validateWait, type ConditionResult, type WaitResult, type WaitSpec } from "./ui-conditions.ts";
 import { computerSource } from "./computer-address.ts";
 import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebOpened, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
@@ -36,6 +37,17 @@ import type { Derive } from "./web-geometry.ts";
 export interface WindowTarget { pid: number; window_id: number }
 /** Safe limits UI access to individually opened session windows; neither mode is an OS sandbox. */
 export type ComputerMode = "safe" | "yolo";
+/** Limits for one agent's session on a desktop that several agents share, such as a shared Windows Sandbox. */
+export interface SessionScope {
+  /** Serializes this session's input with the other agents' input on the same desktop. */
+  lease?: InputLease;
+  /** The session sees and acts only on windows of processes it started, and nothing desktop-wide. */
+  launchedOnly?: boolean;
+}
+/** A wait shorter than this for the shared input is not worth mentioning. */
+const LEASE_NOTE_MS = 100;
+/** What the guest lease service names as the unfinished input that keeps the turn with this session. */
+const HELD_INPUT: Record<string, string> = { menu: "open menu", move_size: "window move or resize", capture: "mouse capture", button: "pressed mouse button", key: "pressed modifier key" };
 /** Model-visible native text or screenshot. */
 export type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 /** Native MCP result; structured state is separate from images. */
@@ -141,6 +153,10 @@ export interface ComputerResult {
   content: Content[];
   details: {
     status: "listed" | "observed" | "delivered" | "refused" | "unknown" | "closed";
+    /** How long input waited for its turn on a desktop shared with other agents. */
+    input_wait_ms?: number;
+    /** The unfinished input, such as an open menu, that keeps the shared desktop's turn with this session after the call. */
+    input_held?: string;
     /** The machine the request ran on, by its address name; set by the computer resources for every routed request. */
     machine?: string;
     /** The sandbox or isolated session on that machine the request ran in. */
@@ -318,6 +334,8 @@ export class ComputerSession {
   /** Native input already dispatched under the current policy, including long timelines on dialog windows. */
   private nativeInputsInFlight = 0;
   private unconfirmedUnsafeWork = false;
+  /** Processes this session started; with `launchedOnly` they are the only ones it sees. */
+  private readonly launched = new Set<number>();
   /** Safe cannot be selected while a YOLO agent profile has an unauthenticated debugging port. */
   hasUnapprovedAgentBrowser(): boolean { return this.unconfirmedUnsafeWork || this.unapprovedAgentLaunches > 0 || this.nativeInputsInFlight > 0 || this.unapprovedAgentBrowsers.size > 0; }
 
@@ -358,7 +376,8 @@ export class ComputerSession {
     private readonly observer: WindowObserver | undefined = driver.visuals,
     private readonly launchWeb?: WebLauncher,
     /** Display modes, the owned file folder, process health and OCR on this desktop's machine; absent in a sandbox guest. */
-    readonly host?: MachineHost) {}
+    readonly host?: MachineHost,
+    private readonly scope: SessionScope = {}) {}
 
   private overviewSettings(): CuaVisionSettings {
     const settings = this.settings();
@@ -409,14 +428,51 @@ export class ComputerSession {
   }
 
   private allowed(entry: WindowEntry): boolean {
-    return this.getMode() === "yolo" || entry.owned;
+    return (this.getMode() === "yolo" || entry.owned) && (!this.scope.launchedOnly || this.launched.has(entry.target.pid));
+  }
+  /** Whether display-wide reads, the clipboard and recordings are open to this session: YOLO, and not one agent among others. */
+  private desktopWide(): boolean { return this.getMode() === "yolo" && !this.scope.launchedOnly; }
+  private wideRefusal(what: string, why = ""): ComputerResult {
+    return this.result("refused", this.scope.launchedOnly
+      ? `Agents that share this sandbox each get only the windows of the apps they started, so ${what} is refused.`
+      : `Safe mode forbids ${what}${why}. Only the user can select YOLO with /computer-mode.`);
+  }
+  /**
+   * Run input under the shared desktop's lease, when this session has one: wait for this session's turn, then release
+   * it after the work. A result that waited says how long, and one whose input left a menu or a pressed button open says
+   * that the turn stays with this session.
+   */
+  private async leased(signal: AbortSignal | undefined, work: () => Promise<ComputerResult>): Promise<ComputerResult> {
+    const lease = this.scope.lease;
+    if (!lease) return work();
+    let grant: LeaseGrant;
+    try { grant = await lease.acquire(signal); }
+    catch (error) {
+      return this.result("refused", signal?.aborted ? "Cancelled while waiting for the shared sandbox's mouse and keyboard; nothing was sent."
+        : `The shared sandbox's input turn could not be taken (${error instanceof Error ? error.message : String(error)}); nothing was sent.`);
+    }
+    let result: ComputerResult;
+    try { result = await work(); }
+    catch (error) { await grant.release().catch(() => undefined); throw error; }
+    const held = await grant.release().catch(() => undefined);
+    const notes = [
+      ...(grant.waitedMs >= LEASE_NOTE_MS ? [`Waited ${(grant.waitedMs / 1000).toFixed(1)} s for the shared sandbox's mouse and keyboard${grant.revoked ? "; an unfinished menu or drag of another agent was cancelled first" : ""}.`] : []),
+      ...(held ? [`The ${HELD_INPUT[held] ?? "unfinished input"} keeps the shared sandbox's mouse and keyboard with this session, and other agents wait: finish it with the next action. Once ${STICKY_SECONDS} s have passed and another agent waits, the guest presses Escape and releases buttons and keys.`] : []),
+    ];
+    if (!notes.length) return result;
+    const note = notes.join("\n");
+    const [first, ...rest] = result.content;
+    return { ...result, content: first?.type === "text" ? [{ type: "text", text: `${note}\n${first.text}` }, ...rest] : [{ type: "text", text: note }, ...result.content],
+      details: { ...result.details, ...(grant.waitedMs >= LEASE_NOTE_MS ? { input_wait_ms: grant.waitedMs } : {}), ...(held ? { input_held: held } : {}) } };
   }
 
   private inputAllowed(entry: WindowEntry): boolean {
     return this.allowed(entry) && !(entry.pendingApproval && this.getMode() === "safe");
   }
   private denied(ref: string): ComputerResult {
-    return this.result("refused", "Safe mode allows only windows opened by this session. Only the user can change mode with /computer-mode.",
+    return this.result("refused", this.scope.launchedOnly
+      ? "This window is not from an app this session started. Agents that share a sandbox act only on the windows of their own apps."
+      : "Safe mode allows only windows opened by this session. Only the user can change mode with /computer-mode.",
       undefined, { window_ref: ref });
   }
 
@@ -495,8 +551,9 @@ export class ComputerSession {
         const matches = textMatcher(query);
         const windows = [];
         const owned = [...this.entries.values()].filter(entry => entry.owned);
-        const nativeWindows = this.getMode() === "safe" && !owned.length ? [] : await this.list(signal);
+        const nativeWindows = (this.getMode() === "safe" && !owned.length) || (this.scope.launchedOnly && !this.launched.size) ? [] : await this.list(signal);
         for (const native of nativeWindows) {
+          if (this.scope.launchedOnly && !this.launched.has(native.pid as number)) continue;
           // An anchored regex names the title or the app alone, so each is tried as well as both together.
           if (![native.title, native.app_name, `${native.app_name} ${native.title}`].some(text => matches(String(text ?? "")))) continue;
           const known = owned.find(entry => entry.target.pid === native.pid && entry.target.window_id === native.window_id);
@@ -692,43 +749,58 @@ export class ComputerSession {
   }
 
   /** Launch with native arguments and bind the one new window of that process or app; called inside the queue. */
-  private async launchNew(selected: { name: string }, start: () => Promise<Record<string, unknown>>, signal: AbortSignal | undefined, dispatch: () => void): Promise<ComputerResult> {
-    const before = new Set<string>();
-    for (const native of await this.list(signal)) before.add(`${native.pid}:${native.window_id}`);
-    if (signal?.aborted) return this.result("refused", "Cancelled before launch dispatch.");
-    dispatch();
-    const launched = await start();
-    const pid = launched.pid;
-    if (!Number.isSafeInteger(pid) || (pid as number) <= 0) throw new Error("Launch returned no usable process ID; do not relaunch blindly.");
-    let candidates: WindowEntry[] = [];
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const nativeWindows = await this.list(signal);
-      candidates = [];
-      for (const native of nativeWindows) {
-        // Packaged activation may return a broker PID while the new window belongs to an existing app process.
-        const reported = Array.isArray(launched.windows) && launched.windows.some(window => {
-          const item = window as WindowTarget;
-          return item.pid === native.pid && item.window_id === native.window_id;
-        });
-        if (native.pid !== pid && appName(String(native.app_name ?? "")) !== appName(selected.name) && !reported) continue;
-        // Treat baseline addresses as existing even if a handle is recycled during launch: fail closed.
-        if (before.has(`${native.pid}:${native.window_id}`)) continue;
-        const entry = await this.register(native as unknown as WindowTarget, signal);
-        if (entry) candidates.push(entry);
+  private launchNew(selected: { name: string }, start: () => Promise<Record<string, unknown>>, signal: AbortSignal | undefined, dispatch: () => void): Promise<ComputerResult> {
+    // A new window takes the foreground, so a launch waits for this session's input turn on a shared desktop.
+    return this.leased(signal, async () => {
+      const before = new Set<string>();
+      for (const native of await this.list(signal)) before.add(`${native.pid}:${native.window_id}`);
+      if (signal?.aborted) return this.result("refused", "Cancelled before launch dispatch.");
+      dispatch();
+      const launched = await start();
+      const pid = launched.pid;
+      if (!Number.isSafeInteger(pid) || (pid as number) <= 0) throw new Error("Launch returned no usable process ID; do not relaunch blindly.");
+      let candidates: WindowEntry[] = [];
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const nativeWindows = await this.list(signal);
+        candidates = [];
+        for (const native of nativeWindows) {
+          // Packaged activation may return a broker PID while the new window belongs to an existing app process.
+          const reported = Array.isArray(launched.windows) && launched.windows.some(window => {
+            const item = window as WindowTarget;
+            return item.pid === native.pid && item.window_id === native.window_id;
+          });
+          if (native.pid !== pid && appName(String(native.app_name ?? "")) !== appName(selected.name) && !reported) continue;
+          // Treat baseline addresses as existing even if a handle is recycled during launch: fail closed.
+          if (before.has(`${native.pid}:${native.window_id}`)) continue;
+          const entry = await this.register(native as unknown as WindowTarget, signal);
+          if (entry) candidates.push(entry);
+        }
+        if (candidates.length) break;
+        if (attempt < 19) await delay(250, undefined, { signal });
       }
-      if (candidates.length) break;
-      if (attempt < 19) await delay(250, undefined, { signal });
-    }
-    if (candidates.length !== 1) return this.result("unknown", candidates.length
-      ? "Launch produced multiple possible new windows. Discover them before choosing; ownership is not established."
-      : "Launch did not establish a genuinely new window. It may have reused an existing window or opened a tab. Discover before deciding; do not relaunch blindly.");
-    const entry = candidates[0];
-    entry.owned = true;
-    const observed = await this.capture(entry, signal);
-    return this.result(observed.details.status, observed.details.status === "observed"
-      ? "New application window opened. First observation is ready for one action."
-      : "A new window appeared but its first observation failed. Discover before deciding.",
-      observed.details.state, { ...observed.details, opened: true }, observed.content.filter(block => block.type === "image"));
+      if (candidates.length !== 1) return this.result("unknown", candidates.length
+        ? "Launch produced multiple possible new windows. Discover them before choosing; ownership is not established."
+        : "Launch did not establish a genuinely new window. It may have reused an existing window or opened a tab. Discover before deciding; do not relaunch blindly.");
+      const entry = candidates[0];
+      // On a shared desktop a process belongs to the agent that started it. An app that opens every window in one running
+      // process can put this window into another agent's process; it is not this session's then.
+      if (this.scope.launchedOnly && this.scope.lease && !this.launched.has(entry.target.pid) && !await this.scope.lease.claim(entry.target.pid, signal)) {
+        this.entries.delete(entry.ref);
+        return this.result("unknown", "The app opened its window in a process another agent in this sandbox already uses, so this session cannot use it. "
+          + "Use another app, or wait until that agent is done with this one.");
+      }
+      entry.owned = true;
+      this.launched.add(entry.target.pid);
+      // The started process is this session's too: a script host such as PowerShell reports its console as the new window,
+      // while the windows it shows belong to the started process.
+      if (!this.launched.has(pid as number) && (!this.scope.lease || await this.scope.lease.claim(pid as number, signal).catch(() => false)))
+        this.launched.add(pid as number);
+      const observed = await this.capture(entry, signal);
+      return this.result(observed.details.status, observed.details.status === "observed"
+        ? "New application window opened. First observation is ready for one action."
+        : "A new window appeared but its first observation failed. Discover before deciding.",
+        observed.details.state, { ...observed.details, opened: true }, observed.content.filter(block => block.type === "image"));
+    });
   }
 
   /** Reproject proven window-local native geometry onto fresh CUA frames, never DPI guesses. */
@@ -758,7 +830,7 @@ export class ComputerSession {
       const entry = this.entries.get(String(source.identity.window_ref));
       if (entry && this.allowed(entry)) await notifyWindowObserver(this.observer, entry.target, entry.identity, bounds, signal,
         { kind: "inspect" }, image, action);
-    } else if (this.getMode() === "yolo") {
+    } else if (this.desktopWide()) {
       const display = String(source.identity.display_id ?? "primary");
       const original = source.image.original_dimensions;
       const physical = bounds ?? (display === "primary" && original ? { x: 0, y: 0, ...original } : undefined);
@@ -777,7 +849,7 @@ export class ComputerSession {
         const display = target.display !== undefined && target.display !== "primary" ? this.displayEntries.get(target.display) : undefined;
         if (target.display !== undefined && target.display !== "primary" && (!this.driver.selectedDisplays || !display))
           return this.result("refused", "Unknown or unavailable display reference. Read the machine's displays again; no primary fallback.");
-        const permitted = () => entry ? this.allowed(entry) : target.display !== undefined && this.getMode() === "yolo";
+        const permitted = () => entry ? this.allowed(entry) : target.display !== undefined && this.desktopWide();
         const denied = () => { this.sequences.clear(); return this.result("refused", "Sequence source access denied. Safe permits session-owned windows only; retained pixels withheld."); };
         if (!permitted()) return denied();
         const settings = { ...this.overviewSettings(), ...(options.maxLongEdge !== undefined ? { maxLongEdge: options.maxLongEdge } : {}),
@@ -839,7 +911,7 @@ export class ComputerSession {
       if (!sequence) return this.result("refused", "Sequence is unavailable or evicted. Capture again; resources do not survive reload/close.");
       const source = sequence.frames[0]?.source;
       const entry = source?.kind === "window" ? this.entries.get(String(source.identity.window_ref)) : undefined;
-      const permitted = () => source?.kind === "window" ? !!entry && this.allowed(entry) : source?.kind === "display" && this.getMode() === "yolo";
+      const permitted = () => source?.kind === "window" ? !!entry && this.allowed(entry) : source?.kind === "display" && this.desktopWide();
       const denied = () => { this.sequences.clear(); return this.result("refused", "Retained sequence source is no longer accessible; pixels and metadata withheld."); };
       if (!permitted()) return denied();
       try {
@@ -1007,7 +1079,7 @@ export class ComputerSession {
     const sequence = await watch.done;
     this.watches.delete(id);
     const entry = this.entries.get(watch.window_ref);
-    if (entry ? !this.allowed(entry) : this.getMode() !== "yolo") {
+    if (entry ? !this.allowed(entry) : !this.desktopWide()) {
       this.sequences.clear();
       return this.result("refused", "The watched window is no longer accessible; its frames are withheld.");
     }
@@ -1047,14 +1119,14 @@ export class ComputerSession {
         watch: { sequence_id: id, watching: watch.watching, running: false, marks: watch.marks, changed_frames: distinct, ...(written ? { files: written } : {}) } });
     result.content.push(...content);
     await this.frameActivity(frames.at(-1)?.source, content.find(block => block.type === "image"), undefined, "watch");
-    if (entry ? !this.allowed(entry) : this.getMode() !== "yolo") return this.result("refused", "Watch access revoked; pixels withheld.");
+    if (entry ? !this.allowed(entry) : !this.desktopWide()) return this.result("refused", "Watch access revoked; pixels withheld.");
     return result;
   }
   /** Enumerate native Windows monitors in YOLO. References grant read access, never input. */
   displays(signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       const denied = () => { this.displayEntries.clear(); return this.result("refused", "Safe mode forbids display discovery; native metadata withheld."); };
-      if (this.getMode() !== "yolo") return denied();
+      if (!this.desktopWide()) return denied();
       if (!this.driver.selectedDisplays) return this.result("refused", "Selected displays require an explicitly qualified Windows runtime.");
       if (signal?.aborted) return this.result("refused", "Cancelled before display discovery.");
       try {
@@ -1062,7 +1134,7 @@ export class ComputerSession {
         const remote = this.host?.displayModes.remoteSession(signal).catch(() => false) ?? Promise.resolve(false);
         const state = await this.state("list_displays", {}, signal);
         const remoteSession = await remote;
-        if (this.getMode() !== "yolo") return denied();
+        if (!this.desktopWide()) return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display discovery; metadata withheld.");
         if (state.platform !== "windows" || typeof state.topology_id !== "string" || !state.topology_id || !Array.isArray(state.displays) || !state.displays.length)
           throw new Error("CUA returned no native Windows display inventory.");
@@ -1082,7 +1154,7 @@ export class ComputerSession {
           { platform: "windows", topology_id: topology, ...(remoteSession ? { remote_session: true } : {}), displays: addressed });
       } catch (error) {
         this.displayEntries.clear();
-        if (this.getMode() !== "yolo") return denied();
+        if (!this.desktopWide()) return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display discovery; metadata withheld.");
         return this.result("refused", `Native display discovery failed. ${error instanceof Error ? error.message : error}`);
       }
@@ -1095,7 +1167,7 @@ export class ComputerSession {
    */
   clipboardRead(image: boolean, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids clipboard access: it is shared with the user's own apps. Only the user can select YOLO with /computer-mode.");
+      if (!this.desktopWide()) return this.wideRefusal("clipboard access", ": it is shared with the user's own apps");
       if (signal?.aborted) return this.result("refused", "Cancelled before reading the clipboard.");
       try {
         if (image && !this.host) return this.result("refused", "Clipboard images need the machine host, which this desktop does not have.");
@@ -1114,7 +1186,7 @@ export class ComputerSession {
    */
   recordStart(seconds: number, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display recording. Only the user can select YOLO with /computer-mode.");
+      if (!this.desktopWide()) return this.wideRefusal("display recording");
       if (!this.host) return this.result("refused", "Recording needs the session folder, which this desktop does not have.");
       if (this.recording) return this.result("refused", "A recording is already running; stop it first.");
       const folder = await this.host.files();
@@ -1133,7 +1205,7 @@ export class ComputerSession {
   /** Record the machine's playback audio (YOLO) into the session folder as audio-<n>.wav. */
   recordAudio(seconds: number): Promise<ComputerResult> {
     return this.queue(async () => {
-      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids audio recording: it can capture the user's calls and media. Only the user can select YOLO with /computer-mode.");
+      if (!this.desktopWide()) return this.wideRefusal("audio recording", ": it can capture the user's calls and media");
       if (!this.host) return this.result("refused", "Audio recording needs the session folder, which this desktop does not have.");
       try {
         const name = await this.host.recordAudio(seconds, `audio-${++this.audioClips}.wav`);
@@ -1173,7 +1245,7 @@ export class ComputerSession {
   /** Replace the controlled machine's clipboard in YOLO with text or an image file already on that machine. */
   clipboardWrite(value: { text: string } | { imagePath: string }, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids clipboard access: it is shared with the user's own apps. Only the user can select YOLO with /computer-mode.");
+      if (!this.desktopWide()) return this.wideRefusal("clipboard access", ": it is shared with the user's own apps");
       if (signal?.aborted) return this.result("refused", "Cancelled before writing the clipboard.");
       try {
         const state = await this.state("clipboard_write", "text" in value ? { text: value.text } : { image_path: value.imagePath }, signal);
@@ -1185,7 +1257,7 @@ export class ComputerSession {
   /** Change a discovered display's resolution in YOLO. Closing the session restores the mode it replaced. */
   resizeDisplay(display: string, mode: DisplayMode, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
-      if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display changes. Only the user can select YOLO with /computer-mode.");
+      if (!this.desktopWide()) return this.wideRefusal("display changes");
       if (!this.host) return this.result("refused", "Display resizing is not available for this desktop.");
       const entry = this.displayEntries.get(display);
       if (!entry) return this.result("refused", "Unknown or outdated display reference. Read the displays again.");
@@ -1228,7 +1300,7 @@ export class ComputerSession {
         this.displayOverview = undefined; this.displayEntries.clear();
         return this.result("refused", "Safe mode forbids full-display reading. Only the user can select YOLO with /computer-mode.");
       };
-      if (this.getMode() !== "yolo") return denied();
+      if (!this.desktopWide()) return denied();
       if (signal?.aborted) return this.result("refused", "Cancelled before display capture.");
       const entry = display === "primary" ? undefined : this.displayEntries.get(display);
       if (display !== "primary" && (!this.driver.selectedDisplays || !entry)) return this.result("refused", "Unknown or unavailable display reference. Discover native displays again; no primary fallback.");
@@ -1238,7 +1310,7 @@ export class ComputerSession {
       try {
         const settings = { ...this.overviewSettings(), ...size }; const cap = nativeImageCap(settings);
         const native = await this.readDisplay(entry, cap, signal);
-        if (this.getMode() !== "yolo") return denied();
+        if (!this.desktopWide()) return denied();
         if (signal?.aborted) return this.result("refused", "Cancelled during display capture; pixels withheld.");
         const state = native.structuredContent;
         if (native.isError || state?.status === "refused" || state?.effect === "refused") {
@@ -1260,12 +1332,12 @@ export class ComputerSession {
         const highlight = await notifyHighlight(this.observer, context ? { display: entry?.native.display_id ?? "primary",
           bounds: entry?.native.bounds ?? { x: 0, y: 0, width: context.originalWidth, height: context.originalHeight },
           ...(images[0]?.type === "image" ? { image: images[0] } : {}) } : undefined, signal);
-        if (this.getMode() !== "yolo") return denied();
+        if (!this.desktopWide()) return denied();
         if (signal?.aborted) { retire(); return this.result("refused", "Cancelled during display frame; pixels withheld."); }
         return this.result("observed", `Native display ${entry?.native.display_id ?? "primary"} overview: ${state!.screenshot_width}x${state!.screenshot_height} local pixels. Read only; zoom uses this image_id. Paint freshness is unverified.`,
           state, { source, ...(highlight ? { highlight } : {}), agent_image: { ...this.imageMetadata(images, state!, settings), image_id: id } }, images);
       } catch (error) {
-        if (this.getMode() !== "yolo") return denied();
+        if (!this.desktopWide()) return denied();
         if (signal?.aborted) { retire(); return this.result("refused", "Cancelled during display capture; diagnostics withheld."); }
         return this.failed(error, false);
       }
@@ -1279,9 +1351,9 @@ export class ComputerSession {
     catch (error) { return this.result("refused", (error as Error).message); }
     if (entry) entry.detail = undefined; else this.displayOverview = undefined;
     try {
-      if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail permission or request cancelled.");
+      if (!this.desktopWide() || signal?.aborted) return this.result("refused", "Display detail permission or request cancelled.");
       const native = await this.readDisplay(entry, 0, signal);
-      if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled; pixels withheld.");
+      if (!this.desktopWide() || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled; pixels withheld.");
       const state = native.structuredContent;
       const images = native.content.filter((block): block is Extract<Content, { type: "image" }> => block.type === "image");
       if (entry && (native.isError || state?.status === "refused" || state?.effect === "refused")) this.displayEntries.delete(entry.ref);
@@ -1292,7 +1364,7 @@ export class ComputerSession {
       const capturedAt = new Date().toISOString();
       const region = nativeRegion(request, overview!);
       const detail = await cropDisplay(images[0], overview!, region, cap);
-      if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during processing; pixels withheld.");
+      if (!this.desktopWide() || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during processing; pixels withheld.");
       const output = { screenshot_width: detail.width, screenshot_height: detail.height, display: entry ? state!.display : "primary", topology_id: entry?.topology };
       const source = entry ? selectedDisplaySource({ ...state, ...output }, this.sessionId, entry.ref) : this.source("display", output, { session_id: this.sessionId, display_id: "primary" });
       source.captured_at = capturedAt;
@@ -1307,7 +1379,7 @@ export class ComputerSession {
       const bounds = entry?.native.bounds ?? { x: 0, y: 0, width: overview!.originalWidth, height: overview!.originalHeight };
       const highlight = await notifyHighlight(this.observer, { display: entry?.native.display_id ?? "primary", bounds,
         mark: { kind: "detail", region: { x: bounds.x + region.left, y: bounds.y + region.top, width: region.width, height: region.height } }, image: detail.image }, signal);
-      if (this.getMode() !== "yolo" || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during frame; pixels withheld.");
+      if (!this.desktopWide() || signal?.aborted) return this.result("refused", "Display detail revoked or cancelled during frame; pixels withheld.");
       return this.result("observed", `Fresh display ${entry?.native.display_id ?? "primary"} crop: native-local ${region.left},${region.top} ${region.width}x${region.height}, output ${detail.width}x${detail.height}. Read only; no nested crop or input. Paint freshness is unverified.`,
         undefined, { source, agent_image, ...(highlight ? { highlight } : {}) }, [detail.image]);
     } catch { return this.result("refused", "Display detail failed; private intermediate pixels and diagnostics withheld. Take a new overview."); }
@@ -1957,18 +2029,21 @@ export class ComputerSession {
         if (!this.allowed(entry)) return this.denied(ref);
         if (signal?.aborted) return this.result("refused", "Cancelled before native restore dispatch.");
         if (!this.driver.windowRestore) return this.result("refused", "Native restore is unavailable. Ask the user to restore manually; no input fallback.");
-        dispatched = true;
-        const native = await this.driver.call("restore_window", { ...entry.target, state_id: observed.nativeId }, signal);
-        const status = windowRestoreStatus(native.structuredContent, entry.target, observed.nativeId, native.isError === true);
-        // A transport cancellation, lost identity or permission change cannot retract a submitted native transition.
-        // Keep the native receipt even when this final identity check fails or throws.
-        let current = false;
-        try { current = !!await this.current(ref, signal); } catch { /* The delivered prefix remains available below. */ }
-        const outcome = signal?.aborted || !this.allowed(entry) || !current ? "unknown" : status;
-        const message = outcome === "delivered" ? "Native restoration and target foreground confirmed. Keyboard focus is measured separately; Read fresh pixels to inspect paint."
-          : outcome === "refused" ? "Native restore refused before mutation. Ask the user to restore manually; no keys or clicks were used."
-          : "Restore outcome incomplete or unknown. Retained native prefix follows; do not replay. Read fresh window state/pixels before deciding.";
-        return this.result(outcome, message, native.structuredContent, this.addressed(entry));
+        // Activation takes the foreground, so a restore waits for this session's input turn on a shared desktop.
+        return await this.leased(signal, async () => {
+          dispatched = true;
+          const native = await this.driver.call("restore_window", { ...entry.target, state_id: observed.nativeId }, signal);
+          const status = windowRestoreStatus(native.structuredContent, entry.target, observed.nativeId, native.isError === true);
+          // A transport cancellation, lost identity or permission change cannot retract a submitted native transition.
+          // Keep the native receipt even when this final identity check fails or throws.
+          let current = false;
+          try { current = !!await this.current(ref, signal); } catch { /* The delivered prefix remains available below. */ }
+          const outcome = signal?.aborted || !this.allowed(entry) || !current ? "unknown" : status;
+          const message = outcome === "delivered" ? "Native restoration and target foreground confirmed. Keyboard focus is measured separately; Read fresh pixels to inspect paint."
+            : outcome === "refused" ? "Native restore refused before mutation. Ask the user to restore manually; no keys or clicks were used."
+            : "Restore outcome incomplete or unknown. Retained native prefix follows; do not replay. Read fresh window state/pixels before deciding.";
+          return this.result(outcome, message, native.structuredContent, this.addressed(entry));
+        });
       } catch (error) { return this.failed(error, dispatched); }
     });
   }
@@ -1988,18 +2063,21 @@ export class ComputerSession {
         if (observed.kind !== "management" || !this.driver.windowManagement)
           return this.result("refused", "This state/runtime does not admit management. Read qualified control state; no input fallback.");
         const { action, ...geometry } = command;
-        dispatched = true;
-        const native = await this.driver.call("manage_window", { ...entry.target, state_id: observed.nativeId, operation: action, ...geometry }, signal);
-        const status = native.content.some(block => block.type === "image") ? "unknown"
-          : windowManagementStatus(native.structuredContent, entry.target, observed.nativeId, command, native.isError === true);
-        let current = false;
-        try { current = !!await this.current(ref, signal); } catch { /* Preserve the submitted prefix. */ }
-        const outcome = signal?.aborted || !this.allowed(entry) || !current ? "unknown" : status;
-        return this.result(outcome, outcome === "delivered"
-          ? "Native management postcondition confirmed. Foreground/focus are separate measurements; Read fresh pixels to inspect paint."
-          : outcome === "refused" ? "Native management refused before mutation. No input fallback."
-          : "Management outcome incomplete or unknown. Retained native prefix follows; do not replay. Read fresh state/pixels.",
-          native.structuredContent, this.addressed(entry));
+        // Moving, sizing or activating a window can take the foreground, so it waits for this session's input turn on a shared desktop.
+        return await this.leased(signal, async () => {
+          dispatched = true;
+          const native = await this.driver.call("manage_window", { ...entry.target, state_id: observed.nativeId, operation: action, ...geometry }, signal);
+          const status = native.content.some(block => block.type === "image") ? "unknown"
+            : windowManagementStatus(native.structuredContent, entry.target, observed.nativeId, command, native.isError === true);
+          let current = false;
+          try { current = !!await this.current(ref, signal); } catch { /* Preserve the submitted prefix. */ }
+          const outcome = signal?.aborted || !this.allowed(entry) || !current ? "unknown" : status;
+          return this.result(outcome, outcome === "delivered"
+            ? "Native management postcondition confirmed. Foreground/focus are separate measurements; Read fresh pixels to inspect paint."
+            : outcome === "refused" ? "Native management refused before mutation. No input fallback."
+            : "Management outcome incomplete or unknown. Retained native prefix follows; do not replay. Read fresh state/pixels.",
+            native.structuredContent, this.addressed(entry));
+        });
       } catch (error) { return this.failed(error, dispatched); }
     });
   }
@@ -2076,7 +2154,7 @@ export class ComputerSession {
       if ((target.window_ref !== undefined) === (target.display !== undefined))
         return this.result("refused", "Choose one observed window or display reference.");
       if (target.display !== undefined) {
-        if (this.getMode() !== "yolo") return this.result("refused", "Safe mode forbids display observation reading.");
+        if (!this.desktopWide()) return this.result("refused", "Display observations are not open to this session.");
         const detail = target.display === "primary" ? this.displayOverview : this.displayEntries.get(target.display)?.detail;
         return detail?.id === id ? this.result("observed", "Existing read-only display observation; no fresh pixels or input authority.")
           : this.result("refused", "Retired display observation. Read a new overview.");
@@ -2164,147 +2242,149 @@ export class ComputerSession {
         commands = commands.map(step => ({ ...step, ...(step.keys ? { keys: [...step.keys] } : {}), ...(step.modifiers ? { modifiers: [...step.modifiers] } : {}), ...(step.via ? { via: step.via.map(point => ({ ...point })) } : {}), ...(step.actions ? { actions: step.actions.map(pointer => ({ ...pointer, ...(pointer.via ? { via: pointer.via.map(point => ({ ...point })) } : {}) })) } : {}) }));
       } catch (error) { return this.result("refused", (error as Error).message); }
 
-      const started = performance.now();
-      const trace = { total: commands.length, attempted: 0, completed: 0, elapsed_ms: 0,
-        steps: [] as Record<string, unknown>[], stop_reason: "" };
-      let inFlight = false;
-      const finish = (result: ComputerResult, reason = "") => {
-        if (!batch) return result;
-        trace.elapsed_ms = performance.now() - started; trace.stop_reason = reason;
-        const status = result.details.status;
-        return this.result(status, `Sequence ${status}: ${trace.completed}/${trace.total} steps delivered; ${trace.attempted} attempted in ${Math.round(trace.elapsed_ms)}ms. ${reason || "Observe again to verify application state."} Never replay the completed prefix.`,
-          { ...(result.details.state ?? {}), sequence: trace }, { ...this.addressed(entry), ...(result.details.highlight ? { highlight: result.details.highlight } : {}) });
-      };
-      try {
-        let capture = observed.captureId;
-        for (const [index, step] of commands.entries()) {
-          if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before the next dispatch.");
-          if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
-          if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached; no more steps dispatched.`);
-          if (step.wait_ms) await delay(step.wait_ms, undefined, { signal });
-          const current = await this.current(entry.ref, signal);
-          if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
-          if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
-          if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
-          // The native capture is single-use: the first step that binds to it spends it, later pixel steps use the window's current mapping.
-          const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", capture, this.driver.captureBoundDrag, uia_only);
-          if (args.capture_id !== undefined) capture = undefined;
-          // AX bounds are native. Only native click receipts establish an exact pixel action mark.
-          const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
-          const activityAction = presentationAction(step);
-          // A password field's text is never shown.
-          const typedElement = observed.ui?.elements.find(element => step.element_token ? element.element_token === step.element_token : element.focused);
-          const focusedElement = observed.ui?.elements.find(element => element.focused);
-          const typedText = ["type_text", "set_value"].includes(step.action)
-            ? !typedElement?.password ? shownTypedText(step.text) : undefined
-            : presentationDetail(step, !batch && step.action !== "timeline" && !!focusedElement && !focusedElement.password);
-          let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction, undefined, typedText);
-          if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
-          if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
-          if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
-          // Input may change the page, so the window's DOM snapshot retires with its native capture.
-          entry.observation = undefined; entry.detail = undefined; entry.dom = undefined;
-          const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length) ||
-            (step.action === "timeline" && step.events?.some(event => event.type !== "key_down" && event.type !== "key_up"));
-          if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
-          const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
-            ...(step.via ? { via_points: step.via.length } : {}), ...(step.actions ? { actions: step.actions.map(pointer => { const { via, ...compact } = pointer; return { ...compact, ...(via ? { via_points: via.length } : {}) }; }) } : {}) };
-          delete requested.text; delete requested.element_token;
-          delete requested.via;
-          const row: Record<string, unknown> = { index, action: step.action, native_tool: name, requested,
-            requested_wait_ms: step.wait_ms ?? 0, dispatch_ms: performance.now() - started, status: "unknown" };
-          trace.steps.push(row); trace.attempted++; inFlight = true;
-          // A sequence stops between steps: its current step finishes and releases its own keys and buttons,
-          // and the driver connection survives the cancellation. A single action stays cancellable in flight.
-          const nativeSignal = batch ? undefined : signal;
-          const yoloDispatch = this.getMode() === "yolo";
-          this.nativeInputsInFlight++;
-          let native: DriverResult;
-          try {
-            native = await this.driver.call(name, args, nativeSignal);
-            const effect = String(native.structuredContent?.effect), status = String(native.structuredContent?.status);
-            if (yoloDispatch && ((native.isError && effect !== "refused" && status !== "refused") || ["unknown", "partial"].includes(status) || ["unknown", "partial"].includes(effect)))
-              this.unconfirmedUnsafeWork = true;
-          } catch (error) {
-            // Cancellation or transport loss may leave a scheduled native timeline running after this promise rejects.
-            if (yoloDispatch) this.unconfirmedUnsafeWork = true;
-            throw error;
-          } finally { this.nativeInputsInFlight--; }
-          row.completion_ms = performance.now() - started;
-          if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) return finish(this.result("unknown",
-            "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),
-            "In-flight outcome withheld after revocation/cancellation.");
-          const state = native.structuredContent ?? {};
-          const nativeMessage = native.content.filter(c => c.type === "text").map(c => c.text).join("\n");
-          // Three physical Escape presses stop input: nothing more is sent, and a running string or timeline stops part way.
-          const stopped = /human_stop:/.test(nativeMessage) || state.code === "human_stop";
-          const stopRefused = stopped && (state.status === "refused" || state.effect === "refused");
-          // A real press at a point another window covers is refused by the driver before anything is pressed there.
-          const covering = coveringWindow(nativeMessage);
-          const refused = stopRefused || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
-            "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable", "input_busy"].includes(String(state.code));
-          const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
-          const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
-            : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
-            : isCoordinateScroll(step) && (delivery_mode !== "foreground" || !scrollReceipt(step, state)));
-          // A headless MXC session can accept pointer events without moving the cursor or reaching the target.
-          // A UIA element action is not pointer input, even when exposed as a click.
-          const isolatedPointerUnconfirmed = !refused && !uncertain && pointerAction &&
-            this.driver.sourceDomain === "windows-session" && state.effect !== "confirmed" &&
-            !(uia_only || (step.element_token && state.route === "accessibility"));
-          const status = refused ? "refused" : uncertain || inconsistent || isolatedPointerUnconfirmed ? "unknown" : "delivered";
-          const receipt = isolatedPointerUnconfirmed && state.code === undefined ? { ...state, code: "isolated_pointer_unconfirmed" } : state;
-          const pointerNote = isolatedPointerUnconfirmed ? "Windows did not confirm pointer input in this isolated session. Read the window before retrying." : "";
-          row.status = status; inFlight = false;
-          const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, receipt);
-          row.action_capability = capability;
-          if (status === "delivered") trace.completed++;
-          const resolvedPoint = status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds
-            ? nativeClickPoint(native.content, entry.target.pid, observed.bounds) : undefined;
-          if (status === "delivered" && pointerAction) {
-            const target = step.element_token ? observed.frames.get(step.element_token) : undefined;
-            const mapping = observed.mapping;
-            const sameMapping = resolvedPoint && observed.bounds && mapping && step.x !== undefined && step.y !== undefined &&
-              Math.abs(resolvedPoint.x - (observed.bounds.x + mapping.offsetX + step.x * mapping.scale)) <= 1 &&
-              Math.abs(resolvedPoint.y - (observed.bounds.y + mapping.offsetY + step.y * mapping.scale)) <= 1;
-            const r = target ?? (sameMapping ? { ...resolvedPoint, width: 1, height: 1 } : undefined);
-            entry.lastAction = r && observed.bounds
-              ? { region: { ...r, x: r.x - observed.bounds.x, y: r.y - observed.bounds.y },
-                basis: target ? "completed_native_token_target" : "completed_native_click_receipt" }
-              : { reason: "Native action did not report usable target geometry." };
+      return this.leased(signal, async () => {
+        const started = performance.now();
+        const trace = { total: commands.length, attempted: 0, completed: 0, elapsed_ms: 0,
+          steps: [] as Record<string, unknown>[], stop_reason: "" };
+        let inFlight = false;
+        const finish = (result: ComputerResult, reason = "") => {
+          if (!batch) return result;
+          trace.elapsed_ms = performance.now() - started; trace.stop_reason = reason;
+          const status = result.details.status;
+          return this.result(status, `Sequence ${status}: ${trace.completed}/${trace.total} steps delivered; ${trace.attempted} attempted in ${Math.round(trace.elapsed_ms)}ms. ${reason || "Observe again to verify application state."} Never replay the completed prefix.`,
+            { ...(result.details.state ?? {}), sequence: trace }, { ...this.addressed(entry), ...(result.details.highlight ? { highlight: result.details.highlight } : {}) });
+        };
+        try {
+          let capture = observed.captureId;
+          for (const [index, step] of commands.entries()) {
+            if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before the next dispatch.");
+            if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before the next dispatch.");
+            if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached; no more steps dispatched.`);
+            if (step.wait_ms) await delay(step.wait_ms, undefined, { signal });
+            const current = await this.current(entry.ref, signal);
+            if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked before dispatch.");
+            if (!current) return finish(this.result("refused", "Window closed or its native handle was reused. Discover again."), "Window lifetime changed.");
+            if (signal?.aborted) return finish(this.result("refused", "Cancelled."), "Cancelled before dispatch.");
+            // The native capture is single-use: the first step that binds to it spends it, later pixel steps use the window's current mapping.
+            const { name, args } = nativeInput(step, entry.target, delivery_mode ?? "background", capture, this.driver.captureBoundDrag, uia_only);
+            if (args.capture_id !== undefined) capture = undefined;
+            // AX bounds are native. Only native click receipts establish an exact pixel action mark.
+            const mark = { kind: "action" as const, region: step.element_token ? observed.frames.get(step.element_token) : undefined };
+            const activityAction = presentationAction(step);
+            // A password field's text is never shown.
+            const typedElement = observed.ui?.elements.find(element => step.element_token ? element.element_token === step.element_token : element.focused);
+            const focusedElement = observed.ui?.elements.find(element => element.focused);
+            const typedText = ["type_text", "set_value"].includes(step.action)
+              ? !typedElement?.password ? shownTypedText(step.text) : undefined
+              : presentationDetail(step, !batch && step.action !== "timeline" && !!focusedElement && !focusedElement.password);
+            let highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal, mark, undefined, activityAction, undefined, typedText);
+            if (signal?.aborted) return finish(this.result("refused", "Cancelled during action mark; input was not dispatched."), "Cancelled during action mark.");
+            if (!this.inputAllowed(entry)) return finish(this.denied(entry.ref), "Permission revoked during action mark.");
+            if (batch && performance.now() - started >= SEQUENCE_ELAPSED_MS) return finish(this.result("refused", "Sequence time budget reached."), `${SEQUENCE_ELAPSED_MS / 60000} min elapsed budget reached during admission; no more steps dispatched.`);
+            // Input may change the page, so the window's DOM snapshot retires with its native capture.
+            entry.observation = undefined; entry.detail = undefined; entry.dom = undefined;
+            const pointerAction = isPointerMove(step.action) || isCoordinateScroll(step) || ["click", "right_click", "double_click", "drag"].includes(step.action) || (step.action === "hold" && !!step.actions?.length) ||
+              (step.action === "timeline" && step.events?.some(event => event.type !== "key_down" && event.type !== "key_up"));
+            if (pointerAction) entry.lastAction = { reason: "Pointer outcome is not yet confirmed." };
+            const requested = { ...step, ...(step.text !== undefined ? { text_length: step.text.length } : {}),
+              ...(step.via ? { via_points: step.via.length } : {}), ...(step.actions ? { actions: step.actions.map(pointer => { const { via, ...compact } = pointer; return { ...compact, ...(via ? { via_points: via.length } : {}) }; }) } : {}) };
+            delete requested.text; delete requested.element_token;
+            delete requested.via;
+            const row: Record<string, unknown> = { index, action: step.action, native_tool: name, requested,
+              requested_wait_ms: step.wait_ms ?? 0, dispatch_ms: performance.now() - started, status: "unknown" };
+            trace.steps.push(row); trace.attempted++; inFlight = true;
+            // A sequence stops between steps: its current step finishes and releases its own keys and buttons,
+            // and the driver connection survives the cancellation. A single action stays cancellable in flight.
+            const nativeSignal = batch ? undefined : signal;
+            const yoloDispatch = this.getMode() === "yolo";
+            this.nativeInputsInFlight++;
+            let native: DriverResult;
+            try {
+              native = await this.driver.call(name, args, nativeSignal);
+              const effect = String(native.structuredContent?.effect), status = String(native.structuredContent?.status);
+              if (yoloDispatch && ((native.isError && effect !== "refused" && status !== "refused") || ["unknown", "partial"].includes(status) || ["unknown", "partial"].includes(effect)))
+                this.unconfirmedUnsafeWork = true;
+            } catch (error) {
+              // Cancellation or transport loss may leave a scheduled native timeline running after this promise rejects.
+              if (yoloDispatch) this.unconfirmedUnsafeWork = true;
+              throw error;
+            } finally { this.nativeInputsInFlight--; }
+            row.completion_ms = performance.now() - started;
+            if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) return finish(this.result("unknown",
+              "Input was dispatched before permission was revoked or cancellation. Outcome withheld; native input may still have completed. Do not replay blindly."),
+              "In-flight outcome withheld after revocation/cancellation.");
+            const state = native.structuredContent ?? {};
+            const nativeMessage = native.content.filter(c => c.type === "text").map(c => c.text).join("\n");
+            // Three physical Escape presses stop input: nothing more is sent, and a running string or timeline stops part way.
+            const stopped = /human_stop:/.test(nativeMessage) || state.code === "human_stop";
+            const stopRefused = stopped && (state.status === "refused" || state.effect === "refused");
+            // A real press at a point another window covers is refused by the driver before anything is pressed there.
+            const covering = coveringWindow(nativeMessage);
+            const refused = stopRefused || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
+              "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable", "input_busy"].includes(String(state.code));
+            const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
+            const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
+              : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
+              : isCoordinateScroll(step) && (delivery_mode !== "foreground" || !scrollReceipt(step, state)));
+            // A headless MXC session can accept pointer events without moving the cursor or reaching the target.
+            // A UIA element action is not pointer input, even when exposed as a click.
+            const isolatedPointerUnconfirmed = !refused && !uncertain && pointerAction &&
+              this.driver.sourceDomain === "windows-session" && state.effect !== "confirmed" &&
+              !(uia_only || (step.element_token && state.route === "accessibility"));
+            const status = refused ? "refused" : uncertain || inconsistent || isolatedPointerUnconfirmed ? "unknown" : "delivered";
+            const receipt = isolatedPointerUnconfirmed && state.code === undefined ? { ...state, code: "isolated_pointer_unconfirmed" } : state;
+            const pointerNote = isolatedPointerUnconfirmed ? "Windows did not confirm pointer input in this isolated session. Read the window before retrying." : "";
+            row.status = status; inFlight = false;
+            const capability = actionCapability(step.action, name, delivery_mode ?? "background", status, receipt);
+            row.action_capability = capability;
+            if (status === "delivered") trace.completed++;
+            const resolvedPoint = status === "delivered" && step.x !== undefined && step.action === "click" && observed.bounds
+              ? nativeClickPoint(native.content, entry.target.pid, observed.bounds) : undefined;
+            if (status === "delivered" && pointerAction) {
+              const target = step.element_token ? observed.frames.get(step.element_token) : undefined;
+              const mapping = observed.mapping;
+              const sameMapping = resolvedPoint && observed.bounds && mapping && step.x !== undefined && step.y !== undefined &&
+                Math.abs(resolvedPoint.x - (observed.bounds.x + mapping.offsetX + step.x * mapping.scale)) <= 1 &&
+                Math.abs(resolvedPoint.y - (observed.bounds.y + mapping.offsetY + step.y * mapping.scale)) <= 1;
+              const r = target ?? (sameMapping ? { ...resolvedPoint, width: 1, height: 1 } : undefined);
+              entry.lastAction = r && observed.bounds
+                ? { region: { ...r, x: r.x - observed.bounds.x, y: r.y - observed.bounds.y },
+                  basis: target ? "completed_native_token_target" : "completed_native_click_receipt" }
+                : { reason: "Native action did not report usable target geometry." };
+            }
+            highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal,
+              { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, activityAction, status, typedText);
+            if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) {
+              entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
+              return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
+            }
+            const cover = covering && await this.coverText(covering, signal);
+            // A click that closed its window, such as OK in a dialog, names the window of the app the driver found in front.
+            const after = status === "delivered" ? foregroundAfter(state.foreground_after) : undefined;
+            const front = after && `The click closed this window; ${await this.windowName(after, signal)} of the same app is now in front.\n`;
+            const returnedFocus = focusReturn(nativeMessage);
+            const kept = returnedFocus?.note;
+            const result = this.result(status, stopped ? `The human stopped computer use with Escape. ${status === "refused" ? "Nothing was sent." : "Input stopped part way; observe before anything else once computer use is on again."} Do not retry or work around it; tell the human and wait until they turn it on again with /computer-mode.`
+              : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}${kept ? `${kept}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}${pointerNote || "Observe again to verify application state."}${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
+              { ...receipt, ...(returnedFocus ? { focus_return: returnedFocus.outcome } : {}), ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
+                overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
+                resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
+              ...(native.isError || !native.structuredContent ? {
+                native_message: nativeMessage,
+              } : {}) }, { ...this.addressed(entry), action_capability: capability, ...(highlight ? { highlight } : {}) });
+            if (!batch || status !== "delivered" || index === commands.length - 1) {
+              // Pixel-only input keeps the overview usable: the next call checks the window size instead of capturing again.
+              if (status === "delivered" && this.driver.windowManagement && observed.bounds && commands.every(item => item.element_token === undefined && !isSemanticAction(item.action)))
+                entry.observation = { ...observed, captureId: undefined, pixelsOnly: true };
+              return finish(result, status === "delivered" ? "" : `${pointerNote ? `${pointerNote} ` : ""}Later steps were not dispatched after ${status}.`);
+            }
           }
-          highlight = await notifyWindowObserver(this.observer, entry.target, entry.identity, observed.bounds, signal,
-            { kind: "action", ...(resolvedPoint ? { point: resolvedPoint } : step.element_token && mark.region ? { region: mark.region } : {}) }, undefined, activityAction, status, typedText);
-          if (!this.inputAllowed(entry) || (!batch && signal?.aborted)) {
-            entry.lastAction = { reason: "In-flight pointer outcome was withheld after revocation or cancellation." };
-            return finish(this.result("unknown", "Input was dispatched before revocation or cancellation. Do not replay blindly."), "In-flight outcome withheld after input.");
-          }
-          const cover = covering && await this.coverText(covering, signal);
-          // A click that closed its window, such as OK in a dialog, names the window of the app the driver found in front.
-          const after = status === "delivered" ? foregroundAfter(state.foreground_after) : undefined;
-          const front = after && `The click closed this window; ${await this.windowName(after, signal)} of the same app is now in front.\n`;
-          const returnedFocus = focusReturn(nativeMessage);
-          const kept = returnedFocus?.note;
-          const result = this.result(status, stopped ? `The human stopped computer use with Escape. ${status === "refused" ? "Nothing was sent." : "Input stopped part way; observe before anything else once computer use is on again."} Do not retry or work around it; tell the human and wait until they turn it on again with /computer-mode.`
-            : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}${kept ? `${kept}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}${pointerNote || "Observe again to verify application state."}${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
-            { ...receipt, ...(returnedFocus ? { focus_return: returnedFocus.outcome } : {}), ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
-              overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
-              resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
-            ...(native.isError || !native.structuredContent ? {
-              native_message: nativeMessage,
-            } : {}) }, { ...this.addressed(entry), action_capability: capability, ...(highlight ? { highlight } : {}) });
-          if (!batch || status !== "delivered" || index === commands.length - 1) {
-            // Pixel-only input keeps the overview usable: the next call checks the window size instead of capturing again.
-            if (status === "delivered" && this.driver.windowManagement && observed.bounds && commands.every(item => item.element_token === undefined && !isSemanticAction(item.action)))
-              entry.observation = { ...observed, captureId: undefined, pixelsOnly: true };
-            return finish(result, status === "delivered" ? "" : `${pointerNote ? `${pointerNote} ` : ""}Later steps were not dispatched after ${status}.`);
-          }
+          throw new Error("No complete input step.");
+        } catch (error) {
+          if (inFlight && trace.steps.length) trace.steps.at(-1)!.completion_ms = performance.now() - started;
+          return finish(await this.failed(error, inFlight), inFlight ? "Transport/dispatch failed; current step is uncertain." : "Stopped before next dispatch.");
         }
-        throw new Error("No complete input step.");
-      } catch (error) {
-        if (inFlight && trace.steps.length) trace.steps.at(-1)!.completion_ms = performance.now() - started;
-        return finish(await this.failed(error, inFlight), inFlight ? "Transport/dispatch failed; current step is uncertain." : "Stopped before next dispatch.");
-      }
+      });
     });
   }
 
@@ -2326,7 +2406,8 @@ export class ComputerSession {
 
   /** A window the driver named by its handle: its title, and its address where this session may act on it. YOLO adopts it; Safe never does. */
   private async windowName(window: NamedWindow, signal?: AbortSignal): Promise<string> {
-    const entry = this.getMode() === "yolo" ? await this.register(window, signal).catch(() => undefined) : undefined;
+    const registered = this.getMode() === "yolo" ? await this.register(window, signal).catch(() => undefined) : undefined;
+    const entry = registered && this.allowed(registered) ? registered : undefined;
     return `${window.title ? `"${window.title}"` : "an untitled window"}${entry ? ` (${computerSource("window", entry.ref)})` : ""}`;
   }
 
@@ -2365,6 +2446,8 @@ export class ComputerSession {
       ...(observed ? { native: { id: observed.id, width: observed.width, height: observed.height, full, ...(observed.ui && !observed.pixelsOnly ? { ui: observed.ui } : {}) } } : {}),
       ...(entry?.seen ? { seen: { ...entry.seen } } : {}) };
   }
+  /** Whether this session started the process, on a desktop it shares with other agents. */
+  ownsProcess(pid: number): boolean { return this.launched.has(pid); }
   /** Whether this session issued a still-registered window reference. */
   hasWindow(ref: string): boolean { return this.entries.has(ref); }
   /** Whether this session issued a still-registered display reference. */
@@ -2393,6 +2476,10 @@ export class ComputerSession {
       const restored = await Promise.allSettled(modes.map(([device, mode]) => this.host!.displayModes.restore(device, mode)));
       if (this.recording) { clearTimeout(this.recording.timer); this.recording = undefined; }
       const files = await this.host?.removeFiles().then(() => true, () => false) ?? true;
+      // On a desktop other agents share, this agent's apps would only pile up there: close them.
+      if (this.scope.launchedOnly)
+        await Promise.allSettled([...this.launched].map(pid => this.driver.call("kill_app", { pid })));
+      this.launched.clear();
       await this.driver.close();
       const failed = cleanup.filter(result => result.status === "rejected").length;
       const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);
