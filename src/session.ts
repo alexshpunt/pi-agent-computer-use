@@ -25,7 +25,8 @@ import { WEBVIEW2_DEBUGGING, type MachineHost, type ProcessHealth, type TextLine
 import { setTimeout as delay } from "node:timers/promises";
 import { cropDisplay, nativeRegion, validateDetail, type DetailContext, type DetailRequest } from "./native-detail.ts";
 import type { StateDiff } from "./successor.ts";
-import { STICKY_SECONDS, type InputLease, type LeaseGrant } from "./input-lease.ts";
+import { STICKY_SECONDS, zoneText, type InputLease, type LeaseGrant, type ScreenZone } from "./input-lease.ts";
+import { pointOutsideZone } from "./screen-zones.ts";
 import { combine, evaluateNative, validateWait, type ConditionResult, type WaitResult, type WaitSpec } from "./ui-conditions.ts";
 import { computerSource } from "./computer-address.ts";
 import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebOpened, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
@@ -43,6 +44,16 @@ export interface SessionScope {
   lease?: InputLease;
   /** The session sees and acts only on windows of processes it started, and nothing desktop-wide. */
   launchedOnly?: boolean;
+  /** This session's zone of the shared screen when it joined; the lease tells later changes. Input outside it is refused. */
+  zone?: ScreenZone;
+}
+/** Whether two zones cover the same rectangle; the guest moves no window when only the number of agents changed. */
+const samePlace = (a: ScreenZone | undefined, b: ScreenZone | undefined) => a === b || (!!a && !!b && a.x === b.x && a.y === b.y &&
+  a.width === b.width && a.height === b.height);
+/** Put a note before a result's first text. */
+function withNote(result: ComputerResult, note: string): ComputerResult {
+  const [first, ...rest] = result.content;
+  return { ...result, content: first?.type === "text" ? [{ type: "text", text: `${note}\n${first.text}` }, ...rest] : [{ type: "text", text: note }, ...result.content] };
 }
 /** A wait shorter than this for the shared input is not worth mentioning. */
 const LEASE_NOTE_MS = 100;
@@ -336,6 +347,8 @@ export class ComputerSession {
   private unconfirmedUnsafeWork = false;
   /** Processes this session started; with `launchedOnly` they are the only ones it sees. */
   private readonly launched = new Set<number>();
+  /** The shared screen zone as last read from the lease; undefined until then, when the joined zone applies. */
+  private zoneRead?: { zone: ScreenZone | undefined };
   /** Safe cannot be selected while a YOLO agent profile has an unauthenticated debugging port. */
   hasUnapprovedAgentBrowser(): boolean { return this.unconfirmedUnsafeWork || this.unapprovedAgentLaunches > 0 || this.nativeInputsInFlight > 0 || this.unapprovedAgentBrowsers.size > 0; }
 
@@ -425,6 +438,27 @@ export class ComputerSession {
     const summary = mark ? `\nHuman mark: ${mark.kind ?? "target"} ${mark.status}${where}${mark.reason ? ` (${mark.reason})` : ""}.` : "";
     return { content: [{ type: "text", text: `${message}${summary}\n${visible}${extra.dom ? `\n${extra.dom.snapshot}` : ""}` }, ...images], details,
       ...(["refused", "unknown"].includes(status) ? { isError: true } : {}) };
+  }
+
+  /** This session's zone of a shared screen, or undefined where the screen is not split or the session lost its zone. */
+  private zone(): ScreenZone | undefined { return this.zoneRead ? this.zoneRead.zone : this.scope.zone; }
+  /**
+   * Read the zone again from the shared sandbox; agents joining or leaving may move it. A moved zone moved this
+   * session's windows, so every window observation retires; the returned note tells the agent its new zone.
+   */
+  private async refreshZone(signal?: AbortSignal): Promise<string | undefined> {
+    const lease = this.scope.lease;
+    if (!lease?.zone || !this.scope.zone) return undefined;
+    const before = this.zone();
+    let zone: ScreenZone | undefined;
+    try { zone = await lease.zone(signal); }
+    // An unreachable guest keeps the last zone: a Read needs no turn, and an action's own acquire reports the failure.
+    catch { return undefined; }
+    this.zoneRead = { zone };
+    if (samePlace(before, zone)) return undefined;
+    for (const entry of this.entries.values()) { entry.observation = undefined; entry.detail = undefined; }
+    return zone ? `Agents joined or left the sandbox, so this session's screen zone changed and its windows moved into it. ${zoneText(zone)}`
+      : "This session lost its zone of the sandbox screen, so its input is refused. Delete the sandbox address and open the sandbox again.";
   }
 
   private allowed(entry: WindowEntry): boolean {
@@ -2101,7 +2135,9 @@ export class ComputerSession {
         if (!entry) return this.result("refused", "Unknown or closed window_ref. Discover again.");
         if (ui) return await this.refineUi(entry, ui, signal);
         if (zoom) return await this.windowDetail(entry, zoom, signal);
-        return await this.capture(entry, signal, query, options, false, deferPresentation);
+        const moved = await this.refreshZone(signal);
+        const captured = await this.capture(entry, signal, query, options, false, deferPresentation);
+        return moved ? withNote(captured, moved) : captured;
       } catch (error) { return this.failed(error, false); }
     });
   }
@@ -2175,6 +2211,10 @@ export class ComputerSession {
   act(action: Action, signal?: AbortSignal): Promise<ComputerResult> {
     return this.queue(async () => {
       if (signal?.aborted) return this.result("refused", "Cancelled before action dispatch.");
+      const moved = await this.refreshZone(signal);
+      if (moved) return this.result("refused", `${moved} Earlier observations are retired: Read the window again. No input was dispatched.`);
+      const zone = this.zone();
+      if (this.scope.zone && !zone) return this.result("refused", "This session has no zone of the sandbox screen, so its input is refused. Delete the sandbox address and open the sandbox again.");
       const entry = this.entries.get(action.window_ref);
       if (entry && !this.allowed(entry)) return this.denied(entry.ref);
       if (entry?.pendingApproval && this.getMode() === "safe") return this.result("refused", "The user must enable and approve this browser connection; Safe mode does not send input to it before approval.");
@@ -2214,6 +2254,8 @@ export class ComputerSession {
               throw Error("The observed target is outside the image. No input was dispatched.");
           }
           validateInput(nativeStep, observed, batch);
+          const outside = zone && pointOutsideZone(nativeStep, zone, { ...observed, width: observed.width ?? entry.seen?.width });
+          if (outside) throw Error(`Screen point ${outside.x},${outside.y} is outside this session's zone of the sandbox screen (${zone!.width}x${zone!.height} at ${zone!.x},${zone!.y}). Other agents work there. No input was dispatched.`);
           if (isCoordinateScroll(nativeStep)) {
             if (!this.driver.coordinateScroll) throw Error("Coordinate scroll requires the explicitly selected native scroll runtime. No input was dispatched.");
             if (!observed.captureId) throw Error("Coordinate scroll needs this overview's native capture. Observe again.");
