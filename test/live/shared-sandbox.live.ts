@@ -185,7 +185,7 @@ test("agents share one sandbox, see only their own windows and never interleave 
   // the new zone and sends nothing; otherwise its zone stays and nothing interrupts it.
   const QUARTERS = ["the top-left quarter", "the top-right quarter", "the bottom-left quarter", "the bottom-right quarter"];
   // Its place in the join order, from the zone it got when it joined: the first joiner got the whole screen.
-  const SEATS: [string, number][] = [["the whole screen", 0], ["the left half", 0], ["the right half", 1], ...QUARTERS.map((name, index): [string, number] => [name, index])];
+  const SEATS: [string, number][] = [["all", 0], ["the left half", 0], ["the right half", 1], ...QUARTERS.map((name, index): [string, number] => [name, index])];
   const seat = (result: (typeof opened)[number]) => SEATS.find(([name]) => text(result).includes(`Screen zone: ${name}`))?.[1] ?? -1;
   const [firstSeat, secondSeat] = [seat(opened[0]), seat(opened[1])];
   expect([firstSeat, secondSeat].every(index => index >= 0), `${text(opened[0])}\n${text(opened[1])}`).toBe(true);

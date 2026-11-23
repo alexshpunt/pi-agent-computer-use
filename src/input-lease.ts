@@ -28,7 +28,7 @@ export const MAX_ZONES = 4;
 
 /** Where a zone lies on the screen, in words. */
 export function zoneName(zone: ScreenZone): string {
-  if (zone.count <= 1) return "the whole screen";
+  if (zone.count <= 1) return "all";
   if (zone.count === 2) return zone.index === 0 ? "the left half" : "the right half";
   return ["the top-left quarter", "the top-right quarter", "the bottom-left quarter", "the bottom-right quarter"][zone.index] ?? "a quarter";
 }

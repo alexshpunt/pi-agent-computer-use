@@ -16,7 +16,7 @@ test("the guest's zone line parses, and malformed lines do not", () => {
   expect(parseZone("full 4")).toBeUndefined();
   expect(zoneText(left)).toBe("Screen zone: the left half of the sandbox screen, 1281x1636 at 0,0 of 2563x1636 (shared with 1 other agent).");
   expect(zoneText({ ...topLeft, index: 3, count: 4, x: 1281, y: 818 })).toContain("the bottom-right quarter");
-  expect(zoneText({ ...left, count: 1, index: 0 })).toContain("the whole screen");
+  expect(zoneText({ ...left, count: 1, index: 0 })).toContain("Screen zone: all of the sandbox screen, ");
 });
 
 test("every pointer position of a command counts, keys have none", () => {
