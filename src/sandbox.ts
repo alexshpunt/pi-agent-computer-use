@@ -44,7 +44,7 @@ interface Relay { port: number; pid: number }
 /** What the agents attached to the shared sandbox read from its host folder; written once by the agent that starts it. */
 interface SharedState {
   /** Bumped when agents of this version cannot use a sandbox an earlier version started. */
-  version: 2;
+  version: 3;
   id: string;
   token: string;
   identityAuth: RelayCredentials;
@@ -72,6 +72,42 @@ const COMMON_SCRIPTS = new URL("../scripts/", import.meta.url);
 const RELAY_AUTH_SCRIPT = new URL("../scripts/session/relay-auth.ps1", import.meta.url);
 
 const psString = (value: string) => `'${value.replace(/'/g, "''")}'`;
+/**
+ * PowerShell that defines PiSandbox.HostWindow.Minimize: give the sandbox window the whole work area of its monitor as
+ * its restored size, minimized and not activated. The guest screen follows that size, so the agents' zones are as
+ * large as the host's screen allows.
+ */
+const HOST_WINDOW = `Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace PiSandbox {
+  public static class HostWindow {
+    [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct Point { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] struct Placement { public int Length, Flags, Show; public Point Min, Max; public Rect Normal; }
+    [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public Rect Monitor, Work; public int Flags; }
+    [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr hwnd, ref Placement placement);
+    [DllImport("user32.dll")] static extern bool SetWindowPlacement(IntPtr hwnd, ref Placement placement);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int command);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+    [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+    [DllImport("user32.dll")] static extern bool SystemParametersInfo(int action, int param, out Rect rect, int ini);
+    public static void Minimize(IntPtr hwnd) {
+      Placement placement = new Placement { Length = Marshal.SizeOf(typeof(Placement)) };
+      MonitorInfo monitor = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
+      Rect primary;
+      if (GetWindowPlacement(hwnd, ref placement) && GetMonitorInfo(MonitorFromWindow(hwnd, 2), ref monitor) && SystemParametersInfo(0x30, 0, out primary, 0)) {
+        // The restored rectangle is in workspace coordinates: relative to the primary monitor's work area.
+        placement.Normal = new Rect { Left = monitor.Work.Left - primary.Left, Top = monitor.Work.Top - primary.Top,
+          Right = monitor.Work.Right - primary.Left, Bottom = monitor.Work.Bottom - primary.Top };
+        placement.Show = 7;
+        if (SetWindowPlacement(hwnd, ref placement)) return;
+      }
+      ShowWindow(hwnd, 7);
+    }
+  }
+}
+'@`;
 const xml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** Validate open_sandbox's explicit file channels before any host work. */
@@ -337,7 +373,7 @@ throw 'Another agent is still starting the shared sandbox; try again in a few mi
   private parseState(text: string): SharedState {
     let state: SharedState | undefined;
     try { state = JSON.parse(text) as SharedState; } catch { /* Reported below. */ }
-    if (state && state.version !== 2) throw new ComputerRequestError("The shared sandbox was started by another version of computer use, so this agent cannot use it. "
+    if (state && state.version !== 3) throw new ComputerRequestError("The shared sandbox was started by another version of computer use, so this agent cannot use it. "
       + `It stops ${IDLE_SECONDS / 60} minutes after its last agent leaves; open the sandbox again after that. Nothing was changed.`);
     if (state && typeof state.id === "string" && state.relays?.lease?.port > 0 && state.relays?.stream?.port > 0) return state;
     throw new Error("The shared sandbox's state is unreadable.");
@@ -359,7 +395,7 @@ throw 'Another agent is still starting the shared sandbox; try again in a few mi
     try {
       await this.host.mkdir(`${unix}/config`);
       await this.host.mkdir(`${unix}/out`);
-      for (const name of ["guest-setup.ps1", "guest-start.ps1", "guest-identity-bridge.ps1", "guest-lease.ps1", "guest-lease.cs", "host-relay.ps1", "host-watchdog.ps1"])
+      for (const name of ["guest-setup.ps1", "guest-start.ps1", "guest-identity-bridge.ps1", "guest-lease.ps1", "guest-lease.cs", "guest-zones.cs", "host-relay.ps1", "host-watchdog.ps1"])
         await this.host.writeFile(`${unix}/config/${name}`, await readFile(new URL(name, SCRIPTS), "utf8"));
       for (const name of ["window-identity.ps1", "identity-auth.ps1", "identity-channel.ps1", "identity-channel.cs"])
         await this.host.writeFile(`${unix}/config/${name}`, await readFile(new URL(name, COMMON_SCRIPTS), "utf8"));
@@ -389,11 +425,11 @@ throw 'Another agent is still starting the shared sandbox; try again in a few mi
 throw 'The sandbox did not start within 120 s.'`, signal, 150_000)).trim();
 
       // Hide the sandbox window from the human without activating it; closing it would stop the sandbox.
-      await this.ps(`Add-Type -Namespace PiSandbox -Name User32 -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);'
+      await this.ps(`${HOST_WINDOW}
 $since = [DateTime]::Parse(${psString(startedAt)}).AddSeconds(-5)
 for ($i = 0; $i -lt 30; $i++) {
   $client = Get-Process WindowsSandboxRemoteSession -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -ge $since -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-  if ($client) { [void][PiSandbox.User32]::ShowWindow($client.MainWindowHandle, 7); exit }
+  if ($client) { [PiSandbox.HostWindow]::Minimize($client.MainWindowHandle); exit }
   Start-Sleep -Milliseconds 500
 }`, signal);
 
@@ -420,7 +456,7 @@ ${this.wsb(`exec --id ${id} --run-as ExistingLogin -c 'powershell.exe -NoProfile
         }
         throw new Error("The host relay did not start.");
       };
-      const state: SharedState = { version: 2, id, token, identityAuth, runtime, startedAt, spacesdToken,
+      const state: SharedState = { version: 3, id, token, identityAuth, runtime, startedAt, spacesdToken,
         relays: { driver: await relay(DRIVER_GUEST_PORT), identity: await relay(IDENTITY_GUEST_PORT), lease: await relay(LEASE_GUEST_PORT), stream: await relay(STREAM_GUEST_PORT) },
         watchdog: { key: randomBytes(16).toString("hex"), pid: 0 } };
       await this.host.writeFile(`${unix}/sandbox.json`, JSON.stringify(state));

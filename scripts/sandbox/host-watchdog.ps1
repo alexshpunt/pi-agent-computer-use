@@ -36,7 +36,13 @@ while ($true) {
   Start-Sleep -Seconds 10
   $s = Read-State
   if (-not $s -or $s.watchdog.key -ne $Key) { exit }
-  if (-not (Get-Process vmmemWindowsSandbox -ErrorAction SilentlyContinue)) { Stop-Shared $s; exit }
+  if (-not (Get-Process vmmemWindowsSandbox -ErrorAction SilentlyContinue)) {
+    # The human closed the sandbox. An agent holding the lock may be starting a new one over this stale state right now
+    # and cleans it up itself; deleting the folders under it would break that start.
+    try { ([IO.File]::Open($lock, 'CreateNew', 'Write', 'None')).Dispose() } catch { continue }
+    try { if ((Read-State).watchdog.key -eq $Key) { Stop-Shared $s } } finally { Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue }
+    exit
+  }
   $now = [DateTime]::UtcNow
   Agents | Where-Object { $_.LastWriteTimeUtc -lt $now.AddSeconds(-$StaleSeconds) } | Remove-Item -Force -ErrorAction SilentlyContinue
   if ((Agents).Count) { $idleSince = $null; continue }

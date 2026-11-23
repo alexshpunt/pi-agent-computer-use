@@ -32,6 +32,12 @@ export function machineGuide(source: string): string[] {
 }
 /** A rejected request whose validation completed before native dispatch. */
 export class ComputerRequestError extends Error {}
+/** Every screen zone of the machine's shared sandbox is taken; nothing of this agent stayed in the sandbox. */
+export class SandboxFullError extends Error {
+  constructor(readonly agents: number) {
+    super(`The shared sandbox already has ${agents} agents working in it, its limit.`);
+  }
+}
 /**
  * The images that show a diff's pixel change, recorded on the diff: when most of the window changed, the whole window
  * after the action; otherwise an overview of the window with the listed areas outlined and numbered, then a before and
@@ -559,7 +565,18 @@ export class ComputerResources {
   }
   private async startSandbox(cwd: string, command: Record<string, unknown>, signal?: AbortSignal, machine?: string): Promise<ComputerResult> {
     if (!this.openSandbox) throw new ComputerRequestError("Sandboxes are not available in this runtime.");
-    const sandbox = await this.launch(this.openSandbox(cwd, command, signal, machine), signal);
+    let sandbox: OpenedSandbox;
+    try { sandbox = await this.launch(this.openSandbox(cwd, command, signal, machine), signal); }
+    catch (error) {
+      if (!(error instanceof SandboxFullError)) throw error;
+      // With every zone taken the agent works on the machine's own desktop, which starts on first use of its address.
+      const desktop = computerSource("machine", machine ?? LOCAL_MACHINE);
+      return { content: [{ type: "text", text: [`Sandbox full: ${error.message} Each agent there gets its own part of the sandbox screen, and smaller parts would not fit most apps.`,
+        `This session works on the machine's main desktop instead: ${desktop}. Other people and agents may use that desktop too.`,
+        ...(command.import !== undefined || command.export !== undefined ? ["The requested folders are not shared into anything: use them at their host paths."] : []),
+        ...machineGuide(desktop)].join("\n") }],
+        details: { status: "delivered", mode: this.getMode(), machine: machine ?? LOCAL_MACHINE } };
+    }
     this.sandboxes.set(sandbox.ref, sandbox);
     const source = computerSource("sandbox", sandbox.ref);
     return { content: [{ type: "text", text: `${command.action === "open_session" ? "Isolated session" : "Sandbox"} ready: ${source}\n${sandbox.describe(source)}` }],

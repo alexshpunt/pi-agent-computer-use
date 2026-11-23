@@ -6,14 +6,14 @@ import { globalComputerConfigFile, loadComputerConfig, readMachineSettings, type
 import { prepareRemoteRuntime } from "./remote-runtime.ts";
 import { prepareRemoteBrowser } from "./remote-browser.ts";
 import { RemotePreparationUncertain } from "./remote-provision-error.ts";
-import { ComputerRequestError, machineGuide, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
+import { ComputerRequestError, SandboxFullError, machineGuide, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
 import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
 import { WindowsSandbox, connectLoopback, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { IsolatedSession } from "./isolated-session.ts";
-import { GuestInputLease } from "./input-lease.ts";
+import { GuestInputLease, MAX_ZONES, zoneText, type ScreenZone } from "./input-lease.ts";
 import { startTileHost } from "./tile-host.ts";
 import { ComputerSession, type ComputerMode } from "./session.ts";
 import { WebBrowser, WebError } from "./web-browser.ts";
@@ -82,13 +82,42 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
     // Agents share the one Windows Sandbox: each sees only the apps it starts, and input takes turns through the guest's lease.
     const shared = sandbox instanceof WindowsSandbox && sandbox.endpoint ? sandbox.endpoint : undefined;
     const lease = shared ? new GuestInputLease({ connect: signal => connectLoopback(shared.leasePort, signal), token: shared.token, agent: sandbox.ref }) : undefined;
-    const guest = new ComputerSession(driver, () => "yolo", options.settings, observer, undefined, undefined, shared ? { lease, launchedOnly: true } : {});
+    // Each agent works in its own zone of the guest screen; with every zone taken, it gets the machine's main desktop.
+    let zone: ScreenZone | undefined;
+    if (lease) {
+      let seat: ScreenZone | "full";
+      try { seat = await joinZones(lease, signal); }
+      catch (error) { lease.close(); await driver.close().catch(() => undefined); await sandbox.close(); throw error; }
+      if (seat === "full") {
+        lease.close(); await driver.close().catch(() => undefined); await sandbox.close();
+        throw new SandboxFullError(MAX_ZONES);
+      }
+      zone = seat;
+    }
+    const guest = new ComputerSession(driver, () => "yolo", options.settings, observer, undefined, undefined, shared ? { lease, launchedOnly: true, zone } : {});
     // Tiles of this agent's sandbox windows, when the sandbox runs on this machine: its stream hub runs in this process.
     if (shared && !machineName) await (sandbox as WindowsSandbox).showTiles(pid => guest.ownsProcess(pid), startTileHost, signal)
       .catch(async error => { lease?.close(); await guest.close().catch(() => undefined); await sandbox.close(); throw error; });
-    return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source), ...(machineName ? { machine: machineName } : {}),
+    return { ref: sandbox.ref, session: guest, describe: source => sandbox.describe(source) + (zone ? `\n${zoneText(zone)} This session's windows stay inside it; zones change as agents join and leave.` : ""),
+      ...(machineName ? { machine: machineName } : {}),
       close: async () => { try { await guest.close(); } finally { lease?.close(); await sandbox.close(); } } };
   };
+}
+
+/**
+ * Join the shared sandbox's screen zones. The guest lease service starts last and compiles its code first, so right
+ * after the sandbox starts it may not listen yet: connection failures are retried for a while.
+ */
+async function joinZones(lease: GuestInputLease, signal?: AbortSignal, timeoutMs = 30_000): Promise<ScreenZone | "full"> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try { return await lease.join(signal); }
+    catch (error) {
+      signal?.throwIfAborted();
+      if (Date.now() >= deadline) throw new Error(`The shared sandbox's zone service did not answer within ${timeoutMs / 1000} s: ${error instanceof Error ? error.message : error}`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
 }
 
 /**

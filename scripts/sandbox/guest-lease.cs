@@ -6,7 +6,13 @@
 //   C: acquire                S: granted <waited_ms> <revoked 0|1>
 //   C: release                S: released | held <reason>
 //   C: claim <pid>            S: claimed | taken      (a process belongs to the first agent that claims it)
-//   C: state                  S: state holder=<agent|-> sticky=<0|1> waiting=<n>
+//   C: state                  S: state holder=<agent|-> sticky=<0|1> waiting=<n> seated=<n>
+//   C: join                   S: zone <x> <y> <width> <height> <index> <count> <screen width> <screen height> | full <count>
+//   C: zone                   S: zone ... (as join) | none
+//   C: leave                  (the server closes the connection; the zone goes at once)
+// join gives the agent its own zone of the guest screen (guest-zones.cs), at most PiZones.MaxSeats agents; zone tells
+// its current zone, which changes as agents join and leave. Rectangles are physical guest pixels of the work area.
+// A connection that closes without leave keeps its agent's zone for 10 s, so the agent gets it back when it reconnects.
 // The holder keeps the lease after release while the foreground thread shows transient UI (a menu, mouse capture,
 // move/size mode) or a mouse button or modifier key is down. That sticky lease ends at the holder's next acquire, or
 // when another agent waits and StickyMs have passed: then the guest presses Escape, releases buttons and keys, and the
@@ -188,13 +194,15 @@ public static class PiInputLease
         lock (Gate)
         {
             Agent owner;
-            if (Claims.TryGetValue(id, out owner) && owner != agent) return "taken";
+            // A new connection of the same agent takes its claims over from one the guest has not seen close yet.
+            if (Claims.TryGetValue(id, out owner) && owner != agent && owner.Name != agent.Name) return "taken";
             Claims[id] = agent;
-            return "claimed";
         }
+        PiZones.Claimed(id, agent.Name, agent);
+        return "claimed";
     }
 
-    static void Leave(Agent agent)
+    static void Leave(Agent agent, bool left)
     {
         lock (Gate)
         {
@@ -209,13 +217,14 @@ public static class PiInputLease
             }
             Monitor.PulseAll(Gate);
         }
+        PiZones.Leave(agent.Name, agent, left);
     }
 
     static string State()
     {
         lock (Gate)
         {
-            return "state holder=" + (holder == null ? "-" : holder.Name) + " sticky=" + (sticky ? 1 : 0) + " waiting=" + Waiting.Count;
+            return "state holder=" + (holder == null ? "-" : holder.Name) + " sticky=" + (sticky ? 1 : 0) + " waiting=" + Waiting.Count + " seated=" + PiZones.Seated;
         }
     }
 
@@ -231,6 +240,7 @@ public static class PiInputLease
     static void Serve(TcpClient client, string token)
     {
         Agent agent = null;
+        bool left = false;
         try
         {
             client.NoDelay = true;
@@ -253,6 +263,9 @@ public static class PiInputLease
                 else if (line == "release") writer.WriteLine(Release(agent));
                 else if (line == "state") writer.WriteLine(State());
                 else if (line.StartsWith("claim ")) writer.WriteLine(Claim(agent, line.Substring(6)));
+                else if (line == "join") writer.WriteLine(PiZones.Join(agent.Name, agent) ?? "full " + PiZones.Seated);
+                else if (line == "zone") writer.WriteLine(PiZones.ZoneOf(agent.Name) ?? "none");
+                else if (line == "leave") { left = true; return; }
                 else return;
             }
         }
@@ -260,7 +273,7 @@ public static class PiInputLease
         catch (ObjectDisposedException) { }
         finally
         {
-            if (agent != null) Leave(agent);
+            if (agent != null) Leave(agent, left);
             client.Close();
         }
     }
@@ -270,6 +283,7 @@ public static class PiInputLease
     {
         if (token == null || token.Length < 32) throw new ArgumentException("A lease token of at least 32 characters is required.");
         stickyMs = stickyMilliseconds;
+        PiZones.Start();
         TcpListener listener = new TcpListener(IPAddress.Any, port);
         listener.Start();
         while (true)
