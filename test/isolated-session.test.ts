@@ -51,6 +51,7 @@ async function fakeHost(options: { installed?: boolean; failAt?: "provision" | "
       relayKeys.push(keys);
       return { ports: [1001, 1002, 1003, 1004, 1005, 1006], streamPort: options.streamPort ?? 1007, close: async () => { relayClosed = true; } };
     },
+    async publish(port) { return { port, close: () => {} }; },
     async forward(port) {
       forwarded.push(port);
       if (forwarded.length === options.failForward) throw new Error("Forwarding refused");

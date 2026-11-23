@@ -159,6 +159,39 @@ test("the lease client joins the zones, reads its zone and joins again after a l
   await vi.waitFor(() => expect(lines.at(-1)).toBe("leave"));
 });
 
+// LPT-1830: zones are off unless the agent that started the sandbox turned them on.
+test("a sandbox without zones answers off, and a reconnect does not join", async () => {
+  const lines: string[] = [];
+  const sockets: Socket[] = [];
+  server = createServer(socket => {
+    sockets.push(socket);
+    socket.setEncoding("utf8");
+    let buffer = "";
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
+      let end: number;
+      while ((end = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+        lines.push(line);
+        if (line.startsWith("auth ")) socket.write("ok\n");
+        else if (line === "join") socket.write("off\n");
+        else if (line.startsWith("claim ")) socket.write("claimed\n");
+      }
+    });
+  });
+  await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  const lease = new GuestInputLease({ connect: async () => connect(port, "127.0.0.1"), token: "t".repeat(64), agent: "agent-1" });
+  expect(await lease.join()).toBe("off");
+  expect(await lease.claim(70)).toBe(true);
+  sockets[0].destroy();
+  // A request may still go out on the closing connection and fail; the next one connects again, without a join.
+  expect(await lease.claim(71).catch(() => lease.claim(71))).toBe(true);
+  expect(lines.filter(line => line.startsWith("auth "))).toHaveLength(2);
+  expect(lines.filter(line => line === "join")).toHaveLength(1);
+  lease.close();
+});
+
 test("a lease closed while it connects keeps no connection, and requests in flight end", async () => {
   let opened: Socket | undefined;
   server = createServer(socket => {

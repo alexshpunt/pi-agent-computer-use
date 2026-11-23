@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, expect, test } from "vitest";
 import { computerSource } from "../../src/computer-address.ts";
 import { requireComputerAddress } from "../../src/computer-resources.ts";
@@ -10,8 +13,13 @@ import { connectLive, openWindow, text, WINDOWS_POWERSHELL_PATH } from "./remote
 // are laid out again; input outside a zone is refused; a fifth agent gets the machine's main desktop.
 // Run on the sandbox's machine with LIVE_MACHINE=local. The guest scripts are copied in when the sandbox starts: stop a
 // running shared sandbox first (wsb stop, or wait 10 minutes after its last agent).
-const agents = await Promise.all(Array.from({ length: 5 }, () => connectLive()));
-afterAll(async () => { await Promise.all(agents.map(agent => agent.close())); });
+// Zones are off by default (LPT-1830): these agents work from a project whose settings turn them on.
+const cwd = await mkdtemp(path.join(tmpdir(), "pi-zones-live-"));
+await mkdir(path.join(cwd, ".pi"));
+const settings = await readFile(".pi/computer-use.json", "utf8").then(text => JSON.parse(text) as object, () => ({}));
+await writeFile(path.join(cwd, ".pi", "computer-use.json"), JSON.stringify({ ...settings, sandbox: { zones: true } }));
+const agents = await Promise.all(Array.from({ length: 5 }, () => connectLive(cwd)));
+afterAll(async () => { await Promise.all(agents.map(agent => agent.close())); await rm(cwd, { recursive: true, force: true }); });
 const run = Date.now();
 
 interface Rect { x: number; y: number; width: number; height: number }

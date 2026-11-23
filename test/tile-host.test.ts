@@ -21,6 +21,7 @@ async function machine(answer: (script: string) => string) {
     readFile: file => readFile(file, "utf8").catch(() => ""),
     remove: dir => rm(dir, { recursive: true, force: true }),
     forward: async port => ({ port, close: () => {} }),
+    publish: async port => ({ port, close: () => {} }),
   };
   return { host, scripts, root };
 }

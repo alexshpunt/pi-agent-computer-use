@@ -8,12 +8,14 @@ import { addresses, connectLive, openWindow, text, WINDOWS_POWERSHELL_PATH } fro
 import { connect } from "node:net";
 import { once } from "node:events";
 import { connectWebSocket } from "../../src/ws-lite.ts";
+import { runnerHost } from "../../src/sandbox.ts";
 
 // LPT-1809: several agents on one machine work in the one shared Windows Sandbox. Each opens its own form, they click
 // and drag at the same time, a menu one agent opened survives another agent's click, and agents never see each other's windows.
 // The guest scripts are copied into the sandbox when it starts, and agents join a running one: to check a change to
 // scripts/sandbox, wait until the shared sandbox has stopped (10 minutes after its last agent) or stop it with wsb stop.
-const AGENTS = 4;
+// Five: without screen zones (off by default, LPT-1830) the sandbox takes more agents than the four zones allow.
+const AGENTS = 5;
 const agents = await Promise.all(Array.from({ length: AGENTS }, () => connectLive()));
 afterAll(async () => { await Promise.all(agents.map(agent => agent.close())); });
 
@@ -87,12 +89,15 @@ test("agents share one sandbox, see only their own windows and never interleave 
     expect(found, agent.title).toEqual([agent.window]);
   }
 
-  // Each agent's tiles: the stream its hub serves the tile host lists only that agent's form.
+  // Each agent's tiles: the stream its hub serves the tile host lists only that agent's form. stream.json names a port on
+  // the sandbox machine's loopback; with LIVE_MACHINE naming another machine, it is this process's hub behind a reverse
+  // SSH tunnel (LPT-1830), reached here through a forward to that machine.
   for (const agent of team) {
     const ref = agent.sandbox.split("/").pop()!;
     const file = JSON.parse(await agent.live.powershell(`Get-Content -Raw (Join-Path $env:LOCALAPPDATA 'PiComputerUse\\sessions\\${ref}\\stream.json')`)) as { url: string; token: string };
     const url = new URL(file.url);
-    const socket = connect(Number(url.port), "127.0.0.1"); await once(socket, "connect");
+    const tunnel = await runnerHost(agent.live.runner).forward(Number(url.port));
+    const socket = connect(tunnel.port, "127.0.0.1"); await once(socket, "connect");
     const { ws } = await connectWebSocket(socket, { host: "127.0.0.1", path: `${url.pathname}?token=${file.token}` });
     const titles = await new Promise<string[]>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`${agent.title}: no window list from its tile stream`)), 15_000);
@@ -101,7 +106,7 @@ test("agents share one sandbox, see only their own windows and never interleave 
         if (message?.type === "windows" || (message?.type === "hello" && message.windows?.length)) { clearTimeout(timer); resolve(message.windows!.map(window => window.title)); }
       });
     });
-    ws.close();
+    ws.close(); tunnel.close();
     expect(titles, agent.title).toEqual([agent.title]);
   }
 
@@ -180,22 +185,11 @@ test("agents share one sandbox, see only their own windows and never interleave 
   expect(await state(first)).toBe(`count:${ROUNDS} menu:2 drag:${DRAGS}`);
   expect(await state(second)).toBe(`count:${ROUNDS + 2} menu:0 drag:${DRAGS}`);
 
-  // One agent leaving keeps the sandbox for the others. The zones are laid out again (LPT-1820). The agents joined at
-  // once, in any order: when agent 1 sat after agent 0, its zone moves one quarter back, and its first action learns
-  // the new zone and sends nothing; otherwise its zone stays and nothing interrupts it.
-  const QUARTERS = ["the top-left quarter", "the top-right quarter", "the bottom-left quarter", "the bottom-right quarter"];
-  // Its place in the join order, from the zone it got when it joined: the first joiner got the whole screen.
-  const SEATS: [string, number][] = [["all", 0], ["the left half", 0], ["the right half", 1], ...QUARTERS.map((name, index): [string, number] => [name, index])];
-  const seat = (result: (typeof opened)[number]) => SEATS.find(([name]) => text(result).includes(`Screen zone: ${name}`))?.[1] ?? -1;
-  const [firstSeat, secondSeat] = [seat(opened[0]), seat(opened[1])];
-  expect([firstSeat, secondSeat].every(index => index >= 0), `${text(opened[0])}\n${text(opened[1])}`).toBe(true);
+  // One agent leaving keeps the sandbox for the others. Zones are off by default (LPT-1830): no agent got one, and
+  // nothing interrupts the others when an agent leaves.
+  expect(opened.some(result => text(result).includes("Screen zone"))).toBe(false);
   expect((await first.live.insert(first.sandbox, { action: "close" })).details.status).toBe("closed");
-  const relaid = await click(second, countButton);
-  if (firstSeat < secondSeat) {
-    expect(relaid.details.status, presentComputerResult(relaid)).toBe("refused");
-    expect(text(relaid)).toContain(`Screen zone: ${QUARTERS[secondSeat - 1]}`);
-    expect((await click(second, await center(second, element => element.role === "Button" && element.name === "Count"))).details.status).toBe("delivered");
-  } else expect(relaid.details.status, presentComputerResult(relaid)).toBe("delivered");
-  console.log(`agent 0 sat in seat ${firstSeat}, agent 1 in seat ${secondSeat}`);
+  const after = await click(second, countButton);
+  expect(after.details.status, presentComputerResult(after)).toBe("delivered");
   expect(await state(second)).toBe(`count:${ROUNDS + 3} menu:0 drag:${DRAGS}`);
 });
