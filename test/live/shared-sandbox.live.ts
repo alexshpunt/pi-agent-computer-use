@@ -14,6 +14,8 @@ import { runnerHost } from "../../src/sandbox.ts";
 // and drag at the same time, a menu one agent opened survives another agent's click, and agents never see each other's windows.
 // The guest scripts are copied into the sandbox when it starts, and agents join a running one: to check a change to
 // scripts/sandbox, wait until the shared sandbox has stopped (10 minutes after its last agent) or stop it with wsb stop.
+// A sandbox started from another machine runs that machine's prepared remote runtime, so agents with LIVE_MACHINE=local
+// are refused ("runs another computer-use runtime") until it stops; the same holds the other way round.
 // Five: without screen zones (off by default, LPT-1830) the sandbox takes more agents than the four zones allow.
 const AGENTS = 5;
 const agents = await Promise.all(Array.from({ length: AGENTS }, () => connectLive()));
