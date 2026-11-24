@@ -10,6 +10,7 @@ Work in this order: find the window, read it, plan, act, check.
 ## Find and read
 
 - Use a window the task already has. Open a new one only when the task needs it, and never repeat a launch whose outcome is unknown.
+- Other agents may work on the same desktop. Windows you open are yours. Claim any other window with `computer_window` action `claim` before you act in it, and `release` it when you are done. A `window_claimed` refusal names the agent that holds the window: leave that window alone.
 - Read the whole window before acting: the app, its dialogs, controls and layout, and where the task stops.
 - Duplicate labels are separate elements: tell them apart by parent, role, enabled state and bounds.
 - When the work must not touch the human's desktop, use a Windows Sandbox. Every agent on the machine works in the same one: each sees only the apps it starts there, windows may overlap, and input waits for its turn. If the `open_sandbox` result names a screen zone, keep your windows there; when the zone moves, the next action says so and sends nothing: Read the window again. Use an isolated session only for work without the pointer, since its desktop has no mouse.
@@ -19,6 +20,7 @@ Work in this order: find the window, read it, plan, act, check.
 
 - Know the target, the expected effect and the stopping point before any input.
 - Act through a locator or a ref first. Use a point, keys or a drag after three structured attempts left the app unchanged, for controls without UI, canvases and games, and from the start in an app that ignored structured input earlier in the session.
+- Input goes to its window in the background, so the human and other agents keep their focus and pointer. When an action's change list shows no change, repeat that action once with `foreground: true`: it takes the focus for that one action and hands it back. Where the window cannot take an action in the background, the tool takes the focus by itself and says so.
 - Never replace a refusal with global input, another backend or a browser script.
 - Stop at navigation, a new dialog, a changed layout or an effect that needs a new decision.
 - Put several known steps into one Codemode script that checks each receipt and stops at a refusal or an unknown outcome.

@@ -23,7 +23,7 @@ Physical letter keys follow the active OS keyboard layout. Use `type_text` for l
 
 A relative drag endpoint is computed from the observed start: `to_x=from_x+dx`, `to_y=from_y+dy`. No global cursor or desktop offset is needed.
 
-The typed tools choose delivery from the target (see [Input](computer-resources.md#input)): a click or scroll on an element goes through UI Automation with `uia_only`, and the driver refuses before sending anything when no pattern carries it; the tool then sends the same action as real input. Points, drags, keys and timelines are real input (`delivery_mode: "foreground"`). No route posts window messages.
+The typed tools choose delivery from the target (see [Input](computer-resources.md#input)): a click or scroll on an element goes through UI Automation with `uia_only`, and the driver refuses before sending anything when no pattern carries it; the tool then sends the same action to the window. Points, drags, keys, text and timelines go to the window in the background (`delivery_mode: "background"`): posted window messages, with modifiers held in the target thread's key state. `foreground: true` on a typed tool sends `delivery_mode: "foreground"`. When the driver refuses a background route (`background_unavailable`, `background_occluded`), the tool repeats the action with `delivery_mode: "foreground"`.
 
 ## Bounded sequences
 
@@ -44,7 +44,7 @@ For computed drawing, choose points inside an actual observed canvas region. Map
 
 With the bundled runtime, `drag` accepts `via`: 1..254 intermediate `{x,y}` points. The endpoints and every intermediate point use the same current window PNG. One call presses the left button, follows all points and releases it. Do not pass `steps`, modifiers, or right/middle button with `via`.
 
-A path is real input: it moves the real pointer; do not fight it during the stroke.
+A path is real input: the driver refuses it in the background, so the tool takes the foreground for it and it moves the real pointer; do not fight it during the stroke.
 
 A partial path returns `unknown`, preserving native `delivery.delivered_count` and the press/release summary. These count point moves, not completed batch steps. Later steps stop. Never replay the whole stroke or its uncertain remainder. Check the app's actual pixels before choosing another action.
 

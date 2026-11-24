@@ -165,6 +165,15 @@ export class McpDriver implements Driver {
   get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
   /** Old profiles cannot borrow state-bound management from matching version numbers. */
   get windowManagement(): boolean { return ["windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
+  /** Bundled Windows runtimes and checked override builds may hold windows; one without claim_window refuses the call. */
+  get windowClaims(): boolean { return this.platform === "windows" && (this.bundledWindows || this.config.driverOverride === true); }
+  /** The name other agents see on a window this session holds: the session's label and this Pi process. */
+  holder(): string {
+    const label = this.sessionLabel?.()?.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 40);
+    return `${label ? `${label}, ` : ""}Pi process ${process.pid}`;
+  }
+  /** Windows this session holds, by window id: a new driver process after a restart takes them again. */
+  private readonly claims = new Map<number, Record<string, unknown>>();
   /** Display-only window reads with a crop arrived in the windows-desktop runtime 2437a85e. */
   get windowCrop(): boolean { return this.config.runtime === "windows-desktop"; }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
@@ -272,6 +281,11 @@ export class McpDriver implements Driver {
           this.nativeVisualsAvailable = false;
         }
       } else await this.jumpCursor(client, signal);
+      // A claim lives as long as the driver process that took it, so a replacement process takes this session's windows again.
+      for (const [window, args] of this.claims) {
+        const claimed = await client.callTool({ name: "claim_window", arguments: args }, undefined, { signal, timeout: 15_000 }).then(raw => CallToolResultSchema.parse(raw), () => undefined);
+        if (!claimed || claimed.isError || (claimed.structuredContent as { status?: unknown } | undefined)?.status !== "claimed") this.claims.delete(window);
+      }
       signal?.throwIfAborted();
       return client;
     } catch (error) {
@@ -411,6 +425,9 @@ export class McpDriver implements Driver {
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
     if (this.client === client && reportsHumanStop(result as Parameters<typeof reportsHumanStop>[0])) this.reportStop();
+    if (name === "claim_window" && !result.isError && (result.structuredContent as { status?: unknown } | undefined)?.status === "claimed" && typeof args.window_id === "number")
+      this.claims.set(args.window_id, args);
+    if (name === "release_window" && typeof args.window_id === "number") this.claims.delete(args.window_id);
     const content: Content[] = [];
     for (const block of result.content) {
       if (block.type === "text") content.push({ type: "text", text: block.text });

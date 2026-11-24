@@ -97,6 +97,10 @@ export interface Driver {
   overviewKernel?: CuaVisionSettings["kernel"];
   /** A display-only window read can return one rectangle of the window, encoding only that rectangle. */
   windowCrop?: boolean;
+  /** The runtime may hold windows with claim_window, so other agents' driver processes refuse input into them. */
+  windowClaims?: boolean;
+  /** The name other agents see on a window this session holds. */
+  holder?(): string;
   /** Human-only native presentation, owned by this driver and never an input route. */
   visuals?: WindowObserver;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
@@ -347,6 +351,8 @@ export class ComputerSession {
   private unconfirmedUnsafeWork = false;
   /** Processes this session started; with `launchedOnly` they are the only ones it sees. */
   private readonly launched = new Set<number>();
+  /** Native windows this session holds with claim_window; other agents' input into them is refused. */
+  private readonly claims = new Set<number>();
   /** The shared screen zone as last read from the lease; undefined until then, when the joined zone applies. */
   private zoneRead?: { zone: ScreenZone | undefined };
   /** Safe cannot be selected while a YOLO agent profile has an unauthenticated debugging port. */
@@ -658,6 +664,8 @@ export class ComputerSession {
         if (unapproved && this.getMode() !== "yolo") throw new Error("Mode changed while the unapproved browser was starting.");
         entry.owned = true;
         if (approval) { entry.pendingApproval = true; entry.web = undefined; }
+        // A window this agent opened is its own: other agents' input into it is refused.
+        await this.claimOpened(entry, signal);
         return this.result("observed", `Opened a new visible browser with ${options.profile ? "the agent's persistent profile (logins made in it stay for later sessions)" : "a disposable profile"}. ${approval ? "Sign in if needed, enable remote debugging in the browser, then attach this window and approve the connection." : options.profile && options.browser !== "firefox" ? "The local debugging port lets other local processes control this browser and access its sessions." : ""} Read its window with dom for page structure, or with image/ui/full for native pixels and Windows UI.`,
           { operation: "open_browser", ...launched.opened }, { ...this.addressed(entry), opened: true });
       } catch (error) {
@@ -829,6 +837,8 @@ export class ComputerSession {
       // while the windows it shows belong to the started process.
       if (!this.launched.has(pid as number) && (!this.scope.lease || await this.scope.lease.claim(pid as number, signal).catch(() => false)))
         this.launched.add(pid as number);
+      // A window this agent opened is its own: other agents' input into it is refused.
+      await this.claimOpened(entry, signal);
       const observed = await this.capture(entry, signal);
       return this.result(observed.details.status, observed.details.status === "observed"
         ? "New application window opened. First observation is ready for one action."
@@ -2115,6 +2125,61 @@ export class ComputerSession {
       } catch (error) { return this.failed(error, dispatched); }
     });
   }
+  /**
+   * Take a window for this agent: other agents' driver processes on this desktop refuse input into it and changes to
+   * it until releaseWindow or the end of this session. Sends no input.
+   */
+  claimWindow(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        const known = this.entries.get(ref);
+        if (known && !this.allowed(known)) return this.denied(ref);
+        const entry = await this.current(ref, signal);
+        if (!entry) return this.result("refused", "Window closed or its native handle was reused. Search the machine's windows again.");
+        if (!this.allowed(entry)) return this.denied(ref);
+        if (signal?.aborted) return this.result("refused", "Cancelled before the claim; the window was not taken.");
+        if (!this.driver.windowClaims) return this.result("refused", "This computer's native runtime cannot hold windows for an agent; the window was not taken.");
+        const native = await this.driver.call("claim_window", { ...entry.target, holder: this.holder() }, signal);
+        const state = native.structuredContent ?? {};
+        if (!native.isError && state.status === "claimed") {
+          this.claims.add(entry.target.window_id);
+          return this.result("delivered", "This session holds the window now: other agents' input into it is refused until computer_window release or the end of this session.", state, this.addressed(entry));
+        }
+        if (state.code === "window_claimed")
+          return this.result("refused", `${typeof state.holder === "string" ? state.holder : "Another agent"} holds this window, so it was not taken. Work in another window, or wait until that agent releases it.`, state, this.addressed(entry));
+        if (state.code === "unsupported_native_capability")
+          return this.result("refused", "This computer's native runtime cannot hold windows for an agent; the window was not taken.", state, this.addressed(entry));
+        const text = native.content.filter(block => block.type === "text").map(block => block.text).join("\n");
+        return this.result("refused", `The window was not taken${text ? `: ${text}` : "."}`, state, this.addressed(entry));
+      } catch (error) { return this.failed(error, false); }
+    });
+  }
+  /** Let other agents act on a window this session holds again. */
+  releaseWindow(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      try {
+        const entry = this.entries.get(ref);
+        if (!entry) return this.result("refused", "This window reference is not open in this session. Search the machine's windows again.");
+        if (!this.claims.has(entry.target.window_id))
+          return this.result("refused", "This session does not hold this window; take it with computer_window claim first.", undefined, this.addressed(entry));
+        const native = await this.driver.call("release_window", { window_id: entry.target.window_id }, signal);
+        this.claims.delete(entry.target.window_id);
+        const state = native.structuredContent ?? {};
+        return native.isError ? this.result("unknown", "The release was not confirmed. The window is free at the latest when this session ends.", state, this.addressed(entry))
+          : this.result("delivered", "Released: other agents can act on this window again.", state, this.addressed(entry));
+      } catch (error) { return this.failed(error, true); }
+    });
+  }
+  /** The name other agents see on a window this session holds. */
+  private holder(): string { return this.driver.holder?.() ?? "another Pi agent"; }
+  /** Hold a window this session just opened, where the runtime can; a runtime that cannot leaves it unheld. */
+  private async claimOpened(entry: WindowEntry, signal?: AbortSignal): Promise<void> {
+    if (!this.driver.windowClaims) return;
+    try {
+      const native = await this.driver.call("claim_window", { ...entry.target, holder: this.holder() }, signal);
+      if (!native.isError && native.structuredContent?.status === "claimed") this.claims.add(entry.target.window_id);
+    } catch { /* An unheld window behaves as before claims existed. */ }
+  }
   /** Read fresh window parts for an existing reference. Each mode retires this window's previous observation. */
   observe(ref: string, signal?: AbortSignal, query?: string, zoom?: DetailRequest, ui?: UiRequest, options?: UiCaptureOptions, deferPresentation = false): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -2363,7 +2428,7 @@ export class ComputerSession {
             // A real press at a point another window covers is refused by the driver before anything is pressed there.
             const covering = coveringWindow(nativeMessage);
             const refused = stopRefused || state.status === "refused" || state.effect === "refused" || ["invalid_action_target", "invalid_arguments", "stale_element_token",
-              "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable", "input_busy"].includes(String(state.code));
+              "conflicting_element_target", "background_unavailable", "background_occluded", "background_uipi_blocked", "key_hold_unavailable", "held_path_unavailable", "input_busy", "window_claimed"].includes(String(state.code));
             const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
             const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
               : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
@@ -2406,8 +2471,12 @@ export class ComputerSession {
             const front = after && `The click closed this window; ${await this.windowName(after, signal)} of the same app is now in front.\n`;
             const returnedFocus = focusReturn(nativeMessage);
             const kept = returnedFocus?.note;
+            // An app can drop input that reaches its window in the background without any error.
+            const backgroundNote = status === "delivered" && !uia_only && (delivery_mode ?? "background") === "background" && capability.actual_delivery !== "foreground"
+              && capability.route !== "accessibility" && !isSemanticAction(step.action) && !isPointerMove(step.action)
+              ? "The window got this input in the background, which an app can ignore without an error: when the window shows no change, repeat the action with foreground: true.\n" : "";
             const result = this.result(status, stopped ? `The human stopped computer use with Escape. ${status === "refused" ? "Nothing was sent." : "Input stopped part way; observe before anything else once computer use is on again."} Do not retry or work around it; tell the human and wait until they turn it on again with /computer-mode.`
-              : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}${kept ? `${kept}\n` : ""}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}${pointerNote || "Observe again to verify application state."}${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
+              : cover && status === "refused" ? `Nothing was pressed: ${cover}` : `${cover ? `A press stopped: ${cover}\n` : ""}${front ?? ""}${kept ? `${kept}\n` : ""}${backgroundNote}Driver returned ${status} for ${name} (requested: ${delivery_mode ?? "background"}). ${isSemanticAction(step.action) ? "A UIA receipt is not app or focus verification. " : ""}${pointerNote || "Observe again to verify application state."}${step.action === "hold" && typeof state.summary === "string" ? `\n${state.summary}` : ""}`,
               { ...receipt, ...(returnedFocus ? { focus_return: returnedFocus.outcome } : {}), ...(step.element_token || pointerAction ? { coordinate_grounding: { input_space: step.element_token ? "native_element_token" : "window_image_pixels", transform: "cua_native_once",
                 overview: { width: observed.width, height: observed.height }, ...(step.x !== undefined ? { requested: { x: step.x, y: step.y } } : {}),
                 resolved_native_screen: resolvedPoint ?? null, native_target_mark: isSemanticAction(step.action) ? null : entry.lastAction ?? null } } : {}),
@@ -2522,6 +2591,9 @@ export class ComputerSession {
       if (this.scope.launchedOnly)
         await Promise.allSettled([...this.launched].map(pid => this.driver.call("kill_app", { pid })));
       this.launched.clear();
+      // Ending the driver process frees its windows too; releasing first leaves no stale holder names behind.
+      await Promise.allSettled([...this.claims].map(window_id => this.driver.call("release_window", { window_id })));
+      this.claims.clear();
       await this.driver.close();
       const failed = cleanup.filter(result => result.status === "rejected").length;
       const unrestored = modes.filter((_, i) => restored[i].status === "rejected").map(([device, mode]) => `${device} (${mode.width}x${mode.height})`);

@@ -36,7 +36,7 @@ text("Held path guards passed");`;
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
     const inputs = calls.filter(call => ["press_key","drag","fixture_held_path"].includes(call.name));
     expect(inputs).toEqual([{ name: "fixture_held_path", arguments: {
-      pid: 42, window_id: 91, delivery_mode: "foreground", from_x: 20, from_y: 30,
+      pid: 42, window_id: 91, delivery_mode: "background", from_x: 20, from_y: 30,
       via: [{ x: 40, y: 80 }, { x: 90, y: 70 }], to_x: 100, to_y: 30, duration_ms: 800,
     } }]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
