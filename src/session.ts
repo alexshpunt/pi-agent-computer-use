@@ -2432,7 +2432,7 @@ export class ComputerSession {
             const uncertain = native.isError || ["unknown", "partial"].includes(String(state.status)) || ["unknown", "partial"].includes(String(state.effect));
             const inconsistent = !refused && !uncertain && (isSemanticAction(step.action) ? !semanticReceipt(step.action, state)
               : isPointerMove(step.action) ? delivery_mode !== "foreground" || !pointerReceipt(step, state)
-              : isCoordinateScroll(step) && (delivery_mode !== "foreground" || !scrollReceipt(step, state)));
+              : isCoordinateScroll(step) && !scrollReceipt(step, state, delivery_mode ?? "background"));
             // A headless MXC session can accept pointer events without moving the cursor or reaching the target.
             // A UIA element action is not pointer input, even when exposed as a click.
             const isolatedPointerUnconfirmed = !refused && !uncertain && pointerAction &&
