@@ -820,9 +820,14 @@ export class ComputerSession {
         if (candidates.length) break;
         if (attempt < 19) await delay(250, undefined, { signal });
       }
-      if (candidates.length !== 1) return this.result("unknown", candidates.length
-        ? "Launch produced multiple possible new windows. Discover them before choosing; ownership is not established."
-        : "Launch did not establish a genuinely new window. It may have reused an existing window or opened a tab. Discover before deciding; do not relaunch blindly.");
+      if (candidates.length > 1) return this.result("unknown", "Launch produced multiple possible new windows. Discover them before choosing; ownership is not established.");
+      // The launch went to windows that existed before: an app that reuses its running instance.
+      if (!candidates.length && Array.isArray(launched.windows) && launched.windows.length) return this.result("unknown",
+        "Launch did not establish a genuinely new window. It may have reused an existing window or opened a tab. Discover before deciding; do not relaunch blindly.");
+      // The process started; only its window is missing. It may run without one, such as a hidden script.
+      if (!candidates.length) return this.result("delivered", `Started process ${pid}, but it opened no new window within 5 s. `
+        + "It may run without a window, still be starting, or have handed off to an existing window or tab. Discover windows before deciding; do not relaunch blindly.",
+        { operation: "launch_app", pid, window: null });
       const entry = candidates[0];
       // On a shared desktop a process belongs to the agent that started it. An app that opens every window in one running
       // process can put this window into another agent's process; it is not this session's then.
