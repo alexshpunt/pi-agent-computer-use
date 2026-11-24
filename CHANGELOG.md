@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.0 — 2026-11-24
+
+### Changed
+
+- Native input goes to its window in the background by default: points, keys, text, drags, coordinate scrolls and timelines reach the target window without taking the human's focus, pointer or keyboard, so several agents can work on one desktop at once. `foreground: true` takes the focus for one action and hands it back afterwards. Where a window cannot take an action in the background (WPF and XAML pointer input, a key that opens a Win32 menu), the driver refuses before sending anything and the tool repeats the action in the foreground by itself; the result says so. Hover and key holds always use the foreground.
+- After foreground input, the window where the human last pressed a key or a mouse button gets the foreground back. After foreground pointer input on XAML canvases, such as Paint's, the target keeps the foreground, because Windows gives no evidence that it read the input.
+- The bundled Windows runtime is Cua Driver 0.52.0 with cua-spacesd 0.16.1, from source `9dd83311` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork. Every installation, host cache, remote machine, isolated session and sandbox carries both; a missing or changed file refuses before the driver starts.
+- Requires Pi Agent IDE 1.0 (`pi-agent-ide >=1.0.1 <2`).
+
+### Added
+
+- Agents on one desktop keep out of each other's windows. A window an agent opens is its own, and `computer_window` action `claim` takes any other window; `release` or the end of the session gives it back. Input into a window another agent holds, and moving or resizing it, is refused with `window_claimed` and the holding agent's name.
+- Machines listed under `machines` in `~/.pi/agent/computer-use.json` are available from every project. A project machine with the same name replaces the global one.
+- All agents on a machine share its one Windows Sandbox, which has a real mouse. The first `open_sandbox` starts it and later ones join it in a few seconds; each agent sees and acts only on the apps it started there. Clicks, drags, keys and launches take turns with the guest's mouse and keyboard, an open menu keeps its agent's turn for up to 15 s, and a result that waited says how long. The sandbox stops 10 minutes after its last agent leaves.
+- Optional screen zones in the shared sandbox (`"sandbox": {"zones": true}` in `.pi/computer-use.json`): each agent works in its own zone of the guest screen, up to four agents, and a guest service keeps its windows, dialogs and menus inside the zone. A fifth agent gets the machine's main desktop instead.
+- Isolated sessions and sandboxes show each agent's windows as live session tiles on the human's desktop layer, above the wallpaper and under all windows; Ctrl+Alt+Space raises them. Tiles fill the desktop in rows, keep their windows' shapes, and spill into layers that Ctrl+Alt+PageDown and Ctrl+Alt+PageUp switch. An agent whose Pi runs on another machine than the sandbox gets its tiles on the sandbox machine too.
+
+### Fixed
+
+- An isolated session opens in about 40 seconds instead of several minutes on WSL: runtime files on a Windows drive are hashed once by Windows instead of through the drive mount.
+- Isolated sessions capture windows without a compositor instead of returning black frames; a capture that stays black fails with `capture_black_frame`.
+- Pointer input that an isolated session acknowledges but may not deliver is reported as `unknown`, and a sequence stops at that step.
+- A foreground click on a window of another process embedded in the target window succeeds, and the typing that follows goes to that window.
+- A fresh checkout installs with plain `npm ci`.
+
 ## 0.1.5 — 2026-11-09
 
 ### Fixed
