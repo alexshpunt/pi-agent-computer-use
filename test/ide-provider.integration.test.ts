@@ -88,7 +88,7 @@ async function runScenario(providerFirst: boolean, scenario: "workflow" | "admis
     if (scenario === "workflow") {
       expect(inputs[0].arguments).toMatchObject({ text: '  {"looks":"like JSON"}\n"quoted text"\n  ', delay_ms: 0, delivery_mode: "background", element_token: expect.any(String) });
       expect(calls.filter(row => row.name === "zoom")).toEqual([{ name: "zoom", arguments: { pid: 42, window_id: 91, x1: 80, y1: 60, x2: 160, y2: 100 } }]);
-      expect(details.localText).toBe("Local source stays local\nSecond local line");
+      expect(details.localText).toBe("Local source stays local\nSecond local line\n");
     }
     expect(result.tuiRenderedOutput).not.toContain("Failed to load extension");
     expect(result.tuiRenderedOutput).not.toContain("already handles");
