@@ -1,5 +1,5 @@
 // Record a Pi agent painting a reference picture in GIMP on another Windows machine, then make a time-lapse of it.
-//   node demo/gimp-painting/run.ts [--ssh zinpc-benchmark] [--machine zinpc] [--model openai-codex/gpt-6.1-terra]
+//   node demo/gimp-painting/run.ts [--ssh gpu-box] [--machine gpu-box] [--model openai-codex/gpt-6.1-terra]
 // See demo/gimp-painting/README.md.
 import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
@@ -15,8 +15,8 @@ import { findFfmpeg, psQuote, remote, wslPath } from "./remote.ts";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, "../..");
 const { values } = parseArgs({ options: {
-  ssh: { type: "string", default: "zinpc-benchmark" },
-  machine: { type: "string", default: "zinpc" },
+  ssh: { type: "string", default: "gpu-box" },
+  machine: { type: "string", default: "gpu-box" },
   model: { type: "string", default: "openai-codex/gpt-6.1-terra" },
   thinking: { type: "string", default: "high" },
   reference: { type: "string", default: path.join(repo, "assets/draw_task.png") },

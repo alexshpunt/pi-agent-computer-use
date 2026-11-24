@@ -33,13 +33,13 @@ To publish a run, add it to the [gallery](#gallery).
 ## Run
 
 ```bash
-node demo/gimp-painting/run.ts --ssh zinpc-benchmark --machine zinpc
+node demo/gimp-painting/run.ts --ssh gpu-box --machine gpu-box
 ```
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--ssh` | `zinpc-benchmark` | SSH alias of the Windows machine's WSL |
-| `--machine` | `zinpc` | Machine name the agent uses in `computer:` addresses |
+| `--ssh` | `gpu-box` | SSH alias of the Windows machine's WSL |
+| `--machine` | `gpu-box` | Machine name the agent uses in `computer:` addresses |
 | `--model` | `openai-codex/gpt-6.1-terra` | Model for the agent |
 | `--thinking` | `high` | Thinking level |
 | `--reference` | `assets/draw_task.png` | Picture to paint |
@@ -52,7 +52,7 @@ node demo/gimp-painting/run.ts --ssh zinpc-benchmark --machine zinpc
 To redo the videos of an earlier run, pass its Windows folder, which `run.ts` prints at the end:
 
 ```bash
-node demo/gimp-painting/postprocess.ts --ssh zinpc-benchmark --remote-dir 'C:\Users\user\pi-gimp-demo\<run>' --out .tmp/gimp-demo/<run>
+node demo/gimp-painting/postprocess.ts --ssh gpu-box --remote-dir 'C:\Users\user\pi-gimp-demo\<run>' --out .tmp/gimp-demo/<run>
 ```
 
 ## Gallery

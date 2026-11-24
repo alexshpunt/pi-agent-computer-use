@@ -16,7 +16,7 @@ const maxLongEdge = Number(process.env.LIVE_READ_MAX_LONG_EDGE ?? 320);
 const callId = "benchmark";
 
 // Opt in to this probe alone. It opens Notepad in its own Windows session, not on the human's desktop.
-test.skipIf(machine !== "local" && machine !== "zinpc")("real Pi: repeated Notepad window image reads", async () => {
+test.skipIf(machine !== "local" && machine !== "gpu-box")("real Pi: repeated Notepad window image reads", async () => {
   if (!Number.isSafeInteger(maxLongEdge) || maxLongEdge < 64 || maxLongEdge > 4096)
     throw new Error("LIVE_READ_MAX_LONG_EDGE must be an integer in 64..4096.");
   const cwd = await mkdtemp(path.join(tmpdir(), "pi-live-window-read-"));
