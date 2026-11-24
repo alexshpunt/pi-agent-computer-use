@@ -1,12 +1,12 @@
 {
   "format": 2,
-  "source": "9dd83311e1521d60b578ee942ae9fe47c90dab54",
+  "source": "0cd994cb4a0516418fc7ba92b3ca08106fdc82c5",
   "version": "0.52.0",
-  "url": "https://github.com/alexshpunt/cua/releases/download/pi-runtime-0.52.0-9dd83311/",
+  "url": "https://github.com/alexshpunt/cua/releases/download/pi-runtime-0.52.0-0cd994cb/",
   "files": {
-    "cua-driver.exe": "9965573919e0e98bd655a02b9e4667e03c70fbc1e928e1ca81057df4f2cfa74d",
-    "cua-driver-uia.exe": "2e6e97dbed956364d85ef3faecc285525c38f2c3618ca25811d9da0de3d7a742",
-    "cua-cursor-theme.exe": "f4116b7dac7de352f589d3552b1a73a37514a5888274667847aa6f4d7354f096",
+    "cua-driver.exe": "d31591d5897049161b9add574bf1a6b9c1ac4c187712b89e42aa2293f8a185f7",
+    "cua-driver-uia.exe": "45f8f0cc3d4d2b4bd2f2658af52281dce976f1b2d92469e29973bacc93028e6f",
+    "cua-cursor-theme.exe": "72afcd06f306078ac0261cce8a70bc23d2ce2667480365393e5bceee4b01ae0e",
     "cua-spacesd.exe": "6ceb9df70dfa6300e48550f23659261975a7c8d21a7d3d4beeaa706951944bac",
     "LICENSE.md": "d0a32419a44fa38d5023d1431dfcbedd1457eb5e7b2e6c7c87ca064facb41b41",
     "THIRD_PARTY_NOTICES.md": "804dfb37a4abda1ba2747d8caa782f67a62ba5e49f1f780b818695b4afa87d20",
