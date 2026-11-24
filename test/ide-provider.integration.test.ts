@@ -36,9 +36,9 @@ test("Codemode composes IDE computer reads, image writes and provider search", a
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath, args: [driver, path.join(cwd, "calls.jsonl")] }));
     const code = `const opened = await tools.computer_open({ at: "computer:machine/local", app: "Notepad" });
 const found = await tools.search({ path: "computer:machine/local/windows", query: "Owned fixture" });
-if (typeof found !== "string" || !found.includes(opened.window)) throw Error("window search lost its address");
+if (typeof found !== "string" || !found.includes(opened.window)) throw Error("window search lost its address: " + JSON.stringify(found).slice(0, 1000));
 const ui = await tools.read({ path: opened.window, views: ["ui"] });
-if (!ui || typeof ui.id !== "string" || !ui.text.includes("Fixture text field")) throw Error("UI text value missing");
+if (!ui || typeof ui.id !== "string" || !ui.text.includes("Fixture text field")) throw Error("UI text value missing: " + JSON.stringify(ui).slice(0, 1000));
 const shot = await tools.read({ path: opened.window });
 if (!shot || shot.type !== "image" || shot.mimeType !== "image/png") throw Error("window image missing");
 await tools.write({ path: "snapshot.png", image: shot });
@@ -88,7 +88,7 @@ async function runScenario(providerFirst: boolean, scenario: "workflow" | "admis
     if (scenario === "workflow") {
       expect(inputs[0].arguments).toMatchObject({ text: '  {"looks":"like JSON"}\n"quoted text"\n  ', delay_ms: 0, delivery_mode: "background", element_token: expect.any(String) });
       expect(calls.filter(row => row.name === "zoom")).toEqual([{ name: "zoom", arguments: { pid: 42, window_id: 91, x1: 80, y1: 60, x2: 160, y2: 100 } }]);
-      expect(details.localText).toBe("Local source stays local\nSecond local line");
+      expect(details.localText).toBe("Local source stays local\nSecond local line\n");
     }
     expect(result.tuiRenderedOutput).not.toContain("Failed to load extension");
     expect(result.tuiRenderedOutput).not.toContain("already handles");
