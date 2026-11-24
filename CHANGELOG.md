@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A remote machine on a slow link gets a new runtime after a pin change. The machine downloads the pinned files from the release itself and checks their hashes; only a file that does not arrive intact is sent over SSH. The copy also continues when the tool call that started it times out, and the next use of the machine waits for it instead of starting over.
+
 ## 0.2.1 — 2026-11-24
 
 ### Fixed
