@@ -206,6 +206,18 @@ test("a launch returning an existing window is not reported as a new one", async
   expect(vi.mocked(driver.call).mock.calls.filter(([n]) => n === "launch_app")).toHaveLength(1);
 });
 
+test("a launched program without a window is reported as started, with its process ID", async () => {
+  const { session, driver } = fixture();
+  const call = driver.call;
+  driver.call = vi.fn(async (name, args, signal) => name === "launch_app"
+    ? { content: [], structuredContent: { pid: 77 } }
+    : call(name, args, signal));
+  const opened = await session.open("Notepad");
+  expect(opened.details.status).toBe("delivered");
+  expect(opened.content[0]).toMatchObject({ type: "text", text: expect.stringContaining("Started process 77, but it opened no new window") });
+  expect(vi.mocked(driver.call).mock.calls.filter(([n]) => n === "launch_app")).toHaveLength(1);
+}, 15_000);
+
 test("YOLO reads existing windows, keeps separate observations, and refuses cross-window tokens", async () => {
   const { session, driver, replaceWindows } = fixture();
   replaceWindows([target, { pid: 42, window_id: 101 }]);

@@ -16,6 +16,22 @@ import type { NativePlatform } from "./observation-source.ts";
 import { NativeVisuals, VisualSettings, nativeVisualOptions, type WindowObserver } from "./native-visuals.ts";
 import { reportsHumanStop, type HumanStop } from "./human-stop.ts";
 
+/**
+ * Windows variables that describe the machine and that programs need to start other programs. The MCP stdio transport
+ * passes only a short list of variables; without PATHEXT, a PowerShell or cmd that the driver launches treats .exe files
+ * as documents, and without WINDIR or ComSpec some programs fail to start helpers. Secrets in Pi's environment stay out.
+ */
+const WINDOWS_SYSTEM_VARIABLES = [
+  "PATHEXT", "WINDIR", "ComSpec", "PSModulePath", "TMP", "ProgramData", "ProgramFiles(x86)", "ProgramW6432",
+  "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432", "ALLUSERSPROFILE", "PUBLIC", "COMPUTERNAME",
+  "USERDOMAIN", "USERDOMAIN_ROAMINGPROFILE", "LOGONSERVER", "SESSIONNAME", "OS", "NUMBER_OF_PROCESSORS",
+  "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "DriverData",
+] as const;
+/** The machine-describing Windows variables of `env` that are set; Node reads Windows variable names case-insensitively. */
+export function windowsSystemEnvironment(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  return Object.fromEntries(WINDOWS_SYSTEM_VARIABLES.flatMap(name => env[name] === undefined ? [] : [[name, env[name]!]]));
+}
+
 /** The agent cursor jumps to each action point instead of gliding there. */
 const CURSOR_GLIDE_MS = 1;
 /** Exact Windows CI artifact qualified for held paths; selection is trusted config, never a tool argument. */
@@ -361,6 +377,7 @@ export class McpDriver implements Driver {
       stderr: "pipe",
       env: {
         ...Object.fromEntries(["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"].flatMap(name => process.env[name] === undefined ? [] : [[name, process.env[name]!]])),
+        ...(process.platform === "win32" ? windowsSystemEnvironment() : {}),
         ...(interop ? { WSL_INTEROP: interop } : {}),
         WSLENV: [process.env.WSLENV, ...Object.keys(this.driverVariables())].filter(Boolean).join(":"),
         ...this.driverVariables(),
