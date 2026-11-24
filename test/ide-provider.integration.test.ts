@@ -36,17 +36,15 @@ test("Codemode composes IDE computer reads, image writes and provider search", a
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: process.execPath, args: [driver, path.join(cwd, "calls.jsonl")] }));
     const code = `const opened = await tools.computer_open({ at: "computer:machine/local", app: "Notepad" });
 const found = await tools.search({ path: "computer:machine/local/windows", query: "Owned fixture" });
-// Codemode search resolves to a structured result; the opened window's address must be among its matches.
-if (!found || !JSON.stringify(found).includes(opened.window)) throw Error("window search lost its address: " + JSON.stringify(found));
+if (typeof found !== "string" || !found.includes(opened.window)) throw Error("window search lost its address");
 const ui = await tools.read({ path: opened.window, views: ["ui"] });
-// A computer Read resolves to its text.
-if (typeof ui !== "string" || !ui.includes("Fixture text field")) throw Error("UI text value missing: " + JSON.stringify(ui).slice(0, 2000));
+if (!ui || typeof ui.id !== "string" || !ui.text.includes("Fixture text field")) throw Error("UI text value missing");
 const shot = await tools.read({ path: opened.window });
-if (!shot || shot.type !== "image" || shot.mimeType !== "image/png") throw Error("window image missing: " + JSON.stringify(shot).slice(0, 500));
+if (!shot || shot.type !== "image" || shot.mimeType !== "image/png") throw Error("window image missing");
 await tools.write({ path: "snapshot.png", image: shot });
 const missing = await tools.read({ path: "missing-file-for-codemode-test" });
 if (missing !== null) throw Error("failed IDE Read did not return null");
-text(JSON.stringify({ ui: ui.includes("Fixture button"), image: shot.type, continued: true }));`;
+text(JSON.stringify({ ui: ui.text.includes("Fixture button"), image: shot.type, continued: true }));`;
     const result = await new PiIntegrationTest({
       testName: "ide-computer-codemode-values", artifactsDir: testArtifactsDir(import.meta.filename), cwd,
       isolateUserResources: true, rawMode: false, piCommand: PI_COMMAND,
