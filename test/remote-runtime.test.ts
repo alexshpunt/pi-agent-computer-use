@@ -99,6 +99,18 @@ test("a missing or altered download is streamed from this machine and never publ
   expect(await readFile(command, "utf8")).toBe("content for cua-driver.exe");
   expect((await readdir(path.dirname(command))).sort()).toEqual([...files].sort());
 });
+test("a lost download response reports uncertain remote effects and streams nothing over it", async () => {
+  const f = await fixture();
+  let streams = 0;
+  const runner: CommandRunner = { ...f.runner, async run(file, args, options) {
+    if (file === "bash" && args[1]?.includes("curl")) throw new Error("connection lost");
+    if (file === "dd") streams++;
+    return f.runner.run(file, args, options);
+  } };
+  const { RemotePreparationUncertain } = await import("../src/remote-provision-error.ts");
+  await expect(prepareRemoteRuntime(runner, undefined, { ...f.deps, releaseUrl: async () => "https://example.invalid/" })).rejects.toBeInstanceOf(RemotePreparationUncertain);
+  expect(streams).toBe(0);
+});
 test("a lost transfer response reports uncertain remote effects", async () => {
   const f = await fixture();
   const runner: CommandRunner = { ...f.runner, async run(file, args, options) {

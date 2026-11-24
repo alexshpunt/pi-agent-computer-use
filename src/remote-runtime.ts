@@ -109,10 +109,14 @@ async function installRemoteRuntime(runner: CommandRunner, deps: RemoteRuntimeDe
     const url = await deps.releaseUrl?.().catch(() => undefined);
     if (url) {
       // Each file arrives under a temporary name and takes its own name only when the download completed. A failed
-      // download, or a machine without curl or GitHub access, leaves the file to the stream below.
-      const download = 'dir=$1; url=$2; shift 2; command -v curl >/dev/null || exit 0; for name in "$@"; do ' +
-        'if curl -fsSL --connect-timeout 10 --retry 2 -o "$dir/$name.part" "$url$name"; then mv -f -- "$dir/$name.part" "$dir/$name"; else rm -f -- "$dir/$name.part"; fi; done; exit 0';
-      await runner.run("bash", ["-c", download, "bash", stagedRuntime, url, ...names], { timeoutMs: 600_000 }).catch(() => undefined);
+      // download, or a machine without curl or GitHub access, leaves the file to the stream below. The script stops
+      // its own downloads before the SSH call times out, so no remote download can still land during the stream.
+      const download = 'dir=$1; url=$2; shift 2; command -v curl >/dev/null || exit 0; end=$((SECONDS + 540)); for name in "$@"; do ' +
+        'left=$((end - SECONDS)); [ "$left" -gt 0 ] || break; ' +
+        'if curl -fsSL --connect-timeout 10 --retry 2 --max-time "$left" --retry-max-time "$left" -o "$dir/$name.part" "$url$name"; then mv -f -- "$dir/$name.part" "$dir/$name"; else rm -f -- "$dir/$name.part"; fi; done; exit 0';
+      // The script always exits 0, so a failure here is the SSH call itself: a download may still be running remotely.
+      try { await runner.run("bash", ["-c", download, "bash", stagedRuntime, url, ...names], { timeoutMs: 600_000 }); }
+      catch (error) { throw new RemotePreparationUncertain(`Remote runtime download outcome is unknown; a remote download may still be running: ${error instanceof Error ? error.message : String(error)}`); }
     }
     const present = await hashes(staging);
     for (const [index, name] of names.entries()) {
