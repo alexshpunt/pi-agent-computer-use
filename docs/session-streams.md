@@ -76,7 +76,7 @@ LIVE_MACHINE=local PI_COMPUTER_PI_COMMAND="$PWD/node_modules/.bin/pi" \
   npm run test:live -- test/live/window-read-latency.live.ts
 ```
 
-From another machine, set `LIVE_MACHINE=zinpc` to measure the SSH route to a configured `zinpc` machine. The check reports the SSH timings without applying the same-host limit. Set `LIVE_READ_MAX_LONG_EDGE=4096` to measure a full-size window.
+From another machine, set `LIVE_MACHINE=gpu-box` to measure the SSH route to a configured `gpu-box` machine. The check reports the SSH timings without applying the same-host limit. Set `LIVE_READ_MAX_LONG_EDGE=4096` to measure a full-size window.
 
 ## Limits
 

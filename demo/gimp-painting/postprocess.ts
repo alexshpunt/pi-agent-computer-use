@@ -1,6 +1,6 @@
 // Turn a demo recording into a sped-up video, a short animated preview and a reference/painting comparison.
 // Run it on its own to redo the outputs of an earlier run:
-//   node demo/gimp-painting/postprocess.ts --ssh zinpc-benchmark --remote-dir 'C:\Users\user\pi-gimp-demo\<run>' --out .tmp/gimp-demo/<run>
+//   node demo/gimp-painting/postprocess.ts --ssh gpu-box --remote-dir 'C:\Users\user\pi-gimp-demo\<run>' --out .tmp/gimp-demo/<run>
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
@@ -76,7 +76,7 @@ export async function comparison(referenceFile: string, paintingFile: string, ou
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { values } = parseArgs({ options: {
-    ssh: { type: "string", default: "zinpc-benchmark" },
+    ssh: { type: "string", default: "gpu-box" },
     "remote-dir": { type: "string" },
     out: { type: "string" },
     "video-seconds": { type: "string", default: String(DEFAULT_POSTPROCESS.videoSeconds) },
