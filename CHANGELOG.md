@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A remote machine on a slow link gets a new runtime after a pin change. The machine downloads the pinned files from the release itself and checks their hashes; only a file that does not arrive intact is sent over SSH. The copy also continues when the tool call that started it times out, and the next use of the machine waits for it instead of starting over.
+- Programs that `computer_open` starts from Pi on Windows run native programs again. The driver had only the short environment of the MCP stdio transport, so a launched PowerShell got `PATHEXT=.CPL` and refused to run `.exe` files ("Cannot run a document in the middle of a pipeline"). The driver now also gets the Windows variables that describe the machine, such as `PATHEXT`, `WINDIR` and `ComSpec`; Pi's other variables, including keys, stay out.
+- A program that `computer_open` starts without a window, such as a hidden script, is reported as started with its process ID instead of an unknown outcome. A launch that goes to a window that already existed is still reported as unknown.
+
 ## 0.2.1 — 2026-11-24
 
 ### Fixed

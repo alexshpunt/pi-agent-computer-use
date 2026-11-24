@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { localRunner, type CommandRunner } from "../src/runner.ts";
 import type { BundledRuntime } from "../src/native-runtime.ts";
@@ -34,7 +35,8 @@ test("remote runtime is installed once and every required file is verified befor
 test("concurrent installations publish one complete runtime without deleting other data", async () => {
   const f = await fixture();
   const other = path.join(f.appData, "unrelated"); await writeFile(other, "keep");
-  const [first, second] = await Promise.all([prepareRemoteRuntime(f.runner, undefined, f.deps), prepareRemoteRuntime(f.runner, undefined, f.deps)]);
+  // Separate dependency sets stand for two Pi processes, which share no in-process preparation.
+  const [first, second] = await Promise.all([prepareRemoteRuntime(f.runner, undefined, { ...f.deps }), prepareRemoteRuntime(f.runner, undefined, { ...f.deps })]);
   expect(first).toBe(second);
   expect((await readdir(path.dirname(first))).sort()).toEqual([...files].sort());
   expect(await readFile(other, "utf8")).toBe("keep");
@@ -49,26 +51,65 @@ test("a symlink substituted for a published companion is refused and left untouc
   await expect(prepareRemoteRuntime(f.runner, undefined, f.deps)).rejects.toThrow();
   expect(await readFile(outside, "utf8")).toBe("content for LICENSE.md");
 });
-test("cancellation waits for a dispatched transfer before returning", async () => {
+test("a caller that stops waiting returns at once while the transfer finishes for the next caller", async () => {
   const f = await fixture(); const controller = new AbortController();
-  let started!: () => void, release!: () => void;
+  let started!: () => void, release!: () => void, streams = 0;
   const sent = new Promise<void>(resolve => { started = resolve; });
   const waiting = new Promise<void>(resolve => { release = resolve; });
   const runner: CommandRunner = { ...f.runner, async run(file, args, options) {
-    if (file === "dd") {
-      started();
-      if (options?.signal) await Promise.race([waiting, new Promise<never>((_, reject) => options.signal!.addEventListener("abort", () => reject(new Error("transport cancelled")), { once: true }))]);
-      else await waiting;
-    }
+    if (file === "dd" && ++streams === 1) { started(); await waiting; }
     return f.runner.run(file, args, options);
   } };
-  let finished = false;
-  const pending = prepareRemoteRuntime(runner, controller.signal, f.deps).then(() => null, error => error).finally(() => { finished = true; });
-  await sent; controller.abort(); await new Promise(resolve => setTimeout(resolve, 20));
-  expect(finished).toBe(false);
-  release(); expect(await pending).toBeInstanceOf(Error);
-  const command = await prepareRemoteRuntime(f.runner, undefined, f.deps);
+  const { RemotePreparationPending } = await import("../src/remote-provision-error.ts");
+  const first = prepareRemoteRuntime(runner, controller.signal, f.deps).then(() => null, error => error);
+  await sent; controller.abort();
+  expect(await first).toBeInstanceOf(RemotePreparationPending);
+  // The next caller joins the running preparation instead of starting a second transfer.
+  const second = prepareRemoteRuntime(runner, undefined, f.deps);
+  release();
+  const command = await second;
+  expect(streams).toBe(files.length);
   expect((await readdir(path.dirname(command))).sort()).toEqual([...files].sort());
+});
+test("the remote machine downloads the pinned files itself and nothing is streamed", async () => {
+  const f = await fixture();
+  let streams = 0;
+  const runner: CommandRunner = { ...f.runner, async run(file, args, options) {
+    if (file === "dd") streams++;
+    return f.runner.run(file, args, options);
+  } };
+  const release = `${pathToFileURL(path.join(f.runtime.root, "runtime")).href}/`;
+  const command = await prepareRemoteRuntime(runner, undefined, { ...f.deps, releaseUrl: async () => release });
+  expect(streams).toBe(0);
+  expect(await readFile(command, "utf8")).toBe("content for cua-driver.exe");
+  expect((await readdir(path.dirname(command))).sort()).toEqual([...files].sort());
+});
+test("a missing or altered download is streamed from this machine and never published as downloaded", async () => {
+  const f = await fixture();
+  const release = path.join(f.dir, "release");
+  await mkdir(release);
+  for (const name of files) if (name !== "LICENSE.md") await writeFile(path.join(release, name), name === "cua-driver.exe" ? "tampered" : `content for ${name}`);
+  const streamed: string[] = [];
+  const runner: CommandRunner = { ...f.runner, async run(file, args, options) {
+    if (file === "dd") streamed.push(path.basename(args[1]));
+    return f.runner.run(file, args, options);
+  } };
+  const command = await prepareRemoteRuntime(runner, undefined, { ...f.deps, releaseUrl: async () => `${pathToFileURL(release).href}/` });
+  expect(streamed.sort()).toEqual(["LICENSE.md", "cua-driver.exe"]);
+  expect(await readFile(command, "utf8")).toBe("content for cua-driver.exe");
+  expect((await readdir(path.dirname(command))).sort()).toEqual([...files].sort());
+});
+test("a lost download response reports uncertain remote effects and streams nothing over it", async () => {
+  const f = await fixture();
+  let streams = 0;
+  const runner: CommandRunner = { ...f.runner, async run(file, args, options) {
+    if (file === "bash" && args[1]?.includes("curl")) throw new Error("connection lost");
+    if (file === "dd") streams++;
+    return f.runner.run(file, args, options);
+  } };
+  const { RemotePreparationUncertain } = await import("../src/remote-provision-error.ts");
+  await expect(prepareRemoteRuntime(runner, undefined, { ...f.deps, releaseUrl: async () => "https://example.invalid/" })).rejects.toBeInstanceOf(RemotePreparationUncertain);
+  expect(streams).toBe(0);
 });
 test("a lost transfer response reports uncertain remote effects", async () => {
   const f = await fixture();

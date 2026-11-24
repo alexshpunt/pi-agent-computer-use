@@ -43,6 +43,8 @@ PiComputerUse/native-runtimes/<source>/win32-x64/runtime/
 
 A bounded system query finds that directory. Copying uses a private staging directory and atomic promotion, and every reuse checks the pinned bytes again. A changed existing cache refuses; it is not overwritten. Old runtime directories stay untouched. Running from a Windows path avoids depending on Linux executable bits for the `.exe` files.
 
+A remote machine gets such a cache in its own Windows user's folder, under `PiComputerUse/native-runtimes/<source>/<hash of the file list>/win32-x64/runtime/`, prepared over SSH on first use and after a pin change. The machine first downloads the pinned release files itself with `curl`, which is much faster than sending about 160 MB over a slow home link; any file that does not arrive or does not match its pinned SHA-256 is streamed from the machine where Pi runs. Nothing is published before every file matches. The copy keeps running when the tool call that started it stops waiting: that call says the runtime is still being copied, and the next use of the machine waits for the same copy instead of starting over.
+
 Computer use owns one MCP child. It disables telemetry and update checks, requires the pinned server version and the EOF-aware receiver, and reads the native tool schemas. Unsupported tools never fall back to other input. Closing the session releases the child and any Windows identity peer, not application windows.
 
 ## System requirements
