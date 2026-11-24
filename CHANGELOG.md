@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Foreground input, such as a drag on Paint's canvas, hands the foreground back to the human's window again when Windows first refused to activate the target. The driver unlocked activation with a key press sent to the human's window and could not confirm that the window read it, so the target kept the foreground after that action and every later one until the human pressed a key or a mouse button. It now unlocks with a mouse input that reaches no window. The bundled Windows runtime is built from source `0cd994cb` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork.
+
 ## 0.2.0 — 2026-11-24
 
 ### Changed
