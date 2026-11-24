@@ -1,4 +1,5 @@
-import { Type, type JsonValue } from "@earendil-works/pi-ai";
+import type { JsonValue } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ComputerResources } from "./computer-resources.ts";
 import { resourceRenderers } from "./computer-renderers.ts";

@@ -12,6 +12,8 @@ import { McpDriver } from "../../src/driver.ts";
 import { MachineHost } from "../../src/machine-host.ts";
 import { WebBrowser } from "../../src/web-browser.ts";
 
+/** The remote-only harness must not silently start a local session for an unclaimed reference. */
+export class UnexpectedLocalSessionError extends Error {}
 /**
  * Connect to the machine named by LIVE_MACHINE (default lab) through the same factory the extension uses,
  * or with LIVE_MACHINE=local to this machine's desktop through the configured local driver.
@@ -24,10 +26,14 @@ export async function connectLive(cwd = process.cwd(), mode: "safe" | "yolo" = "
   const config = await loadComputerConfig(cwd);
   let local: ComputerSession | undefined;
   const resources = new ComputerResources(async () => {
-    if (name !== "local") throw new Error("Live checks use only the remote machine.");
+    if (name !== "local") throw new UnexpectedLocalSessionError("Live checks use only the remote machine.");
     return local ??= new ComputerSession(new McpDriver(config), () => mode, () => images.settings(), undefined,
       (options, signal) => WebBrowser.launch({ ...options, interop: config.interop }, signal), new MachineHost(localRunner(config.interop)));
-  }, async () => local ? local.close() : { content: [], details: { status: "closed", mode: "yolo" } },
+  }, async () => {
+    const session = local;
+    local = undefined;
+    return session ? session.close() : { content: [], details: { status: "closed", mode: "yolo" } };
+  },
     sandboxFactory({ settings: () => images.settings() }), machineFactory({ getMode: () => mode, settings: () => images.settings() }));
   // A machine starts on its first use; the live checks use the configured one unless LIVE_MACHINE=local.
   const machine = computerSource("machine", name);
@@ -46,7 +52,7 @@ export async function connectLive(cwd = process.cwd(), mode: "safe" | "yolo" = "
     return resources.perform(address, cwd, JSON.stringify(delivery ? { ...command, delivery_mode: delivery } : command), signal);
   };
   return {
-    resources, machine, cwd, runner,
+    resources, machine, cwd, runner, domain: name === "local" ? "windows-host" : "windows-remote",
     /** Where to Search this machine's windows. */
     windows: computerSource("machine", name, "windows"),
     /** Where to Read this machine's displays. */
@@ -61,9 +67,13 @@ export async function connectLive(cwd = process.cwd(), mode: "safe" | "yolo" = "
     closeWindow: (hwnd: number) => runner.run(WINDOWS_POWERSHELL, ["-NoProfile", "-Command",
       `Add-Type -Name Close -Namespace PiLive -MemberDefinition '[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);'; [void][PiLive.Close]::PostMessage([IntPtr]${hwnd}, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)`]).catch(() => ""),
     /** Force-close a process this check opened, for example a modified test document. Only for apps with one process per window. */
-    kill: (pid: number) => runner.run(WINDOWS_POWERSHELL, ["-NoProfile", "-Command", `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`]).catch(() => ""),
+    kill: (pid: number) => runner.run(WINDOWS_POWERSHELL, ["-NoProfile", "-Command", `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { Stop-Process -InputObject $p -Force -ErrorAction Stop; $p.WaitForExit() }; exit 0`]),
     write: (path: string, text: string) => engine(path, { action: "type_text", text }),
-    close: () => resources.delete("computer:session", cwd).catch(() => undefined),
+    close: async () => {
+      const result = await resources.delete("computer:session", cwd);
+      if (result.details.status !== "closed") console.warn(`Live session cleanup is unconfirmed: ${text(result)}`);
+      return result;
+    },
   };
 }
 
@@ -71,7 +81,7 @@ export async function connectLive(cwd = process.cwd(), mode: "safe" | "yolo" = "
  * PowerShell arguments for a disposable native Win32 target: a WinForms window with a counter button, a list box
  * and a text box behind the standard UIA proxies. Use it where Notepad is missing or would restore the human's tabs.
  */
-export function nativeForm(title: string, { dpiAware = false } = {}): string[] {
+export function nativeForm(title: string, { dpiAware = false, submitTitle, duplicateField }: { dpiAware?: boolean; submitTitle?: string; duplicateField?: "named" | "grouped" | "indistinguishable" } = {}): string[] {
   // Windows PowerShell is DPI-unaware: above 100% Windows paints its windows at 96 DPI and stretches them.
   // dpiAware switches the process to Per-Monitor V2 first, so the same form paints in physical pixels.
   const aware = dpiAware ? `Add-Type -Name D -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr v);'
@@ -83,7 +93,18 @@ $b = New-Object Windows.Forms.Button; $b.Text = 'Count 0'; $b.Left = 10; $b.Top 
 $b.Add_Click({ $script:n++; $b.Text = "Count $script:n" })
 $l = New-Object Windows.Forms.ListBox; $l.Left = 10; $l.Top = 50; $l.Height = 80; [void]$l.Items.AddRange(@('alpha', 'beta', 'gamma')); $l.AccessibleName = 'Pick'
 $t = New-Object Windows.Forms.TextBox; $t.Left = 10; $t.Top = 150; $t.Width = 300; $t.AccessibleName = 'Field'
-$f.Controls.AddRange(@($b, $l, $t)); [void]$f.ShowDialog()`;
+${submitTitle ? `$t.Add_KeyDown({ if ($_.KeyCode -eq 'Enter') { $f.Text = '${submitTitle}'; $_.SuppressKeyPress = $true } })` : ""}
+$f.Controls.AddRange(@($b, $l, $t))
+${duplicateField ? `$t.Name = 'SharedField'
+$other = New-Object Windows.Forms.TextBox; $other.Name = 'SharedField'; $other.AccessibleName = '${duplicateField === "named" ? "Other field" : "Field"}'; $other.Left = 10; $other.Top = 190; $other.Width = 300
+$f.Controls.Add($other)
+${duplicateField === "grouped" ? `$targetGroup = New-Object Windows.Forms.GroupBox; $targetGroup.Name = 'TargetGroup'; $targetGroup.Text = 'Target group'; $targetGroup.SetBounds(5, 145, 195, 80)
+$decoyGroup = New-Object Windows.Forms.GroupBox; $decoyGroup.Name = 'DecoyGroup'; $decoyGroup.Text = 'Decoy group'; $decoyGroup.SetBounds(205, 145, 195, 80)
+$t.SetBounds(10, 25, 170, 25); $other.SetBounds(10, 25, 170, 25)
+$targetGroup.Controls.Add($t); $decoyGroup.Controls.Add($other)
+$f.Controls.AddRange(@($targetGroup, $decoyGroup))` : ""}
+` : ""}
+[void]$f.ShowDialog()`;
   return ["-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
 }
 export const WINDOWS_POWERSHELL_PATH = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";

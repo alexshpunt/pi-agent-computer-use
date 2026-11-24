@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { findBundledRuntime, type BundledRuntime } from "./native-runtime.ts";
 import { ADDRESS_KINDS } from "./computer-address.ts";
 import { liveInterop } from "./wsl-interop.ts";
@@ -22,6 +23,14 @@ export interface ComputerConfig {
   ssh?: string;
   /** Machines an agent may connect to by name. */
   machines?: Record<string, MachineConfig>;
+  /** The shared Windows Sandbox this agent starts. */
+  sandbox?: SandboxSettings;
+}
+
+/** `sandbox` in computer-use.json: how the shared Windows Sandbox works when this agent starts it. */
+export interface SandboxSettings {
+  /** Give each agent its own zone of the sandbox screen and keep its windows there; off by default. */
+  zones?: boolean;
 }
 
 /** Another machine's WSL reached over SSH. Paths are on that machine; nothing here comes from agent input. */
@@ -65,7 +74,8 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)
-    || Object.keys(raw).some(key => !["command", "args", "interop", "runtime", "machines", "driverOverride", "escapeStop"].includes(key))
+    || Object.keys(raw).some(key => !["command", "args", "interop", "runtime", "machines", "driverOverride", "escapeStop", "sandbox"].includes(key))
+    || !validSandbox(raw.sandbox)
     || (raw.escapeStop !== undefined && typeof raw.escapeStop !== "boolean")
     || (raw.driverOverride !== undefined && raw.driverOverride !== true)
     || (raw.driverOverride === true && typeof raw.command !== "string")
@@ -91,22 +101,56 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     ...(bundled ? { bundled } : {}),
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(interop ? { interop } : {}),
     ...(raw.escapeStop !== undefined ? { escapeStop: raw.escapeStop as boolean } : {}),
+    ...(raw.sandbox !== undefined ? { sandbox: raw.sandbox as SandboxSettings } : {}),
     ...(runtime ? { runtime } : {}), ...(raw.driverOverride === true ? { driverOverride: true as const } : {}),
-    ...(raw.machines !== undefined ? { machines: parseMachines(raw.machines) } : {}) };
+    ...await mergedMachines(raw.machines) };
+}
+
+/** The user's own machines, for every project: `machines` in computer-use.json of the Pi agent directory. */
+export function globalComputerConfigFile(): string {
+  return path.join(getAgentDir(), "computer-use.json");
+}
+async function readGlobalMachines(): Promise<Record<string, MachineConfig>> {
+  const file = globalComputerConfigFile();
+  let raw: unknown;
+  try { raw = JSON.parse(await readFile(file, "utf8")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error(`Invalid ${file}: it must be JSON with only "machines".`);
+  }
+  // Only machines are global: the driver itself always comes from the package, and other settings have their own global store.
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some(key => key !== "machines"))
+    throw new Error(`Invalid ${file}: it must be JSON with only "machines".`);
+  const { machines } = raw as { machines?: unknown };
+  return machines === undefined ? {} : parseMachines(machines);
+}
+/** Global machines, with a project machine of the same name taking its place. */
+async function mergedMachines(project: unknown): Promise<{ machines?: Record<string, MachineConfig> }> {
+  const machines = { ...await readGlobalMachines(), ...(project === undefined ? {} : parseMachines(project)) };
+  return Object.keys(machines).length ? { machines } : {};
 }
 
 /** The trusted file's interop socket and machines, without selecting or downloading a runtime. */
-export async function readMachineSettings(cwd: string): Promise<{ interop?: string; machines: Record<string, MachineConfig>; escapeStop?: boolean }> {
+export async function readMachineSettings(cwd: string): Promise<{ interop?: string; machines: Record<string, MachineConfig>; escapeStop?: boolean; sandbox?: SandboxSettings }> {
   let raw: unknown = {};
   try { raw = JSON.parse(await readFile(path.join(cwd, ".pi", "computer-use.json"), "utf8")); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
-  const { interop: configured, machines, escapeStop } = raw as Record<string, unknown>;
+  const { interop: configured, machines, escapeStop, sandbox } = raw as Record<string, unknown>;
   if (escapeStop !== undefined && typeof escapeStop !== "boolean") throw new Error("Invalid escapeStop in .pi/computer-use.json.");
+  if (!validSandbox(sandbox)) throw new Error("Invalid sandbox in .pi/computer-use.json: use {\"zones\": true|false}.");
   const interop = typeof configured === "string" ? configured : await liveInterop();
-  return { ...(interop ? { interop } : {}), machines: machines === undefined ? {} : parseMachines(machines), ...(escapeStop !== undefined ? { escapeStop: escapeStop as boolean } : {}) };
+  return { ...(interop ? { interop } : {}), machines: (await mergedMachines(machines)).machines ?? {}, ...(escapeStop !== undefined ? { escapeStop: escapeStop as boolean } : {}),
+    ...(sandbox !== undefined ? { sandbox: sandbox as SandboxSettings } : {}) };
+}
+
+function validSandbox(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const { zones, ...rest } = value as Record<string, unknown>;
+  return !Object.keys(rest).length && (zones === undefined || typeof zones === "boolean");
 }
 
 /** Paths emitted by the old setup command are package-managed defaults, not permanent user overrides. */

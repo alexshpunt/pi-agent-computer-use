@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
-import { connect, type Socket } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
@@ -11,11 +11,19 @@ import { localRunner, type CommandRunner } from "../src/runner.ts";
 import { startSessionRelay } from "../src/session-relay-host.ts";
 
 const keys = () => ({ session: "worker-test", clientKey: randomBytes(32).toString("hex"), sessionKey: randomBytes(32).toString("hex") });
-const unreachable = (port: number) => new Promise<boolean>(resolve => {
-  const socket = connect({ port, host: "127.0.0.1" });
-  socket.once("connect", () => { socket.destroy(); resolve(false); });
-  socket.once("error", () => { socket.destroy(); resolve(true); });
-});
+/** Whether a stream hub that knows this viewer token accepts an activity report on the port. */
+const hubAnswers = (port: number, viewer: string) => fetch(`http://127.0.0.1:${port}/v1/activity`, { method: "POST",
+  headers: { authorization: `Bearer ${viewer}`, "content-type": "application/json" },
+  body: JSON.stringify({ pid: 1, bounds: { x: 0, y: 0, width: 1, height: 1 }, kind: "overview" }) }).then(response => response.status === 204, () => false);
+/**
+ * Whether the relay stopped answering on every port. A freed ephemeral port can already belong to another process, so
+ * this asks for the relay's mutual proof instead of only probing for a listener.
+ */
+const relayGone = (relay: { ports: number[] }, k: ReturnType<typeof keys>) => Promise.all(relay.ports.map((port, index) => {
+  const role = index % 2 ? "session" : "client";
+  return connectRelay(port, { session: k.session, key: role === "session" ? k.sessionKey : k.clientKey },
+    { channel: (["driver", "identity", "stream"] as const)[index >> 1], role }).then(socket => { socket.destroy(); return false; }, () => true);
+}));
 
 async function fixture(script?: string) {
   const root = await mkdtemp(path.join(tmpdir(), "pi-relay-worker-"));
@@ -47,8 +55,9 @@ test("local relay uses owned in-process listeners and close releases all ports",
     const session = await connectRelay(relay.ports[1], { session: k.session, key: k.sessionKey }, { channel: "driver", role: "session" }); sockets.push(session);
     const reply = once(client, "data"); client.resume(); session.write("owned-response");
     expect(String((await reply)[0])).toBe("owned-response");
+    expect(await relayGone(relay, k)).toEqual(Array(6).fill(false));
     await relay.close();
-    expect(await Promise.all(relay.ports.map(unreachable))).toEqual([true, true, true, true]);
+    expect(await relayGone(relay, k)).toEqual(Array(6).fill(true));
   } finally { sockets.forEach(s => s.destroy()); await relay.close(); }
 });
 
@@ -67,8 +76,26 @@ test("remote worker receives credentials only on stdin and EOF closes listeners 
       }
       await relay.close();
       expect(f.children[0].exitCode).toBe(0);
-      expect(await Promise.all(relay.ports.map(unreachable))).toEqual([true, true, true, true]);
+      expect(await relayGone(relay, k)).toEqual(Array(6).fill(true));
     } finally { session.destroy(); await relay.close(); }
+  } finally { await f.cleanup(); }
+});
+
+test("a remote worker with stream keys runs the copied hub alone and reports its port", async () => {
+  const f = await fixture();
+  const k = { ...keys(), stream: { spacesd: randomBytes(32).toString("hex"), viewer: randomBytes(32).toString("hex") } };
+  try {
+    const relay = await startSessionRelay(f.runner, f.root, k);
+    try {
+      // The copied files run without node_modules: an import of a package would have failed the worker.
+      expect(relay.streamPort).toBeGreaterThan(0);
+      expect(relay.ports).not.toContain(relay.streamPort);
+      const denied = await fetch(`http://127.0.0.1:${relay.streamPort}/v1/activity`, { method: "POST", body: "{}" });
+      expect(denied.status).toBe(401);
+      expect(await hubAnswers(relay.streamPort!, k.stream.viewer)).toBe(true);
+      expect(JSON.stringify(f.invocations)).not.toContain(k.stream.viewer);
+    } finally { await relay.close(); }
+    expect(await hubAnswers(relay.streamPort!, k.stream.viewer)).toBe(false);
   } finally { await f.cleanup(); }
 });
 
@@ -80,7 +107,7 @@ test("failed startup waits for every started worker transfer before cleanup can 
   const original = f.runner.run;
   f.runner.run = (file, args, options) => file !== "dd" ? original(file, args, options) : new Promise<string>((resolve, reject) => {
     transfers.push({ resolve, reject });
-    if (transfers.length === 3) allStarted();
+    if (transfers.length === 6) allStarted();
   });
   const outcome = startSessionRelay(f.runner, f.root, keys()).then(() => "ready", () => "rejected");
   try {
@@ -88,7 +115,7 @@ test("failed startup waits for every started worker transfer before cleanup can 
     transfers[0].reject(new Error("Transfer fixture failure"));
     const state = await Promise.race([outcome, new Promise<string>(resolve => setTimeout(() => resolve("waiting"), 20))]);
     expect(state).toBe("waiting");
-    transfers[1].resolve(""); transfers[2].resolve("");
+    transfers.slice(1).forEach(transfer => transfer.resolve(""));
     expect(await outcome).toBe("rejected");
     expect(f.children).toHaveLength(0);
   } finally {

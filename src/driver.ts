@@ -1,6 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -12,7 +11,7 @@ import type { ComputerConfig } from "./config.ts";
 import { WindowIdentity, hostIdentityPeer, remoteIdentityPeer } from "./window-identity.ts";
 import { SingleConnectionHttpTransport } from "./http-transport.ts";
 import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts";
-import { verifyBundledRuntime } from "./native-runtime.ts";
+import { sha256Files, verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
 import { NativeVisuals, VisualSettings, nativeVisualOptions, type WindowObserver } from "./native-visuals.ts";
 import { reportsHumanStop, type HumanStop } from "./human-stop.ts";
@@ -166,6 +165,15 @@ export class McpDriver implements Driver {
   get windowRestore(): boolean { return ["windows-window-restore", "windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
   /** Old profiles cannot borrow state-bound management from matching version numbers. */
   get windowManagement(): boolean { return ["windows-window-management", "windows-desktop"].includes(this.config.runtime ?? ""); }
+  /** Bundled Windows runtimes and checked override builds may hold windows; one without claim_window refuses the call. */
+  get windowClaims(): boolean { return this.platform === "windows" && (this.bundledWindows || this.config.driverOverride === true); }
+  /** The name other agents see on a window this session holds: the session's label and this Pi process. */
+  holder(): string {
+    const label = this.sessionLabel?.()?.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 40);
+    return `${label ? `${label}, ` : ""}Pi process ${process.pid}`;
+  }
+  /** Windows this session holds, by window id: a new driver process after a restart takes them again. */
+  private readonly claims = new Map<number, Record<string, unknown>>();
   /** Display-only window reads with a crop arrived in the windows-desktop runtime 2437a85e. */
   get windowCrop(): boolean { return this.config.runtime === "windows-desktop"; }
   /** Overview metadata follows the native implementation, not an agent-chosen filter. */
@@ -206,6 +214,7 @@ export class McpDriver implements Driver {
   }
 
   private connecting?: Promise<Client>;
+  private runtimeChecked = false;
 
   private async connect(signal?: AbortSignal): Promise<Client> {
     signal?.throwIfAborted();
@@ -221,13 +230,18 @@ export class McpDriver implements Driver {
 
   private async start(signal?: AbortSignal): Promise<Client> {
     if (signal?.aborted) throw new Error("Cancelled before Driver startup.");
-    if (this.config.bundled) {
-      if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
-      await verifyBundledRuntime(this.config.bundled, signal);
-    } else if (this.forkRuntime && !this.config.driverOverride) {
-      const hash = this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
-        : createHash("sha256").update(await readFile(this.config.command)).digest("hex");
-      if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
+    // Every local start checks the executable it runs. A guest driver runs the copy its session took at startup and
+    // only reconnects, every second until the guest answers, so its host bytes are checked once.
+    if (!(this.config.endpoint && this.runtimeChecked)) {
+      if (this.config.bundled) {
+        if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
+        await verifyBundledRuntime(this.config.bundled, signal, this.config.interop);
+      } else if (this.forkRuntime && !this.config.driverOverride) {
+        const hash = this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
+          : (await sha256Files([this.config.command], signal, this.config.interop))[0];
+        if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
+      }
+      this.runtimeChecked = true;
     }
     signal?.throwIfAborted();
     const transport = this.config.endpoint
@@ -267,6 +281,11 @@ export class McpDriver implements Driver {
           this.nativeVisualsAvailable = false;
         }
       } else await this.jumpCursor(client, signal);
+      // A claim lives as long as the driver process that took it, so a replacement process takes this session's windows again.
+      for (const [window, args] of this.claims) {
+        const claimed = await client.callTool({ name: "claim_window", arguments: args }, undefined, { signal, timeout: 15_000 }).then(raw => CallToolResultSchema.parse(raw), () => undefined);
+        if (!claimed || claimed.isError || (claimed.structuredContent as { status?: unknown } | undefined)?.status !== "claimed") this.claims.delete(window);
+      }
       signal?.throwIfAborted();
       return client;
     } catch (error) {
@@ -300,15 +319,15 @@ export class McpDriver implements Driver {
 
   /**
    * Variables for the native child, passed to Windows through WSLENV: no telemetry or update checks; three physical
-   * Escape presses stop the agent; agents on one desktop take turns per action; the agent cursor carries the Pi
-   * session's label; and launches with remote-debugging switches, which this adapter allows only through YOLO's open
-   * by path and arguments.
+   * Escape presses stop the agent; supported receiver-read evidence permits foreground return; agents
+   * on one desktop take turns per action; the agent cursor carries the Pi session's label; and launches with
+   * remote-debugging switches, which this adapter allows only through YOLO's open by path and arguments.
    */
   private driverVariables(): Record<string, string> {
     const label = this.sessionLabel?.()?.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 28);
     return { CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false",
       ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1",
-      CUA_ESCAPE_STOP: this.config.escapeStop === false ? "0" : "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
+      CUA_ESCAPE_STOP: this.config.escapeStop === false ? "0" : "1", CUA_FOCUS_RETURN: "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
       CUA_DRIVER_ALLOW_DEBUGGING_LAUNCH: "1" };
   }
 
@@ -406,6 +425,9 @@ export class McpDriver implements Driver {
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
     const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
     if (this.client === client && reportsHumanStop(result as Parameters<typeof reportsHumanStop>[0])) this.reportStop();
+    if (name === "claim_window" && !result.isError && (result.structuredContent as { status?: unknown } | undefined)?.status === "claimed" && typeof args.window_id === "number")
+      this.claims.set(args.window_id, args);
+    if (name === "release_window" && typeof args.window_id === "number") this.claims.delete(args.window_id);
     const content: Content[] = [];
     for (const block of result.content) {
       if (block.type === "text") content.push({ type: "text", text: block.text });

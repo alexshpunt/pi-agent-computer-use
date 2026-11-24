@@ -1,15 +1,15 @@
 import { afterAll, expect, test } from "vitest";
 import { mkdir, readFile } from "node:fs/promises";
 import sharp from "sharp";
-import { addresses, connectLive, paintTool, text } from "./remote.ts";
-import { machineConfig } from "../../src/machine.ts";
-import { sshRunner, WINDOWS_POWERSHELL } from "../../src/runner.ts";
+import { addresses, at as address, connectLive, paintTool, text } from "./remote.ts";
+import { WINDOWS_POWERSHELL } from "../../src/runner.ts";
+import { typePlan } from "../../src/computer-tools.ts";
 import type { ComputerResult } from "../../src/session.ts";
 
 // Owned files, process health and OCR on the remote machine, through the same provider the extension uses.
 // Uses only a new Paint window, a disposable WinForms fixture and files in the session's own folder.
 const live = await connectLive();
-const runner = sshRunner((await machineConfig(process.cwd(), process.env.LIVE_MACHINE ?? "lab")).ssh);
+const runner = live.runner;
 const opened: number[] = [];
 afterAll(async () => { for (const pid of opened) await live.kill(pid); await live.close(); });
 
@@ -17,12 +17,15 @@ const paint = async () => {
   const result = await live.insert(live.machine, { action: "open", app: "Paint" });
   expect(result.details.status, text(result)).toBe("observed");
   opened.push(result.details.target!.pid);
-  return `computer:window/${result.details.window_ref}`;
+  const window = `computer:window/${result.details.window_ref}`;
+  // Start each fixture on its own Paint document; unconfirmed input may keep its target in front.
+  const focused = await live.resources.manageWindow(address(window), live.cwd, { action: "focus" });
+  expect(focused.details.status, text(focused)).toBe("delivered");
+  return window;
 };
 const observation = (result: ComputerResult, query = "") => `computer:observation/${result.details.observation_id}${query}`;
 const delivered = async (path: string, command: unknown) => {
   const result = await live.insert(path, command);
-  if (result.details.status !== "delivered") console.log("NOT DELIVERED", text(result), JSON.stringify({ ...result.details, source_identity: undefined }).slice(0, 2500));
   expect(result.details.status, text(result)).toBe("delivered");
 };
 const size = (result: ComputerResult) => (result.details.agent_image as { output: { width: number; height: number } }).output;
@@ -50,9 +53,16 @@ test("OCR finds text typed into a Paint canvas within a few pixels of the drawn 
   const small = await live.read(window, ['capture:{"granularity":"image"}']);
   const { width, height } = size(small);
   const at = { x: Math.round(width * 0.3), y: Math.round(height * 0.45) };
-  await delivered(observation(small, "?delivery=foreground"), { action: "sequence", sequence: [
-    // Paint's text tool needs a dragged text box, and the box takes a moment to accept typing. It stays open.
-    { action: "drag", from_x: at.x, from_y: at.y, to_x: at.x + 300, to_y: at.y + 60, duration_ms: 300 }, { action: "type_text", text: "Hello Agent 42", wait_ms: 1000 }] });
+  await delivered(observation(small, "?delivery=foreground"), { action: "drag", from_x: at.x, from_y: at.y, to_x: at.x + 300, to_y: at.y + 60, duration_ms: 300 });
+  // Set a readable font explicitly instead of depending on Paint's saved size.
+  const toolbar = await live.read(window, ["full"]);
+  const font = toolbar.details.ui!.elements.find(e => e.role === "Edit" && e.name === "Font size")!;
+  expect(font).toBeTruthy();
+  const fontSet = await live.resources.input(address(window), live.cwd, typePlan({ window, target: 'getByRole("textbox", { name: "Font size", exact: true }).nth(0)', text: "24", replace: true, submit: true }));
+  expect(fontSet.details.status, text(fontSet)).toBe("delivered");
+  const typed = await live.read(window, ["image"]);
+  await delivered(observation(typed, "?delivery=foreground"), { action: "sequence", sequence: [
+    { action: "click", x: at.x + 15, y: at.y + 15 }, { action: "type_text", text: "Hello Agent 42" }] });
   await new Promise(resolve => setTimeout(resolve, 500));
   const read = await live.read(window, ['capture:{"granularity":"image","maxLongEdge":3840}', "ocr"]);
   console.log(text(read).split("\n").filter(line => line.includes("OCR") || line.startsWith("- ")).join("\n"));
@@ -97,12 +107,18 @@ test("a file put in the session folder is opened, edited and saved in Paint, fet
   const full = await live.read(window, ['capture:{"granularity":"full"}']);
   expect(text(full) + JSON.stringify(full.details.ui?.elements.map(e => e.name))).toMatch(/in(\.png)? - Paint/);
   await paintTool(live, window, "Pencil");
-  // The 400x300 picture sits in the middle of the canvas area at 100% zoom; draw a short line across its centre.
-  const view = await live.read(window, ["image"]);
-  const { width, height } = size(view);
-  await delivered(observation(view, "?delivery=foreground"), { action: "sequence", sequence: [
-    { action: "drag", from_x: Math.round(width / 2) - 40, from_y: Math.round(height * 0.55), to_x: Math.round(width / 2) + 40, to_y: Math.round(height * 0.55), duration_ms: 400 },
-    { action: "hotkey", keys: ["ctrl", "s"], wait_ms: 300 }] });
+  // Paint exposes the picture itself as a Canvas group; ribbon size, placement and saved zoom can vary.
+  const view = await live.read(window, ["full"]);
+  const canvas = view.details.ui!.elements.find(e => e.role === "Group" && /on Canvas$/.test(e.name ?? ""))?.bounds.window_image;
+  expect(canvas).toBeTruthy();
+  expect(canvas!.width).toBeGreaterThan(100);
+  expect(canvas!.height).toBeGreaterThan(100);
+  const centre = { x: Math.round(canvas!.x + canvas!.width / 2), y: Math.round(canvas!.y + canvas!.height / 2) };
+  // Cover 20% of the 400-pixel source width, independent of the overview and Paint zoom.
+  const half = Math.round(canvas!.width * 0.1);
+  await delivered(observation(view, "?delivery=foreground"), { action: "drag", from_x: centre.x - half, from_y: centre.y, via: [centre], to_x: centre.x + half, to_y: centre.y, duration_ms: 400 });
+  const edited = await live.read(window, ["image"]);
+  await delivered(observation(edited, "?delivery=foreground"), { action: "hotkey", keys: ["ctrl", "s"] });
   await new Promise(resolve => setTimeout(resolve, 2000));
 
   const got = await live.insert(live.machine, { action: "get", name: "in.png", to: ".tmp/m7/out.png" });

@@ -7,7 +7,7 @@ import { localRunner, type CommandRunner } from "../src/runner.ts";
 import type { BundledRuntime } from "../src/native-runtime.ts";
 import { prepareRemoteRuntime } from "../src/remote-runtime.ts";
 
-const files = ["cua-driver.exe", "cua-driver-uia.exe", "cua-cursor-theme.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"];
+const files = ["cua-driver.exe", "cua-driver-uia.exe", "cua-cursor-theme.exe", "cua-spacesd.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md", "cua-spacesd-LICENSE.txt", "cua-spacesd-THIRD_PARTY_NOTICES.md"];
 const dirs: string[] = [];
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
 async function fixture() {

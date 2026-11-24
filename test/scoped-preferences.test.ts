@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { readScopedPreferences, writeScopedPreference } from "../src/scoped-preferences.ts";
 
+// One test starts three Node processes at once; on a loaded machine their startup alone can take several seconds.
+vi.setConfig({ testTimeout: 30_000 });
 const dirs: string[] = [];
 const oldAgentDir = process.env.PI_CODING_AGENT_DIR;
 afterEach(async () => { if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = oldAgentDir; await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });

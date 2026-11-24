@@ -21,10 +21,10 @@ async function start(mode: "notify" | "refuse-only" = "notify") {
   const entries = async () => (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line) as Entry);
   return { driver, stop, entries };
 }
-const until = async (check: () => Promise<boolean>) => {
-  for (let i = 0; i < 100; i++) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 10)); }
-  throw new Error("condition not reached");
-};
+// The tests start fixture driver processes, and a resume starts another. On a loaded machine a startup alone can take
+// seconds, so the tests and their waits allow for that.
+vi.setConfig({ testTimeout: 30_000 });
+const until = (check: () => Promise<boolean>) => vi.waitFor(async () => { if (!await check()) throw new Error("condition not reached"); }, { timeout: 15_000, interval: 10 });
 
 test("the driver stops on the native notification, refuses without reaching the process, and a resume starts a new one", async () => {
   const { driver, stop, entries } = await start();
@@ -33,8 +33,9 @@ test("the driver stops on the native notification, refuses without reaching the 
   try {
     expect((await driver.call("list_windows", {})).isError).toBeFalsy();
     const [first] = await entries();
-    // Three physical Escape presses stop input; agents take turns per action; the cursor names the session; nothing waits for the human.
-    expect(first.env).toEqual({ CUA_ESCAPE_STOP: "1", CUA_SHARED_INPUT_LOCK: "1", CUA_SESSION_LABEL: "Fix the build LPT-1088", CUA_HUMAN_IDLE_MS: null });
+    // Three physical Escape presses stop input; foreground input hands the foreground back to the human's window;
+    // agents take turns per action; the cursor names the session; nothing waits for the human.
+    expect(first.env).toEqual({ CUA_ESCAPE_STOP: "1", CUA_FOCUS_RETURN: "1", CUA_SHARED_INPUT_LOCK: "1", CUA_SESSION_LABEL: "Fix the build LPT-1088", CUA_HUMAN_IDLE_MS: null });
 
     const stopped = await driver.call("press_key", { key: "escape-x3" });
     expect(stopped.structuredContent).toMatchObject({ code: "human_stop", status: "refused" });

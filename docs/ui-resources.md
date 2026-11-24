@@ -26,7 +26,7 @@ The native walk defaults to 200 nodes and depth15. Set `capture:{max_elements:1.
 
 `complete`, `truncated`, `truncation_reason` and `native_total` preserve reported limits. `matches` counts local matches before the output limit; `projection_truncated` reports that limit. The Windows runtime currently reports incomplete collection even when no budget was hit. Absence is not proof that a control does not exist.
 
-Structured Codemode results retain the full bounded resource. Plain tool text shows at most30 elements with128-character names/values and declares its projection. Use local search/scope instead of printing the full tree.
+In standalone mode, `computer_read` resolves to readable text or an image block with a text note. With Pi Agent IDE, a text-only Read resolves to `{ text, id }`; a Read with an image resolves to the image block. The readable UI text shows at most 30 elements with 128-character names/values and declares its projection. Use local search/scope instead of printing the full tree.
 
 ## Act through exact current hints
 

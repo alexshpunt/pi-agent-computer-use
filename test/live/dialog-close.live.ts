@@ -56,17 +56,18 @@ test("a click on OK that closes a dialog is delivered and names the window now i
     // Right after an app starts, Windows can still be handing the foreground back to the window that had it, and the
     // first click's dialog then loses the foreground to that window (an honest unknown). Let the start settle first.
     await new Promise(resolve => setTimeout(resolve, 1500));
-    // The Open button shows a modal dialog from its click handler, so it gets the real pointer.
-    expect((await act(window, clickPlan({ window, ...await centre(window, "Open") }))).status).toBe("delivered");
+    // The Open button shows a modal dialog from its click handler; this check is about a foreground click that
+    // closes its window, so the clicks take the focus.
+    expect((await act(window, clickPlan({ window, ...await centre(window, "Open"), foreground: true }))).status).toBe("delivered");
     const first = await dialog();
-    const ok = await act(first, clickPlan({ window: first, ...await centre(first, "OK") }));
+    const ok = await act(first, clickPlan({ window: first, ...await centre(first, "OK"), foreground: true }));
     expect(ok.status, ok.body).toBe("delivered");
     // The driver names the window in front when the dialog was already gone at its check after the click; otherwise
     // the change list finds the dialog gone and names the app's frontmost window.
     expect(ok.body).toMatch(new RegExp(`(The click closed this window; |the app's frontmost window is )"${title}" \\(computer:`));
     expect(await result()).toBe("result: OK");
 
-    expect((await act(window, clickPlan({ window, ...await centre(window, "Open") }))).status).toBe("delivered");
+    expect((await act(window, clickPlan({ window, ...await centre(window, "Open"), foreground: true }))).status).toBe("delivered");
     const second = await dialog();
     await live.read(second, []);
     expect((await act(second, pressPlan({ window: second, key: "Escape" }))).status).toBe("delivered");

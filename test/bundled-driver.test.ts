@@ -18,7 +18,7 @@ async function fixture() {
   await writeFile(path.join(root, "runtime", "bundled-driver.mjs"), await readFile("test/fixtures/bundled-driver.mjs"));
   const launcher = `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$(dirname "$0")/bundled-driver.mjs" "$@"\n`;
   const files: Record<string, string> = {};
-  for (const name of ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"]) {
+  for (const name of ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "cua-spacesd.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md", "cua-spacesd-LICENSE.txt", "cua-spacesd-THIRD_PARTY_NOTICES.md"]) {
     const bytes = name === "cua-driver.exe" ? Buffer.from(launcher) : Buffer.from(name);
     files[name] = createHash("sha256").update(bytes).digest("hex");
     await writeFile(path.join(root, "runtime", name), bytes, { mode: 0o755 });

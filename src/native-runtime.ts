@@ -28,7 +28,9 @@ export interface BundledRuntime {
   files: Record<string, string>;
 }
 
-const REQUIRED = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md"];
+/** Every runtime carries cua-spacesd beside the driver, so background work such as live window streams never finds it missing. */
+export const REQUIRED = ["cua-driver.exe", "cua-cursor-theme.exe", "cua-driver-uia.exe", "cua-spacesd.exe", "LICENSE.md", "THIRD_PARTY_NOTICES.md",
+  "cua-spacesd-LICENSE.txt", "cua-spacesd-THIRD_PARTY_NOTICES.md"];
 /** Where the package carries its runtime: `native-runtime/win32-x64/runtime/<files>`. */
 export const PACKAGED_RUNTIME = fileURLToPath(new URL("../native-runtime/win32-x64", import.meta.url));
 
@@ -58,20 +60,59 @@ export async function readRuntimePins(): Promise<RuntimePins> {
 }
 
 /** Recheck all pinned runtime companions before starting a native process; stream large files. */
-export async function verifyBundledRuntime(runtime: BundledRuntime, signal?: AbortSignal): Promise<void> {
+export async function verifyBundledRuntime(runtime: BundledRuntime, signal?: AbortSignal, interop?: string): Promise<void> {
   if (Object.keys(runtime.files).sort().join("\n") !== [...REQUIRED].sort().join("\n"))
     throw new Error("native_runtime_files_mismatch");
   const directory = path.join(runtime.root, "runtime");
-  for (const name of REQUIRED) {
+  const files = REQUIRED.map(name => path.join(directory, name));
+  for (const [index, file] of files.entries()) {
     signal?.throwIfAborted();
-    const file = path.join(directory, name);
-    if (!(await stat(file).catch(() => undefined))?.isFile()) throw new Error(`native_runtime_file_missing: ${name}`);
-    if (await realpath(file) !== file) throw new Error(`native_runtime_symlink_refused: ${name}`);
+    if (!(await stat(file).catch(() => undefined))?.isFile()) throw new Error(`native_runtime_file_missing: ${REQUIRED[index]}`);
+    if (await realpath(file) !== file) throw new Error(`native_runtime_symlink_refused: ${REQUIRED[index]}`);
+  }
+  const hashes = await sha256Files(files, signal, interop);
+  for (const [index, name] of REQUIRED.entries())
+    if (hashes[index] !== runtime.files[name]) throw new Error(`native_runtime_hash_mismatch: ${name}`);
+  signal?.throwIfAborted();
+}
+
+/** A WSL path on a mounted Windows drive, as its Windows path; undefined elsewhere. */
+export function windowsDrivePath(file: string): string | undefined {
+  const match = /^\/mnt\/([a-z])(\/.*)?$/.exec(file);
+  return match ? `${match[1].toUpperCase()}:${(match[2] ?? "/").replace(/\//g, "\\")}` : undefined;
+}
+
+/**
+ * SHA-256 of each file, in order. From WSL, files on a Windows drive are hashed by Windows in one bounded call:
+ * reading tens of megabytes through the drive mount takes about 25 s per driver executable and can fail with ENOMEM.
+ * Other files, and a Windows hash that fails, are streamed here.
+ */
+export async function sha256Files(files: readonly string[], signal?: AbortSignal, interop?: string): Promise<string[]> {
+  const windows = process.platform === "linux" ? files.map(windowsDrivePath) : [];
+  if (files.length && windows.length === files.length && windows.every(file => file !== undefined)) {
+    const hashed = await windowsSha256(windows as string[], signal, interop).catch(() => undefined);
+    if (hashed) return hashed;
+  }
+  const hashes: string[] = [];
+  for (const file of files) {
     const hash = createHash("sha256");
     for await (const block of createReadStream(file)) { signal?.throwIfAborted(); hash.update(block); }
-    if (hash.digest("hex") !== runtime.files[name]) throw new Error(`native_runtime_hash_mismatch: ${name}`);
+    hashes.push(hash.digest("hex"));
   }
-  signal?.throwIfAborted();
+  return hashes;
+}
+
+const WINDOWS_HASH_TIMEOUT_MS = 60_000;
+async function windowsSha256(files: readonly string[], signal?: AbortSignal, interop?: string): Promise<string[]> {
+  const quoted = files.map(file => `'${file.replace(/'/g, "''")}'`).join(",");
+  const { stdout } = await promisify(execFile)("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", [
+    "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+    `foreach ($f in @(${quoted})) { (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLowerInvariant() }`,
+  ], { timeout: WINDOWS_HASH_TIMEOUT_MS, maxBuffer: 65_536, signal, env: { ...process.env, ...(interop ? { WSL_INTEROP: interop } : {}) } });
+  const hashes = stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (hashes.length !== files.length || !hashes.every(hash => /^[0-9a-f]{64}$/.test(hash)))
+    throw new Error("native_runtime_windows_hash_failed");
+  return hashes;
 }
 
 /** Describe the pinned runtime in one directory and check every file, without executing it. */
@@ -119,15 +160,15 @@ export async function fetchRuntime(directory: string, pins: RuntimePins, signal?
 }
 
 /** Copy checked Windows files to a source-specific host cache. Never replace an existing runtime. */
-export async function cacheWindowsRuntime(runtime: BundledRuntime, base: string, signal?: AbortSignal): Promise<BundledRuntime> {
+export async function cacheWindowsRuntime(runtime: BundledRuntime, base: string, signal?: AbortSignal, interop?: string): Promise<BundledRuntime> {
   if (!/^[0-9a-f]{40}$/.test(runtime.source)) throw new Error("native_runtime_cache_target_mismatch");
-  await verifyBundledRuntime(runtime, signal);
+  await verifyBundledRuntime(runtime, signal, interop);
   const parent = path.join(base, runtime.source);
   const root = path.join(parent, runtime.target);
   const cached = { ...runtime, root, command: path.join(root, "runtime", "cua-driver.exe") };
   const checkCache = async () => {
     if (await realpath(root) !== root) throw new Error("native_runtime_cache_symlink_refused");
-    await verifyBundledRuntime(cached, signal);
+    await verifyBundledRuntime(cached, signal, interop);
     return cached;
   };
   if (await lstat(root).catch(error => {
@@ -142,7 +183,7 @@ export async function cacheWindowsRuntime(runtime: BundledRuntime, base: string,
       signal?.throwIfAborted();
       await copyFile(path.join(runtime.root, "runtime", name), path.join(staging, "runtime", name));
     }
-    await verifyBundledRuntime({ ...runtime, root: staging }, signal);
+    await verifyBundledRuntime({ ...runtime, root: staging }, signal, interop);
     try { await rename(staging, root); }
     catch (error) {
       if (!["EEXIST", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
@@ -184,5 +225,5 @@ export async function findBundledRuntime(interop?: string): Promise<BundledRunti
       throw new Error(`${error.message}. ${path.join(PACKAGED_RUNTIME, "runtime")} does not hold the pinned runtime ${pins.source.slice(0, 8)}; move that folder away and computer use downloads the pinned one.`);
     throw error;
   });
-  return process.platform === "linux" ? cacheWindowsRuntime(runtime, await windowsCacheDirectory(interop)) : runtime;
+  return process.platform === "linux" ? cacheWindowsRuntime(runtime, await windowsCacheDirectory(interop), undefined, interop) : runtime;
 }

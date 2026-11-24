@@ -1,4 +1,6 @@
-import { StringEnum, Type, type JsonValue, type Static } from "@earendil-works/pi-ai";
+import type { JsonValue } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
+import { StringEnum } from "./string-enum.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ComputerRequestError, refKind, type ComputerResources, type InputPlan, type InputPoint } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
@@ -38,10 +40,10 @@ const openParameters = Type.Object({
   profile: Type.Optional(Type.Literal("agent", { description: "agent — a persistent profile whose logins stay for later sessions. Omit for a disposable profile." })),
   sandbox: Type.Optional(Type.Object({
     import: Type.Optional(Type.Array(Type.Union([Type.String(), Type.Object({ host: Type.String(), guest: Type.Optional(Type.String()), writable: Type.Optional(Type.Boolean()) }, { additionalProperties: false })]),
-      { maxItems: 8, description: "Host folders shared into the sandbox, read-only unless writable." })),
-    export: Type.Optional(Type.String({ description: "One host folder the sandbox can write to." })),
-  }, { additionalProperties: false, description: "Open a disposable Windows Sandbox on that machine, apart from the user's desktop; pass {} for no shared folders." })),
-  isolated_session: Type.Optional(Type.Boolean({ description: "Open an isolated agent session on that machine, with its own desktop and foreground input." })),
+      { maxItems: 8, description: "Host folders shared into the sandbox, read-only unless writable. Without guest, each appears under C:\\pi\\agents\\<sandbox>\\import." })),
+    export: Type.Optional(Type.String({ description: "One host folder the sandbox can write to; it appears as C:\\pi\\agents\\<sandbox>\\export." })),
+  }, { additionalProperties: false, description: "Open the machine's Windows Sandbox, apart from the user's desktop, or join it when another agent already opened it; pass {} for no shared folders." })),
+  isolated_session: Type.Optional(Type.Boolean({ description: "Open an isolated agent session on that machine, with its own desktop and keyboard. It has no mouse: use a sandbox for clicks, drags and hover." })),
   webview2_debugging: Type.Optional(Type.Object({
     app: Type.String({ description: "The app's executable file name, such as ms-teams.exe." }),
     enabled: Type.Boolean({ description: "true opens the debugging port from the app's next start, whoever starts it; false turns it off again." }),
@@ -74,8 +76,8 @@ export function openCommand(address: ComputerAddress, params: Static<typeof open
 
 const windowParameters = Type.Object({
   window: Type.String({ description: "Window address from {search}, {read} or a name, such as computer:<machine>/w3qk or computer:game." }),
-  action: StringEnum(["move", "resize", "maximize", "minimize", "restore", "name"] as const,
-    { description: "restore brings a minimized window back; name gives the window a short address computer:<as>." }),
+  action: StringEnum(["move", "resize", "maximize", "minimize", "restore", "name", "claim", "release"] as const,
+    { description: "restore brings a minimized window back; name gives the window a short address computer:<as>; claim makes the window this agent's, so other agents' input into it is refused until release or the end of this session. Windows this agent opens are its own already." }),
   as: Type.Optional(Type.String({ description: "name: 1-32 lowercase letters, digits, - or _, starting with a letter, such as game. It resolves until the window closes." })),
   x: Type.Optional(Type.Integer({ description: "move: new left edge in Windows desktop pixels." })),
   y: Type.Optional(Type.Integer({ description: "move: new top edge in Windows desktop pixels." })),
@@ -90,7 +92,7 @@ export function windowCommand(params: Static<typeof windowParameters>): Record<s
   const given = Object.keys(fields);
   if (given.some(key => !wanted.includes(key)) || wanted.some(key => !given.includes(key)))
     throw new ComputerRequestError(wanted.length ? `${action} needs ${wanted.join(" and ")} and nothing else.` : `${action} takes no coordinates, size or name.`);
-  if (action === "name") return { action, ...fields };
+  if (action === "name" || action === "claim" || action === "release") return { action, ...fields };
   return { action, ...fields, ...(wanted.length ? { unit: "windows_desktop_pixels" } : {}) };
 }
 
@@ -292,10 +294,11 @@ export function recordCommand(params: Static<typeof recordParameters>): RecordRu
 const inputWindow = Type.String({ description: "Window or viewport address from {search}, {read}, a name or computer_view." });
 const inputTarget = (what: string) => Type.Optional(Type.String({ description: `${what}: a ref from the window's latest {read} (1:a in a window {read}, e12 in a page snapshot) or a Playwright locator such as getByRole('button', { name: 'Save' }).` }));
 const coordinate = (description: string) => Type.Optional(Type.Number({ minimum: 0, description }));
-const pointX = "Point instead of target, with y: pixels of the latest image of the window or viewport, or CSS pixels of a browser page. A point on a native window gets the real pointer: the window comes to the front.";
+const pointX = "Point instead of target, with y: pixels of the latest image of the window or viewport, or CSS pixels of a browser page. Use a point when a target cannot do the action.";
 const pointY = "Point instead of target, with x.";
 const pointSpace = Type.Optional(StringEnum(["page", "window"] as const, { description: "Browser windows:\npage (default) — refs, locators and CSS points of the page.\nwindow — refs and points of a window {read}, such as the browser's own toolbar." }));
 const modifiersField = Type.Optional(Type.Array(StringEnum(["ctrl", "shift", "alt", "win"] as const), { maxItems: 4, description: "Keys held during the action." }));
+const foregroundField = Type.Optional(Type.Boolean({ description: "Native windows: take the focus for this action and hand it back after it. Without it, input goes to the window in the background and the focus stays where it is." }));
 const locatorTimeout = Type.Optional(Type.Integer({ minimum: 0, maximum: 60000, description: "How long a locator target may take to match one ready element, default 5000." }));
 const PAGE_MODIFIERS: Record<string, string> = { ctrl: "Control", shift: "Shift", alt: "Alt", win: "Meta" };
 
@@ -309,7 +312,7 @@ function aim(params: Endpoint, label: string, required: boolean): Pick<InputPlan
   return { ...(params.target !== undefined ? { target: params.target } : {}), ...(point ? { point } : {}) };
 }
 /** Fields every input plan shares. */
-const shared = (params: { space?: "page" | "window" }) => ({ ...(params.space ? { space: params.space } : {}) });
+const shared = (params: { space?: "page" | "window"; foreground?: boolean }) => ({ ...(params.space ? { space: params.space } : {}), ...(params.foreground ? { foreground: true } : {}) });
 const timeout = (params: { timeout_ms?: number }) => params.timeout_ms !== undefined ? { timeout_ms: params.timeout_ms } : {};
 const pageModifiers = (modifiers?: string[]) => modifiers?.length ? { modifiers: modifiers.map(key => PAGE_MODIFIERS[key]) } : {};
 /** A Playwright key name for a key the native tools also take, such as ctrl, return, up or f5. */
@@ -332,7 +335,7 @@ const clickParameters = Type.Object({
   window: inputWindow, target: inputTarget("The element to click"), x: coordinate(pointX), y: coordinate(pointY), space: pointSpace,
   button: Type.Optional(StringEnum(["left", "right", "middle"] as const, { description: "Mouse button, default left." })),
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 3, description: "Clicks: 2 is a double click, 3 a triple click. Default 1." })),
-  modifiers: modifiersField, timeout_ms: locatorTimeout,
+  modifiers: modifiersField, foreground: foregroundField, timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
 
 /** What computer_click sends to a native window and to a browser page. */
@@ -373,7 +376,7 @@ const dragParameters = Type.Object({
     { minItems: 1, maxItems: 254, description: "Points the pointer passes through on the way, in order, for a path rather than a straight line; left button only." })),
   duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: "How long the move takes, default 500." })),
   button: Type.Optional(StringEnum(["left", "right", "middle"] as const, { description: "Button held during the drag, default left." })),
-  modifiers: modifiersField,
+  modifiers: modifiersField, foreground: foregroundField,
 }, { additionalProperties: false });
 
 /** What computer_drag sends: a native drag, or a page timeline that presses, moves and releases. */
@@ -394,7 +397,7 @@ const scrollParameters = Type.Object({
   window: inputWindow, target: inputTarget("The element to scroll; omit for the middle of the window or page"), x: coordinate(pointX), y: coordinate(pointY), space: pointSpace,
   delta_x: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches to the right (negative: left)." })),
   delta_y: Type.Optional(Type.Integer({ minimum: -50, maximum: 50, description: "Wheel notches down (negative: up). One notch scrolls about 100 CSS pixels in a browser; apps decide their own distance." })),
-  timeout_ms: locatorTimeout,
+  foreground: foregroundField, timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
 
 /** What computer_scroll sends: wheel notches at a point, or an accessibility scroll of a native element target. */
@@ -411,12 +414,12 @@ export function scrollPlan(params: Static<typeof scrollParameters>): InputPlan {
 }
 
 const typeParameters = Type.Object({
-  window: inputWindow, text: Type.String({ maxLength: 20000, description: "Text to type, as is: newlines and quotes stay text. Native windows take up to 2000 characters and get real key presses, so the window comes to the front; replace sets the value through UI Automation instead." }),
+  window: inputWindow, text: Type.String({ maxLength: 20000, description: "Text to type, as is: newlines and quotes stay text. Native windows take up to 2000 characters; replace sets the value through UI Automation instead." }),
   target: inputTarget("The field to type into; omit for the focused element"), space: pointSpace,
   replace: Type.Optional(Type.Boolean({ description: "Replace the field's whole value instead of typing at the caret; needs target." })),
   submit: Type.Optional(Type.Boolean({ description: "Press Enter after the text." })),
   delay_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 200, description: "Native windows: pause between characters." })),
-  timeout_ms: locatorTimeout,
+  foreground: foregroundField, timeout_ms: locatorTimeout,
 }, { additionalProperties: false });
 
 /** What computer_type sends, with Enter as a second step when submit is set. */
@@ -431,9 +434,10 @@ export function typePlan(params: Static<typeof typeParameters>): InputPlan {
 }
 
 const pressParameters = Type.Object({
-  window: inputWindow, key: Type.String({ maxLength: 64, description: "A key with optional modifiers joined by +, such as Enter, ctrl+s, shift+Tab, F5, ArrowDown or a. Native windows get real key presses, so the window comes to the front." }),
+  window: inputWindow, key: Type.String({ maxLength: 64, description: "A key with optional modifiers joined by +, such as Enter, ctrl+s, shift+Tab, F5, ArrowDown or a." }),
   target: inputTarget("The element to focus first; omit for the focused element"), space: pointSpace,
-  hold_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: hold the keys down this long, for apps and games that read held keys." })),
+  hold_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: hold the keys down this long, for apps and games that read held keys; a hold always takes the foreground." })),
+  foreground: foregroundField,
 }, { additionalProperties: false });
 const PAGE_KEYS: Record<string, string> = { enter: "Enter", return: "Enter", esc: "Escape", escape: "Escape", tab: "Tab", space: "Space", backspace: "Backspace", delete: "Delete", del: "Delete",
   up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown", pgup: "PageUp", pgdn: "PageDown" };
@@ -494,9 +498,10 @@ const timelineParameters = Type.Object({
     tilt_x: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })), tilt_y: Type.Optional(Type.Integer({ minimum: -90, maximum: 90 })),
     eraser: Type.Optional(Type.Boolean()), barrel: Type.Optional(Type.Boolean()),
   }, { additionalProperties: false }), { minItems: 1, maxItems: 5000, description: "Timed events. Every key and button pressed must be released; anything still held is released when the call ends." }),
+  foreground: foregroundField,
 }, { additionalProperties: false });
 
-/** What computer_timeline sends: native events in the foreground, or page events in CSS pixels through Playwright and CDP. */
+/** What computer_timeline sends: native events to the window, or page events in CSS pixels through Playwright and CDP. */
 export function timelinePlan(params: Static<typeof timelineParameters>): InputPlan {
   const native = params.events.find(event => event.type === "move_relative" || event.eraser || event.barrel || event.button === "x1" || event.button === "x2");
   const web = native ? `${native.type === "move_relative" ? "move_relative" : native.eraser ? "The pen eraser" : native.barrel ? "The pen barrel button" : `Button ${native.button}`} needs native input: give space: "window" and points in pixels of the window's latest image.`
@@ -531,7 +536,7 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   });
   pi.registerTool({
     ...common, name: "computer_window", label: "Computer window",
-    description: "Use computer_window to move, resize, maximize, minimize or restore an app window by its address without keys or clicks, or to give it a short name.",
+    description: "Use computer_window to move, resize, maximize, minimize or restore an app window by its address without keys or clicks, to give it a short name, or to claim it so other agents keep out of it.",
     parameters: fillToolNames(windowParameters, names),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     ...rendered("computer_window"),
@@ -540,7 +545,9 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
       return actionResult(await computerAction(resources, params.window, params.action, () => {
         command = windowCommand(params);
         return resources.address(params.window);
-      }, address => command.action === "name" ? resources.name(address, ctx.cwd, command.as, signal) : resources.manageWindow(address, ctx.cwd, command, signal)));
+      }, address => command.action === "name" ? resources.name(address, ctx.cwd, command.as, signal)
+        : command.action === "claim" || command.action === "release" ? resources.claim(address, ctx.cwd, command.action === "claim", signal)
+        : resources.manageWindow(address, ctx.cwd, command, signal)));
     },
   });
   pi.registerTool({

@@ -51,7 +51,7 @@ test("a triple click and right or middle double and triple clicks arrive as one 
     await click({ window, ...point, button: "middle", count: 2 }, "M1 M2");
     await click({ window, ...point, button: "middle", count: 3 }, "M1 M2 M1");
     await click({ window, ...point, button: "right", count: 3 }, "R1 R2 R1");
-    // A ref of the latest Read: no UI Automation pattern carries a multi-click, so it goes straight to the real pointer.
+    // A ref of the latest Read: no UI Automation pattern carries a multi-click, so it goes straight to the window.
     const ref = /^([0-9a-z]+:[a-z]+) \| Pane \| Pad/m.exec(presentComputerResult(await live.read(window, ["ui"])))![1];
     await click({ window, target: ref, count: 3 }, "L1 L2 L1");
   } finally {

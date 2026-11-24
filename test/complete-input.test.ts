@@ -67,6 +67,41 @@ test.each([
   expect((await f.send({ action: "key", key: "return" })).details.status).toBe("delivered");
 });
 
+test.each([
+  [{ action: "click", x: 100, y: 80 }, "click"],
+  [{ action: "drag", from_x: 30, from_y: 40, to_x: 200, to_y: 80 }, "drag"],
+] as const)("isolated %s stops a sequence when native input has no confirmation", async (command, tool) => {
+  const f = await fixture(); Object.assign(f.driver, { sourceDomain: "windows-session" });
+  const call = f.driver.call;
+  f.driver.call = vi.fn(async (name, args, signal) => name === tool ? { content: [], structuredContent: {
+    route: "global_input", effect: "unverifiable", delivery: { mode: "foreground" },
+  } } : call(name, args, signal));
+  const sequence = { action: "sequence", delivery_mode: "foreground", sequence: [command, { action: "key", key: "return" }] };
+  const result = await f.send(sequence);
+  expect(result.details.status).toBe("unknown");
+  expect(result.details.state).toMatchObject({ code: "isolated_pointer_unconfirmed", route: "global_input", effect: "unverifiable",
+    sequence: { attempted: 1, completed: 0, steps: [{ status: "unknown", action_capability: {
+      foreground: "unknown", actual_delivery: "foreground", code: "isolated_pointer_unconfirmed",
+    } }] } });
+  expect((await f.send(sequence)).details.status).toBe("refused");
+  expect(f.input().map(([name]) => name)).toEqual([tool]);
+});
+
+test.each([
+  { sourceDomain: "windows-session", command: { action: "click", x: 100, y: 80 }, state: {}, status: "unknown" },
+  { sourceDomain: "windows-session", command: { action: "click", x: 100, y: 80 }, state: { effect: "confirmed", route: "global_input" }, status: "delivered" },
+  { sourceDomain: "windows-session", command: { action: "click", x: 100, y: 80 }, state: { effect: "refused", code: "input_busy" }, status: "refused" },
+  { sourceDomain: "windows-session", command: { action: "click", element_token: "field", uia_only: true, delivery_mode: "background" }, state: { effect: "unverifiable", route: "accessibility" }, status: "delivered" },
+  { sourceDomain: "windows-session", command: { action: "timeline", events: [{ at_ms: 0, type: "move", x: 100, y: 80 }] }, state: { effect: "unverifiable" }, status: "unknown" },
+  { sourceDomain: "windows-session", command: { action: "key", key: "return" }, state: { effect: "unverifiable", route: "global_input" }, status: "delivered" },
+  { sourceDomain: "windows-host", command: { action: "click", x: 100, y: 80 }, state: { effect: "unverifiable", route: "global_input" }, status: "delivered" },
+])("$sourceDomain $command.action retains $status for $state", async ({ sourceDomain, command, state, status }) => {
+  const f = await fixture(); Object.assign(f.driver, { sourceDomain });
+  f.driver.call = vi.fn(async () => ({ content: [], structuredContent: state }));
+  expect((await f.send({ delivery_mode: "foreground", ...command })).details.status).toBe(status);
+  expect(f.driver.call).toHaveBeenCalledTimes(1);
+});
+
 test("a qualified straight drag keeps both endpoints in the captured window image", async () => {
   const f = await fixture(); Object.assign(f.driver, { captureBoundDrag: true });
   const result = await f.send({ action: "drag", from_x: 30, from_y: 40, to_x: 200, to_y: 80, duration_ms: 250, steps: 12 });

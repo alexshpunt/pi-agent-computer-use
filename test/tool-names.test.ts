@@ -1,4 +1,6 @@
-import { StringEnum, Type, validateToolArguments } from "@earendil-works/pi-ai";
+import { validateToolArguments } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
+import { StringEnum } from "../src/string-enum.ts";
 import { expect, test } from "vitest";
 import { fillToolNames, IDE_TOOL_NAMES, STANDALONE_TOOL_NAMES } from "../src/tool-names.ts";
 

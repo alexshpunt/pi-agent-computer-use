@@ -31,6 +31,25 @@ test("the shortcut setting is read for local and remote desktop drivers", async 
   await expect(readMachineSettings(cwd)).rejects.toThrow();
 });
 
+// LPT-1830: screen zones of the shared sandbox are off unless the project turns them on.
+test("the sandbox zones setting is read for local and remote sandboxes, and is off when absent", async () => {
+  const cwd = await workspace(); await mkdir(path.join(cwd, ".pi"));
+  const file = path.join(cwd, ".pi/computer-use.json");
+  await writeFile(file, JSON.stringify({ command: "driver" }));
+  expect((await loadComputerConfig(cwd)).sandbox).toBeUndefined();
+  expect((await readMachineSettings(cwd)).sandbox).toBeUndefined();
+  for (const zones of [true, false]) {
+    await writeFile(file, JSON.stringify({ command: "driver", sandbox: { zones } }));
+    expect((await loadComputerConfig(cwd)).sandbox).toEqual({ zones });
+    expect((await readMachineSettings(cwd)).sandbox).toEqual({ zones });
+  }
+  for (const sandbox of [{ zones: "on" }, { zones: true, size: 4 }, [true]]) {
+    await writeFile(file, JSON.stringify({ command: "driver", sandbox }));
+    await expect(loadComputerConfig(cwd)).rejects.toThrow();
+    await expect(readMachineSettings(cwd)).rejects.toThrow();
+  }
+});
+
 test("opening has no target-file prerequisite and respects a trusted Driver override", async () => {
   const cwd = await workspace();
   vi.stubEnv("CUA_DRIVER_PATH", "C:\\Trusted\\cua-driver.exe");
@@ -96,6 +115,22 @@ test("coordinate scroll is an explicit trusted artifact profile, never an implic
     await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify(invalid));
     await expect(loadComputerConfig(cwd)).rejects.toThrow("Invalid computer-use configuration");
   }
+});
+
+test("machines in the agent directory reach every project, and a project machine of the same name replaces one", async () => {
+  const agentDir = await workspace();
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+  const cwd = await workspace();
+  await writeFile(path.join(agentDir, "computer-use.json"), JSON.stringify({ machines: { lab: { ssh: "lab-wsl" }, pc: { ssh: "pc-wsl" } } }));
+  expect((await readMachineSettings(cwd)).machines).toEqual({ lab: { ssh: "lab-wsl" }, pc: { ssh: "pc-wsl" } });
+  vi.stubEnv("CUA_DRIVER_PATH", "/driver.exe");
+  expect((await loadComputerConfig(cwd)).machines).toEqual({ lab: { ssh: "lab-wsl" }, pc: { ssh: "pc-wsl" } });
+  await mkdir(path.join(cwd, ".pi"));
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ machines: { lab: { ssh: "other-wsl" } } }));
+  expect((await readMachineSettings(cwd)).machines).toEqual({ lab: { ssh: "other-wsl" }, pc: { ssh: "pc-wsl" } });
+  // The global file holds machines only: the driver always comes from the package.
+  await writeFile(path.join(agentDir, "computer-use.json"), JSON.stringify({ machines: {}, command: "/old/cua-driver.exe" }));
+  await expect(readMachineSettings(cwd)).rejects.toThrow("only \"machines\"");
 });
 
 // LPT-967: without a configured socket, the live one found on the machine is used; a configured socket stays as given.

@@ -5,6 +5,10 @@ import { afterEach, expect, test, vi } from "vitest";
 import { McpDriver } from "../src/driver.ts";
 import { VisualSettings } from "../src/native-visuals.ts";
 
+// Each test starts a fixture driver process. On a loaded machine its startup alone can take seconds, so the tests and
+// the waits for its logged calls allow for that instead of the one-second vi.waitFor default.
+vi.setConfig({ testTimeout: 30_000 });
+const loaded = { timeout: 15_000 };
 const dirs: string[] = [];
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
 
@@ -37,8 +41,7 @@ test("a native visual driver receives presentation settings without forcing a on
     expect((await calls()).map(call => call.name)).toEqual(["set_agent_visuals", "list_windows"]);
     expect((await calls())[0].arguments).toMatchObject({ preset: "full", previews: true });
     await driver.visuals({ target: { pid: 42, window_id: 101 }, identity: `PiComputerUse.${"a".repeat(32)}:42:1`, bounds: { x: 0, y: 0, width: 800, height: 600 } });
-    for (let n = 0; n < 20 && (await calls()).length < 3; n++) await new Promise(resolve => setTimeout(resolve, 5));
-    expect((await calls()).at(-1)).toMatchObject({ name: "present_agent_activity", arguments: { kind: "overview", generation: 1 } });
+    await vi.waitFor(async () => expect((await calls()).at(-1)).toMatchObject({ name: "present_agent_activity", arguments: { kind: "overview", generation: 1 } }), loaded);
   } finally { await driver.close(); }
 });
 test.each(["discovery", "configuration"] as const)("visuals and off preferences survive cancellation during first %s", async phase => {
@@ -47,15 +50,15 @@ test.each(["discovery", "configuration"] as const)("visuals and off preferences 
   const attempt = driver.call("list_windows", {}, controller.signal).catch(error => error);
   try {
     const waiting = phase === "discovery" ? "discovery_wait" : "set_agent_visuals";
-    await vi.waitFor(async () => expect((await calls()).some(call => call.name === waiting)).toBe(true));
+    await vi.waitFor(async () => expect((await calls()).some(call => call.name === waiting)).toBe(true), loaded);
     controller.abort();
     expect(await attempt).toBeInstanceOf(Error);
     expect((await driver.call("list_windows", {})).isError).toBeFalsy();
     const frame = { target: { pid: 42, window_id: 101 }, identity: `PiComputerUse.${"a".repeat(32)}:42:1`, bounds: { x: 0, y: 0, width: 800, height: 600 } };
     expect(await driver.visuals(frame)).toMatchObject({ status: "queued" });
-    await vi.waitFor(async () => expect((await calls()).at(-1)).toMatchObject({ name: "present_agent_activity", arguments: { kind: "overview" } }));
+    await vi.waitFor(async () => expect((await calls()).at(-1)).toMatchObject({ name: "present_agent_activity", arguments: { kind: "overview" } }), loaded);
     settings.update({ preset: "off" });
-    await vi.waitFor(async () => expect((await calls()).at(-1)).toMatchObject({ name: "set_agent_visuals", arguments: { preset: "off" } }));
+    await vi.waitFor(async () => expect((await calls()).at(-1)).toMatchObject({ name: "set_agent_visuals", arguments: { preset: "off" } }), loaded);
     expect(await driver.visuals(frame)).toMatchObject({ status: "skipped" });
     expect((await calls()).filter(call => call.name === "list_windows")).toHaveLength(1);
     expect((await calls()).filter(call => call.name === "present_agent_activity")).toHaveLength(1);

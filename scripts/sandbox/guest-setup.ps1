@@ -8,3 +8,7 @@ CiTool.exe --refresh --json | Out-Null
 netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=47800 connectaddress=127.0.0.1 connectport=47801 | Out-Null
 New-NetFirewallRule -DisplayName 'Pi computer use: driver' -Direction Inbound -Protocol TCP -LocalPort 47800 -Action Allow | Out-Null
 New-NetFirewallRule -DisplayName 'Pi computer use: window identity' -Direction Inbound -Protocol TCP -LocalPort 47802 -Action Allow | Out-Null
+New-NetFirewallRule -DisplayName 'Pi computer use: input lease' -Direction Inbound -Protocol TCP -LocalPort 47803 -Action Allow | Out-Null
+# Window streams for the session tiles on the human's desktop: cua-spacesd listens on loopback, behind its own token.
+netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=47804 connectaddress=127.0.0.1 connectport=47805 | Out-Null
+New-NetFirewallRule -DisplayName 'Pi computer use: window streams' -Direction Inbound -Protocol TCP -LocalPort 47804 -Action Allow | Out-Null

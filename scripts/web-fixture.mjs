@@ -39,7 +39,7 @@ let moves = 0; pad.addEventListener('pointermove', e => { if (e.buttons && moves
 pad.addEventListener('contextmenu', e => e.preventDefault());
 pad.addEventListener('auxclick', e => e.preventDefault());
 pad.addEventListener('wheel', e => { e.preventDefault(); log('wheel', { deltaX: e.deltaX, deltaY: e.deltaY, buttons: e.buttons }); }, { passive: false });
-for (const type of ['keydown', 'keyup']) addEventListener(type, e => { if (!e.repeat) log(type, { key: e.key, buttons: window.lastButtons ?? 0 }); });
+for (const type of ['keydown', 'keyup']) addEventListener(type, e => { if (!e.repeat) log(type, { key: e.key, code: e.code, buttons: window.lastButtons ?? 0 }); });
 pad.addEventListener('dblclick', () => pad.requestPointerLock());
 let locked = { x: 0, y: 0 };
 document.addEventListener('pointerlockchange', () => { log('pointerlock', { locked: document.pointerLockElement === pad }); locked = { x: 0, y: 0 }; });

@@ -46,7 +46,7 @@ for (const dpiAware of [false, true]) test(`a DPI-${dpiAware ? "aware" : "unawar
   expect(at.y).toBeGreaterThan(button.y); expect(at.y).toBeLessThan(button.y + button.height);
 
   // A pixel click at the button's centre in the overview presses the button.
-  const click = await live.insert(`computer:observation/${view.details.observation_id}`, { action: "click", ...centre(button), successor: false });
+  const click = await live.insert(`computer:observation/${view.details.observation_id}`, { action: "click", ...centre(button) });
   expect(click.details.status, text(click)).toBe("delivered");
   const after = await live.read(window, ["ui"]);
   expect((after.details.ui!.elements as Element[]).some(e => e.role === "Button" && e.name === "Count 1"), text(after)).toBe(true);

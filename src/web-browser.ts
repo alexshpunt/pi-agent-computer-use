@@ -194,7 +194,7 @@ export type WebLauncher = (options: WebLaunchOptions, signal?: AbortSignal) => P
 
 /** A Playwright or transport failure. `timeout` and `transport` mean an action may still have reached the page. */
 export class WebError extends Error {
-  constructor(message: string, readonly timeout = false, readonly transport = false) { super(message); }
+  constructor(message: string, readonly timeout = false, readonly transport = false, readonly code?: "agent_profile_in_use") { super(message); }
 }
 
 const record = (value: unknown, what: string): Record<string, unknown> => {
@@ -412,7 +412,7 @@ export class WebBrowser {
       while ((end = this.buffer.indexOf("\n")) >= 0) {
         const line = this.buffer.slice(0, end);
         this.buffer = this.buffer.slice(end + 1);
-        let response: { id?: number; value?: unknown; error?: { name?: string; message?: string } };
+        let response: { id?: number; value?: unknown; error?: { name?: string; message?: string; code?: string } };
         try { response = JSON.parse(line); }
         catch { this.fail(new WebError("Browser worker wrote an invalid response.", false, true)); child.kill(); return; }
         const request = this.pending.get(response.id!);
@@ -420,7 +420,8 @@ export class WebBrowser {
         this.pending.delete(response.id!);
         // Playwright appends a colored call log; keep the plain first part for agents.
         const message = String(response.error?.message ?? "Browser operation failed.").replace(/\x1b\[[0-9;]*m/g, "").split("\nCall log:")[0].trim();
-        if (response.error) request.reject(new WebError(message, response.error.name === "TimeoutError", response.error.name === "ApprovalOutcomeUnknown"));
+        if (response.error) request.reject(new WebError(message, response.error.name === "TimeoutError", response.error.name === "ApprovalOutcomeUnknown",
+          response.error.code === "agent_profile_in_use" ? response.error.code : undefined));
         else request.resolve(response.value);
       }
     });

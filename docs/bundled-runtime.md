@@ -1,6 +1,6 @@
 # Bundled CUA runtime
 
-This source selects one native runtime: Cua Driver 0.38.0 for Windows x64, built from source `db235b24` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork. A package built from this source carries that runtime. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists the fork's changes. The `windows-desktop` profile needs no separate driver configuration:
+This source selects one native runtime for Windows x64: Cua Driver 0.52.0 and cua-spacesd 0.16.1, from source `9dd83311` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork. A package built from this source carries that runtime, and every runtime it prepares, local, remote, in an isolated session or in a sandbox, holds both. cua-spacesd streams windows and runs other background work beside the driver. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists the fork's changes. The `windows-desktop` profile needs no separate driver configuration:
 
 ```sh
 pi install git:github.com/alexshpunt/pi-agent-computer-use
@@ -10,7 +10,12 @@ An extension update selects its matching runtime. Computer use prepares that run
 
 ## Where the files come from
 
-The files are published as the fork release [`pi-runtime-0.38.0-db235b24`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.38.0-db235b24): `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`. They were built on GitHub's Windows runner with Rust 1.97.1 and a static CRT.
+The files are published as the fork release [`pi-runtime-0.52.0-9dd83311`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.52.0-9dd83311):
+
+- `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`: built from `9dd83311` by the fork's [`Windows fork build`](https://github.com/alexshpunt/cua/actions/runs/45348349854) workflow. This driver sends input to the target window in the background and holds window claims.
+- `cua-spacesd.exe`, `cua-spacesd-LICENSE.txt` (FSL-1.1-MIT) and `cua-spacesd-THIRD_PARTY_NOTICES.md`: the bytes of [`pi-runtime-0.52.0-5ab8050b`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.52.0-5ab8050b), built by the fork's `Windows fork cua-spacesd build` workflow with NASM, so OpenH264 uses its assembly.
+
+All were built on GitHub's Windows runner with Rust 1.97.1 and a static CRT.
 
 `src/runtime-pins.json` pins the source, the version, the release URL and the SHA-256 of every file. Before packing, `npm pack` runs `scripts/fetch-runtime.mjs`, which downloads the files into `native-runtime/win32-x64/runtime/` and checks each hash. The directory is not committed to Git.
 
@@ -28,7 +33,7 @@ Linux and macOS window control is not verified, so no runtime is shipped for the
 
 ## Startup checks
 
-Every start checks all five pinned files. A missing file, a changed byte or a symlink refuses before any driver process starts.
+Every start checks all eight pinned files, cua-spacesd included. A missing file, a changed byte or a symlink refuses before any driver process starts. From WSL, Windows hashes the files of the Windows-host cache in one call of a few seconds, because reading them through the drive mount takes about 25 s per driver executable and can fail for lack of memory. The driver of an isolated session or sandbox runs the copy the session took when it started, so its host files are checked once while the host waits for that driver to answer.
 
 From WSL, the verified files are copied into a source-specific cache under the Windows user's Local Application Data directory:
 

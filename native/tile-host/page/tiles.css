@@ -1,0 +1,152 @@
+:root {
+  color-scheme: dark;
+  font: 13px/1.2 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  cursor: default;
+}
+
+/* On the hotkey the tiles come over every window; a dim backdrop keeps them readable. */
+body.overlay { background: rgb(12 14 18 / 0.78); }
+
+#tiles { position: absolute; inset: 0; }
+
+.tile {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgb(24 26 31 / 0.92);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.08);
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease, box-shadow 0.2s ease;
+}
+
+.tile[hidden] { display: none; }
+
+.tile.active { box-shadow: 0 6px 24px rgb(0 0 0 / 0.45), 0 0 0 2px var(--accent); }
+
+.caption {
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: rgb(235 237 242);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.agent {
+  flex: none;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+.action {
+  flex: none;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.action:empty { display: none; }
+
+.content {
+  position: relative;
+  flex: 1 1 auto;
+  background: rgb(36 38 44);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.tile.live canvas { opacity: 1; }
+
+.cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 16px;
+  height: 22px;
+  margin: -1px 0 0 -1px;
+  display: none;
+  pointer-events: none;
+  transition: transform 0.15s ease-out;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6));
+}
+
+.cursor svg { width: 100%; height: 100%; }
+.cursor path { fill: var(--accent); stroke: white; stroke-width: 1.2; stroke-linejoin: round; }
+
+/* A tile that comes into view, such as on a layer switch, fades in at its place instead of moving there. */
+.tile.appear { transition: box-shadow 0.2s ease; animation: tile-in 0.2s ease; }
+@keyframes tile-in { from { opacity: 0; transform: scale(0.97); } }
+
+/* Layers and hotkeys, centred under the tiles; readable over any wallpaper. */
+#footer {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: rgb(24 26 31 / 0.82);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(255 255 255 / 0.08);
+  color: rgb(235 237 242 / 0.85);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#footer[hidden] { display: none; }
+
+.dots { display: flex; gap: 6px; }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(235 237 242 / 0.3);
+}
+
+.dot.shown { background: rgb(235 237 242 / 0.95); }
+.dot.busy { box-shadow: 0 0 0 2px var(--accent); }
+
+.keys {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.1);
+  color: rgb(235 237 242 / 0.95);
+}
+
+.separator { width: 1px; height: 14px; background: rgb(255 255 255 / 0.2); }
+
+.app {
+  flex: none;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.6;
+}

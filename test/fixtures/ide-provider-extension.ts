@@ -2,7 +2,7 @@ import { addressPattern } from "./addresses.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ComputerMode, ComputerResult, ComputerSession, WindowTarget } from "../../src/session.ts";
 
@@ -165,7 +165,7 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
         assert((await captures()).length === beforeFrames, "Frame selection recaptured the desktop");
         await refused("insert", { path: sequence, text: JSON.stringify({ action: "click", x: 100, y: 80 }) }, "computer_click");
         await ok("write", { path: "local.txt", content: "Local source stays local\n" });
-        await ok("insert", { path: "local.txt", anchor: "Local source stays local", text: "Second local line" });
+        await ok("insert", { path: "local.txt", after: "Local source stays local", text: "\nSecond local line" });
         const local = await ok("read", { path: "local.txt" });
         assert(textOf(local).includes("Second local line"), "Computer provider intercepted local editor behavior");
       } else {

@@ -18,7 +18,7 @@ concurrency:
 env:
   NODE_VERSION: "24.19.0"
   NPM_VERSION: "11.19.0"
-  PI_VERSION: "1.4.0"
+  PI_VERSION: "1.5.2"
 
 jobs:
   validate:
@@ -50,7 +50,7 @@ jobs:
         run: node --experimental-strip-types scripts/release/merge-policy.ts
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: Install Pi
         # Integration tests start the real Pi CLI from PATH.

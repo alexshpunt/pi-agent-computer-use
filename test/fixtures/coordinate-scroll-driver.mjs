@@ -57,11 +57,13 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params: { name, argumen
       throw Error("Scroll input reached the wrong native authority or unit");
     captures.delete(args.window_id);
     const axes = [...(delta_y ? ["y"] : []), ...(delta_x ? ["x"] : [])];
-    state = { attempted: true, delivered: true, pointer_attempted: true, pointer_delivered: true,
+    // Background wheel messages are posted to the window and leave the real pointer alone; foreground wheel input moves it.
+    const posted = args.delivery_mode === "background";
+    state = { attempted: true, delivered: true, pointer_attempted: !posted, pointer_delivered: !posted,
       delta_x, delta_y, unit: args.unit, attempted_axes: axes, delivered_axes: axes,
-      route: "native", effect: "unverifiable", delivery_mode: "foreground",
-      foreground_changed: null, pointer_changed: null, foreground_at_target: true, pointer_at_target: true };
-    if (args.delivery_mode === "background" && response !== "background_success")
+      route: posted ? "posted" : "native", effect: "unverifiable", delivery_mode: posted ? "background" : "foreground",
+      foreground_changed: posted ? false : null, pointer_changed: posted ? false : null, foreground_at_target: !posted, pointer_at_target: !posted };
+    if (posted && response === "background_refused")
       state = { status: "refused", code: "background_unavailable", attempted: false, delivered: false,
         pointer_attempted: false, pointer_delivered: false, attempted_axes: [], delivered_axes: [],
         foreground_changed: false, pointer_changed: false, escalation: { recommended: "foreground" } };

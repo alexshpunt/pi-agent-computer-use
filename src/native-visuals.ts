@@ -134,8 +134,9 @@ export class NativeVisuals {
       ...(mark?.region ? { region: { ...mark.region } } : {}), ...(mark?.point ? { point: { ...mark.point } } : {}),
       ...(frame.action ? { action: frame.action } : {}), ...(frame.outcome ? { outcome: frame.outcome } : {}),
       ...(mark?.kind === "action" && frame.typedText && (["scroll", "scroll_at", "drag"].includes(frame.action ?? "") ? options.scroll_drag : ["click", "right_click", "double_click"].includes(frame.action ?? "") ? options.pointer : options.keyboard && options.typed_text) ? { typed_text: frame.typedText } : {}) };
-    // Bound transient transport memory. Oversized images still get a source frame, without a preview.
-    if (options.previews && image && ["image/png", "image/jpeg"].includes(image.mimeType) && image.data.length <= 4 * 1024 * 1024)
+    // The native receiver caps each JSON request at 1 MiB. Reserve room for the envelope and source geometry.
+    // Oversized images still get a source frame, without a preview.
+    if (options.previews && image && ["image/png", "image/jpeg"].includes(image.mimeType) && image.data.length <= 768 * 1024)
       args.image = { data: image.data, mime_type: image.mimeType };
     this.pending = { name: "present_agent_activity", args, time: performance.now() };
     const abort = () => { if (generation === this.generation) this.clear(); };

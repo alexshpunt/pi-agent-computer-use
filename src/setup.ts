@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadComputerConfig, readMachineSettings, type MachineConfig } from "./config.ts";
+import { globalComputerConfigFile, loadComputerConfig, readMachineSettings, type MachineConfig } from "./config.ts";
 import { isWsl } from "./native-runtime.ts";
 import { WINDOWS_POWERSHELL, localRunner, runPowerShell, sshRunner, type CommandRunner } from "./runner.ts";
 import { MXC, PERCEPTION, WINDOWS_NODE } from "./setup-pins.ts";
@@ -124,7 +124,7 @@ async function resolveTarget(cwd: string, machine: string | undefined, deps: Set
   const settings = await readMachineSettings(cwd);
   if (machine && machine !== "local") {
     const config = settings.machines[machine];
-    if (!config) throw new SetupError(`No machine named ${machine} is configured in .pi/computer-use.json; nothing was installed.`);
+    if (!config) throw new SetupError(`No machine named ${machine} is configured in .pi/computer-use.json or ${globalComputerConfigFile()}; nothing was installed.`);
     return { label: `machine ${machine}`, runner: deps.ssh(config.ssh), powershell: WINDOWS_POWERSHELL, native: false, machine: config };
   }
   if (deps.platform === "win32") return { label: "this machine", runner: deps.local(), powershell: "powershell.exe", native: true };
@@ -262,11 +262,9 @@ if (!$argv) { $argv = Join-Path $env:USERPROFILE '.vscode\\argv.json' }
 Invoke-Native $code @('--install-extension', ${psString(file)}, '--force') | Out-Null
 Remove-Item -LiteralPath ${psString(file)} -Force
 $text = if (Test-Path -LiteralPath $argv) { [IO.File]::ReadAllText($argv) } else { '' }
-$code
-$argv
-[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))`, 300_000, signal);
-  const [codeCmd, argvJson, encoded] = found.split("\n").slice(-3);
-  const next = allowProposedApi(Buffer.from(encoded, "base64").toString("utf8"));
+@{ code = $code; argv = $argv; text = $text } | ConvertTo-Json -Compress`, 300_000, signal);
+  const { code: codeCmd, argv: argvJson, text } = JSON.parse(found) as { code: string; argv: string; text: string };
+  const next = allowProposedApi(text);
   if (next !== undefined) await ps(target, `
 $argv = ${psString(argvJson)}
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $argv) | Out-Null

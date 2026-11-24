@@ -33,6 +33,8 @@ export class SingleConnectionHttpTransport implements Transport {
   private readonly agent: Agent;
   private closed = false;
   private readonly abort = new AbortController();
+  /** The MCP session the driver minted at `initialize`; every later request names it (Streamable HTTP). */
+  sessionId?: string;
 
   constructor(private readonly url: URL, private readonly token: string, relay?: RelayCredentials) {
     this.agent = relay ? new RelayAgent(url, relay, this.abort.signal) : new Agent(AGENT_OPTIONS);
@@ -47,8 +49,11 @@ export class SingleConnectionHttpTransport implements Transport {
       const req = request(this.url, {
         method: "POST", agent: this.agent,
         headers: { "Authorization": `Bearer ${this.token}`, "Content-Type": "application/json",
-          "Accept": "application/json, text/event-stream", "Content-Length": Buffer.byteLength(body) },
+          "Accept": "application/json, text/event-stream", "Content-Length": Buffer.byteLength(body),
+          ...(this.sessionId ? { "Mcp-Session-Id": this.sessionId } : {}) },
       }, response => {
+        const session = response.headers["mcp-session-id"];
+        if (typeof session === "string" && session) this.sessionId = session;
         const chunks: Buffer[] = [];
         response.on("data", (chunk: Buffer) => chunks.push(chunk));
         response.on("error", reject);

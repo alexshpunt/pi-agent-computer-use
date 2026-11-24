@@ -5,6 +5,8 @@ import { createSessionRelay, type SessionRelay, type SessionRelayKeys } from "./
 const STARTUP_TIMEOUT_MS = 15_000;
 const SHUTDOWN_TIMEOUT_MS = 5000;
 const MAX_OUTPUT = 1024;
+/** The worker and everything it imports: copied alone to an SSH host, so none of them may import a package. */
+const RELAY_FILES = ["relay-auth.ts", "session-relay.ts", "session-relay-worker.ts", "session-stream.ts", "grpc-lite.ts", "ws-lite.ts"];
 
 /** Local listeners stay in-process; an SSH host runs the same packaged code with stdin-owned lifetime. */
 export async function startSessionRelay(runner: CommandRunner, workdir: string, keys: SessionRelayKeys, signal?: AbortSignal): Promise<SessionRelay> {
@@ -16,7 +18,7 @@ export async function startSessionRelay(runner: CommandRunner, workdir: string, 
   }
 
   const files = runnerFiles(runner);
-  const transfers = await Promise.allSettled(["relay-auth.ts", "session-relay.ts", "session-relay-worker.ts"].map(async name => {
+  const transfers = await Promise.allSettled(RELAY_FILES.map(async name => {
     const source = await readFile(new URL(name, import.meta.url), "utf8");
     signal?.throwIfAborted();
     await files.write(files.join(workdir, name), source);
@@ -54,7 +56,7 @@ export async function startSessionRelay(runner: CommandRunner, workdir: string, 
     } finally { clearTimeout(timer); }
   })();
 
-  const startup = new Promise<SessionRelay["ports"]>((resolve, reject) => {
+  const startup = new Promise<{ ports: SessionRelay["ports"]; streamPort?: number }>((resolve, reject) => {
     rejectStartup = reject;
     child.stdout.on("data", (chunk: Buffer) => {
       if (ready) { if (chunk.toString().trim()) fail(new Error("Unexpected relay worker output.")); return; }
@@ -63,13 +65,14 @@ export async function startSessionRelay(runner: CommandRunner, workdir: string, 
       const end = output.indexOf("\n");
       if (end < 0) return;
       try {
-        const result = JSON.parse(output.slice(0, end)) as { ports?: unknown };
-        const ports = result.ports;
-        if (output.slice(end + 1).trim() || !Array.isArray(ports) || ports.length !== 4
-          || !ports.every(port => Number.isInteger(port) && port > 0 && port <= 65535) || new Set(ports).size !== 4)
+        const result = JSON.parse(output.slice(0, end)) as { ports?: unknown; streamPort?: unknown };
+        const { ports, streamPort } = result;
+        const port = (value: unknown) => Number.isInteger(value) && (value as number) > 0 && (value as number) <= 65535;
+        if (output.slice(end + 1).trim() || !Array.isArray(ports) || ports.length !== 6 || !ports.every(port) || new Set(ports).size !== 6
+          || (keys.stream ? !port(streamPort) || ports.includes(streamPort) : streamPort !== undefined))
           throw new Error("Invalid readiness.");
         ready = true;
-        resolve(ports as SessionRelay["ports"]);
+        resolve({ ports: ports as SessionRelay["ports"], ...(keys.stream ? { streamPort: streamPort as number } : {}) });
       } catch { fail(new Error("Invalid relay worker readiness.")); }
     });
     child.once("error", () => fail(new Error("Could not start relay worker.")));
@@ -86,9 +89,9 @@ export async function startSessionRelay(runner: CommandRunner, workdir: string, 
   const timer = setTimeout(() => fail(new Error("Relay worker did not become ready in time.")), STARTUP_TIMEOUT_MS);
   try {
     child.stdin.write(JSON.stringify(keys) + "\n");
-    const ports = await startup;
+    const started = await startup;
     signal?.throwIfAborted();
-    return { ports, close };
+    return { ...started, close };
   } catch (error) {
     try { await close(); }
     catch (cleanupError) { throw new AggregateError([error, cleanupError], "Relay startup failed and shutdown was not clean."); }
