@@ -25,9 +25,11 @@
 - On native windows, a ref or locator goes through UI Automation in the background, without the human's pointer or focus. Browser pages take refs and locators through Playwright, also without them.
 - Act on every element through a ref or locator first: `computer_click`, `computer_select`, `computer_type` with a target, `computer_scroll` on an element. Use a point, keys or a drag only after three structured attempts on that element left the app unchanged, when the latest read has no element for the target, or for canvases, drawing and games.
 - Remember for the rest of the session which apps react to structured input and which do not. In an app where structured input left the app unchanged, use points and keys from the start.
-- Drags, `computer_hover` and `computer_timeline` use real input. On Windows, automatic foreground return requires supported read evidence covering every inserted event; unconfirmed input prevents that return. `computer_hover` and coordinate scrolling do not automatically restore focus or move the pointer back. `computer_select` and menus run through UI Automation.
+- Points, keys, text, drags, coordinate scrolls and timelines go to the target window in the background: the driver sends them to the window's handle, with modifiers held only in that window thread's key state, so the human's focus, pointer and keyboard stay as they are. An app can ignore such input without an error; when the change list shows no change, repeat the action once with `foreground: true`.
+- `foreground: true` takes the focus for that one action as real input and hands it back afterwards. Where the driver knows a window cannot take an action in the background (WPF and XAML pointer input, Blender, a key that opens a Win32 menu), it refuses before sending anything and the tool repeats the action with the focus taken by itself; the result says so. A refusal for an elevated window stays a refusal.
+- `computer_hover` always uses the real pointer. On Windows, automatic foreground return requires supported read evidence covering every inserted event; unconfirmed input prevents that return. `computer_hover` and foreground coordinate scrolling do not automatically restore focus or move the pointer back. `computer_select` and menus run through UI Automation.
 - When a receipt reports unconfirmed input, observe the target before another action. Do not replay the input to obtain confirmation.
-- Real input runs at once, even while the human uses the computer. Another agent's action on the same desktop finishes first.
+- Foreground input runs at once, even while the human uses the computer, and agents on the same desktop take turns for it. Background input into an agent's own window does not wait for other agents' foreground actions.
 - `human_stop`: the human pressed Escape three times. Send no more input, tell the user what you were doing, and wait until they turn computer use on again.
 
 Native locators run over the UI Automation tree:
@@ -44,6 +46,12 @@ Native locators run over the UI Automation tree:
 - {read} of a viewport only looks: the window's latest observation and refs stay current.
 - {delete} removes a viewport; it also goes away with its window.
 - Maximize an app that resizes its own window before making viewports.
+
+## Windows of other agents
+
+- A window this session opens with `computer_open` is its own: other agents' input into it and changes to it are refused, with this session's name, until the session ends.
+- Claim a window that another process opened, such as one the human started, with `computer_window` action `claim` before working in it; give it back with `release` when done.
+- `window_claimed`: another agent holds the window, and the refusal names it. Nothing was sent. Work in another window, or wait until that agent releases it.
 
 ## Displays
 

@@ -1,6 +1,6 @@
 # Bundled CUA runtime
 
-This source selects one native runtime for Windows x64: Cua Driver 0.52.0 and cua-spacesd 0.16.1, from source `a51fda93` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork. A package built from this source carries that runtime, and every runtime it prepares, local, remote, in an isolated session or in a sandbox, holds both. cua-spacesd streams windows and runs other background work beside the driver. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists the fork's changes. The `windows-desktop` profile needs no separate driver configuration:
+This source selects one native runtime for Windows x64: Cua Driver 0.52.0 and cua-spacesd 0.16.1, from source `9dd83311` of the [alexshpunt/cua](https://github.com/alexshpunt/cua) fork. A package built from this source carries that runtime, and every runtime it prepares, local, remote, in an isolated session or in a sandbox, holds both. cua-spacesd streams windows and runs other background work beside the driver. [FORK.md](https://github.com/alexshpunt/cua/blob/pi-computer-use/FORK.md) lists the fork's changes. The `windows-desktop` profile needs no separate driver configuration:
 
 ```sh
 pi install git:github.com/alexshpunt/pi-agent-computer-use
@@ -10,10 +10,10 @@ An extension update selects its matching runtime. Computer use prepares that run
 
 ## Where the files come from
 
-The files are published as the fork release [`pi-runtime-0.52.0-a51fda93`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.52.0-a51fda93):
+The files are published as the fork release [`pi-runtime-0.52.0-9dd83311`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.52.0-9dd83311):
 
-- `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`: the bytes of [`pi-runtime-0.52.0-5c8685eb`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.52.0-5c8685eb); the driver sources did not change between `5c8685eb` and `a51fda93`.
-- `cua-spacesd.exe`, `cua-spacesd-LICENSE.txt` (FSL-1.1-MIT) and `cua-spacesd-THIRD_PARTY_NOTICES.md`: the bytes of [`pi-spacesd-0.16.1-a51fda93`](https://github.com/alexshpunt/cua/releases/tag/pi-spacesd-0.16.1-a51fda93), built by the fork's `Windows fork cua-spacesd build` workflow with NASM, so OpenH264 uses its assembly.
+- `cua-driver.exe`, `cua-driver-uia.exe`, `cua-cursor-theme.exe`, `LICENSE.md` and `THIRD_PARTY_NOTICES.md`: built from `9dd83311` by the fork's [`Windows fork build`](https://github.com/alexshpunt/cua/actions/runs/45348349854) workflow. This driver sends input to the target window in the background and holds window claims.
+- `cua-spacesd.exe`, `cua-spacesd-LICENSE.txt` (FSL-1.1-MIT) and `cua-spacesd-THIRD_PARTY_NOTICES.md`: the bytes of [`pi-runtime-0.52.0-5ab8050b`](https://github.com/alexshpunt/cua/releases/tag/pi-runtime-0.52.0-5ab8050b), built by the fork's `Windows fork cua-spacesd build` workflow with NASM, so OpenH264 uses its assembly.
 
 All were built on GitHub's Windows runner with Rust 1.97.1 and a static CRT.
 

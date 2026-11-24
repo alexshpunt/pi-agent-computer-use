@@ -151,6 +151,20 @@ test("a foreground-shaped success cannot certify a background coordinate request
   expect(f.inputs()).toHaveLength(1);
 });
 
+// LPT-1847: background wheel messages go to the window at the point and never move the pointer.
+const posted = (delta_x = 0, delta_y = 1) => ({ ...receipt(delta_x, delta_y), pointer_attempted: false, pointer_delivered: false,
+  route: "posted", delivery_mode: "background", pointer_changed: false, pointer_at_target: null });
+test.each([
+  { state: posted(2, 1), status: "delivered" },
+  { state: { ...posted(2, 1), pointer_attempted: true }, status: "unknown" },
+  { state: { ...posted(2, 1), route: "native" }, status: "unknown" },
+  { state: { ...posted(2, 1), delivered_axes: ["y"] }, status: "unknown" },
+])("a background coordinate scroll is delivered only with a posted, pointer-free receipt: $status", async ({ state, status }) => {
+  const f = await fixture(); const call = f.base.call;
+  f.base.call = vi.fn(async (name, args, signal) => name === "scroll_at" ? { content: [], structuredContent: state } : call(name, args, signal));
+  expect((await f.send({ ...point, delta_x: 2, delta_y: 1, delivery_mode: "background" })).details.status).toBe(status);
+});
+
 test("cancellation after native scroll withholds completion and never replays", async () => {
   const f = await fixture(); const call = f.base.call; const abort = new AbortController();
   f.base.call = vi.fn(async (name, args, signal) => { const result = await call(name, args, signal); if (name === "scroll_at") abort.abort(); return result; });

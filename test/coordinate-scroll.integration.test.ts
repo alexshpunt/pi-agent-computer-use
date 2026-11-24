@@ -8,7 +8,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const fixture = (name: string) => path.join(root, "test/fixtures", name);
 
 // Pattern: real-Pi extensions example and the ordinary IDE computer-provider scenarios.
-// Contract: computer_scroll at a point is real input that preserves capture authority and structured uncertain prefixes; IDE Insert refuses.
+// Contract: computer_scroll at a point goes in the background, falls back to the foreground once on refusal, and preserves capture authority and structured uncertain prefixes; IDE Insert refuses.
 async function scenario(testName: string, scenario: "receipts" | "authority", providerFirst: boolean) {
   const consumer = IDE_EXTENSION, provider = fixture("coordinate-scroll-extension.ts");
   await mkdir(path.join(root, ".tmp/lpt-730"), { recursive: true });
@@ -45,10 +45,12 @@ const native = (x: number, y: number, delta_x: number, delta_y: number, delivery
 
 test.each([false, true])("ordinary IDE scroll preserves capture-bound deltas and uncertain prefixes (providerFirst=%s)", async providerFirst => {
   const actions = inputCalls(await scenario("coordinate-scroll-receipts", "receipts", providerFirst));
-  // Every scroll at a point is real input in the foreground.
-  expect(actions.map(call => call.name)).toEqual(Array(7).fill("scroll_at"));
+  // A scroll at a point goes to the window in the background. A background refusal is retried once in the foreground,
+  // and uncertain foreground scrolls are never replayed.
+  expect(actions.map(call => call.name)).toEqual(Array(8).fill("scroll_at"));
   expect(actions.map(call => call.arguments)).toEqual([
-    native(100, 80, -2, 3), native(120, 90, 1, 0), ...Array.from({ length: 5 }, () => native(130, 100, 1, 1)),
+    native(100, 80, -2, 3, "background"), native(120, 90, 1, 0, "background"), native(120, 90, 1, 0),
+    ...Array.from({ length: 5 }, () => native(130, 100, 1, 1)),
   ]);
   // Every scroll binds to its own capture.
   expect(new Set(actions.map(call => call.arguments.capture_id)).size).toBe(actions.length);
@@ -56,6 +58,6 @@ test.each([false, true])("ordinary IDE scroll preserves capture-bound deltas and
 
 test.each([false, true])("ordinary IDE scroll keeps image, detail, capability, Safe and native lifetime boundaries (providerFirst=%s)", async providerFirst => {
   expect(inputCalls(await scenario("coordinate-scroll-authority", "authority", providerFirst))).toEqual([
-    { name: "scroll_at", arguments: native(100, 80, 0, 2) },
+    { name: "scroll_at", arguments: native(100, 80, 0, 2, "background") },
   ]);
 }, 120_000);

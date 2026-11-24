@@ -287,29 +287,61 @@ test("computer_type replace on a ref sets the value through UI Automation, witho
   expect(f.inputs()[0][1]).not.toHaveProperty("delivery_mode");
 });
 
-// LPT-942: what the agent sees structurally is pressed structurally; points and keys are real input.
-test("a click on a ref goes through UI Automation only, and no pattern means the real pointer", async () => {
+// LPT-942: what the agent sees structurally is pressed structurally. LPT-1847: other input goes to the window in the background.
+test("a click on a ref goes through UI Automation only, and no pattern means input to the window", async () => {
   const f = await fixture();
   let view = await f.read();
   const structural = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint! }));
   expect(structural.details.status).toBe("delivered");
   expect(f.inputs()).toEqual([["click", { target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "background", element_token: expect.any(String), uia_only: true }, undefined]]);
-  // The driver finds no pattern: it refuses before sending anything, and the click goes again with the real pointer.
+  // The driver finds no pattern: it refuses before sending anything, and the click goes again to the window.
   f.setOutcome((_name, args) => args.uia_only ? { isError: true, content: [{ type: "text", text: "no UIA pattern" }],
     structuredContent: { code: "background_unavailable", effect: "refused", escalation: { recommended: "foreground" } } } : { content: [], structuredContent: { effect: "confirmed" } });
   view = await f.read();
-  const real = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint! }));
-  expect(real.details.status).toBe("delivered");
-  expect(real.content[0]).toEqual({ type: "text", text: "No UI Automation pattern of the target carried this click, so this call used the real pointer." });
+  const posted = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint! }));
+  expect(posted.details.status).toBe("delivered");
+  expect(posted.content[0]).toEqual({ type: "text", text: "No UI Automation pattern of the target carried this click, so this call sent it as input to the window." });
   const [refused, sent] = f.inputs().slice(1);
   expect(refused[1]).toMatchObject({ uia_only: true, delivery_mode: "background" });
   expect(sent[0]).toBe("click");
-  expect(sent[1]).toMatchObject({ delivery_mode: "foreground" });
+  expect(sent[1]).toMatchObject({ delivery_mode: "background" });
   expect(sent[1]).not.toHaveProperty("uia_only");
 });
 
-// LPT-948: a triple click selects a field's value; no UI Automation pattern carries a multi-click, so it is real input.
-test("triple clicks and right or middle double clicks reach a native window as real clicks", async () => {
+test("a window that refuses background input gets the action with the focus taken, and says so", async () => {
+  const f = await fixture();
+  let view = await f.read();
+  // Neither a UIA pattern nor posted input carries the click: the third try takes the foreground.
+  f.setOutcome((_name, args) => args.delivery_mode === "background" ? { isError: true, content: [{ type: "text", text: "WPF drops posted clicks" }],
+    structuredContent: { code: "background_unavailable", effect: "refused", escalation: { recommended: "foreground" } } } : { content: [], structuredContent: { effect: "confirmed" } });
+  const clicked = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint! }));
+  expect(clicked.details.status).toBe("delivered");
+  expect(clicked.content.slice(0, 2)).toEqual([
+    { type: "text", text: "No UI Automation pattern of the target carried this click, so this call sent it as input to the window." },
+    { type: "text", text: "This window does not take this click in the background, so this call took the focus for it." }]);
+  expect(f.inputs().map(([, args]) => [(args as { delivery_mode?: string }).delivery_mode, "uia_only" in (args as object)])).toEqual([
+    ["background", true], ["background", false], ["foreground", false]]);
+  // Keys too; the Enter after typed text follows the focus the text needed.
+  view = await f.read();
+  const before = f.inputs().length;
+  const typed = await f.resources.input(f.window, cwd, typePlan({ window: f.window.source, text: "hi", submit: true }));
+  expect(typed.details.status).toBe("delivered");
+  expect(f.inputs().slice(before).map(([name, args]) => [name, (args as { delivery_mode?: string }).delivery_mode])).toEqual([
+    ["type_text", "background"], ["type_text", "foreground"], ["press_key", "foreground"]]);
+});
+
+test("a refusal for an elevated window is the answer: taking the focus does not pass Windows' integrity barrier", async () => {
+  const f = await fixture();
+  await f.read();
+  f.setOutcome(() => ({ isError: true, content: [{ type: "text", text: "higher-integrity target" }],
+    structuredContent: { code: "background_uipi_blocked", effect: "refused" } }));
+  const clicked = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70 }));
+  expect(clicked.details.status).toBe("refused");
+  expect(f.inputs().map(([, args]) => (args as { delivery_mode?: string }).delivery_mode)).toEqual(["background"]);
+});
+
+// LPT-948: a triple click selects a field's value; no UI Automation pattern carries a multi-click, so it is input to the window.
+test("triple clicks and right or middle double clicks reach a native window as clicks", async () => {
   const f = await fixture();
   let view = await f.read();
   const triple = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint!, count: 3 }));
@@ -318,22 +350,33 @@ test("triple clicks and right or middle double clicks reach a native window as r
   await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70, button: "right", count: 2 }));
   await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70, button: "middle", count: 2 }));
   expect(f.inputs()).toEqual([
-    ["click", { target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "foreground", element_token: expect.any(String), count: 3 }, undefined],
-    ["click", expect.objectContaining({ delivery_mode: "foreground", x: expect.any(Number), y: expect.any(Number), button: "right", count: 2 }), undefined],
-    ["click", expect.objectContaining({ delivery_mode: "foreground", button: "middle", count: 2 }), undefined]]);
+    ["click", { target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "background", element_token: expect.any(String), count: 3 }, undefined],
+    ["click", expect.objectContaining({ delivery_mode: "background", x: expect.any(Number), y: expect.any(Number), button: "right", count: 2 }), undefined],
+    ["click", expect.objectContaining({ delivery_mode: "background", button: "middle", count: 2 }), undefined]]);
   expect(f.inputs().some(([, args]) => "uia_only" in (args as object))).toBe(false);
 });
 
-test("points and keys are real input; nothing posts window messages", async () => {
+test("points and keys go to the window in the background; foreground: true takes the focus for that action", async () => {
   const f = await fixture();
   (f.driver as Driver & { coordinateScroll: boolean }).coordinateScroll = true;
   await f.read();
-  await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70 }));
+  const clicked = await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70 }));
+  expect(clicked.content[0]).toMatchObject({ type: "text", text: expect.stringContaining("repeat the action with foreground: true") });
   await f.resources.input(f.window, cwd, pressPlan({ window: f.window.source, key: "ctrl+s" }));
   await f.resources.input(f.window, cwd, typePlan({ window: f.window.source, text: "hi" }));
   await f.resources.input(f.window, cwd, scrollPlan({ window: f.window.source, delta_y: 2 }));
+  await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, x: 100, y: 70, foreground: true }));
+  await f.resources.input(f.window, cwd, pressPlan({ window: f.window.source, key: "ctrl+s", foreground: true }));
   expect(f.inputs().map(([name, args]) => [name, (args as { delivery_mode?: string }).delivery_mode, "uia_only" in (args as object)])).toEqual([
-    ["click", "foreground", false], ["hotkey", "foreground", false], ["type_text", "foreground", false], ["scroll_at", "foreground", false]]);
+    ["click", "background", false], ["hotkey", "background", false], ["type_text", "background", false], ["scroll_at", "background", false],
+    ["click", "foreground", false], ["hotkey", "foreground", false]]);
+});
+
+test("foreground: true on a ref click skips UI Automation and takes the focus", async () => {
+  const f = await fixture();
+  const view = await f.read();
+  await f.resources.input(f.window, cwd, clickPlan({ window: f.window.source, target: view.hint!, foreground: true }));
+  expect(f.inputs()).toEqual([["click", { target: { kind: "window", pid: 42, window_id: 91 }, delivery_mode: "foreground", element_token: expect.any(String) }, undefined]]);
 });
 
 test("a display overview accepts a size for that Read only", async () => {

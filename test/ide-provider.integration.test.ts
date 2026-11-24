@@ -86,7 +86,7 @@ async function runScenario(providerFirst: boolean, scenario: "workflow" | "admis
     expect(inputs.map(row => row.name)).toEqual(scenario === "workflow" ? ["type_text", "click"] : ["type_text"]);
     for (const row of inputs) expect(row.arguments.target).toEqual({ kind: "window", pid: 42, window_id: 91 });
     if (scenario === "workflow") {
-      expect(inputs[0].arguments).toMatchObject({ text: '  {"looks":"like JSON"}\n"quoted text"\n  ', delay_ms: 0, delivery_mode: "foreground", element_token: expect.any(String) });
+      expect(inputs[0].arguments).toMatchObject({ text: '  {"looks":"like JSON"}\n"quoted text"\n  ', delay_ms: 0, delivery_mode: "background", element_token: expect.any(String) });
       expect(calls.filter(row => row.name === "zoom")).toEqual([{ name: "zoom", arguments: { pid: 42, window_id: 91, x1: 80, y1: 60, x2: 160, y2: 100 } }]);
       expect(details.localText).toBe("Local source stays local\nSecond local line");
     }

@@ -108,8 +108,10 @@ export interface InputPlan {
   native: Record<string, unknown> | string;
   /** The Playwright action without its target, or why browser pages cannot run it. */
   web: Record<string, unknown> | string;
-  /** Internal: send real input, after UI Automation could not carry the action on its target. */
+  /** Internal: send input to the window, after UI Automation could not carry the action on its target. */
   real?: boolean;
+  /** Native windows: take the focus for this action and hand it back afterwards; without it input goes to the window in the background. */
+  foreground?: boolean;
   /** Runs after this one is delivered, such as Enter after typing. */
   then?: InputPlan;
 }
@@ -952,6 +954,13 @@ export class ComputerResources {
     await this.route(cwd, { window_ref: address.ref }, signal);
     return this.stamp(place, this.nameWindow(name, address.ref));
   }
+  /** Take a window for this agent, or release it, so other agents' input into it is refused or allowed again. The receipt names its machine. */
+  async claim(address: ComputerAddress, cwd: string, take: boolean, signal?: AbortSignal): Promise<ComputerResult> {
+    if (address.kind !== "window") throw new ComputerRequestError("computer_window needs a window address from Search, Read or a name.");
+    const place = this.place(address);
+    const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    return this.stamp(place, await (take ? session.claimWindow(address.ref, signal) : session.releaseWindow(address.ref, signal)));
+  }
   /** A viewport the agent made; refused when it was never made or its window has closed. */
   private viewport(address: Extract<ComputerAddress, { kind: "viewport" }>): Viewport {
     const source = viewportSource(address.ref, address.name);
@@ -1104,6 +1113,8 @@ export class ComputerResources {
     let result = await this.inputStep(address.ref, session, plan, cwd, signal, viewport);
     // A follow-up such as Enter after typing runs only after the first part was delivered.
     if (follow && result.details.status === "delivered") {
+      // Keys that follow input which needed the focus need it too.
+      if (result.details.action_capability?.requested_delivery === "foreground") follow = { ...follow, foreground: true };
       const next = await this.inputStep(address.ref, session, follow, cwd, signal, viewport);
       result = { ...next, content: [...result.content, ...next.content] };
     }
@@ -1147,6 +1158,7 @@ export class ComputerResources {
   /** Typed input on the active page of a browser window through Playwright; a current DOM observation gives the change list. */
   private async pageInput(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal): Promise<ComputerResult> {
     if (typeof plan.web === "string") throw new ComputerRequestError(plan.web);
+    if (plan.foreground) throw new ComputerRequestError("foreground applies to native windows and to space: \"window\"; page input goes through Playwright and needs no focus.");
     // A page timeline carries its own points and targets; other page actions take the element target.
     const target = plan.web.action !== "timeline" && typeof plan.target === "string" ? refKind(plan.target) === "page" ? { ref: plan.target } : plan.target : undefined;
     const command = { ...plan.web, ...(target !== undefined ? { target } : {}) };
@@ -1171,10 +1183,17 @@ export class ComputerResources {
     const action = String(command.action);
     // What the agent sees structurally is pressed structurally: a click or scroll on a target goes through UI Automation
     // alone, and the driver refuses before sending anything when no pattern carries it. Points, keys, drags and timelines
-    // are real input; semantic actions and menus are UI Automation calls of their own. No pattern carries a multi-click.
-    const structural = !plan.real && plan.target !== undefined && plan.point === undefined && STRUCTURAL.includes(action) && command.unit === undefined && command.modifiers === undefined && command.count === undefined;
+    // go to the window in the background unless the agent asks for the foreground; semantic actions and menus are UI
+    // Automation calls of their own. No pattern carries a multi-click.
+    const input = !isSemanticAction(action) && action !== "menu";
+    const foreground = plan.foreground === true && input;
+    const structural = !plan.real && !foreground && plan.target !== undefined && plan.point === undefined && STRUCTURAL.includes(action) && command.unit === undefined && command.modifiers === undefined && command.count === undefined;
     if (structural) command.uia_only = true;
-    else if (!isSemanticAction(action) && action !== "menu") command.delivery_mode = "foreground";
+    // A hover moves the real pointer: hover states and tooltips follow the cursor, not window messages.
+    else if (action === "hover") command.delivery_mode = "foreground";
+    // A key hold is a held key-state change that Windows gives only to the foreground; the driver refuses it in the background.
+    else if (action === "hold") command.delivery_mode = "foreground";
+    else if (input) command.delivery_mode = foreground ? "foreground" : "background";
     let target = plan.target;
     let view = session.inputView(window);
     // The registry decides whether an observation still grounds input: a detail Read, a sequence or the registry's
@@ -1248,10 +1267,17 @@ export class ComputerResources {
     }
     if (viewport) result = { ...result, details: { ...result.details, viewport: ComputerResources.viewportDetails(viewport, box ?? viewport.rect) } };
     const capability = result.details.action_capability;
-    if (!structural || result.details.status !== "refused" || capability?.background !== "unavailable") return result;
+    // The driver refuses, before sending anything, a route it knows the target cannot take. Taking the focus does not pass
+    // Windows' integrity barrier, so a refusal for an elevated window stays the answer.
+    const background = command.delivery_mode === "background";
+    if (!structural && !background || result.details.status !== "refused" || capability?.background !== "unavailable" || capability.code === "background_uipi_blocked") return result;
     // A ref acted on a capture without the viewport's pixels; its retry point is in the window's latest image.
-    const again = await this.nativeStep(window, session, { ...retry(), real: true }, cwd, signal, box ? viewport : undefined);
-    return { ...again, content: [{ type: "text", text: `No UI Automation pattern of the target carried this ${plan.label}, so this call ${again.details.status === "delivered" ? "used the real pointer" : "attempted real pointer input"}.` }, ...again.content],
+    // The structural retry goes to the window in the background and can take the foreground from there.
+    const again = await this.nativeStep(window, session, structural ? { ...retry(), real: true } : { ...retry(), foreground: true }, cwd, signal, box ? viewport : undefined);
+    const delivered = again.details.status === "delivered";
+    const note = structural ? `No UI Automation pattern of the target carried this ${plan.label}, so this call ${delivered ? "sent" : "attempted"} it as input to the window.`
+      : `This window does not take this ${plan.label} in the background${capability.code === "background_occluded" ? " while another window covers the point" : ""}, so this call ${delivered ? "took" : "tried to take"} the focus for it.`;
+    return { ...again, content: [{ type: "text", text: note }, ...again.content],
       ...(viewport ? { details: { ...again.details, viewport: again.details.viewport ?? result.details.viewport } } : {}) };
   }
 

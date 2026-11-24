@@ -111,8 +111,9 @@ test("one action vocabulary drives a native window by locator, ref and point", a
   } finally { await deleteComputer(live.resources, window, { path: window }, live.cwd); }
 });
 
-// LPT-942: structural refs use UIA; a ref without a pattern uses the real pointer.
-test("a ref is pressed through UI Automation without taking the foreground, and a ref without a pattern gets the real pointer", async () => {
+// LPT-942: structural refs use UIA. LPT-1847: a ref without a pattern, keys and text go to the window in the
+// background; foreground: true takes the focus for one action and the read click hands it back.
+test("refs, points and keys reach a window in the background, and foreground: true takes the focus and returns it", async () => {
   const title = `pi-route-${Date.now()}`;
   const window = await openWindow(live, live.machine, WINDOWS_POWERSHELL_PATH, nativeForm(title), title);
   let human: string | undefined;
@@ -135,12 +136,24 @@ test("a ref is pressed through UI Automation without taking the foreground, and 
     expect(await holds(window, [{ target: "getByRole('button', { name: 'Count 1' })", is: "exists" }])).toBe("satisfied");
     expect(await state()).toMatchObject({ foreground_at_target: false, foreground_window: humanId });
     const field = await refOf(/^([0-9a-z]+:[a-z]+) \| Edit \| Field/m);
-    const real = await act(window, clickPlan({ window, target: field }));
+    const posted = await act(window, clickPlan({ window, target: field }));
+    expect(posted.result.details.status, posted.body).toBe("delivered");
+    expect(posted.result.details.action_capability).toMatchObject({ native_tool: "click", requested_delivery: "background" });
+    const typed = await act(window, typePlan({ window, text: "bg" }));
+    expect(typed.result.details.status, typed.body).toBe("delivered");
+    const chord = await act(window, pressPlan({ window, key: "ctrl+a" }));
+    expect(chord.result.details.status, chord.body).toBe("delivered");
+    const replaced = await act(window, typePlan({ window, text: "posted" }));
+    expect(replaced.result.details.status, replaced.body).toBe("delivered");
+    expect(await holds(window, [{ target: "getByRole('textbox', { name: 'Field' })", value: "posted" }])).toBe("satisfied");
+    expect(await state()).toMatchObject({ foreground_at_target: false, foreground_window: humanId });
+    const real = await act(window, clickPlan({ window, target: (await refOf(/^([0-9a-z]+:[a-z]+) \| Edit \| Field/m)), foreground: true }));
     expect(real.result.details.status, real.body).toBe("delivered");
     expect(real.result.details.action_capability).toMatchObject({
       native_tool: "click", requested_delivery: "foreground", actual_delivery: "foreground",
     });
-    expect((await state()).foreground_at_target).toBe(true);
+    expect(real.body).toMatch(/focus_return: restored/);
+    expect(await state()).toMatchObject({ foreground_at_target: false, foreground_window: humanId });
   } finally {
     await deleteComputer(live.resources, `${window}?force=true`, { path: `${window}?force=true` }, live.cwd);
     if (human) await deleteComputer(live.resources, `${human}?force=true`, { path: `${human}?force=true` }, live.cwd);
