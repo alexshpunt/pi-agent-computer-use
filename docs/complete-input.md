@@ -56,7 +56,7 @@ With the bundled runtime, `hold` keeps 1..8 unique keys down for `duration_ms` 1
 
 Optional `actions` contains 1..32 complete left pixel clicks or drags from the same overview. Each drag may be straight or use `via`. Do not pass element tokens, per-action modifiers, button choices, key steps or nested holds. All requested pointer durations, including 50ms per click, must fit the hold interval. All keys and points are checked before input. Hold cannot nest in `sequence`.
 
-A hold is real input: the real keyboard and pointer are in use during the action; do not fight them. Existing held keys/modifiers or mouse buttons cause a preflight refusal, not a release-all.
+A hold is real input and always takes the foreground, even without `foreground: true`: the real keyboard and pointer are in use during the action; do not fight them. Existing held keys/modifiers or mouse buttons cause a preflight refusal, not a release-all.
 
 For Shift + brush, use `keys:["shift"]` and `actions:[{action:"drag",from_x:p.x,from_y:p.y,via:points,to_x:q.x,to_y:q.y,duration_ms:800}]` inside a hold of at least800ms. Points must come from the current overview. The native summary reports requested/measured time, inserted keys, completed pointer actions and press/release prefixes. Scheduling and input delivery add latency; timing is not real-time and OS auto-repeat is not promised.
 

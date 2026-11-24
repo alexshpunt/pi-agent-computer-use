@@ -1191,6 +1191,8 @@ export class ComputerResources {
     if (structural) command.uia_only = true;
     // A hover moves the real pointer: hover states and tooltips follow the cursor, not window messages.
     else if (action === "hover") command.delivery_mode = "foreground";
+    // A key hold is a held key-state change that Windows gives only to the foreground; the driver refuses it in the background.
+    else if (action === "hold") command.delivery_mode = "foreground";
     else if (input) command.delivery_mode = foreground ? "foreground" : "background";
     let target = plan.target;
     let view = session.inputView(window);

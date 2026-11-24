@@ -111,17 +111,21 @@ export default async function fixture(pi: ExtensionAPI): Promise<void> {
       const image = view.content.find(block => block.type === "image");
       assert(image?.mimeType === "image/png" && image.data, "Native overview image did not reach actual Pi");
       if (scenario === "receipts") {
-        // A scroll at a point is real input: the wheel goes in the foreground at once.
+        // A scroll at a point posts wheel messages to the window in the background; the real pointer stays put.
         const delivered = await scroll(first, { delta_x: -2, delta_y: 3 }), receipt = semantic(delivered), state = record(receipt.state);
         assert(!delivered.isError && receipt.status === "delivered" && receipt.effect === "applied" && state.unit === "wheel_detents" &&
-          JSON.stringify(state.delivered_axes) === '["y","x"]' && state.pointer_changed === null && record(receipt.action_capability).actual_delivery === "foreground",
+          JSON.stringify(state.delivered_axes) === '["y","x"]' && state.pointer_changed === false && record(receipt.action_capability).actual_delivery === "background",
           `Truthful two-axis structured receipt lost: ${textOf(delivered)}`);
-        await observe(first, "image");
-        const imageOnly = await scroll(first, { x: 120, y: 90, delta_x: 1, delta_y: 0 });
-        assert(!imageOnly.isError && semantic(imageOnly).status === "delivered", "Image-only scroll refused");
+        // A window that refuses background wheel input gets the same scroll once in the foreground, and the result says so.
+        await observe(first, "image"); await control("background_refused");
+        const imageOnly = await scroll(first, { x: 120, y: 90, delta_x: 1, delta_y: 0 }), retried = semantic(imageOnly);
+        assert(!imageOnly.isError && retried.status === "delivered" && record(retried.action_capability).actual_delivery === "foreground" &&
+          /in the background, so this call took the focus/.test(textOf(imageOnly)),
+          `Refused background scroll was not retried in the foreground: ${textOf(imageOnly)}`);
+        // Uncertain foreground wheel input stays unknown and is never replayed.
         for (const operation of ["partial", "last_check", "wrong_unit", "wrong_delta", "wrong_axes"]) {
           await control(operation); view = await observe(first);
-          const result = await rejected(first, { x: 130, y: 100, delta_x: 1, delta_y: 1 });
+          const result = await rejected(first, { x: 130, y: 100, delta_x: 1, delta_y: 1, foreground: true });
           const action = semantic(result), native = record(action.state);
           assert(action.status === "unknown" && action.effect === "unknown", `${operation} lost structured uncertainty`);
           if (operation === "partial") assert(native.pointer_delivered === true && JSON.stringify(native.attempted_axes) === '["y","x"]' &&

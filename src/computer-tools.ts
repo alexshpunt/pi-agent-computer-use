@@ -436,7 +436,7 @@ export function typePlan(params: Static<typeof typeParameters>): InputPlan {
 const pressParameters = Type.Object({
   window: inputWindow, key: Type.String({ maxLength: 64, description: "A key with optional modifiers joined by +, such as Enter, ctrl+s, shift+Tab, F5, ArrowDown or a." }),
   target: inputTarget("The element to focus first; omit for the focused element"), space: pointSpace,
-  hold_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: hold the keys down this long, for apps and games that read held keys." })),
+  hold_ms: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000, description: "Native windows: hold the keys down this long, for apps and games that read held keys; a hold always takes the foreground." })),
   foreground: foregroundField,
 }, { additionalProperties: false });
 const PAGE_KEYS: Record<string, string> = { enter: "Enter", return: "Enter", esc: "Escape", escape: "Escape", tab: "Tab", space: "Space", backspace: "Backspace", delete: "Delete", del: "Delete",

@@ -5,7 +5,7 @@ import { assistantMessage, getToolExecution, getToolExecutions, getToolResultTex
 import { expect, test } from "vitest";
 import { nestedCalls, SCRIPT_HELPERS } from "./fixtures/standalone-computer.ts";
 
-test("real Pi sends keys, chords and drags as real input and keeps partial and refused outcomes apart", async () => {
+test("real Pi sends keys, chords and drags in the background and keeps partial and refused outcomes apart", async () => {
   await mkdir(".tmp/cua-gestures", { recursive: true });
   const cwd = await mkdtemp(path.resolve(".tmp/cua-gestures/pi-contract-")); const log = path.join(cwd, "calls.jsonl");
   await mkdir(path.join(cwd, ".pi"));
@@ -50,11 +50,12 @@ text("Complete sequence guards passed");`;
     expect(presses[3].action_capability).toMatchObject({ background: "unavailable", foreground: "suggested" });
     const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
     const input = calls.filter(c => ["press_key", "hotkey", "drag"].includes(c.name));
-    expect(input.map(c => c.name)).toEqual(["press_key", "hotkey", "drag", "press_key", "press_key"]);
-    expect(input.map(c => c.arguments.key ?? c.arguments.keys)).toEqual(["a", ["shift", "b"], undefined, "escape", "delete"]);
-    expect(input.map(c => c.arguments.target)).toEqual(Array(5).fill({ kind: "window", pid: 42, window_id: 91 }));
-    // Keys and drags are real input: every one goes in the foreground, and a refused key is not retried.
-    expect(input.every(c => c.arguments.delivery_mode === "foreground")).toBe(true);
+    expect(input.map(c => c.name)).toEqual(["press_key", "hotkey", "drag", "press_key", "press_key", "press_key"]);
+    expect(input.map(c => c.arguments.key ?? c.arguments.keys)).toEqual(["a", ["shift", "b"], undefined, "escape", "delete", "delete"]);
+    expect(input.map(c => c.arguments.target)).toEqual(Array(6).fill({ kind: "window", pid: 42, window_id: 91 }));
+    // Keys and drags go to the window in the background. The key refused there is retried once in the foreground,
+    // and its foreground refusal is final.
+    expect(input.map(c => c.arguments.delivery_mode)).toEqual([...Array(5).fill("background"), "foreground"]);
     expect(calls.some(c => c.name === "bring_to_front")).toBe(false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
