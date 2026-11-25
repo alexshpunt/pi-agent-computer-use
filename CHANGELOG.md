@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 — 2026-11-25
+
+### Fixed
+
+- Click pages in Playwright-connected browsers using coordinates from their screenshots, including on high-DPI displays. Read the window with `views: ["page-image"]`, then pass the returned `frame:<id>` as `space` to `computer_click`. Coordinates are pixels of the returned image. The tool refuses to send input if the point is outside the image or the frame is no longer current, such as after scrolling or switching tabs.
+
 ## 0.2.2 — 2026-11-24
 
 ### Fixed
