@@ -1,6 +1,6 @@
 import type { ExtensionContext, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CuaImageSettings } from "./cua-image-settings.ts";
-import type { VisualOptions, VisualSettings } from "./native-visuals.ts";
+import { desktopActivitySettings, type VisualOptions, type VisualSettings } from "./native-visuals.ts";
 import type { ComputerMode } from "./session.ts";
 import { readLegacyEscapeStop, writeEscapeStop } from "./computer-settings.ts";
 import { readScopedPreferences, writeScopedPreference, type PreferenceKey, type ScopedValues } from "./scoped-preferences.ts";
@@ -52,7 +52,7 @@ export class PreferencesController {
     this.images.setHints(v.hints ?? true);
     this.images.setGuides({ grid: v.grid ?? false, action: v.action ?? false });
     const patch: Partial<VisualOptions> = { ...this.visualBaseline };
-    for (const key of ["preset", "observations", "previews", "pointer", "scroll_drag", "keyboard", "typed_text", "reduced_motion", "quality", "opacity"] as const) {
+    for (const key of ["preset", "observations", "previews", "pointer", "scroll_drag", "keyboard", "typed_text", "reduced_motion", "quality", "opacity", ...desktopActivitySettings.map(([key]) => key)] as const) {
       if (v[key] !== undefined) Object.assign(patch, { [key]: v[key] });
     }
     if (!this.legacyPreview && v.previews === undefined && v.preset === "subtle") patch.previews = false;

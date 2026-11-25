@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Input, SettingsList, truncateToWidth, type SettingItem, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { CuaImageSettings } from "./cua-image-settings.ts";
-import { VisualSettings, type VisualOptions } from "./native-visuals.ts";
+import { desktopActivitySettings, VisualSettings, type VisualOptions } from "./native-visuals.ts";
 import type { ComputerMode } from "./session.ts";
 import type { HumanStop } from "./human-stop.ts";
 import type { PreferencesController } from "./preferences-controller.ts";
@@ -95,6 +95,7 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
           { id: "action", label: "Action guide", currentValue: onOff(!!image.guides?.action), values: booleanValues, description: "on: mark the action location on screenshots. off: omit the marker." },
           { id: "preset", label: "Visual preset", currentValue: visual.preset, values: ["off", "subtle", "full"], description: "off: disable visuals. subtle: activity cues without previews by default. full: activity cues with previews by default." },
           ...([ ["observations", "Observation frames", "on: show frames for observations. off: hide them."], ["previews", "Image previews", "on: show operation image previews. off: hide them."], ["pointer", "Pointer actions", "on: show pointer action details. off: hide them."], ["scroll_drag", "Scroll and drag", "on: show scroll and drag details. off: hide them."], ["keyboard", "Keyboard actions", "on: show keyboard action details. off: hide them."], ["typed_text", "Show typed text", "on: show typed text when keyboard details are enabled. off: hide it. Password fields stay private."], ["reduced_motion", "Reduced motion", "on: reduce visual animation. off: use normal animation."] ] as const).map(([id, label, description]) => ({ id, label, currentValue: onOff(visual[id]), values: booleanValues, description })),
+          ...desktopActivitySettings.map(([id, label, description]) => ({ id, label, currentValue: onOff(visual[id]), values: booleanValues, description })),
           { id: "quality", label: "Visual quality", currentValue: visual.quality, values: ["performance", "balanced", "high"], description: "performance: favor speed. balanced: balance speed and quality. high: favor visual quality." },
           { id: "opacity", label: "Visual opacity", currentValue: String(visual.opacity), submenu: numeric("Opacity (0–1)"), description: "0–1: visual opacity. 0 is transparent; 1 is fully opaque." },
           { id: "reset-images", label: "Reset screenshot settings", currentValue: "reset", values: ["reset"], description: "reset: clear screenshot overrides in the selected scope." },
@@ -111,7 +112,7 @@ export function registerComputerSettingsCommand(pi: ExtensionAPI, options: Optio
           list.updateValue("escape", onOff(escapeStop)); list.updateValue("cap", String(current.maxLongEdge)); list.updateValue("scale", String(current.scale));
           list.updateValue("hints", onOff(current.hints !== false)); list.updateValue("grid", onOff(!!current.guides?.grid)); list.updateValue("action", onOff(!!current.guides?.action));
           for (const key of ["preset", "quality", "opacity"] as const) list.updateValue(key, String(v[key]));
-          for (const key of ["observations", "previews", "pointer", "scroll_drag", "keyboard", "typed_text", "reduced_motion"] as const) list.updateValue(key, onOff(v[key]));
+          for (const key of ["observations", "previews", "pointer", "scroll_drag", "keyboard", "typed_text", "reduced_motion", ...desktopActivitySettings.map(([key]) => key)] as const) list.updateValue(key, onOff(v[key]));
           if (scoped) for (const item of items) {
             if (["resume", "reset-images"].includes(item.id)) continue;
             const key = item.id as keyof typeof scoped.sources;
