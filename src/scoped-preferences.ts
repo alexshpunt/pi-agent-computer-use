@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promis
 import path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { lock } from "proper-lockfile";
-import { desktopActivitySettings, type DesktopActivitySetting } from "./native-visuals.ts";
+import { desktopActivitySettings, type DesktopActivitySetting } from "./desktop-activity-settings.ts";
 
 /** Preferences users can set independently at global and project level. */
 export interface ScopedValues extends Record<DesktopActivitySetting, boolean> {

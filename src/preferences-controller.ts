@@ -1,6 +1,7 @@
 import type { ExtensionContext, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { CuaImageSettings } from "./cua-image-settings.ts";
-import { desktopActivitySettings, type VisualOptions, type VisualSettings } from "./native-visuals.ts";
+import { desktopActivitySettings } from "./desktop-activity-settings.ts";
+import type { VisualOptions, VisualSettings } from "./native-visuals.ts";
 import type { ComputerMode } from "./session.ts";
 import { readLegacyEscapeStop, writeEscapeStop } from "./computer-settings.ts";
 import { readScopedPreferences, writeScopedPreference, type PreferenceKey, type ScopedValues } from "./scoped-preferences.ts";

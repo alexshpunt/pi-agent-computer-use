@@ -5,7 +5,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Input, SettingsList, truncateToWidth, type SettingItem, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { CuaImageSettings } from "./cua-image-settings.ts";
-import { desktopActivitySettings, VisualSettings, type VisualOptions } from "./native-visuals.ts";
+import { desktopActivitySettings } from "./desktop-activity-settings.ts";
+import { VisualSettings, type VisualOptions } from "./native-visuals.ts";
 import type { ComputerMode } from "./session.ts";
 import type { HumanStop } from "./human-stop.ts";
 import type { PreferencesController } from "./preferences-controller.ts";
