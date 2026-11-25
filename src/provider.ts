@@ -498,7 +498,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
     optional(connectReadPlugin(pi, { protocol: READ_PROTOCOL, apiVersion: READ_API_VERSION, id: "computer", setup(api) {
       accepted.add("read");
       api.addResolver({ resolver, priority: -250, renderResult: computerReadRenderer(describe) as never });
-      for (const view of ["image", "ui", "full", "state", "dom", "region", "sequence", "frames", "capture", "element", "ocr", "changes", "regions", "aria"])
+      for (const view of ["image", "ui", "full", "state", "dom", "page-image", "region", "sequence", "frames", "capture", "element", "ocr", "changes", "regions", "aria"])
         api.addView({ view, contentKind: "any", presenter: { id: `computer-${view}`, present: document => document } });
       api.addHandler({ stage: "read", when: { resolvedBy: resolver.id, contentKind: "any" }, async handler(context) {
         const { request, resolverContext } = context;
