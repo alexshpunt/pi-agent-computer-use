@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { describe, expect, test } from "vitest";
-import { derivedPng } from "../src/web-capture.ts";
-import { elementRect, matchesViewport, type PageGeometry } from "../src/web-geometry.ts";
+import { derivedPng, pageFramePng } from "../src/web-capture.ts";
+import { elementRect, framePoint, matchesViewport, pageImageSize, type PageGeometry } from "../src/web-geometry.ts";
 
 const geometry = (over: Partial<PageGeometry> = {}): PageGeometry => ({ dpr: 1.5, scrollX: 0, scrollY: 0, innerWidth: 200, innerHeight: 100, ...over });
 /** A device-pixel viewport screenshot, white with a black block at the given device rectangle. */
@@ -11,6 +11,26 @@ async function viewportPng(width: number, height: number, block?: { left: number
   return sharp(data, { raw: { width, height, channels: 3 } }).png().toBuffer();
 }
 const size = async (png: Buffer) => { const { width, height } = await sharp(png).metadata(); return { width, height }; };
+
+describe("page image coordinates", () => {
+  test("caps the long edge without upscaling and resizes to exactly the reported dimensions", async () => {
+    expect(pageImageSize({ width: 300, height: 151 })).toEqual({ width: 300, height: 151 });
+    expect(pageImageSize({ width: 1000, height: 2001 })).toEqual({ width: 640, height: 1280 });
+    const output = pageImageSize({ width: 3840, height: 2003 });
+    expect(output).toEqual({ width: 1280, height: 668 });
+    expect(await size(await pageFramePng(await viewportPng(3840, 2003), output))).toEqual(output);
+  });
+
+  test("maps shown pixels directly to viewport CSS pixels, not DPR or page scroll", () => {
+    const output = { width: 1280, height: 668 };
+    const viewport = geometry({ innerWidth: 2560, innerHeight: 1335, scrollX: 42, scrollY: 500 });
+    expect(framePoint({ x: 0, y: 0 }, output, viewport)).toEqual({ x: 0, y: 0 });
+    expect(framePoint({ x: 900, y: 334 }, output, viewport)).toEqual({ x: 1800, y: 667.5 });
+    expect(framePoint({ x: 1279.5, y: 667 }, output, viewport)).toMatchObject({ x: 2559 });
+    for (const [x, y] of [[1280, 0], [0, 668], [-1, 0], [0, -1], [NaN, 0], [0, Infinity]])
+      expect(framePoint({ x, y }, output, viewport)).toBeUndefined();
+  });
+});
 
 describe("matchesViewport", () => {
   test("accepts device pixels of the viewport within a pixel and refuses another scale", () => {

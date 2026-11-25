@@ -2,6 +2,12 @@ import { expect, test, vi } from "vitest";
 import { parseComputerViews } from "../src/computer-views.ts";
 import { ComputerSession, textMatcher, type Driver, type DriverResult } from "../src/session.ts";
 
+test("page-image is a standalone browser viewport read", () => {
+  expect(parseComputerViews(["page-image"])).toEqual({ kind: "page-image" });
+  expect(() => parseComputerViews(["image", "page-image"])).toThrow(/Use page-image alone/);
+  expect(() => parseComputerViews(["page-image", "ocr"])).toThrow();
+});
+
 test("discovery queries match substrings or explicit regular expressions", () => {
   expect(textMatcher("paint")("Untitled - Paint")).toBe(true);
   expect(textMatcher("regex:.")("anything")).toBe(true);
