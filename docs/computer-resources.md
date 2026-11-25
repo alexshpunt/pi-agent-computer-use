@@ -60,6 +60,12 @@ Native locators run over the UI Automation tree:
 
 ## Browser pages
 
+For a visual click on a page, {read} the browser window with `views: ["page-image"]`. It returns the page viewport without browser chrome, resized to at most 1280 pixels on the long edge. Use the returned id and a point from that PNG, measured from its top left:
+```js
+computer_click({ window, space: `frame:${id}`, x: 640, y: 400 })
+```
+Read a new image after a frame click, navigation, tab switch, scroll or resize. The click refuses if the frame is no longer current for that window or the point is outside the image. A frame id is not for locators, other tools, native window images or element crops. Regular page points still use viewport CSS pixels; for the browser toolbar use a window image and `space: "window"`.
+
 - Keys go to the page, so browser shortcuts such as `alt+ArrowLeft` do not run there: use `computer_browser`, or `space: "window"`.
 - A popup does not become the active tab by itself: `computer_browser` `switch_tab`.
 - Downloads land in a temporary folder that closing the session deletes; copy what you need.
