@@ -106,6 +106,8 @@ test("input tools build one plan for native windows and one for browser pages", 
   expect(() => clickPlan({ window: w })).toThrow("click needs a target or a point (x and y).");
   expect(() => clickPlan({ window: w, x: 1 })).toThrow("click needs both x and y for a point.");
   expect(() => clickPlan({ window: w, x: 1, y: 2, target: "1:a" })).toThrow("click takes a target or a point, not both.");
+  expect(clickPlan({ window: w, x: 0, y: 10, space: "frame:frame-id" })).toMatchObject({ frameId: "frame-id", point: { x: 0, y: 10 } });
+  expect(() => clickPlan({ window: w, space: "frame:frame-id", target: "e1" })).toThrow(/needs x and y/);
   expect(hoverPlan({ window: w, target: "1:a" }).native).toEqual({ action: "hover", dwell_ms: 300 });
   expect(dragPlan({ window: w, from: { target: "1:a" }, to: { x: 5, y: 6 }, via: [{ x: 3, y: 4 }] })).toMatchObject({ target: "1:a", end: { point: { x: 5, y: 6 } }, native: { action: "drag", via: [{ x: 3, y: 4 }] } });
   expect(scrollPlan({ window: w, delta_y: -2 })).toMatchObject({ native: { action: "scroll", delta_y: -2, unit: "wheel_detents" }, web: { action: "scroll", delta_y: -200 } });

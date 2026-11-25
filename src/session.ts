@@ -31,8 +31,8 @@ import { combine, evaluateNative, validateWait, type ConditionResult, type WaitR
 import { computerSource } from "./computer-address.ts";
 import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLaunchOptions, type WebOpened, type WebPage, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
 import { ATTACH_APPROVAL_MS } from "./browser-command-line.ts";
-import { derivedPng } from "./web-capture.ts";
-import type { Derive } from "./web-geometry.ts";
+import { derivedPng, pageFramePng } from "./web-capture.ts";
+import type { Derive, PageFrame } from "./web-geometry.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -194,6 +194,7 @@ export interface ComputerResult {
     source_identity?: SourceIdentity;
     action_capability?: ActionCapability;
     agent_image?: Record<string, unknown>;
+    page_frame?: PageFrame;
     highlight?: HighlightResult;
     ui?: UiResource;
     /** Fresh Playwright page structure for an owned browser window. */
@@ -1653,6 +1654,26 @@ export class ComputerSession {
     });
   }
 
+  /** Viewport PNG whose output pixels are valid for one frame-bound click. */
+  observePageFrame(ref: string, signal?: AbortSignal): Promise<ComputerResult> {
+    return this.queue(async () => {
+      const entry = await this.webEntry(ref, signal);
+      if (!("ref" in entry)) return entry;
+      try {
+        const { frame, png, url, title } = await entry.web!.request<{ frame: PageFrame; png: string; url: string; title: string }>("capturePageFrame", {}, signal);
+        const bytes = await pageFramePng(Buffer.from(png, "base64"), frame);
+        const image: Content = { type: "image", data: bytes.toString("base64"), mimeType: "image/png" };
+        await this.activity(entry, { kind: "inspect" }, signal, image);
+        if (!this.allowed(entry) || signal?.aborted) return this.result("refused", "Observation revoked or cancelled; pixels withheld.");
+        return this.result("observed", `Browser page viewport, ${frame.width}x${frame.height} image pixels. Use computer_click on this window with space: "frame:${frame.id}", x and y from this image (origin at top left).`,
+          { url, title }, { ...this.addressed(entry), page_frame: frame,
+            agent_image: { route: "playwright_screenshot", kind: "page", coordinate_space: "page_image_pixels",
+              output: { width: frame.width, height: frame.height, bytes: bytes.length, mimeType: "image/png",
+                hash: createHash("sha256").update(bytes).digest("hex") } } }, [image]);
+      } catch (error) { return this.webFailure(entry, error); }
+    });
+  }
+
   /** Playwright screenshot of the page viewport, one element, or the viewport with that element highlighted. */
   webImage(ref: string, id: string | undefined, kind: "page" | "crop" | "highlight", target?: WebTarget, signal?: AbortSignal, css = false): Promise<ComputerResult> {
     return this.queue(async () => {
@@ -1702,19 +1723,20 @@ export class ComputerSession {
    * dialogs, files and page code. Refs in a target resolve against the page's latest snapshot. The result carries
    * the page's next snapshot as a new observation.
    */
-  actPage(ref: string, action: WebAction, signal?: AbortSignal): Promise<ComputerResult> {
+  actPage(ref: string, action: WebAction, signal?: AbortSignal, frameId?: string): Promise<ComputerResult> {
     return this.queue(async () => {
       const entry = await this.webEntry(ref, signal);
       if (!("ref" in entry)) return entry;
       if (!this.allowed(entry)) return this.denied(ref);
       entry.dom = undefined; entry.windowState = undefined; entry.observation = undefined; entry.detail = undefined;
+      const label = frameId ? "click" : presentationAction(action);
       try {
-        const observed = this.webObservation(entry, await entry.web!.page("act", action, signal));
-        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", presentationAction(action), presentationDetail(action));
+        const observed = this.webObservation(entry, await entry.web!.page("act", frameId ? { ...action, frameId } : action, signal));
+        await this.activity(entry, { kind: "action" }, signal, undefined, "delivered", label, presentationDetail(action));
         if (!this.allowed(entry) || signal?.aborted) return this.result("unknown", "Action completed, but access ended or cancellation arrived; DOM withheld. Do not replay blindly.");
-        return this.result("delivered", `Playwright performed ${action.action}. Check the fresh snapshot below for the page's response.`,
+        return this.result("delivered", `Playwright performed ${frameId ? "a page-image click" : action.action}. Check the fresh snapshot below for the page's response.`,
           undefined, { ...this.addressed(entry), observation_id: observed.id, dom: observed.page });
-      } catch (error) { return this.webFailure(entry, error, true, signal, presentationAction(action), presentationDetail(action)); }
+      } catch (error) { return this.webFailure(entry, error, true, signal, label, presentationDetail(action)); }
     });
   }
 

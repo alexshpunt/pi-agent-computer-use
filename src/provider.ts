@@ -33,6 +33,7 @@ export const computerViewsHelp = (names: ComputerToolNames) => [
   `On a computer window: full (default), image, ui — pixels and UI, pixels only, UI only.`,
   `aria — UI as a Playwright aria snapshot with [ref=…].`,
   `dom[:{target,depth,boxes,log}] — aria snapshot of a browser page opened with computer_open; use alone.`,
+  `page-image — browser page viewport screenshot with a frame id for computer_click; use alone.`,
   `state — minimized, maximized, foreground, bounds, hung; use alone.`,
   `changes — only what changed since the window's previous observation.`,
   `ocr — Windows OCR lines with boxes; regions — icons and text areas from Cua perception.`,
@@ -497,7 +498,7 @@ export async function registerComputerProvider(pi: ExtensionAPI, getSession: (cw
     optional(connectReadPlugin(pi, { protocol: READ_PROTOCOL, apiVersion: READ_API_VERSION, id: "computer", setup(api) {
       accepted.add("read");
       api.addResolver({ resolver, priority: -250, renderResult: computerReadRenderer(describe) as never });
-      for (const view of ["image", "ui", "full", "state", "dom", "region", "sequence", "frames", "capture", "element", "ocr", "changes", "regions", "aria"])
+      for (const view of ["image", "ui", "full", "state", "dom", "page-image", "region", "sequence", "frames", "capture", "element", "ocr", "changes", "regions", "aria"])
         api.addView({ view, contentKind: "any", presenter: { id: `computer-${view}`, present: document => document } });
       api.addHandler({ stage: "read", when: { resolvedBy: resolver.id, contentKind: "any" }, async handler(context) {
         const { request, resolverContext } = context;
