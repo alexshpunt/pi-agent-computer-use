@@ -1,6 +1,7 @@
 // Windows Node worker: one visible Playwright browser with a disposable profile, the agent's persistent one, or a
 // running Chrome/Edge it attached to. EOF closes an owned browser (deleting a disposable profile) or detaches.
 import readline from "node:readline";
+import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
@@ -14,9 +15,9 @@ import { AgentProfileInUseError, lockAgentProfile } from "./agent-profile-lock.t
 import type { WebAction, WebDownload, WebEvaluation, WebLaunchOptions, WebLogEntry, WebSnapshotOptions, WebTab, WebTarget, WebTimelineEvent } from "./web-browser.ts";
 import type { ConditionResult, UiCondition } from "./ui-conditions.ts";
 import { ariaTreeFromYaml, matchesAriaTemplate } from "./aria-match.ts";
-import { elementRect, matchesViewport, type CssBox, type Derive, type PageGeometry } from "./web-geometry.ts";
+import { elementRect, framePoint, matchesViewport, pageImageSize, type CssBox, type Derive, type PageFrame, type PageGeometry } from "./web-geometry.ts";
 
-interface Tab { id: string; page: Page; title: string; load: WebTab["load"]; opener?: string; dialog?: Dialog; onDialog: Set<() => void> }
+interface Tab { id: string; page: Page; frameRevision: number; title: string; load: WebTab["load"]; opener?: string; dialog?: Dialog; onDialog: Set<() => void> }
 interface DownloadRecord { info: WebDownload; download: Download; done: Promise<void> }
 
 let context: BrowserContext | undefined;
@@ -43,6 +44,9 @@ let creating = false;
 const tabs: Tab[] = [];
 /** The tab every page operation targets. Only open, new_tab and switch_tab change it; popups never take it implicitly. */
 let active: Tab | undefined;
+/** Only the latest viewport capture of this browser can ground a click. */
+let pageFrame: { frame: PageFrame; tab: Tab; geometry: FrameGeometry[] } | undefined;
+const frameTrackerKey = `pi-page-frame-${randomUUID()}`;
 /** Tab and dialog events since the last snapshot, oldest first. */
 let events: string[] = [];
 /** Downloads of this browser. Playwright keeps their files in its temporary directory and deletes them when the browser closes. */
@@ -70,11 +74,18 @@ const short = (text: string, max = 200) => text.length > max ? text.slice(0, max
 
 function adopt(page: Page): Tab {
   // A fresh about:blank page has already loaded and fires no further load event.
-  const tab: Tab = { id: `t${++serial}`, page, title: "", load: page.url() === "about:blank" ? "complete" : "loading", onDialog: new Set() };
+  const tab: Tab = { id: `t${++serial}`, page, frameRevision: 0, title: "", load: page.url() === "about:blank" ? "complete" : "loading", onDialog: new Set() };
   tabs.push(tab);
   page.on("domcontentloaded", () => { tab.load = "interactive"; });
   page.on("load", () => { tab.load = "complete"; page.title().then(title => { tab.title = title; }, () => undefined); });
-  page.on("framenavigated", frame => { if (frame === page.mainFrame()) tab.load = "loading"; });
+  const invalidateFrame = () => {
+    tab.frameRevision++;
+    if (pageFrame?.tab === tab) pageFrame = undefined;
+  };
+  page.on("framenavigated", frame => { if (frame === page.mainFrame()) tab.load = "loading"; invalidateFrame(); });
+  page.on("frameattached", invalidateFrame);
+  page.on("framedetached", invalidateFrame);
+  page.on("close", invalidateFrame);
   // A dialog listener stops Playwright's automatic dismissal: the dialog stays open until the agent decides.
   page.on("dialog", dialog => {
     tab.dialog = dialog;
@@ -550,7 +561,10 @@ async function play(page: Page, events: WebTimelineEvent[], timeout: number): Pr
   }
 }
 
-async function act(action: WebAction) {
+async function act(action: WebAction & { frameId?: string }) {
+  if (action.frameId !== undefined) return clickPageFrame(action);
+  // Arbitrary page code and other input can change what a previous image shows.
+  if (action.action !== "wait" && action.action !== "wait_load" && action.action !== "wait_download") pageFrame = undefined;
   const timeout = action.timeout_ms ?? (["navigate", "back", "forward", "reload", "new_tab", "wait_load", "wait_download", "upload", "evaluate"].includes(action.action) ? 30_000 : 5_000);
   switch (action.action) {
     case "new_tab": {
@@ -748,6 +762,78 @@ async function plainShot(page: Page, element?: Locator): Promise<{ png: Buffer; 
   } catch { return undefined; }
 }
 
+interface FrameGeometry extends PageGeometry { zoom: number; visualX: number; visualY: number; revision: number; documentTime: number }
+
+/** A scroll/resize revision also catches nested scroll areas and a change that returns to its original geometry. */
+function readFrameGeometry(page: Page): Promise<FrameGeometry[]> {
+  return Promise.all(page.frames().map(frame => frame.evaluate(key => {
+    const slot = Symbol.for(key);
+    const slots = window as unknown as Record<symbol, { revision: number } | undefined>;
+    const visual = visualViewport;
+    let tracker = slots[slot];
+    if (!tracker) {
+      // Playwright serializes this callback; a separately named arrow can pick up tsx's outer __name helper.
+      const state = {
+        revision: 0,
+        changed(event: Event) { if (event.isTrusted) state.revision++; },
+      };
+      window.addEventListener("scroll", state.changed, true);
+      window.addEventListener("resize", state.changed);
+      document.addEventListener("visibilitychange", state.changed);
+      visual?.addEventListener("scroll", state.changed);
+      visual?.addEventListener("resize", state.changed);
+      tracker = slots[slot] = state;
+    }
+    return { dpr: devicePixelRatio, scrollX, scrollY, innerWidth, innerHeight, zoom: visual?.scale ?? 1,
+      visualX: visual?.offsetLeft ?? 0, visualY: visual?.offsetTop ?? 0, revision: tracker.revision, documentTime: performance.timeOrigin };
+  }, frameTrackerKey)));
+}
+
+async function capturePageFrame() {
+  pageFrame = undefined;
+  const tab = current(), page = idle(tab);
+  const revision = tab.frameRevision;
+  const before = await readFrameGeometry(page);
+  // A plain device-pixel screenshot avoids the visible flash from Playwright's CSS-scale or clipped captures.
+  const png = await page.screenshot({ timeout: 10_000 });
+  const after = await readFrameGeometry(page);
+  const raw = { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+  const viewport = before[0];
+  if (active !== tab || tab.frameRevision !== revision || !viewport || viewport.zoom !== 1 || viewport.visualX !== 0 || viewport.visualY !== 0 ||
+      !matchesViewport(raw, viewport) || JSON.stringify(before) !== JSON.stringify(after))
+    throw Error("Could not establish a stable browser viewport. Read the window with page-image again.");
+  const frame = { id: randomUUID(), ...pageImageSize(raw) };
+  pageFrame = { frame, tab, geometry: before };
+  return { frame, png: png.toString("base64"), url: page.url(), title: tab.title };
+}
+
+/** Check the exact capture immediately before any mouse or keyboard input, on the browser worker. */
+async function clickPageFrame(action: WebAction & { frameId?: string }) {
+  const frame = pageFrame, tab = active;
+  const stale = () => Error('This page-image frame is no longer current for this browser tab. Read the window with page-image again. Nothing was sent.');
+  if (!frame || frame.frame.id !== action.frameId || !tab || frame.tab !== tab) throw stale();
+  const move = action.events?.find(event => event.type === "move");
+  if (action.action !== "timeline" || !move || move.target || move.x === undefined || move.y === undefined)
+    throw Error("A page-image click needs an image point. Nothing was sent.");
+  const point = framePoint({ x: move.x, y: move.y }, frame.frame, frame.geometry[0]);
+  if (!point) throw Error(`Point is outside the ${frame.frame.width}x${frame.frame.height} page-image. Nothing was sent.`);
+  const page = idle(tab);
+  const geometry = await readFrameGeometry(page).catch(() => undefined);
+  if (pageFrame !== frame || active !== tab || tab.dialog || JSON.stringify(geometry) !== JSON.stringify(frame.geometry)) {
+    if (pageFrame === frame) pageFrame = undefined;
+    throw stale();
+  }
+  pageFrame = undefined;
+  try {
+    const events = action.events!.map(event => event === move ? { ...event, ...point } : event);
+    if (await untilDialog(tab, play(page, events, 5000)) === "dialog")
+      note(`${tab.id}: click is waiting for the dialog; it may finish after the dialog is handled`);
+    return await snapshot({});
+  } catch (error) {
+    throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), { name: "ActionOutcomeUnknown" });
+  }
+}
+
 async function screenshot({ target, highlight, css }: { target?: WebTarget; highlight?: boolean; css?: boolean }) {
   const tab = current(), page = idle(tab);
   let box;
@@ -775,6 +861,7 @@ async function screenshot({ target, highlight, css }: { target?: WebTarget; high
 async function close() {
   const owned = context, directory = profile, connected = attached, child = ownedProcess, verified = ownedVerified, pendingApproval = approvalDirectory;
   const cleanupFailures: unknown[] = [];
+  pageFrame = undefined;
   context = undefined; attached = undefined; ownedProcess = undefined; ownedVerified = false; approvalDirectory = undefined; approvalUrl = undefined; active = undefined; profile = undefined; tabs.length = 0; downloads.length = 0; log.length = 0;
   if (child) {
     // Only a browser whose CDP identity matches our child may receive Browser.close.
@@ -828,7 +915,7 @@ if ($p.ExitCode -ne 0) { throw 'The owned browser exited abnormally' }`;
   return {};
 }
 
-const operations: Record<string, (args: never) => Promise<unknown>> = { open, approve, snapshot, act, check, screenshot, close };
+const operations: Record<string, (args: never) => Promise<unknown>> = { open, approve, snapshot, act, check, screenshot, capturePageFrame, close };
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 // A cancelled request may still be running. Never let close overtake an unfinished open or approval.
 let operationsTail: Promise<void> = Promise.resolve();

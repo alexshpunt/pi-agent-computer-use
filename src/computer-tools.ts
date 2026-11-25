@@ -331,8 +331,12 @@ function holding(modifiers: string[] | undefined, start: number, end: number, ev
   return [...keys.map(key => ({ at_ms: start, type: "key_down", key })), ...events, ...keys.reverse().map(key => ({ at_ms: end, type: "key_up", key }))];
 }
 
+const clickSpace = Type.Optional(Type.Union([
+  StringEnum(["page", "window"] as const), Type.String({ pattern: "^frame:[a-zA-Z0-9_-]+$" }),
+], { description: 'Browser windows: page (default) — locators, refs and CSS points; window — native refs and window image points (e.g. toolbar); frame:<id> — x and y in the exact page-image from {read} on this window, not a locator.' }));
+
 const clickParameters = Type.Object({
-  window: inputWindow, target: inputTarget("The element to click"), x: coordinate(pointX), y: coordinate(pointY), space: pointSpace,
+  window: inputWindow, target: inputTarget("The element to click"), x: coordinate(pointX), y: coordinate(pointY), space: clickSpace,
   button: Type.Optional(StringEnum(["left", "right", "middle"] as const, { description: "Mouse button, default left." })),
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 3, description: "Clicks: 2 is a double click, 3 a triple click. Default 1." })),
   modifiers: modifiersField, foreground: foregroundField, timeout_ms: locatorTimeout,
@@ -346,9 +350,13 @@ export function clickPlan(params: Static<typeof clickParameters>): InputPlan {
     : count === 2 && button === "left" ? { action: "double_click", ...modifiers, ...timeout(params) }
     : { action: "click", ...(button !== "left" ? { button } : {}), count, ...modifiers, ...timeout(params) };
   const aimed = aim(params, "click", true);
+  const frameId = params.space?.startsWith("frame:") ? params.space.slice(6) : undefined;
+  if (frameId !== undefined && (!frameId || !aimed.point || params.foreground))
+    throw new ComputerRequestError("A page-image frame click needs x and y, without target or foreground. Use the frame id returned by page-image.");
+  const space = params.space === "page" || params.space === "window" ? params.space : undefined;
   // A point of a page gets the presses Playwright's mouse.click sends, numbered so the page sees double and triple clicks.
   const presses = Array.from({ length: count }, (_, index) => [{ at_ms: 0, type: "button_down", button, click_count: index + 1 }, { at_ms: 0, type: "button_up", button, click_count: index + 1 }]).flat();
-  return { label: "click", ...aimed, ...shared(params), native,
+  return { label: "click", ...aimed, ...shared({ ...params, space }), ...(frameId ? { frameId } : {}), native,
     web: aimed.point ? { action: "timeline", events: holding(params.modifiers, 0, 0, [pageMove(0, aimed), ...presses]) }
       : { action: "click", ...(button !== "left" ? { button } : {}), ...(count > 1 ? { click_count: count } : {}), ...pageModifiers(params.modifiers), ...timeout(params) } };
 }

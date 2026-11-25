@@ -33,6 +33,7 @@ export const computerViewsHelp = (names: ComputerToolNames) => [
   `On a computer window: full (default), image, ui — pixels and UI, pixels only, UI only.`,
   `aria — UI as a Playwright aria snapshot with [ref=…].`,
   `dom[:{target,depth,boxes,log}] — aria snapshot of a browser page opened with computer_open; use alone.`,
+  `page-image — browser page viewport screenshot with a frame id for computer_click; use alone.`,
   `state — minimized, maximized, foreground, bounds, hung; use alone.`,
   `changes — only what changed since the window's previous observation.`,
   `ocr — Windows OCR lines with boxes; regions — icons and text areas from Cua perception.`,

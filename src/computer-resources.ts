@@ -104,6 +104,8 @@ export interface InputPlan {
   end?: { target?: string; point?: InputPoint };
   /** Browser windows: page (CSS pixels of the page, the default) or window (pixels of the window's latest image). */
   space?: "page" | "window";
+  /** Click only: the page-image that supplies this point's coordinates. */
+  frameId?: string;
   /** The native command without its target, or why native windows cannot run it. */
   native: Record<string, unknown> | string;
   /** The Playwright action without its target, or why browser pages cannot run it. */
@@ -709,8 +711,13 @@ export class ComputerResources {
     return result && this.stamp(place, result);
   }
   private async readAddress(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
-    if (address.kind === "viewport") return this.readViewport(address, cwd, views, signal);
     const view = parseComputerViews(views);
+    if (view.kind === "page-image") {
+      if (address.kind !== "window") throw new ComputerRequestError("page-image needs the address of a browser window opened or attached with computer_open.");
+      const { session } = await this.routeAddress(cwd, address, signal);
+      return session.observePageFrame(address.ref, signal);
+    }
+    if (address.kind === "viewport") return this.readViewport(address, cwd, views, signal);
     if (address.kind !== "window" && address.kind !== "observation") {
       if (view.ocr) throw new ComputerRequestError("ocr reads a window, one of its observations or a viewport.");
       return this.readNative(address, cwd, views, view, signal);
@@ -1148,6 +1155,11 @@ export class ComputerResources {
   private async inputStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal, viewport?: Viewport): Promise<ComputerResult> {
     const ref = refKind(plan.target);
     const browser = session.isBrowserWindow(window);
+    if (plan.frameId !== undefined) {
+      if (!browser || viewport || plan.label !== "click" || !plan.point || plan.target !== undefined || plan.space !== undefined)
+        throw new ComputerRequestError("A page-image frame click needs x and y on the browser window that returned the frame.");
+      return this.pageInput(window, session, plan, cwd, signal);
+    }
     // A viewport of a browser window is pixels of the window, like space "window".
     if (browser && !viewport && plan.space !== "window" && ref !== "hint") return this.pageInput(window, session, plan, cwd, signal);
     if (plan.space !== undefined && !browser) throw new ComputerRequestError("space applies to browser windows only; points on other windows are pixels of the window's latest image.");
@@ -1166,9 +1178,9 @@ export class ComputerResources {
     try { action = validateWebAction(command); }
     catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
     const dom = session.inputView(window).dom;
-    if (dom && this.snapshots.has(dom)) return this.performAt({ kind: "observation", ref: dom, source: computerSource("observation", dom) }, cwd, JSON.stringify(command), signal);
+    if (plan.frameId === undefined && dom && this.snapshots.has(dom)) return this.performAt({ kind: "observation", ref: dom, source: computerSource("observation", dom) }, cwd, JSON.stringify(command), signal);
     this.retireWindow(window);
-    const result = await session.actPage(window, action, signal);
+    const result = await session.actPage(window, action, signal, plan.frameId);
     return result.details.dom ? this.remember({ window_ref: window }, result) : result;
   }
 

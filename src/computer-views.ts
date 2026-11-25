@@ -3,8 +3,9 @@ import { SEQUENCE_LIMITS, validateSequence, type SequenceOptions, type FrameSele
 import { validateWebSnapshot, validateWebTarget, type WebSnapshotOptions, type WebTarget } from "./web-browser.ts";
 import { validateRendering, type FrameRendering } from "./contact-sheet.ts";
 
-/** One native Read mode. Details and sampled frames never grant input authority. */
+/** One computer Read mode. Only page-image supplies a frame id for a browser click. */
 export type ComputerViews =
+  | { kind: "page-image" }
   | { kind: "state" }
   | { kind: "dom"; options: WebSnapshotOptions }
   | { kind: "overview"; capture: UiCaptureOptions }
@@ -58,6 +59,10 @@ export function parseComputerViews(views: readonly string[] = []): ComputerViews
 
 function parseView(views: readonly string[]): ComputerViews {
   const first = views[0] ?? "";
+  if (views.includes("page-image")) {
+    if (views.length !== 1) throw Error("Use page-image alone: it captures the browser page viewport at a fixed size limit.");
+    return { kind: "page-image" };
+  }
   if (views.some(view => view === "dom" || view.startsWith("dom:"))) {
     if (views.length !== 1) throw Error("Use dom alone: a DOM snapshot has no image, UI, state or capture options.");
     return { kind: "dom", options: validateWebSnapshot(first === "dom" ? {} : json(first.slice(4))) };
