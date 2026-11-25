@@ -752,24 +752,33 @@ export class ComputerResources {
     return `# Computer resource\nSource: ${address.source}\nUse Read to look, Search to discover, and the computer_* tools to act. No native capture occurred during descriptor resolution.`;
   }
 
+  private isDomObservation(address: ComputerAddress): boolean {
+    return address.kind === "observation" && this.snapshots.get(address.ref)?.result.details.dom !== undefined;
+  }
+
   /** Acquire a requested native projection, or inspect one explicitly issued observation; the receipt names its machine. */
   async read(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
-    if (parseComputerViews(views).kind === "sequence") throw new ComputerRequestError("Read only looks; capture frames over time with computer_record action sequence.");
-    return this.activity(address, this.place(address), "read", signal, () => this.look(address, cwd, views, signal),
-      views?.includes("page-image") ? "page" : views?.some(view => view === "image" || view === "ui" || view === "full") || address.kind === "viewport" ? "native" : "auto", true);
+    const view = parseComputerViews(views);
+    if (view.kind === "sequence") throw new ComputerRequestError("Read only looks; capture frames over time with computer_record action sequence.");
+    const route = view.kind === "page-image" || view.kind === "dom" || this.isDomObservation(address) ||
+      (address.kind === "window" && view.kind === "element" && (view.operation === "crop" || view.operation === "highlight"))
+      ? "page" : "native";
+    return this.activity(address, this.place(address), "read", signal, () => this.look(address, cwd, views, view, signal), route, true);
   }
   /** Capture frames of a window or display over time for computer_record; the sequence address then takes frame Reads. */
   sequence(address: ComputerAddress, cwd: string, views: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
-    if (parseComputerViews(views).kind !== "sequence") throw new ComputerRequestError("computer_record sequence takes sequence options only.");
-    return this.activity(address, this.place(address), "record", signal, () => this.look(address, cwd, views, signal), "native", true);
+    const view = parseComputerViews(views);
+    if (view.kind !== "sequence") throw new ComputerRequestError("computer_record sequence takes sequence options only.");
+    return this.activity(address, this.place(address), "record", signal, () => this.look(address, cwd, views, view, signal), "native", true);
   }
-  private async look(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
+  private async look(address: ComputerAddress, cwd: string, views: readonly string[] | undefined,
+    view: ReturnType<typeof parseComputerViews>, signal?: AbortSignal): Promise<ComputerResult | undefined> {
     const place = this.place(address);
-    const result = await this.readAddress(address, cwd, views, signal);
+    const result = await this.readAddress(address, cwd, views, view, signal);
     return result && this.stamp(place, result);
   }
-  private async readAddress(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
-    const view = parseComputerViews(views);
+  private async readAddress(address: ComputerAddress, cwd: string, views: readonly string[] | undefined,
+    view: ReturnType<typeof parseComputerViews>, signal?: AbortSignal): Promise<ComputerResult | undefined> {
     if (view.kind === "page-image") {
       if (address.kind !== "window") throw new ComputerRequestError("page-image needs the address of a browser window opened or attached with computer_open.");
       const { session } = await this.routeAddress(cwd, address, signal);
@@ -943,7 +952,7 @@ export class ComputerResources {
   /** Search permitted discovery metadata or the current collected UI without another native walk; the receipt names its machine. */
   async search(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
     const result = await this.activity(address, this.place(address), "read", signal,
-      () => this.searchAt(address, cwd, query, limit, signal), "auto", true);
+      () => this.searchAt(address, cwd, query, limit, signal), this.isDomObservation(address) ? "page" : "native", true);
     const windows = result.details.state?.windows;
     if (Array.isArray(windows)) {
       const listed = new Set<string>();
@@ -1233,7 +1242,9 @@ export class ComputerResources {
     if (address.kind !== "sequence") throw new ComputerRequestError("watch_stop takes the sequence address its watch returned.");
     const place = this.place(address);
     const { session } = await this.routeAddress(cwd, address, signal);
-    return this.stamp(place, await session.stopWatch(address.ref, { ...(options.to !== undefined ? { dir: resolve(cwd, options.to) } : {}), animation: options.video === true }));
+    return this.stamp(place, await this.activity(address, place, "record", signal, () => session.stopWatch(address.ref, {
+      ...(options.to !== undefined ? { dir: resolve(cwd, options.to) } : {}), animation: options.video === true,
+    }), "native", true));
   }
   private async inputStep(window: string, session: ComputerSession, plan: InputPlan, cwd: string, signal?: AbortSignal, viewport?: Viewport): Promise<ComputerResult> {
     const ref = refKind(plan.target);
@@ -1391,9 +1402,8 @@ export class ComputerResources {
     const kind = activityKind(action);
     // Launching a guest can still touch the host (opening or refocusing a sandbox window), so only established
     // guests are reported as direct. A native attach can also ask the user for approval in a desktop window.
-    const page = address.kind === "observation" && this.snapshots.get(address.ref)?.result.details.dom !== undefined;
     const route = action === "open_sandbox" || action === "open_session" ? "separate_desktop"
-      : page ? "page" : kind === "wait" ? "auto" : "native";
+      : this.isDomObservation(address) ? "page" : kind === "wait" ? "auto" : "native";
     return this.stamp(place, await this.activity(address, place, kind, signal, run, route, ["wait", "files", "clipboard", "record"].includes(kind)));
   }
   private async performAt(address: ComputerAddress, cwd: string, value: string, signal?: AbortSignal, viewport?: PixelBox): Promise<ComputerResult> {
