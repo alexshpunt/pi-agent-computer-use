@@ -33,6 +33,7 @@ import { WebError, type WebAction, type WebBrowser, type WebLauncher, type WebLa
 import { ATTACH_APPROVAL_MS } from "./browser-command-line.ts";
 import { derivedPng, pageFramePng } from "./web-capture.ts";
 import type { Derive, PageFrame } from "./web-geometry.ts";
+import type { DesktopAction, DesktopActivity, DesktopActivityStatus } from "./desktop-activity.ts";
 
 /** Native Windows address. Models use session window references instead. */
 export interface WindowTarget { pid: number; window_id: number }
@@ -103,6 +104,8 @@ export interface Driver {
   holder?(): string;
   /** Human-only native presentation, owned by this driver and never an input route. */
   visuals?: WindowObserver;
+  desktopActivity?: DesktopActivity;
+  beginDesktopActivity?(intent: string, signal?: AbortSignal): Promise<DesktopActivityStatus>;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult>;
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined>;
   /**
@@ -398,6 +401,19 @@ export class ComputerSession {
     /** Display modes, the owned file folder, process health and OCR on this desktop's machine; absent in a sandbox guest. */
     readonly host?: MachineHost,
     private readonly scope: SessionScope = {}) {}
+
+  get desktopActivity(): DesktopActivity | undefined { return this.driver.desktopActivity; }
+  beginDesktopActivity(intent: string, signal?: AbortSignal): Promise<DesktopActivityStatus> {
+    return this.queue(async () => this.driver.beginDesktopActivity?.(intent, signal) ?? "unsupported");
+  }
+
+  /** A display-only hint. Native validates this marker and the current window before drawing it. */
+  desktopActivityWindow(ref: string): DesktopAction["window"] {
+    const entry = this.entries.get(ref);
+    if (!entry || !/^PiComputerUse\.[a-f\d]{32}:\d+:\d+$/i.test(entry.identity)) return;
+    const { pid, window_id } = entry.target;
+    return { pid, window_id, identity: entry.identity };
+  }
 
   private overviewSettings(): CuaVisionSettings {
     const settings = this.settings();

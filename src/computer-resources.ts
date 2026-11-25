@@ -21,6 +21,7 @@ import type { WindowFrame } from "./session.ts";
 import { webContentTop, type UiCaptureOptions, type UiElement, type UiResource } from "./ui-resources.ts";
 import { displayMode } from "./display-mode.ts";
 import { isSemanticAction } from "./semantic-actions.ts";
+import type { ActivityKind, DesktopAction, DesktopActivityStatus } from "./desktop-activity.ts";
 import { accessibleName, ariaRole, checkedState, isVisible, nativeAriaSnapshot, nativeSelector, queryNative, suggestLocator, uniqueNativeLocator, type ParsedSelector } from "./native-locator.ts";
 
 /** The machine this extension runs on, by its address name. */
@@ -217,6 +218,29 @@ export const PAGE_ACTIONS = ["navigate", "back", "forward", "reload", "wait_load
 /** The Delete option that kills the process of a hung window the session opened instead of asking it to close. */
 export const FORCE = "?force=true";
 const FILE_ACTIONS = ["put", "get", "files", "clipboard_read", "clipboard_write", "record_start", "record_stop", "audio_record"];
+
+/** Choose only a bounded category. The action's arguments are never activity metadata. */
+function activityKind(action: unknown): ActivityKind {
+  switch (action) {
+    case "click": case "double_click": case "right_click": case "select": return "click";
+    case "drag": return "drag";
+    case "scroll": return "scroll";
+    case "hover": return "move_pointer";
+    case "type": case "type_text": case "set_value": return "type";
+    case "press": case "key": case "submit": case "hotkey": return "key";
+    case "wait_for": case "verify": return "wait";
+    case "open": case "open_sandbox": case "open_session": case "open_browser": return "open";
+    case "attach_browser": return "browser";
+    case "clipboard_read": case "clipboard_write": return "clipboard";
+    case "put": case "get": case "files": return "files";
+    case "audio_record": case "record_start": case "record_stop": return "record";
+    case "resize": case "webview2_debugging": return "manage";
+    default: return "other";
+  }
+}
+
+const usesPage = (plan: InputPlan, browser: boolean, viewport: boolean): boolean => browser && !viewport &&
+  (plan.frameId !== undefined || (plan.space !== "window" && refKind(plan.target) !== "hint"));
 /** Speech in a WAV file as text, with faster-whisper run through uv on the agent's own machine. */
 async function transcribe(wav: string): Promise<{ text: string; language: string; segments: { start: number; end: number; text: string }[] }> {
   const script = fileURLToPath(new URL("../scripts/transcribe.py", import.meta.url));
@@ -367,6 +391,38 @@ export class ComputerResources {
   constructor(private readonly getSession: (cwd: string) => Promise<ComputerSession>,
     private readonly closeSession: () => Promise<ComputerResult>, private readonly openSandbox?: SandboxFactory,
     private readonly startMachine?: MachineFactory, private readonly getMode: () => ComputerMode = () => "yolo") {}
+
+  private openHost(name: string): ComputerSession | undefined {
+    return name === LOCAL_MACHINE ? this.local : this.machines.get(name)?.session;
+  }
+
+  async startDesktopActivity(machine: string, cwd: string, intent: string, signal?: AbortSignal): Promise<DesktopActivityStatus> {
+    return (await this.machineSession(cwd, machine, signal)).beginDesktopActivity(intent, signal);
+  }
+
+  endDesktopActivity(machine: string): Promise<DesktopActivityStatus> {
+    return this.openHost(machine)?.desktopActivity?.end("completed") ?? Promise.resolve("inactive");
+  }
+
+  async interruptDesktopActivities(): Promise<void> {
+    const sessions = [this.local, ...[...this.machines.values()].map(machine => machine.session)];
+    await Promise.all(sessions.map(session => session?.desktopActivity?.end("interrupted")));
+  }
+
+  /** Report only to a known host that already has an explicit session. Never provision a host for telemetry. */
+  private activity<T extends ComputerResult | undefined>(address: ComputerAddress, place: Place | undefined, kind: ActivityKind,
+    signal: AbortSignal | undefined, run: () => Promise<T>, route: "native" | "page" | "auto" | "separate_desktop" = "native", noInput = false): Promise<T> {
+    const host = place && this.openHost(place.machine);
+    const activity = host?.desktopActivity;
+    if (!host || !activity?.active || !place) return run();
+    const ref = address.kind === "window" || address.kind === "viewport" ? address.ref
+      : address.kind === "observation" ? this.snapshots.get(address.ref)?.target.window_ref : undefined;
+    const location: DesktopAction["location"] = place.sandbox || route === "separate_desktop" ? "separate_desktop"
+      : route === "page" || (route === "auto" && ref !== undefined && host.isBrowserWindow(ref)) ? "browser" : "desktop";
+    const window = location === "desktop" && ref !== undefined ? host.desktopActivityWindow(ref) : undefined;
+    const delivery = noInput ? "none" : place.sandbox || location === "browser" ? "direct" : "unknown";
+    return activity.run({ kind, location, delivery, ...(window ? { window } : {}) }, signal, run, error => error instanceof ComputerRequestError);
+  }
 
   /** Whether this run has an agent browser with a YOLO debugging port, including one still launching. */
   hasUnapprovedAgentBrowser(): boolean {
@@ -530,6 +586,7 @@ export class ComputerResources {
    * result lists each released part and how its cleanup ended.
    */
   private async closeMachine(name: string): Promise<ComputerResult> {
+    await this.openHost(name)?.desktopActivity?.end("interrupted");
     const sandboxes = [...this.sandboxes.values()].filter(sandbox => (sandbox.machine ?? LOCAL_MACHINE) === name);
     const parts = await Promise.all(sandboxes.map(sandbox => this.closeSandbox(sandbox).then(result => [computerSource("sandbox", sandbox.ref), result] as const,
       error => [computerSource("sandbox", sandbox.ref), failure(error, this.getMode())] as const)));
@@ -698,12 +755,13 @@ export class ComputerResources {
   /** Acquire a requested native projection, or inspect one explicitly issued observation; the receipt names its machine. */
   async read(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
     if (parseComputerViews(views).kind === "sequence") throw new ComputerRequestError("Read only looks; capture frames over time with computer_record action sequence.");
-    return this.look(address, cwd, views, signal);
+    return this.activity(address, this.place(address), "read", signal, () => this.look(address, cwd, views, signal),
+      views?.includes("page-image") ? "page" : views?.some(view => view === "image" || view === "ui" || view === "full") || address.kind === "viewport" ? "native" : "auto", true);
   }
   /** Capture frames of a window or display over time for computer_record; the sequence address then takes frame Reads. */
   sequence(address: ComputerAddress, cwd: string, views: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
     if (parseComputerViews(views).kind !== "sequence") throw new ComputerRequestError("computer_record sequence takes sequence options only.");
-    return this.look(address, cwd, views, signal);
+    return this.activity(address, this.place(address), "record", signal, () => this.look(address, cwd, views, signal), "native", true);
   }
   private async look(address: ComputerAddress, cwd: string, views?: readonly string[], signal?: AbortSignal): Promise<ComputerResult | undefined> {
     const place = this.place(address);
@@ -884,7 +942,8 @@ export class ComputerResources {
 
   /** Search permitted discovery metadata or the current collected UI without another native walk; the receipt names its machine. */
   async search(address: ComputerAddress, cwd: string, query: string, limit?: number, signal?: AbortSignal): Promise<ComputerResult> {
-    const result = await this.searchAt(address, cwd, query, limit, signal);
+    const result = await this.activity(address, this.place(address), "read", signal,
+      () => this.searchAt(address, cwd, query, limit, signal), "auto", true);
     const windows = result.details.state?.windows;
     if (Array.isArray(windows)) {
       const listed = new Set<string>();
@@ -936,7 +995,10 @@ export class ComputerResources {
     const force = source.endsWith(FORCE);
     const address = this.address(force ? source.slice(0, -FORCE.length) : source);
     if (force && address.kind !== "window") throw new ComputerRequestError("?force=true applies to window addresses only.");
-    return this.stamp(this.place(address), await this.deleteAt(address, cwd, force, signal));
+    const place = this.place(address);
+    const run = () => this.deleteAt(address, cwd, force, signal);
+    return this.stamp(place, await (address.kind === "window" || address.kind === "sandbox"
+      ? this.activity(address, place, "manage", signal, run) : run()));
   }
   private async deleteAt(address: ComputerAddress, cwd: string, force: boolean, signal?: AbortSignal): Promise<ComputerResult> {
     if (address.kind === "window") {
@@ -966,7 +1028,8 @@ export class ComputerResources {
     if (address.kind !== "window") throw new ComputerRequestError("computer_window needs a window address from Search, Read or a name.");
     const place = this.place(address);
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
-    return this.stamp(place, await (take ? session.claimWindow(address.ref, signal) : session.releaseWindow(address.ref, signal)));
+    return this.stamp(place, await this.activity(address, place, "manage", signal,
+      () => take ? session.claimWindow(address.ref, signal) : session.releaseWindow(address.ref, signal), "native", true));
   }
   /** A viewport the agent made; refused when it was never made or its window has closed. */
   private viewport(address: Extract<ComputerAddress, { kind: "viewport" }>): Viewport {
@@ -1016,6 +1079,11 @@ export class ComputerResources {
     const existing = this.viewports.get(viewportSource(address.ref, address.name));
     if (existing) this.viewport(address);
     const place = this.place(address);
+    return this.activity(address, place, "read", signal, () => this.viewAt(address, cwd, given, existing, place, signal), "native", true);
+  }
+
+  private async viewAt(address: Extract<ComputerAddress, { kind: "viewport" }>, cwd: string, given: Partial<PixelBox>,
+    existing: Viewport | undefined, place: Place | undefined, signal?: AbortSignal): Promise<ComputerResult> {
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
     const captured = await session.windowPixels(address.ref, signal);
     const png = ComputerResources.pixels(captured);
@@ -1064,17 +1132,22 @@ export class ComputerResources {
       catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
     }
     const place = this.place(address);
-    const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
-    this.retireWindow(address.ref);
-    const state = await session.observeWindowState(address.ref, signal);
+    return this.activity(address, place, "manage", signal, () => this.manageAt(address.ref, cwd, management, command.action, place, signal));
+  }
+
+  private async manageAt(window: string, cwd: string,
+    management: WindowManagementCommand | undefined, action: unknown, place: Place | undefined, signal?: AbortSignal): Promise<ComputerResult> {
+    const session = await this.sessionFor(cwd, { window_ref: window }, signal);
+    this.retireWindow(window);
+    const state = await session.observeWindowState(window, signal);
     const id = state.details.window_state_id;
     if (state.details.status !== "observed" || !id) return this.stamp(place, state);
     if (management && state.details.window_state_kind !== "management")
       return this.stamp(place, { ...state, content: [{ type: "text", text: "This native runtime can only restore and activate windows, not move, resize, minimize, maximize or focus them." }],
         details: { ...state.details, status: "refused" } });
     const started = performance.now();
-    const result = management ? await session.manageWindow(address.ref, id, management, signal) : await session.restoreWindow(address.ref, id, signal);
-    return this.stamp(place, ComputerResources.watched(result, session.markWatches(address.ref, String(command.action), started, performance.now())));
+    const result = management ? await session.manageWindow(window, id, management, signal) : await session.restoreWindow(window, id, signal);
+    return this.stamp(place, ComputerResources.watched(result, session.markWatches(window, String(action), started, performance.now())));
   }
   /**
    * Run one page operation (navigation, tabs, dialogs, files, page code) in a browser window by its address. The
@@ -1089,7 +1162,7 @@ export class ComputerResources {
     const place = this.place(address);
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
     this.retireWindow(address.ref);
-    const result = await session.actPage(address.ref, action, signal);
+    const result = await this.activity(address, place, "browser", signal, () => session.actPage(address.ref, action, signal), "page");
     return this.stamp(place, result.details.dom ? this.remember({ window_ref: address.ref }, result) : result);
   }
   /**
@@ -1105,27 +1178,35 @@ export class ComputerResources {
     if (viewport && plan.space !== undefined) throw new ComputerRequestError("space does not apply in a viewport: its points are pixels of the viewport's image.");
     const place = this.place(address);
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
+    const browser = session.isBrowserWindow(address.ref);
+    const page = usesPage(plan, browser, !!viewport) && (!plan.then || usesPage(plan.then, browser, !!viewport));
+    return this.activity(address, place, activityKind(plan.label), signal,
+      () => this.inputAt(address.ref, session, plan, cwd, place, signal, viewport), page ? "page" : "native");
+  }
+
+  private async inputAt(window: string, session: ComputerSession, plan: InputPlan, cwd: string, place: Place | undefined,
+    signal?: AbortSignal, viewport?: Viewport): Promise<ComputerResult> {
     const started = performance.now();
     // The first step spends native hints. Bind a unique continuation before changing the first target.
     let follow = plan.then;
     if (follow && refKind(follow.target) === "hint") {
-      const view = session.inputView(address.ref);
+      const view = session.inputView(window);
       const element = this.hinted(view, follow.target as string);
       const target = uniqueNativeLocator(view.native!.ui!, element);
       if (!target) return this.stamp(place, { content: [{ type: "text",
         text: "The native continuation cannot be identified uniquely from this UI tree. Nothing was sent; give an explicit locator or refresh the full window." }],
-        details: { status: "refused", mode: this.getMode(), window_ref: address.ref }, isError: true });
-      follow = { ...follow, target, ...(session.isBrowserWindow(address.ref) && !viewport ? { space: "window" as const } : {}) };
+        details: { status: "refused", mode: this.getMode(), window_ref: window }, isError: true });
+      follow = { ...follow, target, ...(session.isBrowserWindow(window) && !viewport ? { space: "window" as const } : {}) };
     }
-    let result = await this.inputStep(address.ref, session, plan, cwd, signal, viewport);
+    let result = await this.inputStep(window, session, plan, cwd, signal, viewport);
     // A follow-up such as Enter after typing runs only after the first part was delivered.
     if (follow && result.details.status === "delivered") {
       // Keys that follow input which needed the focus need it too.
       if (result.details.action_capability?.requested_delivery === "foreground") follow = { ...follow, foreground: true };
-      const next = await this.inputStep(address.ref, session, follow, cwd, signal, viewport);
+      const next = await this.inputStep(window, session, follow, cwd, signal, viewport);
       result = { ...next, content: [...result.content, ...next.content] };
     }
-    return this.stamp(place, ComputerResources.watched(result, session.markWatches(address.ref, plan.label, started, performance.now())));
+    return this.stamp(place, ComputerResources.watched(result, session.markWatches(window, plan.label, started, performance.now())));
   }
   /** An action's receipt with its spans in the running watches of its window. */
   private static watched(result: ComputerResult, spans: NonNullable<ComputerResult["details"]["watch_spans"]>): ComputerResult {
@@ -1142,8 +1223,10 @@ export class ComputerResources {
     const place = this.place(address);
     const session = await this.sessionFor(cwd, { window_ref: address.ref }, signal);
     const watching = viewport ? viewportSource(viewport.window_ref, viewport.name) : computerSource("window", address.ref);
-    return this.stamp(place, await session.startWatch(address.ref, watching, { fps: options.fps ?? WATCH_DEFAULTS.fps,
-      timeout_ms: options.timeout_ms ?? WATCH_DEFAULTS.timeout_ms, maxLongEdge: options.maxLongEdge ?? WATCH_DEFAULTS.maxLongEdge, ...(viewport ? { crop: viewport.rect } : {}) }, signal));
+    return this.stamp(place, await this.activity(address, place, "record", signal, () => session.startWatch(address.ref, watching, {
+      fps: options.fps ?? WATCH_DEFAULTS.fps, timeout_ms: options.timeout_ms ?? WATCH_DEFAULTS.timeout_ms,
+      maxLongEdge: options.maxLongEdge ?? WATCH_DEFAULTS.maxLongEdge, ...(viewport ? { crop: viewport.rect } : {}),
+    }, signal), "native", true));
   }
   /** Stop a watch: its contact sheet with actions marked, change statistics and files, in `to` (a workspace folder) when given. */
   async stopWatch(address: ComputerAddress, cwd: string, options: { to?: string; video?: boolean }, signal?: AbortSignal): Promise<ComputerResult> {
@@ -1161,7 +1244,7 @@ export class ComputerResources {
       return this.pageInput(window, session, plan, cwd, signal);
     }
     // A viewport of a browser window is pixels of the window, like space "window".
-    if (browser && !viewport && plan.space !== "window" && ref !== "hint") return this.pageInput(window, session, plan, cwd, signal);
+    if (usesPage(plan, browser, !!viewport)) return this.pageInput(window, session, plan, cwd, signal);
     if (plan.space !== undefined && !browser) throw new ComputerRequestError("space applies to browser windows only; points on other windows are pixels of the window's latest image.");
     if (ref === "page") throw new ComputerRequestError(`${plan.target} is a page ref from a DOM Read; ${browser ? "omit space: \"window\" to act on the page" : "this window is not a browser page, so use a ref from its latest Read or a Playwright locator"}.`);
     return this.nativeStep(window, session, plan, cwd, signal, viewport);
@@ -1302,7 +1385,16 @@ export class ComputerResources {
   /** Dispatch exactly one JSON command of a computer_* tool against its address-bound target; the receipt names its machine. */
   async perform(address: ComputerAddress, cwd: string, value: string, signal?: AbortSignal): Promise<ComputerResult> {
     const place = this.place(address);
-    return this.stamp(place, await this.performAt(address, cwd, value, signal));
+    const run = () => this.performAt(address, cwd, value, signal);
+    if (!place || !this.openHost(place.machine)?.desktopActivity?.active) return this.stamp(place, await run());
+    const action = commandObject(value).action;
+    const kind = activityKind(action);
+    // Launching a guest can still touch the host (opening or refocusing a sandbox window), so only established
+    // guests are reported as direct. A native attach can also ask the user for approval in a desktop window.
+    const page = address.kind === "observation" && this.snapshots.get(address.ref)?.result.details.dom !== undefined;
+    const route = action === "open_sandbox" || action === "open_session" ? "separate_desktop"
+      : page ? "page" : kind === "wait" ? "auto" : "native";
+    return this.stamp(place, await this.activity(address, place, kind, signal, run, route, ["wait", "files", "clipboard", "record"].includes(kind)));
   }
   private async performAt(address: ComputerAddress, cwd: string, value: string, signal?: AbortSignal, viewport?: PixelBox): Promise<ComputerResult> {
     if (address.kind === "sandbox") {

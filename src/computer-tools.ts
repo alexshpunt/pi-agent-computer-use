@@ -2,7 +2,7 @@ import type { JsonValue } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./string-enum.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ComputerRequestError, refKind, type ComputerResources, type InputPlan, type InputPoint } from "./computer-resources.ts";
+import { ComputerRequestError, LOCAL_MACHINE, refKind, type ComputerResources, type InputPlan, type InputPoint } from "./computer-resources.ts";
 import type { ComputerAddress } from "./computer-address.ts";
 import { resourceRenderers, typedRenderers } from "./computer-renderers.ts";
 import { parseComputerViews } from "./computer-views.ts";
@@ -176,7 +176,7 @@ const browserParameters = Type.Object({
 const machineSchema = Type.String({ description: "computer:machine/<name>; computer:machine/local is this machine." });
 
 /** A machine address itself, the one place files, clipboard, video and audio commands run. */
-function machineAddress(resources: ComputerResources, source: string): ComputerAddress {
+function machineAddress(resources: ComputerResources, source: string): Extract<ComputerAddress, { kind: "machine" }> {
   const address = resources.address(source);
   if (address.kind !== "machine" || address.part) throw new ComputerRequestError("Give a machine address such as computer:machine/local or computer:machine/<name>.");
   return address;
@@ -527,6 +527,42 @@ export function registerComputerTools(pi: ExtensionAPI, resources: ComputerResou
   const common = { exposure: "deferred" as const, namespace, outputSchema: receiptSchema };
   const describe = (source: string) => resources.describe(source);
   const rendered = (name: string) => typedRenderers(name, describe);
+  pi.registerTool({
+    exposure: "deferred", namespace, name: "computer_session", label: "Computer session",
+    description: "Use computer_session to announce your purpose before a series of computer actions and mark the session complete when finished.",
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    parameters: Type.Object({
+      action: StringEnum(["begin", "end"] as const),
+      machine: Type.Optional(Type.String({ description: "Host machine address, such as computer:machine/local. Omit for the local machine. Use the host's address for browser or separate-desktop work." })),
+      intent: Type.Optional(Type.String({ minLength: 1, maxLength: 120,
+        description: "For begin only: describe the work in up to 120 characters. Omit typed text, secrets and private details; the human can see this description." })),
+    }, { additionalProperties: false }),
+    outputSchema: Type.Object({ status: StringEnum(["begun", "active", "ended", "inactive", "unsupported", "unavailable", "refused"] as const) }),
+    async execute(_id, params, signal, _update, ctx) {
+      const reply = (status: "begun" | "active" | "ended" | "inactive" | "unsupported" | "unavailable" | "refused", text: string, isError = false) =>
+        ({ content: [{ type: "text" as const, text }], details: { status }, structuredContent: { status }, ...(isError ? { isError } : {}) });
+      let machine = LOCAL_MACHINE;
+      try { if (params.machine !== undefined) machine = machineAddress(resources, params.machine).ref; }
+      catch (error) { return reply("refused", error instanceof Error ? error.message : String(error), true); }
+      const intent = params.intent?.trim();
+      if (params.action === "begin" && (!intent || [...intent].length > 120 || /[\p{C}\u2028\u2029]/u.test(params.intent!)))
+        return reply("refused", "Give a short, single-line intent for begin without typed text or private details.", true);
+      if (params.action === "end" && params.intent !== undefined)
+        return reply("refused", "Omit intent when ending a computer session.", true);
+      try {
+        const status = params.action === "begin" ? await resources.startDesktopActivity(machine, ctx.cwd, intent!, signal) : await resources.endDesktopActivity(machine);
+        const messages = {
+          begun: "Computer activity session began on this machine.",
+          active: "A computer activity session is already active on this machine.",
+          ended: "Computer activity session ended. Applications and browser pages stay open.",
+          inactive: "No computer activity session is active on this machine.",
+          unsupported: "This runtime does not report desktop activity sessions. Computer tools remain available.",
+          unavailable: "Desktop activity could not be reported. Computer tool results still report their own outcomes.",
+        };
+        return reply(status, messages[status]);
+      } catch (error) { return reply("refused", error instanceof Error ? error.message : String(error), true); }
+    },
+  });
   pi.registerTool({
     ...common, name: "computer_open", label: "Computer open",
     description: "Use computer_open to start an app, a Playwright browser, a Windows Sandbox or an isolated session on a machine, or to attach Playwright to a running browser window.",
