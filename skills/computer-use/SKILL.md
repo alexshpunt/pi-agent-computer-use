@@ -7,6 +7,8 @@ description: "Use when a task needs a Windows app window, a display or a browser
 
 Work in this order: find the window, read it, plan, act, check.
 
+For a series of actions, use `computer_session` to begin on the host machine before working and end when finished. Keep the intent safe to show to the human.
+
 ## Find and read
 
 - Use a window the task already has. Open a new one only when the task needs it, and never repeat a launch whose outcome is unknown.

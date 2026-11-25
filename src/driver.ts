@@ -15,6 +15,7 @@ import { sha256Files, verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
 import { NativeVisuals, VisualSettings, nativeVisualOptions, type WindowObserver } from "./native-visuals.ts";
 import { reportsHumanStop, type HumanStop } from "./human-stop.ts";
+import { DesktopActivity, type ActivityConnection, type DesktopActivityStatus } from "./desktop-activity.ts";
 
 /**
  * Windows variables that describe the machine and that programs need to start other programs. The MCP stdio transport
@@ -136,6 +137,9 @@ const timelineLength = (args: Record<string, unknown>) => {
 /** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
   private nativeVisualsAvailable = false;
+  readonly desktopActivity?: DesktopActivity;
+  private activityConnection?: ActivityConnection;
+  private activityClosed = false;
   private readonly presentation: NativeVisuals;
   readonly visuals: WindowObserver;
   private client?: Client;
@@ -204,8 +208,12 @@ export class McpDriver implements Driver {
   private stopSubscriptions: (() => void)[] = [];
 
   constructor(private readonly config: ComputerConfig, private readonly version: "0.33.2" = "0.33.2",
-    private readonly visualSettings = new VisualSettings(), humanStop?: HumanStop, private readonly sessionLabel?: () => string | undefined) {
+    private readonly visualSettings = new VisualSettings(), humanStop?: HumanStop, private readonly sessionLabel?: () => string | undefined,
+    observeDesktop = true) {
     if (!config.endpoint) this.humanStop = humanStop;
+    if (observeDesktop && !config.endpoint && this.platform === "windows") this.desktopActivity = new DesktopActivity(visualSettings, () => this.sessionLabel?.());
+    if (this.humanStop && this.desktopActivity)
+      this.stopSubscriptions.push(this.humanStop.onStop(() => { void this.desktopActivity?.end("interrupted"); }));
     this.presentation = new NativeVisuals(async (name, args) => {
       // Presentation never starts or reconnects a backend, including after close or while startup is pending.
       if (!this.client || this.connecting || this.stoppedNatively) return undefined;
@@ -227,6 +235,15 @@ export class McpDriver implements Driver {
   identity(target: WindowTarget, create: boolean, signal?: AbortSignal): Promise<string | undefined> {
     signal?.throwIfAborted();
     return this.windowIdentity?.identify(target, create, signal) ?? Promise.resolve(undefined);
+  }
+
+  /** Only an explicit begin may open a connection for desktop activity. */
+  async beginDesktopActivity(intent: string, signal?: AbortSignal): Promise<DesktopActivityStatus> {
+    if (!this.desktopActivity) return "unsupported";
+    if (this.activityClosed || this.humanStop?.stopped || signal?.aborted) return "unavailable";
+    try { await this.connect(signal); } catch { return "unavailable"; }
+    if (this.activityClosed || this.humanStop?.stopped || signal?.aborted) return "unavailable";
+    return this.activityConnection ? this.desktopActivity.begin(intent, signal) : "unsupported";
   }
 
   private connecting?: Promise<Client>;
@@ -265,6 +282,7 @@ export class McpDriver implements Driver {
       : await this.stdioTransport();
     this.transport = transport;
     const client = new Client({ name: "pi-agent-computer-use-poc", version: "0.0.0" });
+    client.onclose = () => { if (this.client === client) this.detachDesktopActivity(); };
     // The driver says at once when the human stops input, without waiting for a call.
     client.fallbackNotificationHandler = async notification => {
       if (this.client === client && notification.method === "notifications/cua/human_stop") this.reportStop();
@@ -303,6 +321,15 @@ export class McpDriver implements Driver {
         if (!claimed || claimed.isError || (claimed.structuredContent as { status?: unknown } | undefined)?.status !== "claimed") this.claims.delete(window);
       }
       signal?.throwIfAborted();
+      if (!this.activityClosed && this.desktopActivity && tools.some(tool => tool.name === "agent_desktop_activity" && tool.inputSchema.type === "object")) {
+        const connection: ActivityConnection = { send: async (message, timeout) => {
+          if (this.client !== client) return false;
+          const result = CallToolResultSchema.parse(await client.callTool({ name: "agent_desktop_activity", arguments: { ...message } }, undefined, { timeout }));
+          return !result.isError && result.structuredContent?.status !== "ignored";
+        } };
+        this.activityConnection = connection;
+        this.desktopActivity.attach(connection);
+      }
       return client;
     } catch (error) {
       await this.disconnect();
@@ -343,6 +370,7 @@ export class McpDriver implements Driver {
     const label = this.sessionLabel?.()?.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 28);
     return { CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false",
       ...(this.envelopes ? { CUA_DRIVER_MCP_ENVELOPES: "1" } : {}), DO_NOT_TRACK: "1",
+      ...(this.desktopActivity ? { CUA_DESKTOP_ACTIVITY: "1" } : {}),
       CUA_ESCAPE_STOP: this.config.escapeStop === false ? "0" : "1", CUA_FOCUS_RETURN: "1", CUA_SHARED_INPUT_LOCK: "1", ...(label ? { CUA_SESSION_LABEL: label } : {}),
       CUA_DRIVER_ALLOW_DEBUGGING_LAUNCH: "1" };
   }
@@ -396,7 +424,7 @@ export class McpDriver implements Driver {
   companion(): McpDriver | undefined {
     if (this.config.endpoint) return undefined;
     const visuals = new VisualSettings(); visuals.update({ preset: "off" });
-    return new McpDriver(this.config, this.version, visuals, this.humanStop, this.sessionLabel);
+    return new McpDriver(this.config, this.version, visuals, this.humanStop, this.sessionLabel, false);
   }
   /** One cancellable native call. This method never retries input. */
   async call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<DriverResult> {
@@ -440,7 +468,8 @@ export class McpDriver implements Driver {
     // A timeline runs for its own length and a large app (GIMP, Blender) can take over 15 s to show its first window;
     // every other native call answers well within 15 s.
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
-    const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, undefined, { signal, timeout }));
+    const id = this.desktopActivity?.id(this.activityConnection);
+    const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: id === undefined ? args : { ...args, activity_id: id } }, undefined, { signal, timeout }));
     if (this.client === client && reportsHumanStop(result as Parameters<typeof reportsHumanStop>[0])) this.reportStop();
     if (name === "claim_window" && !result.isError && (result.structuredContent as { status?: unknown } | undefined)?.status === "claimed" && typeof args.window_id === "number")
       this.claims.set(args.window_id, args);
@@ -456,6 +485,9 @@ export class McpDriver implements Driver {
   /** EOF owns shutdown; the SDK escalates only for this child if it does not exit. */
   async close(): Promise<void> {
     this.presentation.close();
+    this.activityClosed = true;
+    await this.desktopActivity?.end("interrupted");
+    this.desktopActivity?.dispose();
     for (const unsubscribe of this.stopSubscriptions.splice(0)) unsubscribe();
     await this.disconnect();
   }
@@ -466,8 +498,14 @@ export class McpDriver implements Driver {
     finally { await this.windowIdentity?.close(); }
   }
 
+  private detachDesktopActivity(): void {
+    if (this.activityConnection) this.desktopActivity?.detach(this.activityConnection);
+    this.activityConnection = undefined;
+  }
+
   /** End the driver process; the next call starts a new one. */
   private async closeClient(): Promise<void> {
+    this.detachDesktopActivity();
     this.nativeVisualsAvailable = false;
     const client = this.client;
     const transport = this.transport;

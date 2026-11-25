@@ -21,6 +21,24 @@ test("a scoped preset preserves a legacy per-setting preview preference", async 
   expect(visuals.current()).toMatchObject({ preset: "full", previews: false });
 });
 
+test("desktop activity cues default to off and each one inherits independently", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "cua-activity-")); dirs.push(root); process.env.PI_CODING_AGENT_DIR = path.join(root, "agent");
+  const pi = { on: vi.fn(), registerCommand: vi.fn(), appendEntry: vi.fn(), sendMessage: vi.fn() } as unknown as ExtensionAPI;
+  const ctx = { cwd: path.join(root, "project"), hasUI: true, isProjectTrusted: () => true, ui: { notify: vi.fn(), setStatus: vi.fn() } } as unknown as ExtensionCommandContext;
+  const visuals = new VisualSettings(); visuals.restore({ preset: "full", pointer: false });
+  const prefs = new PreferencesController(new CuaImageSettings(), visuals, registerComputerMode(pi));
+  expect(visuals.current()).toMatchObject({ activity_panel: false, activity_outlines: false, activity_cursors: false, pointer: false });
+  await prefs.set(ctx, "global", "activity_panel", true);
+  await prefs.set(ctx, "global", "activity_cursors", true);
+  await prefs.set(ctx, "project", "activity_outlines", true);
+  await prefs.set(ctx, "project", "activity_cursors", false);
+  expect(visuals.current()).toMatchObject({ activity_panel: true, activity_outlines: true, activity_cursors: false, pointer: false });
+  await prefs.set(ctx, "project", "activity_cursors", undefined);
+  expect(visuals.current()).toMatchObject({ activity_panel: true, activity_outlines: true, activity_cursors: true, pointer: false });
+  await prefs.apply({ ...ctx, isProjectTrusted: () => false });
+  expect(visuals.current()).toMatchObject({ activity_panel: true, activity_outlines: false, activity_cursors: true, pointer: false });
+});
+
 test("a session Safe selection is not widened by the global default on restore", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "cua-mode-")); dirs.push(root); process.env.PI_CODING_AGENT_DIR = path.join(root, "agent");
   const branch: unknown[] = []; const events = new Map<string, (event: unknown, ctx: ExtensionCommandContext) => Promise<void>>();

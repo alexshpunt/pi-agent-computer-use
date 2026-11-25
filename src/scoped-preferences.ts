@@ -3,9 +3,10 @@ import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promis
 import path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { lock } from "proper-lockfile";
+import { desktopActivitySettings, type DesktopActivitySetting } from "./desktop-activity-settings.ts";
 
 /** Preferences users can set independently at global and project level. */
-export interface ScopedValues {
+export interface ScopedValues extends Record<DesktopActivitySetting, boolean> {
   mode: "safe" | "yolo";
   escape: boolean;
   cap: number;
@@ -34,7 +35,7 @@ export interface ScopedPreferences {
   sources: Partial<Record<PreferenceKey, PreferenceScope>>;
 }
 
-const booleanKeys = new Set(["escape", "hints", "grid", "action", "observations", "previews", "pointer", "scroll_drag", "keyboard", "typed_text", "reduced_motion"]);
+const booleanKeys = new Set(["escape", "hints", "grid", "action", "observations", "previews", "pointer", "scroll_drag", "keyboard", "typed_text", "reduced_motion", ...desktopActivitySettings.map(([key]) => key)]);
 function valid(key: string, value: unknown): boolean {
   if (booleanKeys.has(key)) return typeof value === "boolean";
   switch (key) {

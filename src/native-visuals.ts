@@ -1,7 +1,8 @@
 import type { Content, WindowTarget } from "./session.ts";
+import { desktopActivitySettings, type DesktopActivitySetting } from "./desktop-activity-settings.ts";
 import type { ScreenRect } from "./highlight-geometry.ts";
 
-export interface VisualOptions {
+export interface VisualOptions extends Record<DesktopActivitySetting, boolean> {
   preset: "off" | "subtle" | "full";
   observations: boolean; previews: boolean; pointer: boolean; scroll_drag: boolean; keyboard: boolean;
   /** Show the text the agent types beside the action; the native renderer never stores it. */
@@ -9,10 +10,11 @@ export interface VisualOptions {
   opacity: number; quality: "performance" | "balanced" | "high"; reduced_motion: boolean;
 }
 const defaults = (): VisualOptions => ({ preset: "full", observations: true, previews: true, pointer: true,
-  scroll_drag: true, keyboard: true, typed_text: true, opacity: 0.8, quality: "balanced", reduced_motion: false });
+  scroll_drag: true, keyboard: true, typed_text: true, opacity: 0.8, quality: "balanced", reduced_motion: false,
+  activity_panel: false, activity_outlines: false, activity_cursors: false });
 /** The settings the native renderer takes; whether typed text is sent at all is decided here. */
 export function nativeVisualOptions(options: VisualOptions): Record<string, unknown> {
-  const { typed_text: _typed, ...native } = options;
+  const { typed_text: _typed, activity_panel: _panel, activity_outlines: _outlines, activity_cursors: _cursors, ...native } = options;
   return native;
 }
 /** Human-owned, session-local presentation preferences. No model tool can write them. */
@@ -28,7 +30,8 @@ export class VisualSettings {
     const next = { ...base, ...patch };
     if (!["off", "subtle", "full"].includes(next.preset) || !["performance", "balanced", "high"].includes(next.quality) ||
       !Number.isFinite(next.opacity) || next.opacity < 0 || next.opacity > 1 ||
-      [next.observations, next.previews, next.pointer, next.scroll_drag, next.keyboard, next.typed_text, next.reduced_motion].some(v => typeof v !== "boolean"))
+      [next.observations, next.previews, next.pointer, next.scroll_drag, next.keyboard, next.typed_text, next.reduced_motion,
+        ...desktopActivitySettings.map(([key]) => next[key])].some(v => typeof v !== "boolean"))
       throw Error("Invalid visual settings.");
     if (patch.preset === "subtle" && patch.previews === undefined) next.previews = false;
     if (patch.preset === "full" && patch.previews === undefined) next.previews = true;

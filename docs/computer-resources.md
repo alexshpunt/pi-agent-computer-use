@@ -1,9 +1,16 @@
 # Computer
 
-- Load the `computer_*` tools with `tool_search`, one group per query: `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`, `computer view viewport`.
+- Load the `computer_*` tools with `tool_search`, one group per query: `computer session activity`, `computer open window`, `computer wait browser`, `computer files clipboard record`, `computer click hover drag scroll`, `computer type press select timeline`, `computer view viewport`.
 - The `/computer-*` commands belong to the user: when a refusal names one, ask the user to run it.
 - In IDE mode, native discovery of a `computer_*` action or `ide_capability_computer` loads computer-address help into the shared tools. Use the loader for a resource-only workflow. The first associated Codemode call loads that help too; `searchTools`, `describeTool` and `describeNamespace` leave it unloaded.
 - Ordinary file calls and a direct computer-address {read} do not activate schema help. A direct computer-address {read} still works and loads this guide.
+
+## Activity session
+
+- Before a series of computer actions, call `computer_session` with `action: "begin"` and a short intent the human can read. Omit secrets, typed text, and private details. Use `action: "end"` when the work is finished. This does not close apps or browsers.
+- Omit `machine` for the local host. Give the host's machine address for work on another machine, including its browser pages, sandbox, or isolated desktop.
+- Desktop activity is optional. If the runtime cannot report it, use the computer tools as usual. The activity panel reports shared input only when the driver observes it; it does not reserve the desktop or authorize input.
+- The user can turn the desktop panel, window outlines and labelled pointers on or off independently in `/computer-settings` on a supported Windows runtime.
 
 ## Addresses
 
@@ -101,7 +108,9 @@ Read a new image after a frame click, navigation, tab switch, scroll or resize. 
 
 ## Receipts in Codemode
 
-Every `computer_*` tool resolves to a receipt object, also when it refused or its outcome is unknown, so a script branches without try/catch:
+The computer action tools resolve to a receipt object, also when an action refused or its outcome is unknown, so a script branches without try/catch. The activity tool `computer_session` returns a `status` instead.
+
+Action receipts contain:
 
 - `outcome` — `delivered` (not proof the app responded), `refused` (nothing was sent), `unknown` (may have reached the target: {read} again, never replay), `observed` or `closed`.
 - `effect` — `applied`, `not-applied` or `unknown`.

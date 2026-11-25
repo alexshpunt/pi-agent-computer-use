@@ -124,8 +124,8 @@ async function joinZones(lease: GuestInputLease, signal?: AbortSignal, timeoutMs
 }
 
 /**
- * Another machine's desktop gets its own driver and session over SSH. Safe/YOLO is the user's choice there too;
- * the host overlay is not shown, and browsers start on that machine.
+ * Another machine's desktop gets its own driver and session over SSH. Browsers and any desktop activity cues
+ * stay on that machine. Safe/YOLO is still the user's choice in Pi.
  */
 export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings; humanStop?: HumanStop; sessionLabel?: () => string | undefined; escapeStop?: (cwd: string) => Promise<boolean | undefined> }): MachineFactory {
   return async (cwd, name, signal) => {
