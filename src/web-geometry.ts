@@ -18,6 +18,21 @@ export interface PageGeometry {
 }
 /** An element's bounding box in CSS pixels of the viewport, as Playwright's boundingBox reports it. */
 export interface CssBox { x: number; y: number; width: number; height: number }
+interface ImageSize { width: number; height: number }
+export interface PageFrame extends ImageSize { id: string }
+
+/** Size of the PNG shown to the agent. Round each edge once; never upscale. */
+export function pageImageSize({ width, height }: ImageSize): ImageSize {
+  const scale = Math.min(1, 1280 / Math.max(width, height));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+/** Convert a shown PNG point to Playwright's viewport CSS space, not document or screen space. */
+export function framePoint({ x, y }: { x: number; y: number }, image: ImageSize, viewport: PageGeometry) {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= image.width || y >= image.height) return undefined;
+  return { x: x / image.width * viewport.innerWidth, y: y / image.height * viewport.innerHeight };
+}
+
 /** A rectangle of the plain screenshot in its own (device) pixels. */
 export interface PixelRect { left: number; top: number; width: number; height: number }
 

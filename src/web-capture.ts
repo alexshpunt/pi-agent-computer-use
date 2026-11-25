@@ -6,6 +6,12 @@ export function cropPng(png: Buffer, rect: PixelRect): Promise<Buffer> {
   return sharp(png).extract(rect).png().toBuffer();
 }
 
+/** Resize to the worker's exact frame dimensions so its click transform matches the shown image. */
+export function pageFramePng(png: Buffer, { width, height }: { width: number; height: number }): Promise<Buffer> {
+  if (png.readUInt32BE(16) === width && png.readUInt32BE(20) === height) return Promise.resolve(png);
+  return sharp(png).resize(width, height, { fit: "fill", kernel: "lanczos3" }).png().toBuffer();
+}
+
 /** A plain viewport PNG scaled to one image pixel per CSS pixel, within a pixel of the size Chrome's `scale: "css"` gives. */
 export function cssPng(png: Buffer, geometry: PageGeometry): Promise<Buffer> {
   return sharp(png).resize(geometry.innerWidth, geometry.innerHeight, { fit: "fill", kernel: "lanczos3" }).png().toBuffer();

@@ -420,7 +420,7 @@ export class WebBrowser {
         this.pending.delete(response.id!);
         // Playwright appends a colored call log; keep the plain first part for agents.
         const message = String(response.error?.message ?? "Browser operation failed.").replace(/\x1b\[[0-9;]*m/g, "").split("\nCall log:")[0].trim();
-        if (response.error) request.reject(new WebError(message, response.error.name === "TimeoutError", response.error.name === "ApprovalOutcomeUnknown",
+        if (response.error) request.reject(new WebError(message, response.error.name === "TimeoutError", ["ApprovalOutcomeUnknown", "ActionOutcomeUnknown"].includes(response.error.name ?? ""),
           response.error.code === "agent_profile_in_use" ? response.error.code : undefined));
         else request.resolve(response.value);
       }
@@ -473,8 +473,8 @@ export class WebBrowser {
    * and download paths come back as WSL paths, so the agent uses one path domain throughout.
    */
   async page(op: "snapshot", args: WebSnapshotOptions, signal?: AbortSignal): Promise<WebPage>;
-  async page(op: "act", args: WebAction, signal?: AbortSignal): Promise<WebPage>;
-  async page(op: "snapshot" | "act", args: WebSnapshotOptions | WebAction, signal?: AbortSignal): Promise<WebPage> {
+  async page(op: "act", args: WebAction & { frameId?: string }, signal?: AbortSignal): Promise<WebPage>;
+  async page(op: "snapshot" | "act", args: WebSnapshotOptions | (WebAction & { frameId?: string }), signal?: AbortSignal): Promise<WebPage> {
     // Paths are converted in the WSL beside the browser: this one, or the remote machine's.
     const wsl = process.platform === "linux" || this.runner !== undefined;
     const convert = async (from: string, flag: "-w" | "-u") => this.runner ? (await this.runner.run("wslpath", [flag, from], { timeoutMs: 10_000 })).trim()
