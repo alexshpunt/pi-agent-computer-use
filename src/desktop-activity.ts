@@ -65,8 +65,9 @@ export class DesktopActivity {
   private configure(state: State, options: VisualOptions): Promise<boolean> {
     const { activity_panel: panel, activity_outlines: outline, activity_cursors: point } = options;
     const name = this.label()?.normalize("NFKC").replace(/[^\p{L}\p{N} ._-]/gu, "").trim() || "Agent";
-    const suffix = ` · Pi ${process.pid}`;
-    const label = [...name].slice(0, 48 - suffix.length).join("") + suffix;
+    // The HUD clips from the right, so the process identifier must precede a long name.
+    const prefix = `Pi ${process.pid} · `;
+    const label = prefix + [...name].slice(0, 48 - prefix.length).join("");
     const previous = state.configuration;
     if (previous?.request.label === label && previous.request.panel === panel && previous.request.outline === outline && previous.request.point === point)
       return previous.applied;
