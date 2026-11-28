@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Computer use reaches a Windows machine over SSH without WSL. Windows OpenSSH logins run in the services session, so a small helper (`pi-session-host.exe`, built on the machine from the package's source) runs in the signed-in user's interactive session, started through a one-shot scheduled task of that user. It starts the driver, the window identity peer and the machine's PowerShell commands there and carries their input and output over a named pipe that only that user may open and that refuses network clients; there is no new listener or firewall change. The alias is detected (a login that runs `bash` stays a WSL machine), or set with `"transport": "windows"`. `/computer-setup machine` prepares such a machine too. With no active desktop session, or two, the connection says so and starts nothing. Browsers, Windows Sandbox and isolated sessions refuse on such a machine with a message that says why.
+
+### Fixed
+
+- An error from a remote Windows PowerShell command no longer carries PowerShell's CLIXML progress records.
+
 ## 0.2.3 — 2026-11-25
 
 ### Fixed
