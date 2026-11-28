@@ -128,9 +128,41 @@ test("machines in the agent directory reach every project, and a project machine
   await mkdir(path.join(cwd, ".pi"));
   await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ machines: { lab: { ssh: "other-wsl" } } }));
   expect((await readMachineSettings(cwd)).machines).toEqual({ lab: { ssh: "other-wsl" }, pc: { ssh: "pc-wsl" } });
-  // The global file holds machines only: the driver always comes from the package.
+  // The global machines file accepts only machines.
   await writeFile(path.join(agentDir, "computer-use.json"), JSON.stringify({ machines: {}, command: "/old/cua-driver.exe" }));
   await expect(readMachineSettings(cwd)).rejects.toThrow("only \"machines\"");
+});
+
+test("project arguments continue to select the environment driver", async () => {
+  const agentDir = await workspace();
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+  vi.stubEnv("CUA_DRIVER_PATH", "/environment/driver.exe");
+  const cwd = await workspace();
+  await writeFile(path.join(agentDir, "computer-use-local.json"), JSON.stringify({ command: "/trusted/driver.exe", runtime: "windows-desktop", driverOverride: true }));
+  await mkdir(path.join(cwd, ".pi"));
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ args: ["custom"] }));
+  expect(await loadComputerConfig(cwd)).toMatchObject({ command: "/environment/driver.exe", args: ["custom"] });
+  expect((await loadComputerConfig(cwd)).driverOverride).toBeUndefined();
+});
+
+test("a trusted local driver applies across projects without changing remote machines", async () => {
+  const agentDir = await workspace();
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+  vi.stubEnv("CUA_DRIVER_PATH", "/fallback/driver.exe");
+  const cwd = await workspace();
+  await writeFile(path.join(agentDir, "computer-use-local.json"), JSON.stringify({ command: "/trusted/cua-driver.exe", runtime: "windows-desktop", driverOverride: true }));
+  await writeFile(path.join(agentDir, "computer-use.json"), JSON.stringify({ machines: { lab: { ssh: "lab-wsl" } } }));
+  expect(await loadComputerConfig(cwd)).toEqual({ command: "/trusted/cua-driver.exe", runtime: "windows-desktop", driverOverride: true, machines: { lab: { ssh: "lab-wsl" } } });
+  expect((await readMachineSettings(cwd)).machines).toEqual({ lab: { ssh: "lab-wsl" } });
+  await mkdir(path.join(cwd, ".pi"));
+  await writeFile(path.join(cwd, ".pi/computer-use.json"), JSON.stringify({ command: "/project/driver.exe" }));
+  expect((await loadComputerConfig(cwd)).command).toBe("/project/driver.exe");
+  expect((await loadComputerConfig(cwd)).driverOverride).toBeUndefined();
+  await rm(path.join(cwd, ".pi/computer-use.json"));
+  for (const localDriver of [{ command: "/driver" }, { command: "/driver", runtime: "unknown" }, { command: "/driver", runtime: "windows-desktop", driverOverride: false }]) {
+    await writeFile(path.join(agentDir, "computer-use-local.json"), JSON.stringify(localDriver));
+    await expect(loadComputerConfig(cwd)).rejects.toThrow();
+  }
 });
 
 // LPT-967: without a configured socket, the live one found on the machine is used; a configured socket stays as given.
