@@ -94,6 +94,7 @@ export default async function computerUse(pi: ExtensionAPI): Promise<void> {
     if (!active.includes("tool_search") && pi.getAllTools().some(tool => tool.name === "tool_search"))
       pi.setActiveTools([...active, "tool_search"]);
   });
+  pi.on("agent_settled", event => event.aborted ? provider.resources.interruptDesktopActivities() : undefined);
   // Copilot's Responses route makes every optional field of a tool with unsaid strictness required (LPT-975).
   registerToolOmission(pi, computerNamespace().name);
   pi.on("session_shutdown", async () => {

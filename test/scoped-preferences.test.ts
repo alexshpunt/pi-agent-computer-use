@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, expect, test, vi } from "vitest";
 import { readScopedPreferences, writeScopedPreference } from "../src/scoped-preferences.ts";
 
-// One test starts three Node processes at once; on a loaded machine their startup alone can take several seconds.
+// One test starts several Node processes at once; on a loaded machine their startup alone can take several seconds.
 vi.setConfig({ testTimeout: 30_000 });
 const dirs: string[] = [];
 const oldAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -41,10 +41,10 @@ test("concurrent processes do not discard each other's settings", async () => {
   const { a } = await fixture();
   const run = promisify(execFile);
   const moduleUrl = new URL("../src/scoped-preferences.ts", import.meta.url).href;
-  const entries = [["mode", "safe"], ["escape", false], ["cap", 800]] as const;
+  const entries = [["mode", "safe"], ["escape", false], ["cap", 800], ["activity_panel", true]] as const;
   await Promise.all(entries.map(([key, value]) => run(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e",
     `import { writeScopedPreference } from ${JSON.stringify(moduleUrl)}; await writeScopedPreference(${JSON.stringify(a)}, "global", ${JSON.stringify(key)}, ${JSON.stringify(value)});`], { env: process.env })));
-  expect((await readScopedPreferences(a)).effective).toEqual({ mode: "safe", escape: false, cap: 800 });
+  expect((await readScopedPreferences(a)).effective).toEqual({ mode: "safe", escape: false, cap: 800, activity_panel: true });
 });
 test("invalid settings and malformed files are never overwritten", async () => {
   const { a } = await fixture();

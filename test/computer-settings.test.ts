@@ -109,6 +109,10 @@ test("the panel changes the real settings and respects mode safety", async () =>
   key("\u001b[B"); key("\r"); await settled(); expect(images.settings().guides).toEqual({ grid: true, action: true });
   expect(original).toMatchObject({ maxLongEdge: 1280, scale: 1, version: 0 });
   key("\u001b[B"); key("\r"); await settled(); expect(visuals.current().preset).toBe("off"); expect(entries).toContainEqual(expect.objectContaining({ preset: "off" }));
-  for (let i = 0; i < 10; i++) key("\u001b[B");
+  for (let i = 0; i < 8; i++) key("\u001b[B");
+  key("\r"); await settled(); expect(visuals.current().activity_panel).toBe(true);
+  key("\u001b[B"); key("\r"); await settled(); expect(visuals.current().activity_outlines).toBe(true);
+  key("\u001b[B"); key("\r"); await settled(); expect(visuals.current().activity_cursors).toBe(true);
+  for (let i = 0; i < 3; i++) key("\u001b[B");
   key("\r"); await settled(); expect(images.settings()).toEqual(original);
 });

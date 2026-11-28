@@ -118,9 +118,10 @@ export const SSH_OPTIONS = ["-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChe
   "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
 
 /** Run helpers on another machine's WSL over SSH. When SSH ends, helpers see EOF on stdin and exit. */
-export function sshRunner(alias: string): CommandRunner {
+export function sshRunner(alias: string, interop?: string): CommandRunner {
   if (!/^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/.test(alias)) throw new Error("Invalid SSH alias.");
-  const args = (file: string, rest: readonly string[], env?: Record<string, string>) => [...SSH_OPTIONS, alias, remoteCommand(file, rest, env)];
+  const args = (file: string, rest: readonly string[], env?: Record<string, string>) => [...SSH_OPTIONS, alias,
+    remoteCommand(file, rest, { ...(interop ? { WSL_INTEROP: interop } : {}), ...env })];
   return {
     ssh: alias,
     spawn: (file, rest, env) => spawn("ssh", args(file, rest, env), { stdio: "pipe" }),

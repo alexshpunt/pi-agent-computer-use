@@ -243,10 +243,11 @@ test.each([
   } finally { await f.close(); }
 });
 
-test("the native renderer gets its own settings without the typed text toggle", () => {
-  const options = new VisualSettings().current();
+test("the legacy native renderer receives only supported settings", () => {
+  const options = new VisualSettings().update({ activity_panel: true, activity_outlines: true, activity_cursors: true });
   expect(options.typed_text).toBe(true);
-  expect(nativeVisualOptions(options)).toEqual(Object.fromEntries(Object.entries(options).filter(([key]) => key !== "typed_text")));
+  expect(nativeVisualOptions(options)).toEqual({ preset: "full", observations: true, previews: true,
+    pointer: true, scroll_drag: true, keyboard: true, opacity: 0.8, quality: "balanced", reduced_motion: false });
 });
 
 test.each(["refused", "unknown"] as const)("native keyboard %s keeps its family without replaying input", async outcome => {

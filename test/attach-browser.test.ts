@@ -2,13 +2,15 @@ import { expect, test, vi } from "vitest";
 import sharp from "sharp";
 import { ComputerSession, type ComputerMode, type Driver, type DriverResult } from "../src/session.ts";
 import { WebError, type WebBrowser, type WebLauncher } from "../src/web-browser.ts";
-import type { WindowObserver } from "../src/native-visuals.ts";
+import { VisualSettings, type WindowObserver } from "../src/native-visuals.ts";
+import { DesktopActivity, type DesktopActivityMessage } from "../src/desktop-activity.ts";
+import { ComputerResources } from "../src/computer-resources.ts";
 
 // LPT-850: Playwright attaches to a running Chrome or Edge only in YOLO, binds it to the addressed window, and the
 // session's close detaches through the worker instead of leaving the browser to anyone else.
 const window = { pid: 4100, window_id: 77, title: "Attach target - Personal - Microsoft Edge", app_name: "msedge.exe", bounds: { x: 0, y: 0, width: 800, height: 600 } };
 
-function fixture(observer?: WindowObserver) {
+function fixture(observer?: WindowObserver, desktopActivity?: DesktopActivity) {
   let mode: ComputerMode = "yolo";
   const call = vi.fn<Driver["call"]>(async (name): Promise<DriverResult> => {
     if (name === "list_windows") return { content: [], structuredContent: { windows: [window] } };
@@ -17,10 +19,48 @@ function fixture(observer?: WindowObserver) {
   const browser = { close: vi.fn(async () => {}), request: vi.fn(async () => ({})), page: vi.fn(async () => ({ url: "data:", title: "Attach target", snapshot: "- textbox \"Field\"", tabs: [], events: [] })) };
   const launch = vi.fn<WebLauncher>(async () => ({ browser: browser as unknown as WebBrowser,
     opened: { pid: window.pid, version: "155", url: "data:", title: "Attach target", via: "cdp" } }));
-  const session = new ComputerSession({ call, identity: vi.fn(async () => `PiComputerUse.${"a".repeat(32)}:4100:1`), close: vi.fn(async () => {}) }, () => mode, undefined, observer, launch);
+  const session = new ComputerSession({ call, identity: vi.fn(async () => `PiComputerUse.${"a".repeat(32)}:4100:1`), close: vi.fn(async () => {}),
+    desktopActivity, beginDesktopActivity: desktopActivity?.begin.bind(desktopActivity) }, () => mode, undefined, observer, launch);
   const ref = async () => ((await session.windows()).details.state!.windows as { window_ref: string }[])[0].window_ref;
   return { session, launch, browser, call, ref, setMode(value: ComputerMode) { mode = value; } };
 }
+
+test("desktop activity distinguishes browser page reads from native reads of the same window", async () => {
+  const messages: DesktopActivityMessage[] = [];
+  const activity = new DesktopActivity(new VisualSettings(), () => "Reader");
+  activity.attach({ send: async message => { messages.push(message); return true; } });
+  const f = fixture(undefined, activity);
+  const resources = new ComputerResources(async () => f.session, () => f.session.close());
+  try {
+    const attached = await f.session.attachBrowser(await f.ref());
+    expect(attached.details.status).toBe("delivered");
+    const address = resources.address(`computer:window/${attached.details.window_ref}`);
+    const png = (await sharp({ create: { width: 2, height: 2, channels: 3, background: "blue" } }).png().toBuffer()).toString("base64");
+    f.call.mockImplementation(async name => {
+      expect(name).toBe("get_window_state");
+      return { content: [{ type: "image", mimeType: "image/png", data: png }], structuredContent: {
+        ...window, window_bounds: window.bounds, screenshot_width: 2, screenshot_height: 2,
+        snapshot_id: "native-overview", capture_id: "native-pixels", elements_complete: true, elements: [],
+      } };
+    });
+    expect(await resources.startDesktopActivity("local", ".", "Inspect browser")).toBe("begun");
+    expect((await resources.read(address, "."))?.details.status).toBe("observed");
+    const dom = await resources.read(address, ".", ["dom"]);
+    expect(dom?.details.status).toBe("observed");
+    f.browser.request.mockResolvedValue({ url: "data:", title: "Attach target", png });
+    const observation = resources.address(`computer:observation/${dom!.details.observation_id}`);
+    expect((await resources.read(observation, ".", ["image"]))?.details.status).toBe("observed");
+    const reads = messages.filter(message => message.operation === "action_start");
+    expect(reads).toMatchObject([
+      { kind: "read", delivery: "none", location: "desktop", window: { pid: 4100, window_id: 77 } },
+      { kind: "read", delivery: "none", location: "browser" },
+      { kind: "read", delivery: "none", location: "browser" },
+    ]);
+  } finally {
+    await f.session.close();
+    activity.dispose();
+  }
+});
 
 test("Playwright activity stays source-associated without exposing text or inventing a desktop point", async () => {
   const observer = vi.fn<WindowObserver>(async () => ({ status: "queued" })); const f = fixture(observer);
