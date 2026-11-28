@@ -63,6 +63,18 @@ No `.pi/computer-use.json` is needed. An ignored local file in the project can o
 
 `CUA_DRIVER_PATH` does the same as `command`. `runtime` names a qualified profile from `src/driver.ts`; normally the executable must match its version and SHA-256. For an experimental driver, set `"driverOverride": true` beside `command`: this trusts those executable bytes and checks the driver identity, protocol and advertised tools instead. Only use an executable you trust. Optional `args` replace `['mcp', '--direct', '--embedded']`, `interop` selects a live WSL interop socket, `machines` names other machines (see [Other machines](#other-machines)), and `"sandbox": {"zones": true}` turns on screen zones for a shared Windows Sandbox this project's agent starts, on this machine or another (see [Separate desktops and their limits](#separate-desktops-and-their-limits)). These are trusted user settings, never agent tool arguments. Close the computer runtime and reload after changing them.
 
+For every project, put a trusted local driver in `~/.pi/agent/computer-use-local.json`:
+
+```json
+{
+  "command": "/mnt/c/path/to/cua-driver.exe",
+  "runtime": "windows-desktop",
+  "driverOverride": true
+}
+```
+
+A project `command` takes precedence, followed by `computer-use-local.json`, then `CUA_DRIVER_PATH` and the bundled driver. Project `args` without a `command` select `CUA_DRIVER_PATH` instead, because runtime profiles use fixed arguments. The `driverOverride` option trusts the executable bytes, so use it only for a driver you trust. This setting affects the local machine; remote machines keep their own driver configuration. Remove `driverOverride` to enforce the profile's pinned hash. Close the computer runtime and reload after changing it.
+
 ## Other machines
 
 Another Windows machine with WSL can be operated over SSH: its windows, displays, browsers and sandboxes. Only machines named under `machines` in `computer-use.json` of the Pi agent directory (`~/.pi/agent/computer-use.json`, for every project) or of a project's `.pi/` folder can be reached, by name, never by host or path. Its addresses work like local ones and never act on this machine; a browser `url` such as `127.0.0.1` means that machine. The remote user's Windows session must be active; a disconnected one returns white screenshots. Delete the machine address to stop its driver; its next use starts it again.
@@ -70,7 +82,7 @@ Another Windows machine with WSL can be operated over SSH: its windows, displays
 To set one up:
 
 1. Make it reachable through an SSH alias that logs in to its WSL by key, with a known host key.
-2. Add the alias to `~/.pi/agent/computer-use.json` to reach the machine from every project, or to a project's `.pi/computer-use.json` for that project only. The global file holds only `machines`; a project machine of the same name replaces the global one.
+2. Add the alias to `~/.pi/agent/computer-use.json` to reach the machine from every project, or to a project's `.pi/computer-use.json` for that project only. The global machines file holds only `machines`; a project machine of the same name replaces the global one.
 
 ```json
 "machines": {
