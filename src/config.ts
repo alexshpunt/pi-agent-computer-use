@@ -21,6 +21,8 @@ export interface ComputerConfig {
   endpoint?: GuestEndpoint;
   /** SSH alias when the driver runs on another machine. Set by connect, never read from config files. */
   ssh?: string;
+  /** The machine at `ssh` is Windows without WSL: programs start in its interactive session through the session helper. Set by connect. */
+  sshWindows?: true;
   /** Machines an agent may connect to by name. */
   machines?: Record<string, MachineConfig>;
   /** The shared Windows Sandbox this agent starts. */
@@ -35,11 +37,16 @@ export interface SandboxSettings {
   zones?: boolean;
 }
 
-/** Another machine's WSL reached over SSH. Paths are on that machine; nothing here comes from agent input. */
+/** Another Windows machine reached over SSH, through its WSL or natively. Paths are on that machine; nothing here comes from agent input. */
 export interface MachineConfig {
   /** OpenSSH alias; authentication and host trust stay in the user's SSH config. */
   ssh: string;
-  /** Trusted remote driver override; omitted for the package-managed runtime. */
+  /**
+   * What the alias logs in to: "wsl" (a WSL shell, the default when bash answers) or "windows" (Windows without WSL).
+   * Detected when omitted.
+   */
+  transport?: "wsl" | "windows";
+  /** Trusted remote driver override, a WSL path or for a Windows machine without WSL a Windows path; omitted for the package-managed runtime. */
   command?: string;
   /** Keep a managed-looking path as an explicit test override. */
   driverOverride?: true;
@@ -186,9 +193,10 @@ function parseMachines(value: unknown): Record<string, MachineConfig> {
     // Short addresses start with the machine name (computer:<name>/w3qk), so it never takes an address kind word.
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name) || name === "local" || ADDRESS_KINDS.has(name) || !raw || typeof raw !== "object" || Array.isArray(raw)) return invalid();
     const machine = raw as Record<string, unknown>;
-    if (Object.keys(machine).some(key => !["ssh", "command", "runtime", "node", "package", "driverOverride", "browserOverride"].includes(key))
+    if (Object.keys(machine).some(key => !["ssh", "transport", "command", "runtime", "node", "package", "driverOverride", "browserOverride"].includes(key))
       || typeof machine.ssh !== "string" || !machine.ssh
-      || (machine.command !== undefined && (typeof machine.command !== "string" || !machine.command.startsWith("/")))
+      || (machine.transport !== undefined && machine.transport !== "wsl" && machine.transport !== "windows")
+      || (machine.command !== undefined && (typeof machine.command !== "string" || !(machine.transport === "windows" ? /^[A-Za-z]:\\/.test(machine.command) : machine.command.startsWith("/"))))
       || (machine.driverOverride !== undefined && (machine.driverOverride !== true || !machine.command))
       || (machine.browserOverride !== undefined && (machine.browserOverride !== true || (!machine.node && !machine.package)))
       || (machine.runtime !== undefined && (!machine.command || !RUNTIMES.includes(machine.runtime as string)))

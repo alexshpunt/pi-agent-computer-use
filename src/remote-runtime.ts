@@ -4,6 +4,7 @@ import path from "node:path";
 import { fetchRuntime, loadBundledRuntime, PACKAGED_RUNTIME, readRuntimePins, type BundledRuntime } from "./native-runtime.ts";
 import { runPowerShell, WINDOWS_POWERSHELL, type CommandRunner } from "./runner.ts";
 import { RemotePreparationPending, RemotePreparationUncertain } from "./remote-provision-error.ts";
+import { installRemoteWindowsRuntime } from "./remote-windows-runtime.ts";
 
 /** The package's own checked runtime; a Git checkout obtains it through the same path as local use. */
 async function localRuntime(signal?: AbortSignal): Promise<BundledRuntime> {
@@ -72,10 +73,12 @@ async function installRemoteRuntime(runner: CommandRunner, deps: RemoteRuntimeDe
   const names = Object.keys(runtime.files).sort();
   if (!names.length || !names.includes("cua-driver.exe") || names.some(name => !/^[A-Za-z0-9_.-]+$/.test(name) || !/^[a-f0-9]{64}$/.test(runtime.files[name])))
     throw new Error("remote_runtime_manifest_invalid");
-  const appData = await deps.remoteLocalAppData(runner);
-  if (!path.posix.isAbsolute(appData) || /[\r\n]/.test(appData)) throw new Error("remote_runtime_local_appdata_unavailable");
   // The manifest identity changes when any runtime byte changes, even if a build reused its source revision.
   const identity = createHash("sha256").update(JSON.stringify(names.map(name => [name, runtime.files[name]]))).digest("hex");
+  // A Windows machine without WSL has no bash, wslpath or sha256sum: its files are handled through PowerShell.
+  if (runner.windows && runner.direct) return installRemoteWindowsRuntime(runner.direct, runtime, identity, await deps.releaseUrl?.().catch(() => undefined));
+  const appData = await deps.remoteLocalAppData(runner);
+  if (!path.posix.isAbsolute(appData) || /[\r\n]/.test(appData)) throw new Error("remote_runtime_local_appdata_unavailable");
   const parent = path.posix.join(appData, "PiComputerUse", "native-runtimes", runtime.source, identity);
   const destination = path.posix.join(parent, runtime.target), folder = path.posix.join(destination, "runtime");
   const command = path.posix.join(folder, "cua-driver.exe");

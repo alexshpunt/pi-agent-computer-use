@@ -11,6 +11,7 @@ import type { ComputerConfig } from "./config.ts";
 import { WindowIdentity, hostIdentityPeer, remoteIdentityPeer } from "./window-identity.ts";
 import { SingleConnectionHttpTransport } from "./http-transport.ts";
 import { SSH_OPTIONS, localRunner, remoteCommand, sshRunner } from "./runner.ts";
+import { directWindowsRunner, remoteWindowsSha256, sessionSshArguments, windowsSshRunner } from "./windows-ssh.ts";
 import { sha256Files, verifyBundledRuntime } from "./native-runtime.ts";
 import type { NativePlatform } from "./observation-source.ts";
 import { NativeVisuals, VisualSettings, nativeVisualOptions, type WindowObserver } from "./native-visuals.ts";
@@ -230,7 +231,7 @@ export class McpDriver implements Driver {
       void this.closeClient().catch(() => undefined);
     }));
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort, "127.0.0.1", config.endpoint.identityAuth ?? config.endpoint.relay)
-      : hostIdentityPeer(config.ssh ? sshRunner(config.ssh, config.interop) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
+      : hostIdentityPeer(config.ssh ? config.sshWindows ? windowsSshRunner(config.ssh) : sshRunner(config.ssh, config.interop) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
 
   /** Bind a native lifetime only where supported. Unsupported platforms never start a Windows peer. */
@@ -272,7 +273,8 @@ export class McpDriver implements Driver {
         if (this.config.command !== this.config.bundled.command) throw new Error("native_runtime_command_mismatch");
         await verifyBundledRuntime(this.config.bundled, signal, this.config.interop);
       } else if (this.forkRuntime && !this.config.driverOverride) {
-        const hash = this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
+        const hash = this.config.ssh && this.config.sshWindows ? await remoteWindowsSha256(directWindowsRunner(this.config.ssh), this.config.command, signal)
+          : this.config.ssh ? (await sshRunner(this.config.ssh).run("sha256sum", [this.config.command], { signal })).split(" ")[0]
           : (await sha256Files([this.config.command], signal, this.config.interop))[0];
         if (hash !== this.forkRuntime.sha256) throw new Error("Native fork artifact hash mismatch; no Driver process was started.");
       }
@@ -389,6 +391,14 @@ export class McpDriver implements Driver {
 
   /** The owned native child; Windows-host control runs through WSL interop, on another machine over SSH. */
   private async stdioTransport(): Promise<StdioClientTransport> {
+    if (this.config.ssh && this.config.sshWindows) {
+      // A Windows machine without WSL: the session helper starts the driver in the interactive session, where its identity peer runs too.
+      const transport = new StdioClientTransport({ command: "ssh", stderr: "pipe",
+        args: sessionSshArguments(this.config.ssh, { file: this.config.command, args: this.envelopes ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"], env: this.driverVariables() }) });
+      this.stderr = "";
+      transport.stderr?.on("data", (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString()).slice(-4000); });
+      return transport;
+    }
     if (this.config.ssh) {
       // The driver and its identity peer must start in the same remote Windows session.
       const variables = this.driverVariables();

@@ -9,13 +9,25 @@ import path from "node:path";
 export interface CommandRunner {
   /** SSH alias for a remote machine; undefined locally. */
   readonly ssh?: string;
-  /** Pi itself runs on this Windows: no WSL, paths are Windows paths and programs start by their Windows names. */
+  /**
+   * No WSL: paths are Windows paths and programs start by their Windows names. True where Pi itself runs on Windows,
+   * and for a Windows machine reached over SSH without WSL (`ssh` and `direct` are set then).
+   */
   readonly windows?: boolean;
+  /**
+   * For a Windows machine reached over SSH without WSL: a runner for the SSH login session itself. That session is
+   * the services session with no desktop; this runner installs and checks files. The runner above starts every
+   * program in the user's interactive desktop session.
+   */
+  readonly direct?: CommandRunner;
   /** Start a long-lived process with piped stdio. Ending its stdin is the shutdown signal. */
   spawn(file: string, args: readonly string[], env?: Record<string, string>): ChildProcessWithoutNullStreams;
   /** Run a short command, optionally with stdin, and return its stdout. */
   run(file: string, args: readonly string[], options?: { input?: string | Buffer; signal?: AbortSignal; timeoutMs?: number; env?: Record<string, string> }): Promise<string>;
 }
+
+/** A PowerShell single-quoted string literal. */
+export const psString = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
 /** Windows PowerShell as seen from WSL. */
 export const WINDOWS_POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
@@ -42,6 +54,7 @@ export interface RunnerFiles {
 }
 
 export function runnerFiles(runner: CommandRunner): RunnerFiles {
+  if (runner.windows && runner.ssh) return windowsSshFiles(runner);
   if (runner.windows) return {
     native: async value => value,
     windows: async value => value,
@@ -65,6 +78,25 @@ export function runnerFiles(runner: CommandRunner): RunnerFiles {
     list: async dir => (await runner.run("find", [dir, "-maxdepth", "1", "-type", "f", "-printf", "%f\\t%s\\n"]))
       .split("\n").filter(Boolean).map(line => { const [name, bytes] = line.split("\t"); return { name, bytes: Number(bytes) }; }),
     remove: async target => { await runner.run("rm", ["-rf", "--", target]); },
+  };
+}
+
+/** Files of a Windows machine over SSH without WSL, through PowerShell in the runner's session. */
+function windowsSshFiles(runner: CommandRunner): RunnerFiles {
+  const ps = (script: string, options: { input?: string | Buffer; timeoutMs?: number } = {}) => runPowerShell(runner, "powershell.exe", script, options);
+  return {
+    native: async value => value,
+    windows: async value => value,
+    join: (...parts) => path.win32.join(...parts),
+    mkdir: async dir => { await ps(`New-Item -ItemType Directory -Force -Path ${psString(dir)} | Out-Null`); },
+    write: async (file, bytes) => {
+      await ps(`$in = [Console]::OpenStandardInput(); $f = [IO.File]::Create(${psString(file)}); try { $in.CopyTo($f) } finally { $f.Dispose() }`, { input: bytes, timeoutMs: 600_000 });
+    },
+    read: async file => Buffer.from(await ps(`[Convert]::ToBase64String([IO.File]::ReadAllBytes(${psString(file)}))`, { timeoutMs: 120_000 }), "base64"),
+    rename: async (from, to) => { await ps(`Move-Item -LiteralPath ${psString(from)} -Destination ${psString(to)} -Force`); },
+    list: async dir => (await ps(`Get-ChildItem -LiteralPath ${psString(dir)} -File | ForEach-Object { $_.Name + "\`t" + $_.Length }`))
+      .split("\n").filter(Boolean).map(line => { const [name, bytes] = line.split("\t"); return { name, bytes: Number(bytes) }; }),
+    remove: async target => { await ps(`Remove-Item -LiteralPath ${psString(target)} -Recurse -Force -ErrorAction SilentlyContinue`); },
   };
 }
 
@@ -129,11 +161,14 @@ export function sshRunner(alias: string, interop?: string): CommandRunner {
   };
 }
 
-function execute(file: string, args: string[], env: NodeJS.ProcessEnv, options: { input?: string | Buffer; signal?: AbortSignal; timeoutMs?: number }): Promise<string> {
+/** Windows PowerShell reports progress and errors on stderr as CLIXML when its output is redirected; keep the plain text. */
+const withoutProgress = (text: string) => text.replace(/#< CLIXML\r?\n?/g, "").replace(/<Objs[\s\S]*?<\/Objs>/g, "").trim();
+
+export function execute(file: string, args: string[], env: NodeJS.ProcessEnv, options: { input?: string | Buffer; signal?: AbortSignal; timeoutMs?: number }): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(file, args, { env, signal: options.signal, timeout: options.timeoutMs ?? 60_000, maxBuffer: 256 * 1024 * 1024, encoding: "buffer" },
       (error, stdout, stderr) => {
-        if (error) reject(new Error(`${file === "ssh" ? "Remote command" : file} failed: ${(stderr.toString() || error.message).trim().slice(0, 500)}`));
+        if (error) reject(new Error(`${file === "ssh" ? "Remote command" : file} failed: ${(withoutProgress(stderr.toString()) || error.message).trim().slice(0, 500)}`));
         else resolve(stdout.toString());
       });
     child.stdin?.end(options.input);
