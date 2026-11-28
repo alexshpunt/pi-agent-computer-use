@@ -138,7 +138,7 @@ The browser's toolbar, tabs and system dialogs are still ordinary windows, so th
 - An isolated agent session is a temporary Windows user session on the same machine with its own desktop, clipboard and keyboard. It has no pointer device, so clicks and drags often don't reach apps there. Several can run at once. Its network policy allows ingress and egress. Runtime and control files go into the temporary user's private workspace; user folders are not shared automatically. Each session streams its windows and the agent's cursor to a loopback hub on its host machine, and the machine shows them as live tiles on the human's desktop, under all windows; Ctrl+Alt+Space raises them over all windows ([Session tiles](docs/session-tiles.md), [Session window streams](docs/session-streams.md)).
 - In verified Windows checks, their foreground UI stayed off the human desktop. This is desktop separation, not hostile-code containment or protection from a local administrator.
 - Browsers the agent opens use throwaway profiles that get deleted when the session closes.
-- Another Windows machine with WSL can be controlled over its existing SSH connection. Temporary loopback listeners and SSH forwards carry control traffic; the extension does not configure a new externally reachable host listener.
+- Another Windows machine can be controlled over its existing SSH connection, with WSL or without it. A machine without WSL runs the driver through a small helper in the signed-in user's desktop session. Temporary loopback listeners, SSH forwards and a user-only named pipe carry control traffic; the extension does not configure a new externally reachable host listener ([Other machines](docs/setup.md#other-machines)).
 
 ### Files, clipboard and recordings
 

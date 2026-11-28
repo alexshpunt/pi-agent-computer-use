@@ -77,22 +77,38 @@ A project `command` takes precedence, followed by `computer-use-local.json`, the
 
 ## Other machines
 
-Another Windows machine with WSL can be operated over SSH: its windows, displays, browsers and sandboxes. Only machines named under `machines` in `computer-use.json` of the Pi agent directory (`~/.pi/agent/computer-use.json`, for every project) or of a project's `.pi/` folder can be reached, by name, never by host or path. Its addresses work like local ones and never act on this machine; a browser `url` such as `127.0.0.1` means that machine. The remote user's Windows session must be active; a disconnected one returns white screenshots. Delete the machine address to stop its driver; its next use starts it again.
+Another Windows machine can be operated over SSH, with or without WSL: its windows and displays, and with WSL also its browsers and sandboxes. Only machines named under `machines` in `computer-use.json` of the Pi agent directory (`~/.pi/agent/computer-use.json`, for every project) or of a project's `.pi/` folder can be reached, by name, never by host or path. Its addresses work like local ones and never act on this machine; a browser `url` such as `127.0.0.1` means that machine. The remote user's Windows session must be active; a disconnected one returns white screenshots. Delete the machine address to stop its driver; its next use starts it again.
 
 To set one up:
 
-1. Make it reachable through an SSH alias that logs in to its WSL by key, with a known host key.
+1. Make it reachable through an SSH alias that logs in by key, with a known host key. The alias may log in to the machine's WSL, or to Windows itself (Windows OpenSSH) when the machine has no WSL.
 2. Add the alias to `~/.pi/agent/computer-use.json` to reach the machine from every project, or to a project's `.pi/computer-use.json` for that project only. The global machines file holds only `machines`; a project machine of the same name replaces the global one.
 
 ```json
 "machines": {
-  "lab": { "ssh": "lab-wsl" }
+  "lab": { "ssh": "lab-wsl" },
+  "office": { "ssh": "office-win" }
 }
 ```
+
+Computer use asks the alias what it logs in to: a login that runs `bash` is a WSL machine and works as described in the rest of this section; one that only runs Windows PowerShell is a [Windows machine without WSL](#windows-machines-without-wsl). `"transport": "wsl"` or `"transport": "windows"` beside `ssh` skips that question and decides it.
 
 On first use, computer use prepares the package-compatible driver on the remote machine. It prepares Windows Node and the browser worker when a browser is opened, and uses new verified caches after package updates. Old caches are not replaced while they may be in use. `/computer-setup machine <alias> [name]` can prepare these ahead of time.
 
 Trusted configuration can still specify remote WSL `command`, `runtime`, `node` or `package` overrides. Set `driverOverride: true` to try an experimental driver without the packaged hash check, and `browserOverride: true` to keep explicit browser paths even when they resemble old generated paths. Older generated paths otherwise migrate to automatic defaults; unrelated custom paths remain overrides.
+
+### Windows machines without WSL
+
+Windows OpenSSH starts every login in the services session, which has no desktop: a driver started there would see no windows. WSL interop is what reaches the desktop for a WSL machine, so a machine without WSL needs another way in. Computer use installs a small helper on the machine under `%LOCALAPPDATA%\PiComputerUse\session-host\<version>\`. It is built there from the package's source with the .NET Framework compiler that ships with Windows, into two programs: `pi-session-host.exe`, which runs in the signed-in user's interactive session, and `pi-session-client.exe`, a console program that the SSH command runs. The folder also holds `session-start.ps1`, which starts the host, and `window-identity.ps1`, the window identity peer. A one-shot scheduled task of the same user, set to run only when the user is logged on, starts the host; the task is removed again as soon as the host runs. The driver, the window identity peer and every PowerShell command of the machine then start through the host, so they share the interactive session. The client carries their input and output back through the SSH connection; it is not PowerShell, because Windows PowerShell does not pass a redirected input on as it arrives, which a driver that keeps its input open needs.
+
+- The helper listens on a named pipe that only that user may open and that refuses network clients. Nothing listens on a TCP port and no firewall rule changes. The SSH connection keeps its host-key check and key-only login.
+- Closing the machine, losing the SSH connection or ending Pi ends the programs the helper started for it: each gets end-of-input first and is stopped if it stays. The helper exits by itself 30 seconds after its last program. Application windows the driver opened stay open, as in every other mode.
+- The user must be signed in at the machine, on its console or in a Remote Desktop session that is not disconnected. With no active session, or with more than one active session of that user, the connection fails and says so; nothing starts in the wrong session. The task is created for the SSH user, so only that user's desktop is reachable.
+- The machine needs Windows PowerShell 5.1 and the Task Scheduler service, which every Windows 10 and 11 has. WSL, Node and administrator rights are not needed; the helper's task runs with the user's normal rights.
+- A `command` override for such a machine is a Windows path such as `C:\tools\cua-driver.exe` and needs `"transport": "windows"`.
+- Browsers (`open_browser`), Windows Sandbox and isolated sessions are not available on such a machine yet: the browser worker needs a WSL shell there, and these refuse with a message that says so before anything starts. Windows, displays, input, files, OCR and the other machine tools work.
+
+`/computer-setup machine <alias> [name]` installs the helper and the driver and starts the helper, so a missing desktop session shows up there. It prints the entry to add to `machines`.
 
 ## WSL interop
 
