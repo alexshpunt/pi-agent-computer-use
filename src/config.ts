@@ -89,26 +89,41 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
   // not a permanent override. A custom path, an environment override, or driverOverride: true stays explicit.
   const configured = raw.command as string | undefined;
   const legacyManaged = raw.driverOverride !== true && raw.runtime === "windows-desktop" && !!configured && isLegacyManagedDriver(configured);
-  const command = legacyManaged ? process.env.CUA_DRIVER_PATH : configured ?? process.env.CUA_DRIVER_PATH;
+  const local = (!configured || legacyManaged) && raw.args === undefined ? await readLocalDriver() : undefined;
+  const command = (legacyManaged ? undefined : configured) ?? local?.command ?? process.env.CUA_DRIVER_PATH;
   if (!command && raw.args !== undefined) throw new Error("Bundled runtimes use their pinned MCP arguments; set a trusted command to override arguments.");
   // A configured socket is used as given; otherwise a live one, since WSL_INTEROP can outlive its WSL session.
   const interop = raw.interop as string | undefined ?? await liveInterop();
   const bundled = command ? undefined : await findBundledRuntime(interop);
   // The shipped runtime is the qualified windows-desktop build, so it gets that profile's capabilities.
   // A configured runtime always comes with its own trusted command.
-  const runtime = legacyManaged && !command ? "windows-desktop" : (raw.runtime as ComputerConfig["runtime"]) ?? (bundled ? "windows-desktop" : undefined);
+  const runtime = local?.runtime ?? (legacyManaged && !command ? "windows-desktop" : (raw.runtime as ComputerConfig["runtime"]) ?? (bundled ? "windows-desktop" : undefined));
   return { command: command || bundled!.command,
     ...(bundled ? { bundled } : {}),
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(interop ? { interop } : {}),
     ...(raw.escapeStop !== undefined ? { escapeStop: raw.escapeStop as boolean } : {}),
     ...(raw.sandbox !== undefined ? { sandbox: raw.sandbox as SandboxSettings } : {}),
-    ...(runtime ? { runtime } : {}), ...(raw.driverOverride === true ? { driverOverride: true as const } : {}),
+    ...(runtime ? { runtime } : {}), ...((raw.driverOverride === true || local?.driverOverride === true) ? { driverOverride: true as const } : {}),
     ...await mergedMachines(raw.machines) };
 }
 
 /** The user's own machines, for every project: `machines` in computer-use.json of the Pi agent directory. */
 export function globalComputerConfigFile(): string {
   return path.join(getAgentDir(), "computer-use.json");
+}
+async function readLocalDriver(): Promise<{ command: string; runtime: ComputerConfig["runtime"]; driverOverride?: true } | undefined> {
+  const file = path.join(getAgentDir(), "computer-use-local.json");
+  let raw: unknown;
+  try { raw = JSON.parse(await readFile(file, "utf8")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new Error(`Invalid ${file}.`);
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`Invalid ${file}.`);
+  const driver = raw as Record<string, unknown>;
+  if (Object.keys(driver).some(key => !["command", "runtime", "driverOverride"].includes(key)) || typeof driver.command !== "string" || !driver.command || typeof driver.runtime !== "string" || !RUNTIMES.includes(driver.runtime) || (driver.driverOverride !== undefined && driver.driverOverride !== true))
+    throw new Error(`Invalid ${file}.`);
+  return driver as unknown as { command: string; runtime: ComputerConfig["runtime"]; driverOverride?: true };
 }
 async function readGlobalMachines(): Promise<Record<string, MachineConfig>> {
   const file = globalComputerConfigFile();
@@ -118,7 +133,6 @@ async function readGlobalMachines(): Promise<Record<string, MachineConfig>> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw new Error(`Invalid ${file}: it must be JSON with only "machines".`);
   }
-  // Only machines are global: the driver itself always comes from the package, and other settings have their own global store.
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some(key => key !== "machines"))
     throw new Error(`Invalid ${file}: it must be JSON with only "machines".`);
   const { machines } = raw as { machines?: unknown };
