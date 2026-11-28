@@ -86,6 +86,8 @@ Trusted configuration can still specify remote WSL `command`, `runtime`, `node` 
 
 Windows processes must run in the interactive desktop session, not service Session 0. A long-lived Linux process, such as a terminal multiplexer, may inherit a stale `WSL_INTEROP` whose socket is gone. Without an `interop` setting, computer use keeps a live `WSL_INTEROP` and otherwise uses the lowest-numbered live socket in `/run/WSL`; `1_interop` belongs to WSL's init and lives as long as the distribution. A configured `interop` is used as given. If Windows commands still hang, check that the socket exists **and** a simple `cmd.exe /d /c ver` succeeds.
 
+For a remote machine, computer use probes its WSL interop sockets and uses one attached to an active interactive Windows session for the driver and its helpers. If no socket reaches that session, start a WSL terminal from the active desktop and connect again. If sockets reach multiple active sessions, disconnect the unintended session first.
+
 One-shot PowerShell commands need closed stdin (`</dev/null`). Owned MCP and the window-identity peer intentionally keep stdin open for their protocol and exit on EOF. The wrapper forwards telemetry-off and update-check-off settings through `WSLENV`; it does not edit saved driver preferences.
 
 ## Window lifetime and limits
