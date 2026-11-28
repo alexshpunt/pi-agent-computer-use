@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { globalComputerConfigFile, loadComputerConfig, readMachineSettings, type ComputerConfig } from "./config.ts";
 import { prepareRemoteRuntime } from "./remote-runtime.ts";
 import { prepareRemoteBrowser } from "./remote-browser.ts";
+import { selectRemoteInterop } from "./remote-interop.ts";
 import { RemotePreparationUncertain } from "./remote-provision-error.ts";
 import { ComputerRequestError, SandboxFullError, machineGuide, type MachineFactory, type SandboxFactory } from "./computer-resources.ts";
 import type { CuaVisionSettings } from "./cua-image-settings.ts";
@@ -67,7 +68,8 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
     const config = machine ? undefined : await loadComputerConfig(cwd);
     // Zones come from this project's settings and apply when this agent starts the sandbox.
     const zones = !!parsed && (machine ? (await readMachineSettings(cwd)).sandbox : config!.sandbox)?.zones === true;
-    const runner = machine ? sshRunner(machine.ssh) : localRunner(config!.interop);
+    const interop = machine ? await selectRemoteInterop(sshRunner(machine.ssh), signal) : config!.interop;
+    const runner = machine ? sshRunner(machine.ssh, interop) : localRunner(interop);
     const commandPath = machine ? machine.command ?? await prepareRemoteRuntime(runner, signal) : config!.command;
     const runtime = machine ? machine.command ? machine.runtime : "windows-desktop" : config!.runtime;
     const sandbox = parsed ? await WindowsSandbox.open(runnerHost(runner), commandPath, { ...parsed, zones }, signal)
@@ -131,10 +133,11 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
   return async (cwd, name, signal) => {
     const machine = await machineConfig(cwd, name);
     const escapeStop = options.escapeStop ? await options.escapeStop(cwd) : (await readMachineSettings(cwd)).escapeStop;
-    const runner = sshRunner(machine.ssh);
+    const interop = await selectRemoteInterop(sshRunner(machine.ssh), signal);
+    const runner = sshRunner(machine.ssh, interop);
     const command = machine.command ?? await prepareRemoteRuntime(runner, signal);
     const runtime = machine.command ? machine.runtime : "windows-desktop";
-    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ...(escapeStop !== undefined ? { escapeStop } : {}), ssh: machine.ssh }, undefined, options.visuals, options.humanStop, options.sessionLabel);
+    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ...(escapeStop !== undefined ? { escapeStop } : {}), ssh: machine.ssh, interop }, undefined, options.visuals, options.humanStop, options.sessionLabel);
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
     const launchWeb = async (launch: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) => {

@@ -228,7 +228,7 @@ export class McpDriver implements Driver {
       void this.closeClient().catch(() => undefined);
     }));
     if (this.windowLifetime) this.windowIdentity = new WindowIdentity(config.endpoint ? remoteIdentityPeer(config.endpoint.identityPort, "127.0.0.1", config.endpoint.identityAuth ?? config.endpoint.relay)
-      : hostIdentityPeer(config.ssh ? sshRunner(config.ssh) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
+      : hostIdentityPeer(config.ssh ? sshRunner(config.ssh, config.interop) : localRunner(config.interop ?? process.env.WSL_INTEROP)));
   }
 
   /** Bind a native lifetime only where supported. Unsupported platforms never start a Windows peer. */
@@ -385,9 +385,9 @@ export class McpDriver implements Driver {
   /** The owned native child; Windows-host control runs through WSL interop, on another machine over SSH. */
   private async stdioTransport(): Promise<StdioClientTransport> {
     if (this.config.ssh) {
-      // The remote WSL supplies its own interop; the driver exits on stdin EOF when SSH ends.
+      // The driver and its identity peer must start in the same remote Windows session.
       const variables = this.driverVariables();
-      const env = { WSLENV: Object.keys(variables).join(":"), ...variables };
+      const env = { WSLENV: Object.keys(variables).join(":"), ...variables, ...(this.config.interop ? { WSL_INTEROP: this.config.interop } : {}) };
       const transport = new StdioClientTransport({ command: "ssh", stderr: "pipe",
         args: [...SSH_OPTIONS, this.config.ssh, remoteCommand(this.config.command, this.envelopes ? ["mcp", "--direct", "--embedded"] : this.config.args ?? ["mcp", "--direct", "--embedded"], env)] });
       this.stderr = "";
