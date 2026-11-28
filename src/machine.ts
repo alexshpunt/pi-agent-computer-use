@@ -12,6 +12,8 @@ import type { CuaVisionSettings } from "./cua-image-settings.ts";
 import { McpDriver } from "./driver.ts";
 import { MachineHost } from "./machine-host.ts";
 import { localRunner, sshRunner, type CommandRunner } from "./runner.ts";
+import { remoteTransport } from "./remote-transport.ts";
+import { ensureSessionHost, prepareSessionHost, windowsSshRunner } from "./windows-ssh.ts";
 import { WindowsSandbox, connectLoopback, runnerHost, sandboxOptions, waitForGuestDriver } from "./sandbox.ts";
 import { IsolatedSession } from "./isolated-session.ts";
 import { GuestInputLease, MAX_ZONES, zoneText, type ScreenZone } from "./input-lease.ts";
@@ -65,6 +67,8 @@ export function sandboxFactory(options: { settings: () => CuaVisionSettings; vis
       parsed = command.action === "open_session" ? undefined : sandboxOptions(command);
     } catch (error) { throw new ComputerRequestError(error instanceof Error ? error.message : String(error)); }
     const machine = machineName ? await machineConfig(cwd, machineName) : undefined;
+    if (machine && await remoteTransport(machine.ssh, machine.transport, signal) === "windows")
+      throw new ComputerRequestError(`Windows Sandbox and isolated sessions are not available on machine ${machineName}: it is a Windows machine without WSL. Use a machine with WSL, or work on its desktop directly.`);
     const config = machine ? undefined : await loadComputerConfig(cwd);
     // Zones come from this project's settings and apply when this agent starts the sandbox.
     const zones = !!parsed && (machine ? (await readMachineSettings(cwd)).sandbox : config!.sandbox)?.zones === true;
@@ -135,14 +139,27 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
     const settings = await readMachineSettings(cwd);
     const escapeStop = options.escapeStop ? await options.escapeStop(cwd) : settings.escapeStop;
     const { minimizedCapture } = settings;
-    const interop = await selectRemoteInterop(sshRunner(machine.ssh), signal);
-    const runner = sshRunner(machine.ssh, interop);
+    // A login that runs bash is a WSL machine. One that does not is a Windows machine without WSL: its driver and helpers
+    // start in the interactive session through the session helper instead of WSL interop.
+    const native = await remoteTransport(machine.ssh, machine.transport, signal) === "windows";
+    let interop: string | undefined;
+    let runner: CommandRunner;
+    if (native) {
+      runner = windowsSshRunner(machine.ssh);
+      await prepareSessionHost(runner.direct!, signal);
+      await ensureSessionHost(machine.ssh, signal);
+    } else {
+      interop = await selectRemoteInterop(sshRunner(machine.ssh), signal);
+      runner = sshRunner(machine.ssh, interop);
+    }
     const command = machine.command ?? await prepareRemoteRuntime(runner, signal);
     const runtime = machine.command ? machine.runtime : "windows-desktop";
-    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ...(escapeStop !== undefined ? { escapeStop } : {}), ...(minimizedCapture ? { minimizedCapture } : {}), ssh: machine.ssh, interop }, undefined, options.visuals, options.humanStop, options.sessionLabel);
+    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ...(escapeStop !== undefined ? { escapeStop } : {}), ...(minimizedCapture ? { minimizedCapture } : {}), ssh: machine.ssh, ...(native ? { sshWindows: true as const } : { interop }) }, undefined, options.visuals, options.humanStop, options.sessionLabel);
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
     const launchWeb = async (launch: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) => {
+      if (native) throw new WebError(`Browsers are not available on machine ${name} yet: it is a Windows machine without WSL, and the browser worker needs a WSL shell there. Nothing was launched. `
+        + "Open the browser's window as an ordinary app with open, or use a machine with WSL.");
       const prepared = await prepareRemoteBrowser(runner, webSignal, { node: machine.node, package: machine.package }).catch(error => {
         if (error instanceof RemotePreparationUncertain) throw new WebError(error.message, false, true);
         throw error;
@@ -155,7 +172,7 @@ export function machineFactory(options: { getMode: () => ComputerMode; settings:
     const remote = new ComputerSession(driver, options.getMode, options.settings, undefined, launchWeb, new MachineHost(runner));
     return { ref: name, session: remote,
       describe: source => [`# Machine ${name}`, `Address: ${source}`, `SSH: ${machine.ssh}`,
-        "Browser: prepared automatically on first use", ...machineGuide(source)].join("\n"),
+        native ? "Windows without WSL: browsers, sandboxes and isolated sessions are not available here" : "Browser: prepared automatically on first use", ...machineGuide(source)].join("\n"),
       close: () => remote.close() };
   };
 }

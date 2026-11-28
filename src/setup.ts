@@ -11,6 +11,8 @@ import { MXC, PERCEPTION, WINDOWS_NODE } from "./setup-pins.ts";
 import { ensureWindowsNode } from "./windows-node.ts";
 import { prepareRemoteBrowser } from "./remote-browser.ts";
 import { prepareRemoteRuntime } from "./remote-runtime.ts";
+import { remoteTransport, type RemoteTransport } from "./remote-transport.ts";
+import { ensureSessionHost, prepareSessionHost, windowsSshRunner } from "./windows-ssh.ts";
 
 /** Optional parts and what each adds; `machine` prepares another machine instead of installing on one. */
 export const SETUP_PARTS = [
@@ -19,7 +21,7 @@ export const SETUP_PARTS = [
   { name: "perception", description: "Cua perception for the regions view (about 420 MB, AGPL-3.0 icon detector)" },
   { name: "mxc", description: "Microsoft MXC for open_session (Windows 11 24H2 or later)" },
   { name: "vscode-bridge", description: "Pi Browser Bridge for VS Code's integrated browser" },
-  { name: "machine", description: "Prepare another Windows machine with WSL, reached over SSH" },
+  { name: "machine", description: "Prepare another Windows machine, with or without WSL, reached over SSH" },
 ] as const;
 export type SetupPart = (typeof SETUP_PARTS)[number]["name"];
 
@@ -56,8 +58,15 @@ export interface SetupDeps {
   wsl: () => Promise<boolean>;
   local: (interop?: string) => CommandRunner;
   ssh: (alias: string) => CommandRunner;
+  /** What the alias logs in to: a WSL shell or Windows without WSL. */
+  transport: (alias: string, configured?: RemoteTransport) => Promise<RemoteTransport>;
+  /** The runner for a Windows machine without WSL: programs start in its interactive session. */
+  windowsSsh: (alias: string) => CommandRunner;
+  /** Start the session helper in the machine's interactive session. */
+  ensureSessionHost: (alias: string, signal?: AbortSignal) => Promise<void>;
 }
-const defaultDeps: SetupDeps = { platform: process.platform, wsl: isWsl, local: localRunner, ssh: sshRunner };
+const defaultDeps: SetupDeps = { platform: process.platform, wsl: isWsl, local: localRunner, ssh: sshRunner,
+  transport: (alias, configured) => remoteTransport(alias, configured), windowsSsh: windowsSshRunner, ensureSessionHost };
 
 type Progress = (message: string) => void;
 const BRIDGE_ID = "alexshpunt.pi-browser-bridge";
@@ -125,6 +134,8 @@ async function resolveTarget(cwd: string, machine: string | undefined, deps: Set
   if (machine && machine !== "local") {
     const config = settings.machines[machine];
     if (!config) throw new SetupError(`No machine named ${machine} is configured in .pi/computer-use.json or ${globalComputerConfigFile()}; nothing was installed.`);
+    if (await deps.transport(config.ssh, config.transport) === "windows")
+      throw new SetupError(`Machine ${machine} is a Windows machine without WSL. Only \`/computer-setup machine\` applies to it; the other parts need WSL there. Nothing was installed.`);
     return { label: `machine ${machine}`, runner: deps.ssh(config.ssh), powershell: WINDOWS_POWERSHELL, native: false, machine: config };
   }
   if (deps.platform === "win32") return { label: "this machine", runner: deps.local(), powershell: "powershell.exe", native: true };
@@ -274,9 +285,21 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $argv) | Out-Null
 
 async function prepareMachine(request: SetupRequest, deps: SetupDeps, progress: Progress, signal?: AbortSignal): Promise<string> {
   const alias = request.ssh;
-  if (!alias || !/^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/.test(alias)) throw new SetupError("machine needs the SSH alias of a Windows machine with WSL; nothing was installed.");
+  if (!alias || !/^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/.test(alias)) throw new SetupError("machine needs the SSH alias of a Windows machine; nothing was installed.");
   const name = request.name ?? alias;
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name) || name === "local") throw new SetupError("The machine name must be letters, digits, - or _, and not local.");
+  if (await deps.transport(alias) === "windows") {
+    // No WSL: the driver starts through a helper in the interactive session, and there is no browser worker.
+    const runner = deps.windowsSsh(alias);
+    progress("preparing the session helper");
+    await prepareSessionHost(runner.direct!, signal);
+    progress("preparing the driver");
+    await prepareRemoteRuntime(runner, signal);
+    progress("starting the session helper in the interactive session");
+    await deps.ensureSessionHost(alias, signal);
+    return `Prepared ${alias} for computer use. It is a Windows machine without WSL, so browsers, sandboxes and isolated sessions are not available there. `
+      + `Add this trusted machine under "machines" in .pi/computer-use.json:\n${JSON.stringify({ [name]: { ssh: alias, transport: "windows" } }, null, 2)}`;
+  }
   const runner = deps.ssh(alias);
   progress("preparing the driver");
   await prepareRemoteRuntime(runner, signal);
