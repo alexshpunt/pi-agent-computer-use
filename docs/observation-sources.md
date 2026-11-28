@@ -20,7 +20,7 @@ Successful desktop-window and display images carry `source`. Playwright page scr
 - `semantic_scope`: no tree for display, native window UI for desktop windows.
 - `scale`: native-reported scale factor and screenshot scale. DPI and devicePixelRatio remain `null`; do not infer them from resized images.
 - `capabilities`: current read route, existing input boundary and supported detail route. Desktop windows expose native read-only window zoom; primary displays expose fresh adapter crop/resize.
-- `visibility`: reported minimized state when available. Occlusion and paint freshness are not established by a successful capture.
+- `visibility`: reported minimized state when available. Occlusion and paint freshness are not established by a successful capture. `minimized_capture` appears only when the driver restored a minimized window invisibly for this one capture and minimized it again (see [Minimized windows](minimized-windows.md)); it names the settle and hold times in milliseconds.
 
 The source envelope and exact returned bytes appear in existing Vision debug. The preview's application-boundary limitations remain unchanged: it does not prove final provider delivery or limit model context.
 

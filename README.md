@@ -226,6 +226,7 @@ I use this every day on real tasks, but I can only test the machines, apps and w
 | [UI resources and hints](docs/ui-resources.md)            | The native UI tree, hints and local UI operations                     |
 | [Window zoom and display detail](docs/native-detail.md)   | Readonly detail from the latest overview                              |
 | [Temporal capture](docs/temporal-capture.md)              | Frame sequences and their timing                                      |
+| [Minimized windows](docs/minimized-windows.md)            | How a read of a minimized window gets fresh pixels, and its side effects |
 | [Selected displays](docs/selected-displays.md)            | Monitor discovery and display reads                                   |
 | [Image guides](docs/image-guides.md)                      | Coordinate grid and last-action marks                                 |
 | [Native visuals](docs/native-observability.md)            | Human controls, previews and presentation safety                       |
