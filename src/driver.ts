@@ -137,6 +137,8 @@ const timelineLength = (args: Record<string, unknown>) => {
 /** Owned platform-native MCP child; Windows-host control can run through WSL interop. */
 export class McpDriver implements Driver {
   private nativeVisualsAvailable = false;
+  /** Window reads ask the driver to restore a minimized window invisibly for one capture (LPT-1939). */
+  private peekMinimized = false;
   readonly desktopActivity?: DesktopActivity;
   private activityConnection?: ActivityConnection;
   private activityClosed = false;
@@ -299,6 +301,9 @@ export class McpDriver implements Driver {
         throw new Error("The native fork runtime did not acknowledge its EOF-aware receiver.");
       const { tools } = await client.listTools({}, { signal, timeout: 15_000 });
       this.nativeVisualsAvailable = ["present_agent_activity", "set_agent_visuals"].every(name => tools.some(tool => tool.name === name && tool.inputSchema.type === "object"));
+      // A driver that does not list the argument would reject it as unknown, so older drivers keep refusing minimized reads.
+      this.peekMinimized = this.config.minimizedCapture !== "refuse"
+        && tools.some(tool => tool.name === "get_window_state" && "minimized_capture" in ((tool.inputSchema.properties ?? {}) as Record<string, unknown>));
       if (this.config.bundled || this.config.driverOverride) {
         this.nativeTools = new Set(tools.map(tool => tool.name));
         if (this.config.bundled || this.config.runtime === "windows-desktop")
@@ -465,6 +470,8 @@ export class McpDriver implements Driver {
       return { content: [], structuredContent: { status: "refused", code: "unsupported_native_capability", platform: this.platform, tool: name, attempted: false, fallback: false }, isError: true };
     // Since 0.35 the driver shapes window state for models; the adapter needs the full payload with `elements`.
     if (name === "get_window_state" && compactWindowState(this.connectedVersion ?? this.config.bundled?.driverVersion ?? this.forkRuntime?.version ?? this.version)) args = { ...args, full_output: true };
+    // A minimized window has no fresh pixels; the driver restores it invisibly for the capture and minimizes it again.
+    if (name === "get_window_state" && this.peekMinimized && args.minimized_capture === undefined && args.include_screenshot !== false) args = { ...args, minimized_capture: "peek" };
     // A timeline runs for its own length and a large app (GIMP, Blender) can take over 15 s to show its first window;
     // every other native call answers well within 15 s.
     const timeout = name === "input_timeline" ? 15_000 + timelineLength(args) : name === "launch_app" ? 90_000 : 15_000;
@@ -507,6 +514,7 @@ export class McpDriver implements Driver {
   private async closeClient(): Promise<void> {
     this.detachDesktopActivity();
     this.nativeVisualsAvailable = false;
+    this.peekMinimized = false;
     const client = this.client;
     const transport = this.transport;
     this.client = undefined;

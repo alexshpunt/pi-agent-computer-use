@@ -34,8 +34,16 @@ export interface ObservationSource extends SourceIdentity {
   semantic_scope: "none" | "native_window";
   scale: { native_scale_factor: number | null; screenshot_scale: number | null; dpi: null; device_pixel_ratio: null };
   capabilities: { read: true; input: "none" | "window_observation"; detail: "unsupported" | "window_zoom" | "display_crop" };
-  visibility: { minimized: boolean | null; occluded: null; paint_freshness: "unverified" };
+  visibility: { minimized: boolean | null; occluded: null; paint_freshness: "unverified";
+    /** The driver restored a minimized window invisibly for this one capture and minimized it again. */
+    minimized_capture?: { mode: "peek"; settle_ms: number | null; held_ms: number | null } };
 }
+const finite = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null;
+/** What the driver reports when it peeked at a minimized window; anything else is not a peek. */
+const peekOf = (value: unknown): { mode: "peek"; settle_ms: number | null; held_ms: number | null } | undefined => {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : undefined;
+  return record?.mode === "peek" ? { mode: "peek", settle_ms: finite(record.settle_ms), held_ms: finite(record.held_ms) } : undefined;
+};
 const positive = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 
 /** Report native capture geometry without deriving DPI, page coordinates or missing original pixels. */
@@ -43,6 +51,7 @@ export function observationSource(kind: ObservationSource["kind"], native: Recor
   identity: ObservationSource["identity"], zoom = false, platform: NativePlatform = "windows"): ObservationSource {
   const originalWidth = positive(native.screenshot_original_width);
   const originalHeight = positive(native.screenshot_original_height);
+  const peek = peekOf(native.minimized_capture);
   return {
     kind, ...sourceIdentity(identity, null, native.virtual_desktop, platform), captured_at: new Date().toISOString(), timestamp_boundary: "native_call_completed",
     image: { scope: kind === "display" ? "primary_display" : zoom ? "native_window_zoom" : "native_window",
@@ -55,6 +64,7 @@ export function observationSource(kind: ObservationSource["kind"], native: Recor
     scale: { native_scale_factor: positive(native.scale_factor), screenshot_scale: positive(native.screenshot_scale), dpi: null, device_pixel_ratio: null },
     capabilities: { read: true, input: kind === "display" ? "none" : "window_observation",
       detail: zoom ? "unsupported" : kind === "display" ? "display_crop" : "window_zoom" },
-    visibility: { minimized: typeof native.minimized === "boolean" ? native.minimized : null, occluded: null, paint_freshness: "unverified" },
+    visibility: { minimized: typeof native.minimized === "boolean" ? native.minimized : null, occluded: null, paint_freshness: "unverified",
+      ...(peek ? { minimized_capture: peek } : {}) },
   };
 }

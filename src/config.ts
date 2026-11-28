@@ -25,6 +25,8 @@ export interface ComputerConfig {
   machines?: Record<string, MachineConfig>;
   /** The shared Windows Sandbox this agent starts. */
   sandbox?: SandboxSettings;
+  /** What a window read does with a minimized window: "peek" (default) restores it invisibly for one capture, "refuse" leaves it alone. */
+  minimizedCapture?: "peek" | "refuse";
 }
 
 /** `sandbox` in computer-use.json: how the shared Windows Sandbox works when this agent starts it. */
@@ -74,8 +76,9 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)
-    || Object.keys(raw).some(key => !["command", "args", "interop", "runtime", "machines", "driverOverride", "escapeStop", "sandbox"].includes(key))
+    || Object.keys(raw).some(key => !["command", "args", "interop", "runtime", "machines", "driverOverride", "escapeStop", "sandbox", "minimizedCapture"].includes(key))
     || !validSandbox(raw.sandbox)
+    || (raw.minimizedCapture !== undefined && raw.minimizedCapture !== "peek" && raw.minimizedCapture !== "refuse")
     || (raw.escapeStop !== undefined && typeof raw.escapeStop !== "boolean")
     || (raw.driverOverride !== undefined && raw.driverOverride !== true)
     || (raw.driverOverride === true && typeof raw.command !== "string")
@@ -103,6 +106,7 @@ export async function loadComputerConfig(cwd: string): Promise<ComputerConfig> {
     ...(raw.args ? { args: raw.args as string[] } : {}), ...(interop ? { interop } : {}),
     ...(raw.escapeStop !== undefined ? { escapeStop: raw.escapeStop as boolean } : {}),
     ...(raw.sandbox !== undefined ? { sandbox: raw.sandbox as SandboxSettings } : {}),
+    ...(raw.minimizedCapture !== undefined ? { minimizedCapture: raw.minimizedCapture as "peek" | "refuse" } : {}),
     ...(runtime ? { runtime } : {}), ...((raw.driverOverride === true || local?.driverOverride === true) ? { driverOverride: true as const } : {}),
     ...await mergedMachines(raw.machines) };
 }
@@ -145,19 +149,21 @@ async function mergedMachines(project: unknown): Promise<{ machines?: Record<str
 }
 
 /** The trusted file's interop socket and machines, without selecting or downloading a runtime. */
-export async function readMachineSettings(cwd: string): Promise<{ interop?: string; machines: Record<string, MachineConfig>; escapeStop?: boolean; sandbox?: SandboxSettings }> {
+export async function readMachineSettings(cwd: string): Promise<{ interop?: string; machines: Record<string, MachineConfig>; escapeStop?: boolean; sandbox?: SandboxSettings; minimizedCapture?: "peek" | "refuse" }> {
   let raw: unknown = {};
   try { raw = JSON.parse(await readFile(path.join(cwd, ".pi", "computer-use.json"), "utf8")); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid .pi/computer-use.json; see docs/setup.md#override-the-runtime.");
-  const { interop: configured, machines, escapeStop, sandbox } = raw as Record<string, unknown>;
+  const { interop: configured, machines, escapeStop, sandbox, minimizedCapture } = raw as Record<string, unknown>;
   if (escapeStop !== undefined && typeof escapeStop !== "boolean") throw new Error("Invalid escapeStop in .pi/computer-use.json.");
+  if (minimizedCapture !== undefined && minimizedCapture !== "peek" && minimizedCapture !== "refuse") throw new Error("Invalid minimizedCapture in .pi/computer-use.json: use \"peek\" or \"refuse\".");
   if (!validSandbox(sandbox)) throw new Error("Invalid sandbox in .pi/computer-use.json: use {\"zones\": true|false}.");
   const interop = typeof configured === "string" ? configured : await liveInterop();
   return { ...(interop ? { interop } : {}), machines: (await mergedMachines(machines)).machines ?? {}, ...(escapeStop !== undefined ? { escapeStop: escapeStop as boolean } : {}),
-    ...(sandbox !== undefined ? { sandbox: sandbox as SandboxSettings } : {}) };
+    ...(sandbox !== undefined ? { sandbox: sandbox as SandboxSettings } : {}),
+    ...(minimizedCapture !== undefined ? { minimizedCapture: minimizedCapture as "peek" | "refuse" } : {}) };
 }
 
 function validSandbox(value: unknown): boolean {

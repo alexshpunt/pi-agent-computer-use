@@ -132,12 +132,14 @@ async function joinZones(lease: GuestInputLease, signal?: AbortSignal, timeoutMs
 export function machineFactory(options: { getMode: () => ComputerMode; settings: () => CuaVisionSettings; visuals?: VisualSettings; humanStop?: HumanStop; sessionLabel?: () => string | undefined; escapeStop?: (cwd: string) => Promise<boolean | undefined> }): MachineFactory {
   return async (cwd, name, signal) => {
     const machine = await machineConfig(cwd, name);
-    const escapeStop = options.escapeStop ? await options.escapeStop(cwd) : (await readMachineSettings(cwd)).escapeStop;
+    const settings = await readMachineSettings(cwd);
+    const escapeStop = options.escapeStop ? await options.escapeStop(cwd) : settings.escapeStop;
+    const { minimizedCapture } = settings;
     const interop = await selectRemoteInterop(sshRunner(machine.ssh), signal);
     const runner = sshRunner(machine.ssh, interop);
     const command = machine.command ?? await prepareRemoteRuntime(runner, signal);
     const runtime = machine.command ? machine.runtime : "windows-desktop";
-    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ...(escapeStop !== undefined ? { escapeStop } : {}), ssh: machine.ssh, interop }, undefined, options.visuals, options.humanStop, options.sessionLabel);
+    const driver = new McpDriver({ command, ...(runtime ? { runtime } : {}), ...(machine.driverOverride ? { driverOverride: true as const } : {}), ...(escapeStop !== undefined ? { escapeStop } : {}), ...(minimizedCapture ? { minimizedCapture } : {}), ssh: machine.ssh, interop }, undefined, options.visuals, options.humanStop, options.sessionLabel);
     try { await waitForGuestDriver(driver, signal, 30_000); }
     catch (error) { await driver.close().catch(() => undefined); throw error; }
     const launchWeb = async (launch: Parameters<typeof WebBrowser.launch>[0], webSignal?: AbortSignal) => {
