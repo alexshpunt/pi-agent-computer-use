@@ -24,7 +24,7 @@ A read takes about 0.2–0.6 s. The foreground window, the window's placement an
 
 ## Turning it off
 
-A window read refuses a minimized window, as before, when the project sets `"minimizedCapture": "refuse"` in `.pi/computer-use.json`. The default is `"peek"`. The extension sends the request only to a driver that lists the `minimized_capture` argument of `get_window_state`; an older driver, such as the pinned runtime before it is updated, keeps refusing with its native reason.
+A window read refuses a minimized window, as before, when the project sets `"minimizedCapture": "refuse"` in `.pi/computer-use.json`. The default is `"peek"`. The extension sends the request only to a driver that lists the `minimized_capture` argument of `get_window_state`; an older driver, such as a `driverOverride` build from before the feature, keeps refusing with its native reason. The pinned runtime (0.62.1 and later) supports it, so a default install reads minimized windows without any setting.
 
 The driver's own default is `refuse`: a client that does not ask gets no change to any window.
 
