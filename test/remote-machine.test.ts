@@ -30,6 +30,7 @@ test("remote sandbox selects its machine without resolving the local runtime", a
   const { sandboxFactory } = await import("../src/machine.ts");
   const interop = await import("../src/remote-interop.ts");
   const select = vi.spyOn(interop, "selectRemoteInterop").mockResolvedValue("/run/WSL/10_interop");
+  const transport = vi.spyOn(await import("../src/remote-transport.ts"), "remoteTransport").mockResolvedValue("wsl");
   const { WindowsSandbox } = await import("../src/sandbox.ts");
   const failure = new Error("sandbox reached");
   const local = vi.spyOn(config, "loadComputerConfig").mockRejectedValue(new Error("local runtime unavailable"));
@@ -41,7 +42,7 @@ test("remote sandbox selects its machine without resolving the local runtime", a
     await expect(factory(dir, { action: "open_sandbox" }, undefined, "lab")).rejects.toBe(failure);
     expect(local).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledOnce();
-  } finally { select.mockRestore(); local.mockRestore(); open.mockRestore(); await rm(dir, { recursive: true, force: true }); }
+  } finally { select.mockRestore(); transport.mockRestore(); local.mockRestore(); open.mockRestore(); await rm(dir, { recursive: true, force: true }); }
 });
 test("browserOverride preserves a single legacy browser path", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "pi-machines-partial-"));

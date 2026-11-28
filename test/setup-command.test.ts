@@ -36,7 +36,7 @@ function fakeRunner(answer: (script: string) => string = () => "") {
 }
 
 function deps(platform: NodeJS.Platform, runner: CommandRunner, wsl = true): Partial<SetupDeps> & { ssh: ReturnType<typeof vi.fn> } {
-  return { platform, wsl: async () => wsl, local: () => runner, ssh: vi.fn(() => runner) };
+  return { platform, wsl: async () => wsl, local: () => runner, ssh: vi.fn(() => runner), transport: async () => "wsl" as const };
 }
 
 test("command words become setup requests; quoted paths stay whole and bad shapes show the usage", () => {
